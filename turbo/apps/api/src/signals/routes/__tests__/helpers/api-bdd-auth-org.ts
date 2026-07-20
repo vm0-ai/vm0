@@ -29,7 +29,6 @@ import type {
 } from "@vm0/api-contracts/contracts/org-members";
 import {
   onboardingCompleteContract,
-  onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
@@ -82,7 +81,6 @@ import {
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
   SecretListResponse,
   SecretResponse,
@@ -118,7 +116,6 @@ import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connect
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
@@ -129,6 +126,7 @@ import { zeroOrgReadRoutes } from "../../zero-org-read";
 import { zeroSecretsRoutes } from "../../zero-secrets";
 import { zeroTeamRoutes } from "../../zero-team";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -196,16 +194,6 @@ interface BddOrgState {
   readonly membershipRequests?: readonly BddMembershipRequest[];
 }
 
-interface OnboardingSetupBody {
-  readonly displayName: string;
-  readonly workspaceName?: string;
-  readonly sound?: string;
-  readonly avatarUrl?: string;
-  readonly selectedConnectors?: ConnectorType[];
-  readonly timezone?: string;
-  readonly role?: string;
-}
-
 interface BearerActor {
   readonly bearerToken: string;
 }
@@ -247,7 +235,6 @@ const authOrgRoutes = [
   ...zeroApiKeysDeleteRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingSetupRoutes,
   ...zeroSecretsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroOrgReadRoutes,
@@ -553,7 +540,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     authenticate,
 
     acceptAgentStorageWrites(): void {
-      context.mocks.s3.send.mockResolvedValue({});
+      context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
     },
 
     mockClerkUsers,
@@ -848,17 +835,14 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
-    async setupOnboarding(actor: ApiTestUser, body: OnboardingSetupBody) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        onboardingSetupContract,
-      );
-      return await accept(
-        client.setup({
-          headers: authenticate(actor),
-          body,
-        }),
-        [200, 403, 409, 422],
-      );
+    async bootstrapOnboarding(
+      actor: ApiTestUser,
+      body: OnboardingBootstrapOptions,
+    ) {
+      const agentId = await createBddApi(
+        context,
+      ).bootstrapLimitedFreeOnboarding(actor, body);
+      return { status: 200 as const, body: { agentId } };
     },
 
     async completeOnboarding(actor: ApiTestUser) {
@@ -871,23 +855,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           body: {},
         }),
         [200, 403],
-      );
-    },
-
-    async requestSetupOnboarding<S extends 200 | 401 | 403 | 409 | 422>(
-      actor: ApiTestUser | null,
-      body: OnboardingSetupBody,
-      statuses: readonly S[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        onboardingSetupContract,
-      );
-      return await accept(
-        client.setup({
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
       );
     },
 

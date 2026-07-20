@@ -3,34 +3,41 @@ import { randomUUID } from "node:crypto";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   onboardingCompleteContract,
-  onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
 import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
+  zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { now } from "../../../../lib/time";
+import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
+import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
+import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
+const DEFAULT_ONBOARDING_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -61,18 +68,32 @@ export interface ApiTestUserOptions {
   readonly email?: string;
 }
 
-export interface OnboardingSetupBody {
+export interface OnboardingBootstrapOptions {
   readonly displayName: string;
-  readonly workspaceName?: string;
   readonly sound?: string;
   readonly avatarUrl?: string;
-  readonly selectedConnectors?: ConnectorType[];
   readonly timezone?: string;
-  readonly role?: string;
 }
 
 function authHeaders(user: ApiTestUser | null): AuthHeaders {
   return user ? { authorization: "Bearer clerk-session" } : {};
+}
+
+function zeroAgentReadHeaders(user: ApiTestUser): AuthHeaders {
+  if (!user.orgId) {
+    throw new Error("Cannot bootstrap onboarding without an organization");
+  }
+  const seconds = Math.floor(now() / 1000);
+  const token = signSandboxJwtForTests({
+    scope: "zero",
+    userId: user.userId,
+    orgId: user.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: ["agent:read"],
+    iat: seconds,
+    exp: seconds + 60,
+  });
+  return { authorization: `Bearer ${token}` };
 }
 
 function clerkUserProfile(user: ApiTestUser): ClerkUserProfile {
@@ -111,13 +132,6 @@ export function createBddApi(context: TestContext) {
     })(onboardingStatusContract);
   }
 
-  function onboardingSetupClient() {
-    return setupAppWithRoutes({
-      context,
-      routes: zeroOnboardingSetupRoutes,
-    })(onboardingSetupContract);
-  }
-
   function onboardingCompleteClient() {
     return setupAppWithRoutes({
       context,
@@ -132,6 +146,13 @@ export function createBddApi(context: TestContext) {
     })(zeroOrgContract);
   }
 
+  function userPreferencesClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroUserPreferencesRoutes,
+    })(zeroUserPreferencesContract);
+  }
+
   function agentsClient() {
     return setupAppWithRoutes({
       context,
@@ -144,6 +165,20 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroAgentsRoutes,
     })(zeroAgentsByIdContract);
+  }
+
+  function agentInstructionsClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroAgentInstructionsRoutes,
+    })(zeroAgentInstructionsContract);
+  }
+
+  function modelProvidersClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroModelProvidersRoutes,
+    })(zeroModelProvidersMainContract);
   }
 
   function defaultAgentClient() {
@@ -169,11 +204,22 @@ export function createBddApi(context: TestContext) {
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [clerkUserProfile(nextUser)],
     });
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: nextUser.orgId
+        ? [
+            {
+              role: nextUser.orgRole ?? "org:admin",
+              organization: { id: nextUser.orgId },
+              publicUserData: { userId: nextUser.userId },
+            },
+          ]
+        : [],
+    });
     return authHeaders(nextUser);
   }
 
   function acceptAgentStorageWrites(): void {
-    context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
     );
@@ -228,16 +274,6 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async setupOnboarding(nextUser: ApiTestUser, body: OnboardingSetupBody) {
-      return await accept(
-        onboardingSetupClient().setup({
-          headers: authenticate(nextUser),
-          body,
-        }),
-        [200, 409],
-      );
-    },
-
     async completeOnboarding(nextUser: ApiTestUser) {
       return await accept(
         onboardingCompleteClient().complete({
@@ -246,6 +282,157 @@ export function createBddApi(context: TestContext) {
         }),
         [200, 403],
       );
+    },
+
+    async bootstrapLimitedFreeOnboarding(
+      nextUser: ApiTestUser,
+      options: OnboardingBootstrapOptions,
+    ): Promise<string> {
+      const headers = authenticate(nextUser);
+      await accept(
+        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
+        [200],
+      );
+      const statusResponse = await accept(
+        onboardingStatusClient().getStatus({
+          headers,
+        }),
+        [200],
+      );
+      const status = statusResponse.body;
+      if (!status.defaultAgentId) {
+        throw new Error("Expected onboarding bootstrap to create an agent");
+      }
+
+      await accept(
+        agentsByIdClient().updateMetadata({
+          params: { id: status.defaultAgentId },
+          headers,
+          body: {
+            displayName: options.displayName,
+            ...(options.sound === undefined ? {} : { sound: options.sound }),
+            ...(options.avatarUrl === undefined
+              ? {}
+              : { avatarUrl: options.avatarUrl }),
+          },
+        }),
+        [200],
+      );
+
+      if (options.timezone !== undefined) {
+        await accept(
+          userPreferencesClient().update({
+            headers,
+            body: { timezone: options.timezone },
+          }),
+          [200],
+        );
+      }
+
+      const completed = await accept(
+        onboardingCompleteClient().complete({
+          headers,
+          body: {},
+        }),
+        [200, 403],
+      );
+      if (completed.status !== 200) {
+        throw new Error(
+          `Expected onboarding completion to succeed, got ${completed.status}`,
+        );
+      }
+
+      return status.defaultAgentId;
+    },
+
+    async bootstrapOnboarding(
+      nextUser: ApiTestUser,
+      options: OnboardingBootstrapOptions,
+    ): Promise<string> {
+      const headers = authenticate(nextUser);
+      const listed = await accept(
+        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
+        [200],
+      );
+      const existingAgent = listed.body[0];
+      let agentId = existingAgent?.agentId;
+
+      if (!agentId) {
+        await accept(
+          modelProvidersClient().upsert({
+            headers,
+            body: { type: "vm0" },
+          }),
+          [200, 201],
+        );
+
+        const created = await accept(
+          agentsClient().create({
+            headers,
+            body: {
+              displayName: options.displayName,
+              ...(options.sound === undefined ? {} : { sound: options.sound }),
+              avatarUrl:
+                options.avatarUrl ?? DEFAULT_ONBOARDING_AGENT_AVATAR_URL,
+            },
+          }),
+          [201],
+        );
+        agentId = created.body.agentId;
+
+        await accept(
+          agentInstructionsClient().update({
+            params: { id: agentId },
+            headers,
+            body: { content: SEED_INSTRUCTIONS },
+          }),
+          [200],
+        );
+      }
+
+      const defaultResponse = await accept(
+        defaultAgentClient().setDefaultAgent({
+          query: {},
+          headers,
+          body: { agentId },
+        }),
+        [200, 409],
+      );
+      if (defaultResponse.status === 409) {
+        const statusResponse = await accept(
+          onboardingStatusClient().getStatus({ headers }),
+          [200],
+        );
+        if (!statusResponse.body.defaultAgentId) {
+          throw new Error("Expected the configured default agent to exist");
+        }
+        agentId = statusResponse.body.defaultAgentId;
+      }
+
+      if (options.timezone !== undefined) {
+        await accept(
+          userPreferencesClient().update({
+            headers,
+            body: { timezone: options.timezone },
+          }),
+          [200],
+        );
+      }
+
+      const completed = await accept(
+        onboardingCompleteClient().complete({
+          headers,
+          body: {},
+        }),
+        [200, 403],
+      );
+      if (completed.status !== 200) {
+        throw new Error(
+          `Expected onboarding completion to succeed, got ${completed.status}`,
+        );
+      }
+
+      return agentId;
     },
 
     async requestReadOrg(

@@ -4,7 +4,20 @@ import json
 import os
 from pathlib import Path
 
+import registry
+
 _FIXED_MTIME_NS = 1_700_000_000_000_000_000
+
+
+def assert_invalid_builtin_vm(registry_path: Path) -> registry.InvalidVmEntry:
+    context = registry.get_vm_context("10.200.0.1", str(registry_path))
+    state = registry.load_registry_state(str(registry_path))
+
+    assert context is None
+    assert not isinstance(state, registry.RegistryUnavailable)
+    invalid_vm = state.invalid_vms["10.200.0.1"]
+    assert invalid_vm.reason == "invalid_firewalls"
+    return invalid_vm
 
 
 def write_trusted_catalog_cache_text(path: Path, content: str) -> None:

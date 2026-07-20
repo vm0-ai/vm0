@@ -83,6 +83,27 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert usage == {}
 
+    def test_skips_full_extractor_for_large_documented_non_usage_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        def reject_full_extractor(*_args: object, **_kwargs: object) -> None:
+            pytest.fail("known non-usage event entered the full extractor")
+
+        monkeypatch.setattr(
+            openai_responses,
+            "JsonSelectiveExtractor",
+            reject_full_extractor,
+        )
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.output_item.done\n"
+            b'data: {"type":"response.output_item.done","item":{"content":"'
+            + b"x" * (5 * 1024 * 1024)
+            + b'"}}\n\n'
+        )
+
+        assert usage == {}
+
     def test_accepts_data_level_type_without_event_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(

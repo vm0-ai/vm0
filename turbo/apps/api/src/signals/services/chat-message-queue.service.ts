@@ -1,6 +1,4 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { FeatureSwitchKey } from "@vm0/core";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -87,18 +85,6 @@ export async function decryptWorkflowQueueEventParams(
   return workflowQueueEventParamsWireSchema.parse(JSON.parse(raw));
 }
 
-export function workflowQueueEnabledForOwner(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.WorkflowQueue, {
-    userId: args.userId,
-    orgId: args.orgId,
-    overrides: args.overrides,
-  });
-}
-
 function chatMessageQueueLock(chatThreadId: string) {
   const key = `chat_message_queue:${chatThreadId}`;
   return sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
@@ -159,12 +145,12 @@ async function pendingWorkflowEventExists(
 
 async function pendingTickExistsForAutomation(
   db: Db,
-  triggerId: string,
+  automationId: string,
 ): Promise<boolean> {
   const [tick] = await db
     .select({ id: chatMessageQueue.id })
     .from(chatMessageQueue)
-    .where(eq(chatMessageQueue.triggerId, triggerId))
+    .where(eq(chatMessageQueue.automationId, automationId))
     .limit(1);
   return tick !== undefined;
 }
@@ -219,7 +205,7 @@ export async function admitWorkflowAutomationEvent(
       userId: automation.ownerUserId,
       chatThreadId: args.chatThreadId,
       itemType: "workflow_event",
-      triggerId: automation.id,
+      automationId: automation.id,
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,
@@ -232,7 +218,7 @@ export interface ClaimedWorkflowQueueEvent {
   readonly id: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly chatThreadId: string;
   readonly triggerSource: string;
   readonly triggerBrief: string | null;
@@ -278,7 +264,7 @@ export async function claimNextWorkflowQueueEvent(
     if (!item) {
       return null;
     }
-    if (!item.triggerId || !item.triggerSource || !item.encryptedParams) {
+    if (!item.automationId || !item.triggerSource || !item.encryptedParams) {
       throw new Error(
         `Workflow event queue item ${item.id} is missing its automation payload`,
       );
@@ -289,7 +275,7 @@ export async function claimNextWorkflowQueueEvent(
       id: item.id,
       orgId: item.orgId,
       userId: item.userId,
-      triggerId: item.triggerId,
+      automationId: item.automationId,
       chatThreadId: item.chatThreadId,
       triggerSource: item.triggerSource,
       triggerBrief: item.triggerBrief,
@@ -343,7 +329,7 @@ export async function restoreWorkflowQueueEventAndPause(
         userId: event.userId,
         chatThreadId: event.chatThreadId,
         itemType: "workflow_event",
-        triggerId: event.triggerId,
+        automationId: event.automationId,
         triggerSource: event.triggerSource,
         triggerBrief: event.triggerBrief,
         encryptedParams: event.encryptedParams,
@@ -448,7 +434,7 @@ interface WorkflowQueueRunningRun {
 
 interface PendingWorkflowQueueEvent {
   readonly id: string;
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly triggerSource: string;
   readonly triggerBrief: string | null;
   readonly createdAt: Date;
@@ -485,7 +471,7 @@ export async function listPendingWorkflowQueueEvents(
   const rows = await db
     .select({
       id: chatMessageQueue.id,
-      triggerId: chatMessageQueue.triggerId,
+      automationId: chatMessageQueue.automationId,
       triggerSource: chatMessageQueue.triggerSource,
       triggerBrief: chatMessageQueue.triggerBrief,
       createdAt: chatMessageQueue.createdAt,
@@ -499,10 +485,10 @@ export async function listPendingWorkflowQueueEvents(
     );
   const events: PendingWorkflowQueueEvent[] = [];
   for (const event of rows) {
-    if (event.triggerId !== null && event.triggerSource !== null) {
+    if (event.automationId !== null && event.triggerSource !== null) {
       events.push({
         id: event.id,
-        triggerId: event.triggerId,
+        automationId: event.automationId,
         triggerSource: event.triggerSource,
         triggerBrief: event.triggerBrief,
         createdAt: event.createdAt,

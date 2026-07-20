@@ -1,5 +1,177 @@
 # Changelog
 
+## [8.442.3](https://github.com/vm0-ai/vm0/compare/core-v8.442.2...core-v8.442.3) (2026-07-20)
+
+
+### Refactoring
+
+* graduate website templates to always-on ([#22209](https://github.com/vm0-ai/vm0/issues/22209)) ([9c1a75a](https://github.com/vm0-ai/vm0/commit/9c1a75ab743c243447eb8f850c61a89cae177422))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.4
+    * @vm0/connectors bumped to 1.172.2
+
+## [8.442.2](https://github.com/vm0-ai/vm0/compare/core-v8.442.1...core-v8.442.2) (2026-07-20)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.3
+    * @vm0/connectors bumped to 1.172.1
+
+## [8.442.1](https://github.com/vm0-ai/vm0/compare/core-v8.442.0...core-v8.442.1) (2026-07-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.2
+
+## [8.442.0](https://github.com/vm0-ai/vm0/compare/core-v8.441.1...core-v8.442.0) (2026-07-19)
+
+
+### Features
+
+* remove workflow queue feature switch and legacy dispatch paths ([#22091](https://github.com/vm0-ai/vm0/issues/22091)) ([ecde8ca](https://github.com/vm0-ai/vm0/commit/ecde8caec9fcb742a79102a9ef3778f62f46eb38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.1
+    * @vm0/connectors bumped to 1.172.0
+
+## [8.441.1](https://github.com/vm0-ai/vm0/compare/core-v8.441.0...core-v8.441.1) (2026-07-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.0
+    * @vm0/connectors bumped to 1.171.0
+
+## [8.441.0](https://github.com/vm0-ai/vm0/compare/core-v8.440.1...core-v8.441.0) (2026-07-18)
+
+
+### Features
+
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+* serialize composer context as inline prompt items ([#22040](https://github.com/vm0-ai/vm0/issues/22040)) ([199b9eb](https://github.com/vm0-ai/vm0/commit/199b9eb08823cac72ab78ea022cb09eb70334de2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+
+## [8.440.1](https://github.com/vm0-ai/vm0/compare/core-v8.440.0...core-v8.440.1) (2026-07-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.4
+
+## [8.440.0](https://github.com/vm0-ai/vm0/compare/core-v8.439.2...core-v8.440.0) (2026-07-17)
+
+
+### Features
+
+* enable website templates rollout ([#21203](https://github.com/vm0-ai/vm0/issues/21203)) ([5a16112](https://github.com/vm0-ai/vm0/commit/5a161121a2fdfaffcd38c87755fdeb05d849c665))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.3
+
+## [8.439.2](https://github.com/vm0-ai/vm0/compare/core-v8.439.1...core-v8.439.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* rename vm0 model to auto ([#21969](https://github.com/vm0-ai/vm0/issues/21969)) ([aa7fd46](https://github.com/vm0-ai/vm0/commit/aa7fd46efde4f8400539a53adf71461105cb4aa5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.2
+
+## [8.439.1](https://github.com/vm0-ai/vm0/compare/core-v8.439.0...core-v8.439.1) (2026-07-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.1
+
+## [8.439.0](https://github.com/vm0-ai/vm0/compare/core-v8.438.1...core-v8.439.0) (2026-07-16)
+
+
+### Features
+
+* add kimi k3 pricing and managed keys ([#21892](https://github.com/vm0-ai/vm0/issues/21892)) ([5b5901f](https://github.com/vm0-ai/vm0/commit/5b5901f21453723a299ab0c71d1a47ce3d14cf87))
+
+
+### Refactoring
+
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+
+## [8.438.1](https://github.com/vm0-ai/vm0/compare/core-v8.438.0...core-v8.438.1) (2026-07-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.1
+
+## [8.438.0](https://github.com/vm0-ai/vm0/compare/core-v8.437.3...core-v8.438.0) (2026-07-16)
+
+
+### Features
+
+* add slack-style three-column navigation behind a feature switch ([#21855](https://github.com/vm0-ai/vm0/issues/21855)) ([3f3bc98](https://github.com/vm0-ai/vm0/commit/3f3bc984de5f20f7d5c637203f39429d8c5bfa20))
+* enable the artifacts page for all users ([#21821](https://github.com/vm0-ai/vm0/issues/21821)) ([3aad765](https://github.com/vm0-ai/vm0/commit/3aad765023952aa2dc4bd8eb351dec756a0c9750))
+* enable workflow queue for all orgs ([#21853](https://github.com/vm0-ai/vm0/issues/21853)) ([5076e79](https://github.com/vm0-ai/vm0/commit/5076e79781786049aa346dcd908661388dbe7a3a))
+
+
+### Refactoring
+
+* **api:** remove unused onboarding setup endpoint ([#21843](https://github.com/vm0-ai/vm0/issues/21843)) ([7cbf7b8](https://github.com/vm0-ai/vm0/commit/7cbf7b8b5423b7a681c60f919862275e863d1c6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+
 ## [8.437.3](https://github.com/vm0-ai/vm0/compare/core-v8.437.2...core-v8.437.3) (2026-07-16)
 
 

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Shared cron / one-time trigger utilities
+// Shared cron / one-time Automation schedule utilities
 // ---------------------------------------------------------------------------
 
 import { getGmtOffset } from "@vm0/core/timezone";
@@ -32,7 +32,7 @@ export type AutomationFormBody = {
 );
 
 // ---------------------------------------------------------------------------
-// One-time trigger helpers
+// One-time Automation schedule helpers
 // ---------------------------------------------------------------------------
 
 /** Build an ISO datetime string from local date + hour + minute. */

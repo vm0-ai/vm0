@@ -9,30 +9,24 @@ import {
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  connectorAuthMethodAccessMetadata,
+  connectorAuthMethodRuntimeMetadata,
   connectorRefreshMetadataHasRefreshableSecret,
-  getConnectorAuthClientConfigForMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodRuntimeMetadata,
   getConnectorRuntimeBindingPlatformSecretName,
   getConnectorRuntimeBindingSecretName,
-  resolveConnectorResolvedAuthMethodClientByAccessKind,
-  connectorAuthMethodRefHasAccessKind,
-  type ConnectorResolvedAuthMethodClientByAccessKind,
-  type ConnectorAuthMethodRef,
-  type ConnectorAuthMethodRefByAccessKind,
+  resolveConnectorAuthClient,
   type ConnectorAuthMethodAccessMetadata,
+  type ConnectorAuthClient,
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
-  type ConnectorAuthClientForMethod,
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
-import {
-  type ConnectorAuthClientConfigForMethod,
-  type ConnectorAuthMethodIdsByAccessKind,
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-  type RefreshTokenAccessConnectorType,
-} from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
@@ -41,7 +35,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  refreshConnectorAuthProviderAccessToken,
+  refreshConnectorAuthProviderAccessTokenWithMethod,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -64,7 +58,13 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
+import {
+  pgInt8ToBigIntDecoder,
+  pgNullDecoder,
+} from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -88,6 +88,16 @@ import {
   connectorRuntimeCredentialStatusForAccess,
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
+import {
+  getConnectorRuntimeMethod,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeMethod,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import {
+  upsertConnectorOwnedSecret,
+  upsertConnectorOwnedVariable,
+} from "./connector-credential-storage-write.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -99,6 +109,10 @@ const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
 const MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH = 128;
+const databaseTimestampMicrosRowSchema = z.object({
+  now: pgInt8ToBigIntSchema,
+});
+
 function firewallAuthRefreshTimeoutMs(): number {
   const configured = optionalEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS");
   if (configured === undefined) {
@@ -358,6 +372,9 @@ interface RefreshTokenContext {
 }
 
 interface RefreshState {
+  readonly authMethod: string | null;
+  readonly connectorId: string | null;
+  readonly storageVersion: number | null;
   readonly outputValues: Readonly<Record<string, string | null>>;
   readonly inputValues: Readonly<Record<string, string | null>>;
   readonly tokenExpiresAt: Date | null;
@@ -367,10 +384,13 @@ interface RefreshState {
 }
 
 interface RefreshStateRow {
+  readonly authMethod: string | null;
+  readonly connectorId: string | null;
+  readonly storageVersion: number | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
   readonly lastRefreshErrorCode: string | null;
-  readonly updatedAtMicros: bigint | number | string;
+  readonly updatedAtMicros: bigint;
 }
 
 interface ValidatedRefreshOutput {
@@ -392,60 +412,15 @@ type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
   | ModelProviderPreparedRefreshTokenContext;
 
-type ConnectorRefreshTokenAccessResolvedClient =
-  ConnectorResolvedAuthMethodClientByAccessKind<"refresh-token">;
-
-type ConnectorRefreshTokenAccessMethodRef =
-  ConnectorAuthMethodRefByAccessKind<"refresh-token">;
-
-type ConnectorRefreshTokenAccessClientMethodRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-      ? never
-      : {
-          readonly type: Type;
-          readonly authMethod: Method;
-        };
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
-
-type ConnectorRefreshTokenAccessNoClientMethodRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-      ? {
-          readonly type: Type;
-          readonly authMethod: Method;
-        }
-      : never;
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
-
-type ConnectorPreparedRefreshTokenContextFor<
-  Type extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
-> = {
-  readonly sourceType: "connector";
-  readonly type: Type;
-  readonly authMethod: Method;
-  readonly context: RefreshTokenContext;
-} & ([ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-  ? unknown
-  : { readonly authClient: ConnectorAuthClientForMethod<Type, Method> });
-
 type ConnectorPreparedRefreshTokenContext = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: ConnectorPreparedRefreshTokenContextFor<Type, Method>;
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
+  readonly sourceType: "connector";
+  readonly connectorId: string;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly authClient?: ConnectorAuthClient;
+  readonly context: RefreshTokenContext;
+};
 
 type ModelProviderPreparedRefreshTokenContext = {
   readonly sourceType: "model-provider";
@@ -453,56 +428,6 @@ type ModelProviderPreparedRefreshTokenContext = {
   readonly currentEnv: ProviderEnv;
   readonly context: RefreshTokenContext;
 };
-
-function resolveRefreshTokenAccessClient(
-  authMethodRef: ConnectorRefreshTokenAccessClientMethodRef,
-): ConnectorRefreshTokenAccessResolvedClient | undefined {
-  return resolveConnectorResolvedAuthMethodClientByAccessKind(
-    authMethodRef,
-    (name) => {
-      return optionalEnv(name);
-    },
-  );
-}
-
-function connectorRefreshTokenAccessMethodHasClient(
-  authMethodRef: ConnectorRefreshTokenAccessMethodRef,
-): authMethodRef is ConnectorRefreshTokenAccessClientMethodRef {
-  return (
-    getConnectorAuthClientConfigForMethod(
-      authMethodRef.type,
-      authMethodRef.authMethod,
-    ) !== undefined
-  );
-}
-
-function connectorRefreshTokenAccessMethodHasNoClient(
-  authMethodRef: ConnectorRefreshTokenAccessMethodRef,
-): authMethodRef is ConnectorRefreshTokenAccessNoClientMethodRef {
-  return !connectorRefreshTokenAccessMethodHasClient(authMethodRef);
-}
-
-function connectorPreparedRefreshTokenContextWithClient(args: {
-  readonly resolvedClient: ConnectorRefreshTokenAccessResolvedClient;
-  readonly context: RefreshTokenContext;
-}): ConnectorPreparedRefreshTokenContext {
-  return {
-    sourceType: "connector",
-    ...args.resolvedClient,
-    context: args.context,
-  };
-}
-
-function connectorPreparedRefreshTokenContextWithoutClient(args: {
-  readonly authMethodRef: ConnectorRefreshTokenAccessNoClientMethodRef;
-  readonly context: RefreshTokenContext;
-}): ConnectorPreparedRefreshTokenContext {
-  return {
-    sourceType: "connector",
-    ...args.authMethodRef,
-    context: args.context,
-  };
-}
 
 type PrepareRefreshTokenContextResult =
   | {
@@ -514,7 +439,8 @@ type PrepareRefreshTokenContextResult =
       readonly reason:
         | "client-unconfigured"
         | "not-refreshable"
-        | "refresh-token-missing";
+        | "refresh-token-missing"
+        | "source-missing";
     };
 
 type RefreshAccessTokenResult =
@@ -561,6 +487,7 @@ function refreshFailedResult(
 
 interface RefreshExpiredTokensArgs {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly orgId: string;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -577,6 +504,7 @@ interface RefreshExpiredTokensArgs {
 
 interface RefreshBatchContext {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly orgId: string;
   readonly userId: string;
@@ -595,7 +523,10 @@ interface RefreshSourceState {
 }
 
 interface ConnectorAccessState extends RefreshSourceState {
-  readonly authMethod: string;
+  readonly connectorId: string;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly storageVersion: number | null;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
   readonly runtimeMetadata: ConnectorAuthMethodRuntimeMetadata;
 }
@@ -884,14 +815,13 @@ async function getVariableValue(args: {
   return row?.value ?? null;
 }
 
-async function upsertSecretValue(
+async function upsertModelProviderSecretValue(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly name: string;
     readonly value: string;
-    readonly type: SecretType;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
@@ -906,11 +836,8 @@ async function upsertSecretValue(
       userId: args.userId,
       name: args.name,
       encryptedValue,
-      type: args.type,
-      description:
-        args.type === "model-provider"
-          ? `Model provider secret: ${args.name}`
-          : `Connector secret: ${args.name}`,
+      type: "model-provider",
+      description: `Model provider secret: ${args.name}`,
     })
     .onConflictDoUpdate({
       target: [
@@ -921,40 +848,6 @@ async function upsertSecretValue(
       ],
       set: {
         encryptedValue,
-        updatedAt: nowDate(),
-      },
-    });
-}
-
-async function upsertConnectorVariableValue(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly name: string;
-    readonly value: string;
-  },
-): Promise<void> {
-  await db
-    .insert(variablesTable)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      value: args.value,
-      description: null,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [
-        variablesTable.orgId,
-        variablesTable.userId,
-        variablesTable.type,
-        variablesTable.name,
-      ],
-      set: {
-        value: args.value,
-        description: null,
         updatedAt: nowDate(),
       },
     });
@@ -1084,6 +977,7 @@ async function loadConnectorAccessStates(
   orgId: string,
   userId: string,
   connectorTypes: readonly string[],
+  snapshot: ConnectorRuntimeSnapshot,
 ): Promise<Map<string, ConnectorAccessState>> {
   const result = new Map<string, ConnectorAccessState>();
   if (connectorTypes.length === 0) {
@@ -1092,8 +986,10 @@ async function loadConnectorAccessStates(
 
   const rows = await db
     .select({
+      connectorId: connectors.id,
       type: connectors.type,
       authMethod: connectors.authMethod,
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
     })
@@ -1107,25 +1003,29 @@ async function loadConnectorAccessStates(
     );
 
   for (const row of rows) {
-    const parsed = connectorTypeSchema.safeParse(row.type);
-    if (!parsed.success) {
+    const connectorRef = connectorCatalogRefSchema.safeParse(row.type);
+    const authMethodId = connectorCatalogAuthMethodIdSchema.safeParse(
+      row.authMethod,
+    );
+    if (!connectorRef.success || !authMethodId.success) {
       continue;
     }
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
-      parsed.data,
-      row.authMethod,
-    );
-    const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
-      parsed.data,
-      row.authMethod,
-    );
-    if (!accessMetadata || !runtimeMetadata) {
+    const runtimeMethod = getConnectorRuntimeMethod({
+      snapshot,
+      connectorRef: connectorRef.data,
+      authMethodId: authMethodId.data,
+      requireExecutable: true,
+    });
+    if (!runtimeMethod) {
       continue;
     }
     result.set(row.type, {
-      authMethod: row.authMethod,
-      accessMetadata,
-      runtimeMetadata,
+      connectorId: row.connectorId,
+      authMethod: authMethodId.data,
+      storageVersion: row.storageVersion,
+      runtimeMethod,
+      accessMetadata: connectorAuthMethodAccessMetadata(runtimeMethod.method),
+      runtimeMetadata: connectorAuthMethodRuntimeMetadata(runtimeMethod.method),
       ...refreshSourceStateFromRow(row),
     });
   }
@@ -1344,6 +1244,7 @@ async function getSourceStateByProviderKey(args: {
 
 async function loadCurrentSourceStateSnapshot(args: {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly connectorTypes: readonly string[];
@@ -1362,6 +1263,7 @@ async function loadCurrentSourceStateSnapshot(args: {
     args.orgId,
     args.userId,
     connectorOnly,
+    args.connectorCatalogSnapshot,
   );
   return {
     connectorAccessByType,
@@ -1455,22 +1357,15 @@ function prepareRefreshTokenContext(
     return { ok: false, reason: "not-refreshable" };
   }
   const accessMetadata = connectorAccess.accessMetadata;
-  const parsedConnectorType = connectorTypeSchema.safeParse(args.connectorType);
-  if (!parsedConnectorType.success) {
+  if (connectorAccess.runtimeMethod.method.access.kind !== "refresh-token") {
     return { ok: false, reason: "not-refreshable" };
   }
-  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
-    connectorAccess.authMethod,
-  );
-  if (!parsedAuthMethod.success) {
-    return { ok: false, reason: "not-refreshable" };
-  }
-  const authMethodRef: ConnectorAuthMethodRef = {
-    type: parsedConnectorType.data,
-    authMethod: parsedAuthMethod.data,
-  };
-  if (!connectorAuthMethodRefHasAccessKind(authMethodRef, "refresh-token")) {
-    return { ok: false, reason: "not-refreshable" };
+  if (
+    connectorAccess.storageVersion !== null &&
+    connectorAccess.storageVersion !==
+      connectorAccess.runtimeMethod.method.storage.version
+  ) {
+    return { ok: false, reason: "source-missing" };
   }
 
   const context: RefreshTokenContext = {
@@ -1484,35 +1379,29 @@ function prepareRefreshTokenContext(
     ),
   };
 
-  if (connectorRefreshTokenAccessMethodHasClient(authMethodRef)) {
-    const resolvedClient = resolveRefreshTokenAccessClient(authMethodRef);
-    if (!resolvedClient) {
-      L.debug(
-        `${args.connectorType} connector client not configured, skipping token refresh`,
-      );
-      return { ok: false, reason: "client-unconfigured" };
-    }
-
-    return {
-      ok: true,
-      prepared: connectorPreparedRefreshTokenContextWithClient({
-        resolvedClient,
-        context,
-      }),
-    };
+  const clientConfig = connectorAccess.runtimeMethod.method.client;
+  const authClient = clientConfig
+    ? resolveConnectorAuthClient(clientConfig, optionalEnv)
+    : undefined;
+  if (clientConfig && !authClient) {
+    L.debug(
+      `${args.connectorType} connector client not configured, skipping token refresh`,
+    );
+    return { ok: false, reason: "client-unconfigured" };
   }
 
-  if (connectorRefreshTokenAccessMethodHasNoClient(authMethodRef)) {
-    return {
-      ok: true,
-      prepared: connectorPreparedRefreshTokenContextWithoutClient({
-        authMethodRef,
-        context,
-      }),
-    };
-  }
-
-  return { ok: false, reason: "not-refreshable" };
+  return {
+    ok: true,
+    prepared: {
+      sourceType: "connector",
+      connectorId: connectorAccess.connectorId,
+      connectorRef: connectorAccess.runtimeMethod.connectorRef,
+      authMethodId: connectorAccess.runtimeMethod.authMethodId,
+      runtimeMethod: connectorAccess.runtimeMethod,
+      ...(authClient ? { authClient } : {}),
+      context,
+    },
+  };
 }
 
 function tokenExpiresAtNeedsRefresh(tokenExpiresAt: Date | null): boolean {
@@ -1613,14 +1502,16 @@ function refreshSourceStateFromRow(args: {
 }
 
 async function currentDatabaseTimestampMicros(db: Db): Promise<bigint> {
-  const result = await db.execute<{ now: bigint | number | string }>(
+  const rows = await executeRawRows(
+    db,
     sql`SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::bigint AS now`,
+    databaseTimestampMicrosRowSchema,
   );
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     throw new Error("Failed to read database timestamp");
   }
-  return BigInt(row.now);
+  return row.now;
 }
 
 function shouldUseLockedCurrentAccess(args: {
@@ -1781,10 +1672,16 @@ async function loadModelProviderRefreshStateRow(
 ): Promise<RefreshStateRow | null> {
   const query = db
     .select({
+      authMethod: sql`NULL`.mapWith(pgNullDecoder),
+      connectorId: sql`NULL`.mapWith(pgNullDecoder),
+      storageVersion: sql`NULL`.mapWith(pgNullDecoder),
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       needsReconnect: modelProviders.needsReconnect,
       lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
-      updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
+      updatedAtMicros:
+        sql`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`.mapWith(
+          pgInt8ToBigIntDecoder,
+        ),
     })
     .from(modelProviders)
     .where(
@@ -1807,10 +1704,16 @@ async function loadConnectorRefreshStateRow(
 ): Promise<RefreshStateRow | null> {
   const query = db
     .select({
+      authMethod: connectors.authMethod,
+      connectorId: connectors.id,
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
-      lastRefreshErrorCode: sql<string | null>`NULL`,
-      updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
+      lastRefreshErrorCode: sql`NULL`.mapWith(pgNullDecoder),
+      updatedAtMicros:
+        sql`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`.mapWith(
+          pgInt8ToBigIntDecoder,
+        ),
     })
     .from(connectors)
     .where(
@@ -1879,17 +1782,21 @@ async function loadRefreshState(
   }
 
   return {
+    authMethod: row.authMethod,
+    connectorId: row.connectorId,
+    storageVersion: row.storageVersion,
     outputValues,
     inputValues,
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
     lastRefreshErrorCode: row.lastRefreshErrorCode,
-    updatedAtMicros: BigInt(row.updatedAtMicros),
+    updatedAtMicros: row.updatedAtMicros,
   };
 }
 
 async function markRefreshSuccess(
   args: RefreshAccessTokenArgs,
+  prepared: PreparedRefreshTokenContext,
   context: RefreshTokenContext,
   outputs: readonly ValidatedRefreshOutput[],
   expiresIn: number | undefined,
@@ -1898,28 +1805,47 @@ async function markRefreshSuccess(
   for (const { target, value } of outputs) {
     switch (target.kind) {
       case "secret": {
-        await upsertSecretValue(args.db, {
-          orgId: args.orgId,
-          userId: context.secretUserId,
-          name: target.name,
-          value,
-          type: args.sourceType,
-          featureSwitchContext: args.featureSwitchContext,
-        });
+        if (prepared.sourceType === "model-provider") {
+          await upsertModelProviderSecretValue(args.db, {
+            orgId: args.orgId,
+            userId: context.secretUserId,
+            name: target.name,
+            value,
+            featureSwitchContext: args.featureSwitchContext,
+          });
+        } else {
+          const encryptedValue = await encryptStoredSecretValue(
+            value,
+            args.featureSwitchContext,
+          );
+          await upsertConnectorOwnedSecret(args.db, {
+            connectorId: prepared.connectorId,
+            method: prepared.runtimeMethod.method,
+            orgId: args.orgId,
+            userId: context.secretUserId,
+            name: target.name,
+            encryptedValue,
+            description: `Connector secret: ${target.name}`,
+          });
+        }
         returnedSecretValues.set(target.name, value);
         break;
       }
       case "connector-variable": {
-        if (args.sourceType !== "connector") {
+        if (prepared.sourceType !== "connector") {
           throw new Error(
             "Model provider refresh cannot write connector variables",
           );
         }
-        await upsertConnectorVariableValue(args.db, {
+        await upsertConnectorOwnedVariable(args.db, {
+          connectorId: prepared.connectorId,
+          method: prepared.runtimeMethod.method,
           orgId: args.orgId,
           userId: context.secretUserId,
           name: target.name,
           value,
+          description: null,
+          updatedDescription: null,
         });
         break;
       }
@@ -1930,7 +1856,7 @@ async function markRefreshSuccess(
     nowDate().getTime() +
       (expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
-  if (args.sourceType === "model-provider") {
+  if (prepared.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
       .set({
@@ -1953,12 +1879,14 @@ async function markRefreshSuccess(
     .update(connectors)
     .set({
       tokenExpiresAt: expiresAt,
+      storageVersion: prepared.runtimeMethod.method.storage.version,
       needsReconnect: false,
       reconnectReason: null,
       updatedAt: sql`clock_timestamp()`,
     })
     .where(
       and(
+        eq(connectors.id, prepared.connectorId),
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.type, args.connectorType),
@@ -2088,8 +2016,13 @@ function refreshPreparedConnectorAccessToken(args: {
   readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }) {
-  return refreshConnectorAuthProviderAccessToken({
-    ...args.prepared,
+  return refreshConnectorAuthProviderAccessTokenWithMethod({
+    connectorRef: args.prepared.connectorRef,
+    authMethodId: args.prepared.authMethodId,
+    method: args.prepared.runtimeMethod.method,
+    ...(args.prepared.authClient
+      ? { authClient: args.prepared.authClient }
+      : {}),
     inputs: args.inputs,
     signal: args.signal,
   });
@@ -2104,7 +2037,7 @@ async function lockPreparedRefreshSource(
     await lockConnectorState(db, {
       orgId: args.orgId,
       userId: args.userId,
-      type: prepared.type,
+      type: prepared.connectorRef,
     });
     return;
   }
@@ -2114,6 +2047,46 @@ async function lockPreparedRefreshSource(
     userId: prepared.context.secretUserId,
     type: args.metadataKey ?? prepared.providerKey,
   });
+}
+
+function preparedRefreshSourceMatchesState(
+  args: RefreshAccessTokenArgs,
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  if (prepared.sourceType === "model-provider") {
+    return true;
+  }
+  return (
+    args.connectorType === prepared.connectorRef &&
+    state.connectorId === prepared.connectorId &&
+    state.authMethod === prepared.authMethodId &&
+    (state.storageVersion === null ||
+      state.storageVersion === prepared.runtimeMethod.method.storage.version)
+  );
+}
+
+function currentPreparedRefreshState(args: {
+  readonly refreshArgs: RefreshAccessTokenArgs;
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly state: RefreshState | null;
+}): RefreshState | null {
+  if (!args.state) {
+    L.warn(`${args.refreshArgs.connectorType} token refresh source missing`, {
+      connectorType: args.refreshArgs.connectorType,
+      orgId: args.refreshArgs.orgId,
+      userId: args.refreshArgs.userId,
+      sourceType: args.refreshArgs.sourceType,
+    });
+    return null;
+  }
+  return preparedRefreshSourceMatchesState(
+    args.refreshArgs,
+    args.prepared,
+    args.state,
+  )
+    ? args.state
+    : null;
 }
 
 function currentRefreshAccessResult(args: {
@@ -2222,19 +2195,17 @@ async function refreshLockedAccessToken(args: {
   readonly initialState: RefreshState | null;
   readonly requestStartedAtMicros: bigint | null;
 }): Promise<RefreshAccessTokenResult> {
-  const lockedState = await loadRefreshState(
-    args.refreshArgs.db,
-    args.refreshArgs,
-    args.prepared.context,
-    { lockRow: true },
-  );
+  const lockedState = currentPreparedRefreshState({
+    refreshArgs: args.refreshArgs,
+    prepared: args.prepared,
+    state: await loadRefreshState(
+      args.refreshArgs.db,
+      args.refreshArgs,
+      args.prepared.context,
+      { lockRow: true },
+    ),
+  });
   if (!lockedState) {
-    L.warn(`${args.refreshArgs.connectorType} token refresh source missing`, {
-      connectorType: args.refreshArgs.connectorType,
-      orgId: args.refreshArgs.orgId,
-      userId: args.refreshArgs.userId,
-      sourceType: args.refreshArgs.sourceType,
-    });
     return sourceMissingResult();
   }
 
@@ -2323,6 +2294,7 @@ async function refreshLockedAccessToken(args: {
 
   const returnedSecretValues = await markRefreshSuccess(
     args.refreshArgs,
+    args.prepared,
     args.prepared.context,
     outputValidation.outputs,
     refreshResult.value.expiresIn,
@@ -3165,6 +3137,7 @@ function hasMissingUnresolvableSecrets(args: {
 
 async function prepareFirewallAuthResolutionContext(args: {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly body: FirewallAuthBody;
   readonly orgId: string;
@@ -3201,6 +3174,7 @@ async function prepareFirewallAuthResolutionContext(args: {
       secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
       referencedKeys: referenced.secrets,
     }),
+    args.connectorCatalogSnapshot,
   );
   const modelProviderRefreshable = referencedModelProviderAccessMap({
     secretConnectorMap: args.body.secretConnectorMap,
@@ -3666,6 +3640,7 @@ async function refreshExpiredTokens(
 
   const context = {
     db: args.db,
+    connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     auth: args.auth,
     orgId: args.orgId,
     userId: args.auth.userId,
@@ -3689,6 +3664,7 @@ async function refreshExpiredTokens(
       ? { connectorAccessByType: context.connectorAccessByType, sourceStateMap }
       : await loadCurrentSourceStateSnapshot({
           db: args.db,
+          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           orgId: args.orgId,
           userId: args.auth.userId,
           connectorTypes: skippedTypes,
@@ -3716,6 +3692,7 @@ async function refreshExpiredTokens(
           args.orgId,
           args.auth.userId,
           connectorTypes,
+          args.connectorCatalogSnapshot,
         )),
       ])
     : args.connectorAccessByType;
@@ -3948,6 +3925,7 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
   const forceRefreshStartedAtMicros =
     body.forceRefresh === true
       ? await currentDatabaseTimestampMicros(db)
@@ -3968,6 +3946,7 @@ export async function resolveFirewallAuth(
 
   const prepared = await prepareFirewallAuthResolutionContext({
     db,
+    connectorCatalogSnapshot,
     auth,
     body,
     orgId: decrypted.orgId,
@@ -3998,6 +3977,7 @@ export async function resolveFirewallAuth(
   if (body.secretConnectorMap) {
     const result = await refreshExpiredTokens({
       db,
+      connectorCatalogSnapshot,
       auth,
       secrets: decryptedSecrets,
       secretConnectorMap: body.secretConnectorMap,

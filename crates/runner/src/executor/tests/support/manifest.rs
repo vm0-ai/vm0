@@ -13,6 +13,7 @@ pub(in crate::executor::tests) fn api_storage(
         vas_storage_name: name.into(),
         vas_version_id: version.into(),
         instructions_target_filename: None,
+        archive_size: None,
     }
 }
 
@@ -31,5 +32,6 @@ pub(in crate::executor::tests) fn api_artifact(
         vas_version_id: version.into(),
         empty: None,
         missing_root_policy: None,
+        archive_size: None,
     }
 }

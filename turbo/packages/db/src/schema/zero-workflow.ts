@@ -10,7 +10,6 @@ import {
   index,
   check,
   jsonb,
-  real,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
@@ -117,11 +116,6 @@ export const workflowUserAutomationThreads = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Workflow-queue pause state: while set, trigger events keep enqueueing
-    // but are not consumed. `pauseReason` is user-visible (set on manual
-    // pause or automatically when dequeued run creation fails).
-    queuePausedAt: timestamp("queue_paused_at"),
-    pauseReason: text("pause_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -248,31 +242,6 @@ export const zeroWorkflowAutomations = pgTable(
             AND interval_seconds IS NULL
             AND at_time IS NULL
           )`,
-      ),
-    ];
-  },
-);
-
-export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
-  "zero_workflow_automation_memory_embeddings",
-  {
-    workflowAutomationId: uuid("workflow_automation_id")
-      .primaryKey()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    embeddingModel: text("embedding_model").notNull(),
-    queryHash: varchar("query_hash", { length: 64 }).notNull(),
-    embedding: real("embedding").array().notNull(),
-  },
-  (table) => {
-    return [
-      check(
-        "zero_workflow_automation_memory_embeddings_dimensions_check",
-        sql`cardinality(${table.embedding}) = 1536`,
       ),
     ];
   },

@@ -12,6 +12,7 @@ export const inth = {
         helpText:
           "1. Sign in to your Inth account\n2. Follow the [Inth API docs](https://inth.com/docs/getting-started) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["INTH_API_KEY"],
           variables: [],
         },

@@ -1,4 +1,7 @@
 use std::collections::VecDeque;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -292,7 +295,7 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
-        o.lifecycle.stop_behaviors.next_result()
+        o.lifecycle.stop_behaviors.next_result(())
     }
 
     async fn kill(&mut self) -> Result<()> {
@@ -301,17 +304,19 @@ impl Sandbox for MockSandbox {
 
     /// Mock park: bumps the override `park_calls` counter on every call (so
     /// tests can assert exact invocation counts) and consumes one queued
-    /// result (FIFO). Empty queue → `Ok(())`. The trait's idempotency
+    /// result (FIFO). Empty queue → reusable. The trait's idempotency
     /// requirement is satisfied in practice because the default-Ok behavior
     /// is side-effect-free; tests that need to exercise non-idempotent
     /// scenarios queue explicit results.
-    async fn park(&mut self) -> Result<()> {
+    async fn park(&mut self) -> Result<SandboxParkOutcome> {
         let Some(o) = &self.overrides else {
-            return Ok(());
+            return Ok(SandboxParkOutcome::Reusable);
         };
         *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
         wait_blocking_gate(&o.lifecycle.park_gate).await;
-        o.lifecycle.park_behaviors.next_result()
+        o.lifecycle
+            .park_behaviors
+            .next_result(SandboxParkOutcome::Reusable)
     }
 
     /// Mock unpark: counter + queued-result semantics mirror [`park`]
@@ -323,7 +328,7 @@ impl Sandbox for MockSandbox {
             return Ok(());
         };
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
-        o.lifecycle.unpark_behaviors.next_result()
+        o.lifecycle.unpark_behaviors.next_result(())
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
@@ -337,6 +342,7 @@ impl Sandbox for MockSandbox {
                 .map(|(key, _)| (*key).to_string())
                 .collect(),
             sudo: request.sudo,
+            expected_exit_codes: request.expected_exit_codes.to_vec(),
             stdin_bytes: request.stdin_bytes.map(Vec::from),
             output_limits: request.output_limits,
         };
@@ -497,7 +503,18 @@ impl Sandbox for MockSandbox {
         {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(host_path, &bytes)?;
+        let parent = host_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let mut temp_file = tempfile::NamedTempFile::new_in(parent)?;
+        #[cfg(unix)]
+        temp_file
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        temp_file.write_all(&bytes)?;
+        temp_file.flush()?;
+        temp_file.persist(host_path).map_err(|error| error.error)?;
         Ok(CopyFileResult {
             bytes_copied: bytes.len() as u64,
         })

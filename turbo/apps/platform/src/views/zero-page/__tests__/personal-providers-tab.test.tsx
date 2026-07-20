@@ -1,7 +1,12 @@
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import {
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
+import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -124,6 +129,35 @@ function mockPersonalProvidersStory(): void {
   });
 }
 
+function mockBillingCapabilities(modelCapabilities: {
+  readonly supportByok: boolean;
+  readonly restrictedVm0Models: boolean;
+}): void {
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    const status: BillingStatusResponse = {
+      tier: "pro",
+      ...modelCapabilities,
+      credits: 20_000,
+      onboardingPaymentPending: false,
+      subscriptionStatus: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
+    };
+    return respond(200, status);
+  });
+}
+
 async function openModelSettings(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=model" });
   await waitFor(() => {
@@ -197,6 +231,38 @@ function mockBrowserTimeZone(timeZone: string): void {
 }
 
 describe("personal model providers settings", () => {
+  it("offers Pro upgrade when personal BYOK is unsupported", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.personalModelProviders([]);
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    const claudeUpgrade = connectButtonInRow(
+      claudeCodeRow,
+      "Upgrade Pro to use Claude Code OAuth",
+    );
+    expect(claudeUpgrade).toHaveTextContent("Upgrade Pro to use");
+    expect(
+      connectButtonInRow(codexRow, "Upgrade Pro to use ChatGPT (Codex)"),
+    ).toHaveTextContent("Upgrade Pro to use");
+
+    click(claudeUpgrade);
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
       id: "org_1",
@@ -305,6 +371,88 @@ describe("personal model providers settings", () => {
       expect(
         within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps Claude Code validation inline and toasts unexpected errors", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([]);
+    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-personal-claude-code-session",
+        type: "claude-code",
+        status: "pending",
+        scope: "personal",
+        browserUrl: "https://claude.ai/oauth/authorize",
+        expiresIn: 30,
+      });
+    });
+    let completeCount = 0;
+    context.mocks.api(
+      zeroClaudeCodeDeviceAuthContract.complete,
+      ({ respond }) => {
+        completeCount += 1;
+        if (completeCount === 1) {
+          return respond(400, {
+            error: {
+              message: "Invalid Claude authorization code",
+              code: "BAD_REQUEST",
+            },
+          });
+        }
+        return respond(503, {
+          error: {
+            message: "Claude authorization is unavailable",
+            code: "UNAVAILABLE",
+          },
+        });
+      },
+    );
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    click(connectButtonInRow(claudeCodeRow, "Connect Claude Code OAuth"));
+    const codeInput = await findLatestClaudeCodeInput();
+    const dialog = dialogContaining(codeInput);
+    await fill(codeInput, "invalid-claude-code");
+    const submit = within(dialog).getByTestId("claude-code-device-auth-submit");
+    click(submit);
+
+    await expect(
+      within(dialog).findByText("Invalid Claude authorization code"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(submit).toBeEnabled();
+    });
+
+    click(submit);
+    await expect(
+      screen.findByText("Claude authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(submit).toBeEnabled();
+    });
+
+    context.mocks.http.post(
+      "*/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+      () => {
+        return HttpResponse.error();
+      },
+    );
+    click(submit);
+    await expect(
+      screen.findByText("Failed to fetch"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(submit).toBeEnabled();
     });
   });
 

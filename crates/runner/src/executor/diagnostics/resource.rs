@@ -159,6 +159,7 @@ pub(in crate::executor) async fn collect_agent_abnormal_exit_diagnostics(
         timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
         env: &[],
         sudo: true,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };

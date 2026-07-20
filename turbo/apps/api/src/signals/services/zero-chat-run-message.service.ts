@@ -17,6 +17,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { nowDate } from "../external/time";
+import { insertChatMessage } from "./zero-chat-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
@@ -167,17 +168,14 @@ export async function postRunUserMessage(params: {
       }
     : undefined;
   await params.db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: params.threadId,
-        role: "user",
-        content: params.prompt,
-        runId: params.runId,
-        runGroupId: params.runGroupId,
-        goalSnapshot,
-      })
-      .returning({ createdAt: chatMessages.createdAt });
+    const inserted = await insertChatMessage(tx, {
+      chatThreadId: params.threadId,
+      role: "user",
+      content: params.prompt,
+      runId: params.runId,
+      runGroupId: params.runGroupId,
+      goalSnapshot,
+    });
     if (params.appendQueueMarker) {
       await appendQueuedRunAssistantMarker(tx, {
         chatThreadId: params.threadId,

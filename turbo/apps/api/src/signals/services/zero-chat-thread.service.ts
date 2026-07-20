@@ -12,7 +12,10 @@ import {
   type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import {
+  triggerSourceSchema,
+  type TriggerSource,
+} from "@vm0/api-contracts/contracts/logs";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -33,7 +36,6 @@ import {
   type ChatMessageRecommendedFollowups,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
-  type ChatMessageMailDraft,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -61,6 +63,18 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+  pgTimestampWithoutTimezoneToDateSchema,
+} from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgBooleanDecoder,
+  pgIntegerDecoder,
+  pgTextDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { type Db, db$, writeDb$ } from "../external/db";
 import {
   inferMimetype,
@@ -79,6 +93,14 @@ import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation
 export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
+const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(triggerSourceSchema),
+);
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
+const nullableIntegerDecoder = nullableDriverValueDecoder(pgIntegerDecoder);
+const nullableTimestampDecoder = nullableDriverValueDecoder(
+  zeroWorkflowAutomations.atTime,
+);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
@@ -110,7 +132,6 @@ type ChatMessageRow = {
   readonly runEventId: string | null;
   readonly goalEvent: ChatMessageGoalEvent | null;
   readonly goalSnapshot: ChatMessageGoalSnapshot | null;
-  readonly mailDraft: ChatMessageMailDraft | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
@@ -137,25 +158,30 @@ type ChatMessageRow = {
   readonly workflowAutomationUserTimezone: string | null;
 };
 
-type ArtifactListSqlRow = Record<string, unknown> & {
-  readonly row_id: string;
-  readonly run_id: string;
-  readonly external_id: string;
-  readonly filename: string | null;
-  readonly content_type: string | null;
-  readonly size_bytes: number | string | null;
-  readonly url: string;
-  readonly preview_image_url: string | null;
-  readonly metadata: unknown;
-  readonly created_at: Date | string;
-  readonly cursor_created_at: string;
-  readonly thread_id: string;
-  readonly thread_title: string | null;
-  readonly agent_id: string;
-  readonly agent_name: string | null;
-  readonly agent_avatar_url: string | null;
-  readonly is_favorited: boolean;
-};
+const artifactListSqlRowSchema = z.object({
+  row_id: z.string(),
+  run_id: z.string(),
+  external_id: z.string(),
+  filename: z.string().nullable(),
+  content_type: z.string().nullable(),
+  size_bytes: pgInt8ToSafeIntegerSchema.nullable(),
+  url: z.string(),
+  preview_image_url: z.string().nullable(),
+  metadata: z.unknown(),
+  created_at: pgTimestampWithoutTimezoneToDateSchema,
+  cursor_created_at: z.string(),
+  cursor_updated_at: z.string().optional(),
+  thread_id: z.string(),
+  thread_title: z.string().nullable(),
+  agent_id: z.string(),
+  agent_name: z.string().nullable(),
+  agent_avatar_url: z.string().nullable(),
+  is_favorited: z.boolean(),
+});
+type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
+
+const artifactVisibilityRowSchema = z.object({ visible: z.boolean() });
+const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
 type ChatSearchMessageRow = {
   readonly messageId: string;
@@ -204,23 +230,22 @@ const messageColumns = {
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
-  triggerSource: sql<TriggerSource | null>`(
+  triggerSource: sql`(
     SELECT "zero_runs"."trigger_source"
     FROM "zero_runs"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  isGoalRun: sql<boolean>`EXISTS (
+  )`.mapWith(nullableTriggerSourceDecoder),
+  isGoalRun: sql`EXISTS (
     SELECT 1
     FROM ${zeroRuns}
     WHERE ${zeroRuns.id} = ${chatMessages.runId}
       AND ${zeroRuns.goalId} IS NOT NULL
-  )`,
+  )`.mapWith(pgBooleanDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
   goalSnapshot: chatMessages.goalSnapshot,
-  mailDraft: chatMessages.mailDraft,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -231,7 +256,7 @@ const messageColumns = {
   recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  workflowId: sql<string | null>`(
+  workflowId: sql`(
     SELECT "zero_workflows"."id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -240,8 +265,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAgentId: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAgentId: sql`(
     SELECT "zero_workflows"."agent_id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -250,8 +275,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowName: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowName: sql`(
     SELECT "zero_workflows"."name"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -260,8 +285,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowDisplayName: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowDisplayName: sql`(
     SELECT "zero_workflows"."display_name"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -270,8 +295,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowDescription: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowDescription: sql`(
     SELECT "zero_workflows"."description"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -280,16 +305,16 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationId: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationId: sql`(
     SELECT "zero_workflow_automations"."id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationBrief: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationBrief: sql`(
     SELECT COALESCE(
       "zero_runs"."trigger_brief",
       CASE
@@ -319,56 +344,56 @@ const messageColumns = {
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationKind: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationKind: sql`(
     SELECT "zero_workflow_automations"."kind"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationScheduleType: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationScheduleType: sql`(
     SELECT "zero_workflow_automations"."schedule_type"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationCronExpression: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationCronExpression: sql`(
     SELECT "zero_workflow_automations"."cron_expression"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationIntervalSeconds: sql<number | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationIntervalSeconds: sql`(
     SELECT "zero_workflow_automations"."interval_seconds"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationAtTime: sql<Date | null>`(
+  )`.mapWith(nullableIntegerDecoder),
+  workflowAutomationAtTime: sql`(
     SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`.mapWith(zeroWorkflowAutomations.atTime),
-  workflowAutomationTimezone: sql<string | null>`(
+  )`.mapWith(nullableTimestampDecoder),
+  workflowAutomationTimezone: sql`(
     SELECT "zero_workflow_automations"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationUserTimezone: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationUserTimezone: sql`(
     SELECT "org_members_metadata"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -378,7 +403,7 @@ const messageColumns = {
       AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
+  )`.mapWith(nullableTextDecoder),
 } as const;
 
 const searchMessageColumns = {
@@ -579,7 +604,6 @@ function workflowSnapshotFromRow(
     displayName: row.workflowDisplayName,
     description: row.workflowDescription,
     automationId: row.workflowAutomationId ?? undefined,
-    triggerId: row.workflowAutomationId ?? undefined,
     triggerBrief:
       row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
   };
@@ -652,7 +676,6 @@ function toPagedMessage(
       runEventId: row.runEventId ?? undefined,
       goalEvent: goalEventFromRow(row.goalEvent),
       goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
-      mailDraft: row.mailDraft ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,
@@ -1012,7 +1035,7 @@ export function zeroChatThreadArtifacts(args: {
   );
 }
 
-function artifactVisibilityConditions(args: {
+function artifactCallerVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
 }): SQL[] {
@@ -1020,6 +1043,11 @@ function artifactVisibilityConditions(args: {
     sql`${agentRuns.orgId} = ${args.orgId}`,
     sql`${chatThreads.userId} = ${args.userId}`,
     sql`${agentComposes.orgId} = ${args.orgId}`,
+  ];
+}
+
+function artifactFileVisibilityConditions(): SQL[] {
+  return [
     sql`${runUploadedFiles.url} IS NOT NULL`,
     sql`(
       NOT EXISTS (
@@ -1035,10 +1063,14 @@ function artifactVisibilityConditions(args: {
   ];
 }
 
-function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
-  return row.created_at instanceof Date
-    ? row.created_at
-    : new Date(row.created_at);
+function artifactVisibilityConditions(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): SQL[] {
+  return [
+    ...artifactCallerVisibilityConditions(args),
+    ...artifactFileVisibilityConditions(),
+  ];
 }
 
 function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
@@ -1055,9 +1087,9 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     threadTitle: row.thread_title,
     filename,
     contentType: row.content_type ?? inferMimetype(filename),
-    size: Number(row.size_bytes ?? 0),
+    size: row.size_bytes ?? 0,
     url: row.url,
-    createdAt: artifactRowCreatedAt(row).toISOString(),
+    createdAt: row.created_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
@@ -1071,11 +1103,26 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
 // first page as before.
 const ARTIFACTS_DEFAULT_LIMIT = 10_000;
 const ARTIFACTS_MAX_LIMIT = 10_000;
+// Re-read a small overlap on every new sync. Artifact writes are idempotently
+// merged by artifactItemId in IndexedDB, so replaying rows is safe and closes
+// the gap where a transaction starts before syncUntil but commits afterward.
+const ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES = 5;
 
-const artifactCursorSchema = z.object({
+const artifactHistoryCursorSchema = z.object({
   createdAt: z.string(),
   rowId: z.string(),
 });
+const artifactChangesCursorSchema = z.object({
+  updatedAt: z.string(),
+  rowId: z.string(),
+  syncUntil: z.string(),
+});
+const artifactCursorSchema = z.union([
+  artifactHistoryCursorSchema,
+  artifactChangesCursorSchema,
+]);
+type ArtifactHistoryCursor = z.infer<typeof artifactHistoryCursorSchema>;
+type ArtifactChangesCursor = z.infer<typeof artifactChangesCursorSchema>;
 type ArtifactCursor = z.infer<typeof artifactCursorSchema>;
 
 function encodeArtifactCursor(cursor: ArtifactCursor): string {
@@ -1093,12 +1140,270 @@ interface ZeroArtifactsArgs {
   readonly orgId: string;
   readonly limit?: number;
   readonly cursor?: string;
+  readonly updatedAfter?: string;
 }
 
 interface ZeroArtifactsResult {
   readonly artifacts: readonly ArtifactItem[];
   readonly truncated: boolean;
   readonly nextCursor: string | null;
+  readonly syncUntil: string;
+}
+
+async function artifactSyncUntil(db: Db): Promise<string> {
+  const rows = await executeRawRows(
+    db,
+    sql`SELECT to_char(
+      clock_timestamp() AT TIME ZONE 'UTC',
+      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+    ) AS sync_until`,
+    artifactSyncUntilRowSchema,
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Failed to read artifact sync timestamp");
+  }
+  return row.sync_until;
+}
+
+function toArtifactChangesPage(args: {
+  readonly rows: readonly ArtifactListSqlRow[];
+  readonly limit: number;
+  readonly syncUntil: string;
+}): ZeroArtifactsResult {
+  const hasMore = args.rows.length > args.limit;
+  const pageRows = hasMore ? args.rows.slice(0, args.limit) : args.rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow?.cursor_updated_at
+      ? encodeArtifactCursor({
+          updatedAt: lastRow.cursor_updated_at,
+          rowId: lastRow.row_id,
+          syncUntil: args.syncUntil,
+        })
+      : null;
+
+  return {
+    artifacts: pageRows.map(toArtifactItem),
+    truncated: hasMore,
+    nextCursor,
+    syncUntil: args.syncUntil,
+  };
+}
+
+async function listChangedArtifacts(args: {
+  readonly db: Db;
+  readonly query: ZeroArtifactsArgs;
+  readonly limit: number;
+  readonly cursor: ArtifactChangesCursor | null;
+  readonly updatedAfter: string;
+  readonly syncUntil: string;
+  readonly signal: AbortSignal;
+}): Promise<ZeroArtifactsResult> {
+  // Metadata returned with an artifact can change without changing the file
+  // row itself. Treat the latest source timestamp as the artifact's effective
+  // update time so cross-device thread and agent edits are synchronized too.
+  const effectiveUpdatedAt = sql`GREATEST(
+    ${runUploadedFiles.updatedAt},
+    visible_runs.metadata_updated_at
+  )`;
+  const lowerBoundClause = args.cursor
+    ? sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : sql`${effectiveUpdatedAt} >= (${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`;
+  const callerConditions = artifactCallerVisibilityConditions(args.query);
+  const fileConditions = artifactFileVisibilityConditions();
+  const rows = await executeRawRows(
+    args.db,
+    sql`
+      WITH visible_runs AS MATERIALIZED (
+        SELECT
+          ${agentRuns.id} AS run_id,
+          GREATEST(
+            ${chatThreads.updatedAt},
+            ${agentComposes.updatedAt},
+            ${zeroAgents.updatedAt}
+          ) AS metadata_updated_at
+        FROM ${agentRuns}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${agentRuns.id}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        INNER JOIN ${zeroAgents}
+          ON ${zeroAgents.id} = ${agentComposes.id}
+        WHERE ${sql.join(callerConditions, sql` AND `)}
+      ),
+      changed_artifact_ids AS MATERIALIZED (
+        SELECT
+          ${runUploadedFiles.id} AS row_id,
+          ${effectiveUpdatedAt} AS effective_updated_at
+        FROM visible_runs
+        INNER JOIN ${runUploadedFiles}
+          ON ${runUploadedFiles.runId} = visible_runs.run_id
+        WHERE ${sql.join(fileConditions, sql` AND `)}
+          AND ${lowerBoundClause}
+          AND ${effectiveUpdatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
+        ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
+        LIMIT ${args.limit + 1}
+      )
+      SELECT
+        ${runUploadedFiles.id} AS row_id,
+        ${runUploadedFiles.runId} AS run_id,
+        ${runUploadedFiles.externalId} AS external_id,
+        ${runUploadedFiles.filename} AS filename,
+        ${runUploadedFiles.contentType} AS content_type,
+        ${runUploadedFiles.sizeBytes} AS size_bytes,
+        ${runUploadedFiles.url} AS url,
+        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
+        ${runUploadedFiles.metadata} AS metadata,
+        ${runUploadedFiles.createdAt} AS created_at,
+        to_char(
+          ${runUploadedFiles.createdAt},
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_created_at,
+        to_char(
+          changed_artifact_ids.effective_updated_at,
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_updated_at,
+        ${chatThreads.id} AS thread_id,
+        ${chatThreads.title} AS thread_title,
+        ${zeroAgents.id} AS agent_id,
+        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+        ${zeroAgents.avatarUrl} AS agent_avatar_url,
+        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+      FROM changed_artifact_ids
+      INNER JOIN ${runUploadedFiles}
+        ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
+      INNER JOIN ${agentRuns}
+        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${zeroRuns}
+        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${chatThreads}
+        ON ${chatThreads.id} = COALESCE(
+          ${zeroRuns.chatThreadId},
+          (
+            SELECT ${chatMessages.chatThreadId}
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            ORDER BY ${chatMessages.createdAt} ASC
+            LIMIT 1
+          )
+        )
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+      INNER JOIN ${zeroAgents}
+        ON ${zeroAgents.id} = ${agentComposes.id}
+      LEFT JOIN ${userArtifactFavorites}
+        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
+        AND ${userArtifactFavorites.userId} = ${args.query.userId}
+        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+      ORDER BY changed_artifact_ids.effective_updated_at ASC,
+        changed_artifact_ids.row_id ASC
+    `,
+    artifactListSqlRowSchema,
+  );
+  args.signal.throwIfAborted();
+  return toArtifactChangesPage({ rows, ...args });
+}
+
+async function listArtifactHistory(args: {
+  readonly db: Db;
+  readonly query: ZeroArtifactsArgs;
+  readonly limit: number;
+  readonly cursor: ArtifactHistoryCursor | null;
+  readonly syncUntil: string;
+  readonly signal: AbortSignal;
+}): Promise<ZeroArtifactsResult> {
+  // The full path returns raw visible rows. IndexedDB owns stable-ID merging
+  // and hosted-run shadowing, so this query avoids a history-wide URL sort.
+  const keysetClause = args.cursor
+    ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : sql``;
+  const conditions = artifactVisibilityConditions(args.query);
+  const rows = await executeRawRows(
+    args.db,
+    sql`
+      SELECT
+        ${runUploadedFiles.id} AS row_id,
+        ${runUploadedFiles.runId} AS run_id,
+        ${runUploadedFiles.externalId} AS external_id,
+        ${runUploadedFiles.filename} AS filename,
+        ${runUploadedFiles.contentType} AS content_type,
+        ${runUploadedFiles.sizeBytes} AS size_bytes,
+        ${runUploadedFiles.url} AS url,
+        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
+        ${runUploadedFiles.metadata} AS metadata,
+        ${runUploadedFiles.createdAt} AS created_at,
+        ${chatThreads.id} AS thread_id,
+        ${chatThreads.title} AS thread_title,
+        ${zeroAgents.id} AS agent_id,
+        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+        ${zeroAgents.avatarUrl} AS agent_avatar_url,
+        to_char(
+          ${runUploadedFiles.createdAt},
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_created_at,
+        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+      FROM ${runUploadedFiles}
+      INNER JOIN ${agentRuns}
+        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${zeroRuns}
+        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${chatThreads}
+        ON ${chatThreads.id} = COALESCE(
+          ${zeroRuns.chatThreadId},
+          (
+            SELECT ${chatMessages.chatThreadId}
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            ORDER BY ${chatMessages.createdAt} ASC
+            LIMIT 1
+          )
+        )
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+      INNER JOIN ${zeroAgents}
+        ON ${zeroAgents.id} = ${agentComposes.id}
+      LEFT JOIN ${userArtifactFavorites}
+        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
+        AND ${userArtifactFavorites.userId} = ${args.query.userId}
+        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+      WHERE ${sql.join(conditions, sql` AND `)}
+      ${keysetClause}
+    ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
+      LIMIT ${args.limit + 1}
+    `,
+    artifactListSqlRowSchema,
+  );
+  args.signal.throwIfAborted();
+
+  const hasMore = rows.length > args.limit;
+  const pageRows = hasMore ? rows.slice(0, args.limit) : rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow
+      ? encodeArtifactCursor({
+          createdAt: lastRow.cursor_created_at,
+          rowId: lastRow.row_id,
+        })
+      : null;
+
+  return {
+    artifacts: pageRows.map(toArtifactItem),
+    truncated: hasMore,
+    nextCursor,
+    syncUntil: args.syncUntil,
+  };
 }
 
 interface ArtifactFavoriteArgs {
@@ -1119,108 +1424,44 @@ export const zeroArtifacts$ = command(
       ARTIFACTS_MAX_LIMIT,
     );
     const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
-    // Keyset must be applied AFTER the DISTINCT ON (url) dedup (on the deduped
-    // representatives), matching the final ORDER BY created_at DESC, row_id
-    // DESC. Pushing it into scoped_artifacts (pre-dedup) would let an older row
-    // of an already-emitted url slip past the cursor and re-surface as a dup.
-    const keysetClause = cursor
-      ? sql`WHERE (deduped_artifacts.created_at, deduped_artifacts.row_id) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.rowId}::uuid)`
-      : sql``;
-    const conditions = artifactVisibilityConditions(args);
+    const changesCursor = cursor && "updatedAt" in cursor ? cursor : null;
+    const syncUntil = changesCursor?.syncUntil ?? (await artifactSyncUntil(db));
+    const updatedAfter = changesCursor?.updatedAt ?? args.updatedAfter;
+    if (updatedAfter !== undefined) {
+      return await listChangedArtifacts({
+        db,
+        query: args,
+        limit,
+        cursor: changesCursor,
+        updatedAfter,
+        syncUntil,
+        signal,
+      });
+    }
 
-    const rows = await db.execute<ArtifactListSqlRow>(sql`
-      WITH scoped_artifacts AS (
-        SELECT
-          ${runUploadedFiles.id} AS row_id,
-          ${runUploadedFiles.runId} AS run_id,
-          ${runUploadedFiles.externalId} AS external_id,
-          ${runUploadedFiles.filename} AS filename,
-          ${runUploadedFiles.contentType} AS content_type,
-          ${runUploadedFiles.sizeBytes} AS size_bytes,
-          ${runUploadedFiles.url} AS url,
-          ${runUploadedFiles.previewImageUrl} AS preview_image_url,
-          ${runUploadedFiles.metadata} AS metadata,
-          ${runUploadedFiles.createdAt} AS created_at,
-          ${chatThreads.id} AS thread_id,
-          ${chatThreads.title} AS thread_title,
-          ${zeroAgents.id} AS agent_id,
-          COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-          ${zeroAgents.avatarUrl} AS agent_avatar_url
-        FROM ${runUploadedFiles}
-        INNER JOIN ${agentRuns}
-          ON ${agentRuns.id} = ${runUploadedFiles.runId}
-        INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${runUploadedFiles.runId}
-        INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              ORDER BY ${chatMessages.createdAt} ASC
-              LIMIT 1
-            )
-          )
-        INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-        INNER JOIN ${zeroAgents}
-          ON ${zeroAgents.id} = ${agentComposes.id}
-        WHERE ${sql.join(conditions, sql` AND `)}
-      ),
-      deduped_artifacts AS (
-        SELECT DISTINCT ON (url) *
-        FROM scoped_artifacts
-        ORDER BY url, created_at DESC, row_id DESC
-      )
-      SELECT
-        deduped_artifacts.*,
-        to_char(
-          deduped_artifacts.created_at,
-          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
-      FROM deduped_artifacts
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.userId}
-        AND ${userArtifactFavorites.artifactUrl} = deduped_artifacts.url
-      ${keysetClause}
-      ORDER BY created_at DESC, row_id DESC
-      LIMIT ${limit + 1}
-    `);
-    signal.throwIfAborted();
-
-    // Over-fetch one row to detect whether a further page exists.
-    const hasMore = rows.rows.length > limit;
-    const pageRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
-    const lastRow = pageRows.at(-1);
-    const nextCursor =
-      hasMore && lastRow
-        ? encodeArtifactCursor({
-            createdAt: lastRow.cursor_created_at,
-            rowId: lastRow.row_id,
-          })
-        : null;
-
-    return {
-      artifacts: pageRows.map(toArtifactItem),
-      truncated: hasMore,
-      nextCursor,
-    };
+    return await listArtifactHistory({
+      db,
+      query: args,
+      limit,
+      cursor: cursor && "createdAt" in cursor ? cursor : null,
+      syncUntil,
+      signal,
+    });
   },
 );
 
 async function artifactUrlIsVisible(
-  db: Db,
+  db: Pick<Db, "execute">,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
     ...artifactVisibilityConditions(args),
     sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
   ];
-  const result = await db.execute<{ readonly visible: boolean }>(sql`
-    SELECT EXISTS (
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT EXISTS (
       SELECT 1
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
@@ -1242,9 +1483,45 @@ async function artifactUrlIsVisible(
         ON ${agentComposes.id} = ${chatThreads.agentComposeId}
       WHERE ${sql.join(conditions, sql` AND `)}
       LIMIT 1
-    ) AS visible
+      ) AS visible
+    `,
+    artifactVisibilityRowSchema,
+  );
+  return rows[0]?.visible === true;
+}
+
+async function touchArtifactFavoriteChange(
+  db: Pick<Db, "execute">,
+  args: ArtifactFavoriteArgs,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE ${runUploadedFiles}
+    SET updated_at = clock_timestamp()
+    WHERE ${runUploadedFiles.url} = ${args.artifactUrl}
+      AND EXISTS (
+        SELECT 1
+        FROM ${agentRuns}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${agentRuns.id}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        WHERE ${agentRuns.id} = ${runUploadedFiles.runId}
+          AND ${agentRuns.orgId} = ${args.orgId}
+          AND ${chatThreads.userId} = ${args.userId}
+          AND ${agentComposes.orgId} = ${args.orgId}
+      )
   `);
-  return result.rows[0]?.visible === true;
 }
 
 export const favoriteArtifact$ = command(
@@ -1254,28 +1531,33 @@ export const favoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    const visible = await artifactUrlIsVisible(db, args);
-    signal.throwIfAborted();
-    if (!visible) {
-      return false;
-    }
+    const visible = await db.transaction(async (tx) => {
+      if (!(await artifactUrlIsVisible(tx, args))) {
+        return false;
+      }
 
-    await db
-      .insert(userArtifactFavorites)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        artifactUrl: args.artifactUrl,
-      })
-      .onConflictDoNothing({
-        target: [
-          userArtifactFavorites.orgId,
-          userArtifactFavorites.userId,
-          userArtifactFavorites.artifactUrl,
-        ],
-      });
+      const inserted = await tx
+        .insert(userArtifactFavorites)
+        .values({
+          orgId: args.orgId,
+          userId: args.userId,
+          artifactUrl: args.artifactUrl,
+        })
+        .onConflictDoNothing({
+          target: [
+            userArtifactFavorites.orgId,
+            userArtifactFavorites.userId,
+            userArtifactFavorites.artifactUrl,
+          ],
+        })
+        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
+      if (inserted.length > 0) {
+        await touchArtifactFavoriteChange(tx, args);
+      }
+      return true;
+    });
     signal.throwIfAborted();
-    return true;
+    return visible;
   },
 );
 
@@ -1286,15 +1568,21 @@ export const unfavoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db
-      .delete(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-        ),
-      );
+    await db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(userArtifactFavorites)
+        .where(
+          and(
+            eq(userArtifactFavorites.orgId, args.orgId),
+            eq(userArtifactFavorites.userId, args.userId),
+            eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+          ),
+        )
+        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
+      if (deleted.length > 0) {
+        await touchArtifactFavoriteChange(tx, args);
+      }
+    });
     signal.throwIfAborted();
   },
 );
@@ -1691,19 +1979,19 @@ export const deleteChatThread$ = command(
     const writeDb = set(writeDb$);
 
     const deletion = await writeDb.transaction(async (tx) => {
-      const lockedRows = await tx.execute<{
-        readonly id: string;
-        readonly agentComposeId: string;
-      }>(sql`
-        SELECT
-          ${chatThreads.id} AS "id",
-          ${chatThreads.agentComposeId} AS "agentComposeId"
-        FROM ${chatThreads}
-        WHERE ${chatThreads.id} = ${args.threadId}
-          AND ${chatThreads.userId} = ${args.userId}
-        FOR UPDATE
-      `);
-      const ownedThread = lockedRows.rows[0];
+      const [ownedThread] = await tx
+        .select({
+          id: chatThreads.id,
+          agentComposeId: chatThreads.agentComposeId,
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .for("update");
       if (!ownedThread) {
         return {
           deleted: false,

@@ -12,8 +12,10 @@ use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
 use crate::status::RunnerMode;
-use crate::types::{HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::types::{
+    HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_SESSION,
+};
+use crate::workspace_image_cache::{SessionWorkspaceCache, cap_workspace_held_session_states};
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
@@ -28,6 +30,7 @@ pub(super) struct HeartbeatContext<'a> {
     runner_id: &'a str,
     name: &'a str,
     group: &'a str,
+    snapshot_generation: u64,
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
@@ -41,6 +44,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) runner_id: &'a str,
     pub(super) name: &'a str,
     pub(super) group: &'a str,
+    pub(super) snapshot_generation: u64,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
@@ -56,6 +60,7 @@ impl<'a> HeartbeatContext<'a> {
             runner_id: init.runner_id,
             name: init.name,
             group: init.group,
+            snapshot_generation: init.snapshot_generation,
             profiles: init.profiles,
             budget: init.budget,
             provider: init.provider,
@@ -76,6 +81,7 @@ pub(super) struct HeartbeatController<'a> {
     context: HeartbeatContext<'a>,
     in_flight: Option<BoxFuture<'a, ()>>,
     pending: bool,
+    next_snapshot_sequence: u64,
 }
 
 impl<'a> HeartbeatController<'a> {
@@ -84,15 +90,17 @@ impl<'a> HeartbeatController<'a> {
             context,
             in_flight: None,
             pending: false,
+            next_snapshot_sequence: 1,
         }
     }
 
-    pub(super) fn request(&mut self, mode: RunnerMode) {
+    pub(super) fn request(&mut self, mode: RunnerMode) -> RunnerResult<()> {
         if self.in_flight.is_some() {
             self.pending = true;
         } else {
-            self.start(mode);
+            self.start(mode)?;
         }
+        Ok(())
     }
 
     pub(super) fn is_sending(&self) -> bool {
@@ -109,12 +117,13 @@ impl<'a> HeartbeatController<'a> {
     }
 
     /// Clear a completed send and start one live-state follow-up when dirty.
-    pub(super) fn finish_send(&mut self, live_mode: RunnerMode) {
+    pub(super) fn finish_send(&mut self, live_mode: RunnerMode) -> RunnerResult<()> {
         debug_assert!(self.in_flight.is_some());
         self.in_flight = None;
         if std::mem::take(&mut self.pending) {
-            self.start(live_mode);
+            self.start(live_mode)?;
         }
+        Ok(())
     }
 
     /// Finish current work and emit one lifecycle-critical snapshot.
@@ -122,12 +131,12 @@ impl<'a> HeartbeatController<'a> {
     /// Natural stopping uses this to replace all ordinary pending work with a
     /// single `Stopping` heartbeat before teardown.
     pub(super) async fn flush(&mut self, mode: RunnerMode) -> RunnerResult<()> {
-        self.request(mode);
+        self.request(mode)?;
         loop {
             self.wait_for_send().await?;
             self.in_flight = None;
             if std::mem::take(&mut self.pending) {
-                self.start(mode);
+                self.start(mode)?;
             } else {
                 break;
             }
@@ -147,12 +156,23 @@ impl<'a> HeartbeatController<'a> {
         self.pending = false;
     }
 
-    fn start(&mut self, mode: RunnerMode) {
+    pub(super) fn into_next_snapshot_sequence(self) -> u64 {
         debug_assert!(self.in_flight.is_none());
+        self.next_snapshot_sequence
+    }
+
+    fn start(&mut self, mode: RunnerMode) -> RunnerResult<()> {
+        debug_assert!(self.in_flight.is_none());
+        let snapshot_sequence = self.next_snapshot_sequence;
+        let next_snapshot_sequence = snapshot_sequence.checked_add(1).ok_or_else(|| {
+            RunnerError::Internal("heartbeat snapshot sequence overflow".to_string())
+        })?;
+        self.next_snapshot_sequence = next_snapshot_sequence;
         let context = self.context.clone();
         self.in_flight = Some(Box::pin(async move {
-            send_heartbeat(&context, mode).await;
+            send_heartbeat(&context, mode, snapshot_sequence).await;
         }));
+        Ok(())
     }
 }
 
@@ -213,8 +233,7 @@ impl HeldSessionStateSnapshot {
             .iter_mut()
             .find(|existing| existing.session_id == state.session_id)
         {
-            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
-            Some(existing) => *existing = state,
+            Some(existing) => merge_held_session_state(existing, state),
             None => inner.workspace_cache_states.push(state),
         }
         cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
@@ -254,12 +273,20 @@ impl HeldSessionStateSnapshot {
 
 /// Collect current runner state, refresh the local held-session snapshot, and
 /// send a heartbeat to the server.
-pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
+pub(super) async fn send_heartbeat(
+    hb: &HeartbeatContext<'_>,
+    mode: RunnerMode,
+    snapshot_sequence: u64,
+) {
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(
-        hb.runner_id,
-        hb.name,
-        hb.group,
+        HeartbeatSnapshotMetadata {
+            runner_id: hb.runner_id,
+            runner_name: hb.name,
+            group: hb.group,
+            generation: hb.snapshot_generation,
+            sequence: snapshot_sequence,
+        },
         hb.profiles,
         hb.budget,
         &pool,
@@ -269,6 +296,7 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     let workspace_cache_states = refresh_workspace_cache_held_session_snapshot(
         &hb.held_session_snapshot,
         hb.workspace_cache.as_ref(),
+        hb.profiles,
     )
     .await;
     state.held_session_states = merge_current_held_session_states(
@@ -293,20 +321,33 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
 pub(super) async fn refresh_workspace_cache_held_session_snapshot(
     snapshot: &HeldSessionStateSnapshot,
     workspace_cache: Option<&SessionWorkspaceCache>,
+    profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldSessionState> {
     let refresh = snapshot.begin_workspace_cache_refresh();
-    let states = workspace_cache_held_session_states(workspace_cache).await;
+    let states = workspace_cache_held_session_states(workspace_cache, profiles).await;
     snapshot.finish_workspace_cache_refresh(refresh, states)
 }
 
 async fn workspace_cache_held_session_states(
     workspace_cache: Option<&SessionWorkspaceCache>,
+    profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldSessionState> {
     let Some(cache) = workspace_cache else {
         return Vec::new();
     };
 
-    cache.held_session_states().await
+    let profile_image_sizes_bytes = profiles
+        .iter()
+        .map(|(name, profile)| {
+            (
+                name.as_str(),
+                u64::from(profile.workspace_disk_mb) * 1024 * 1024,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    cache
+        .held_session_states_for_profiles(&profile_image_sizes_bytes)
+        .await
 }
 
 fn merge_current_held_session_states(
@@ -339,27 +380,70 @@ fn merge_held_session_states(
             continue;
         }
         match by_session.get_mut(&state.session_id) {
-            Some(existing) => {
-                let reusable_sandbox = existing.reusable_sandbox.take();
-                if state.last_completed_at > existing.last_completed_at {
-                    *existing = state;
-                }
-                existing.reusable_sandbox = reusable_sandbox.or(existing.reusable_sandbox.take());
-            }
+            Some(existing) => merge_held_session_state(existing, state),
             None => {
                 by_session.insert(state.session_id.clone(), state);
             }
         }
     }
     let mut states: Vec<HeldSessionState> = by_session.into_values().collect();
+    let observed_sessions = states.len();
+    let observed_workspace_caches = states
+        .iter()
+        .map(|state| state.workspace_caches.len())
+        .sum::<usize>();
     states.sort_unstable_by(|a, b| {
         b.last_completed_at
             .cmp(&a.last_completed_at)
             .then_with(|| a.session_id.cmp(&b.session_id))
     });
     states.truncate(MAX_HELD_SESSION_STATES);
+    let retained_workspace_caches = states
+        .iter()
+        .map(|state| state.workspace_caches.len())
+        .sum::<usize>();
+    if states.len() < observed_sessions || retained_workspace_caches < observed_workspace_caches {
+        info!(
+            observed_sessions,
+            retained_sessions = states.len(),
+            observed_workspace_caches,
+            retained_workspace_caches,
+            "heartbeat held session state truncated"
+        );
+    }
     states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
     states
+}
+
+fn merge_held_session_state(existing: &mut HeldSessionState, mut incoming: HeldSessionState) {
+    if incoming.last_completed_at > existing.last_completed_at {
+        existing.last_completed_at = incoming.last_completed_at;
+    }
+    if existing.reusable_sandbox.is_none() {
+        existing.reusable_sandbox = incoming.reusable_sandbox;
+    }
+    for incoming_workspace in incoming.workspace_caches.drain(..) {
+        match existing
+            .workspace_caches
+            .iter_mut()
+            .find(|workspace| workspace.profile == incoming_workspace.profile)
+        {
+            Some(existing_workspace)
+                if incoming_workspace.workspace_affinity_version
+                    >= existing_workspace.workspace_affinity_version =>
+            {
+                *existing_workspace = incoming_workspace;
+            }
+            Some(_) => {}
+            None => existing.workspace_caches.push(incoming_workspace),
+        }
+    }
+    existing
+        .workspace_caches
+        .sort_unstable_by(|a, b| a.profile.cmp(&b.profile));
+    existing
+        .workspace_caches
+        .truncate(MAX_WORKSPACE_CACHES_PER_SESSION);
 }
 
 fn merge_workspace_cache_snapshot_states(
@@ -368,9 +452,9 @@ fn merge_workspace_cache_snapshot_states(
 ) -> Vec<HeldSessionState> {
     let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
     for state in refreshed_states.into_iter().chain(existing_states) {
-        match by_session.get(&state.session_id) {
-            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
-            _ => {
+        match by_session.get_mut(&state.session_id) {
+            Some(existing) => merge_held_session_state(existing, state),
+            None => {
                 by_session.insert(state.session_id.clone(), state);
             }
         }
@@ -379,16 +463,25 @@ fn merge_workspace_cache_snapshot_states(
 }
 
 fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
-    if states.len() <= MAX_HELD_SESSION_STATES {
-        return;
+    let observed_sessions = states.len();
+    let observed_workspace_caches = states
+        .iter()
+        .map(|state| state.workspace_caches.len())
+        .sum::<usize>();
+    *states = cap_workspace_held_session_states(std::mem::take(states));
+    let retained_workspace_caches = states
+        .iter()
+        .map(|state| state.workspace_caches.len())
+        .sum::<usize>();
+    if states.len() < observed_sessions || retained_workspace_caches < observed_workspace_caches {
+        info!(
+            observed_sessions,
+            retained_sessions = states.len(),
+            observed_workspace_caches,
+            retained_workspace_caches,
+            "workspace cache held session snapshot truncated"
+        );
     }
-    states.sort_unstable_by(|a, b| {
-        b.last_completed_at
-            .cmp(&a.last_completed_at)
-            .then_with(|| a.session_id.cmp(&b.session_id))
-    });
-    states.truncate(MAX_HELD_SESSION_STATES);
-    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
 }
 
 fn admittable_profiles_for_heartbeat(
@@ -408,10 +501,16 @@ fn admittable_profiles_for_heartbeat(
 }
 
 /// Collect current runner state for heartbeat reporting.
+pub(super) struct HeartbeatSnapshotMetadata<'a> {
+    pub(super) runner_id: &'a str,
+    pub(super) runner_name: &'a str,
+    pub(super) group: &'a str,
+    pub(super) generation: u64,
+    pub(super) sequence: u64,
+}
+
 pub(super) fn collect_heartbeat_state(
-    runner_id: &str,
-    name: &str,
-    group: &str,
+    snapshot: HeartbeatSnapshotMetadata<'_>,
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
     idle_pool: &IdlePool,
@@ -435,9 +534,11 @@ pub(super) fn collect_heartbeat_state(
     let running_count = budget_running.saturating_sub(idle_count);
     let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
-        runner_id: runner_id.to_string(),
-        runner_name: name.to_string(),
-        group: group.to_string(),
+        runner_id: snapshot.runner_id.to_string(),
+        runner_name: snapshot.runner_name.to_string(),
+        group: snapshot.group.to_string(),
+        snapshot_generation: snapshot.generation,
+        snapshot_sequence: snapshot.sequence,
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
         max_concurrent: budget.max_concurrent(),
@@ -466,6 +567,7 @@ mod tests {
     use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
+    use crate::types::WorkspaceCacheState;
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
@@ -484,10 +586,20 @@ mod tests {
                 vcpu: 2,
                 memory_mb: 4096,
                 rootfs_disk_mb: 8192,
-                workspace_disk_mb: 10240,
+                workspace_disk_mb: 1,
             },
         );
         m
+    }
+
+    fn test_snapshot_metadata() -> HeartbeatSnapshotMetadata<'static> {
+        HeartbeatSnapshotMetadata {
+            runner_id: "r1",
+            runner_name: "runner-1",
+            group: "vm0/test",
+            generation: 7,
+            sequence: 42,
+        }
     }
 
     fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
@@ -503,6 +615,13 @@ mod tests {
     fn refresh_snapshot(snapshot: &HeldSessionStateSnapshot, states: Vec<HeldSessionState>) {
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.finish_workspace_cache_refresh(refresh, states);
+    }
+
+    fn workspace_cache(profile: &str) -> WorkspaceCacheState {
+        WorkspaceCacheState {
+            profile: profile.to_owned(),
+            workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+        }
     }
 
     async fn seed_workspace_cache_state(
@@ -521,7 +640,7 @@ mod tests {
                     profile_name: "vm0/default",
                     cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: b"image".len() as u64,
+                    image_size_bytes: 1024 * 1024,
                 },
                 workspace_drive_required: true,
             })
@@ -530,7 +649,12 @@ mod tests {
         tokio::fs::create_dir_all(active_image.parent().unwrap())
             .await
             .unwrap();
-        tokio::fs::write(&active_image, b"image").await.unwrap();
+        tokio::fs::File::create(&active_image)
+            .await
+            .unwrap()
+            .set_len(1024 * 1024)
+            .await
+            .unwrap();
         assert!(
             lease
                 .promote(
@@ -584,9 +708,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -617,9 +739,7 @@ mod tests {
         });
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -646,9 +766,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -668,9 +786,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -690,9 +806,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -726,6 +840,7 @@ mod tests {
             runner_id: "runner-1",
             name: "test-runner",
             group: "vm0/test",
+            snapshot_generation: 7,
             profiles: &profiles,
             budget: &budget,
             provider: provider.as_ref(),
@@ -734,7 +849,8 @@ mod tests {
             held_session_snapshot: held_session_snapshot.clone(),
         });
 
-        let ((), events) = capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running)).await;
+        let ((), events) =
+            capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running, 42)).await;
 
         let debug_event = captured_event(&events, "heartbeat held session states");
         assert_eq!(
@@ -756,6 +872,10 @@ mod tests {
         );
         assert_eq!(cached_states.len(), 1);
         assert_eq!(cached_states[0].session_id, session_id);
+        assert_eq!(
+            cached_states[0].workspace_caches,
+            vec![workspace_cache("vm0/default")]
+        );
     }
 
     #[tokio::test]
@@ -773,9 +893,11 @@ mod tests {
             session_id: "sess-idle".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: Vec::new(),
         }];
 
-        let cache_states = workspace_cache_held_session_states(Some(&cache)).await;
+        let profiles = test_profiles();
+        let cache_states = workspace_cache_held_session_states(Some(&cache), &profiles).await;
         let states = merge_current_held_session_states(
             idle,
             cache_states,
@@ -809,16 +931,19 @@ mod tests {
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                     reusable_sandbox: None,
+                    workspace_caches: vec![workspace_cache("vm0/default")],
                 },
                 HeldSessionState {
                     session_id: "sess-claimed".into(),
                     last_completed_at: "2026-06-01T00:00:03.000Z".into(),
                     reusable_sandbox: None,
+                    workspace_caches: vec![workspace_cache("vm0/default")],
                 },
                 HeldSessionState {
                     session_id: "sess-active".into(),
                     last_completed_at: "2026-06-01T00:00:04.000Z".into(),
                     reusable_sandbox: None,
+                    workspace_caches: vec![workspace_cache("vm0/default")],
                 },
             ],
         );
@@ -833,11 +958,13 @@ mod tests {
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:01.000Z".into(),
                 reusable_sandbox: None,
+                workspace_caches: Vec::new(),
             },
             HeldSessionState {
                 session_id: "sess-idle".into(),
                 last_completed_at: "2026-06-01T00:00:05.000Z".into(),
                 reusable_sandbox: None,
+                workspace_caches: Vec::new(),
             },
         ];
 
@@ -854,11 +981,13 @@ mod tests {
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                     reusable_sandbox: None,
+                    workspace_caches: vec![workspace_cache("vm0/default")],
                 },
                 HeldSessionState {
                     session_id: "sess-idle".into(),
                     last_completed_at: "2026-06-01T00:00:05.000Z".into(),
                     reusable_sandbox: None,
+                    workspace_caches: Vec::new(),
                 },
             ]
         );
@@ -893,6 +1022,7 @@ mod tests {
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                 reusable_sandbox: None,
+                workspace_caches: vec![workspace_cache("vm0/default")],
             }],
         );
         assert!(
@@ -909,6 +1039,7 @@ mod tests {
                 session_id: format!("sess-{index:04}"),
                 last_completed_at: timestamp_for_index(index),
                 reusable_sandbox: None,
+                workspace_caches: vec![workspace_cache("vm0/default")],
             });
         }
 
@@ -934,27 +1065,35 @@ mod tests {
     fn held_session_snapshot_refresh_preserves_concurrent_upsert() {
         let snapshot = HeldSessionStateSnapshot::new();
         let original = HeldSessionState {
-            session_id: "sess-original".into(),
+            session_id: "sess-shared".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
         };
         let promoted = HeldSessionState {
-            session_id: "sess-promoted".into(),
+            session_id: "sess-shared".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/large")],
         };
         refresh_snapshot(&snapshot, vec![original.clone()]);
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.upsert_workspace_cache_state(promoted.clone());
         let refreshed = snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
-        assert_eq!(refreshed, vec![original.clone(), promoted.clone()]);
+        let merged = HeldSessionState {
+            session_id: "sess-shared".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default"), workspace_cache("vm0/large")],
+        };
+        assert_eq!(refreshed, vec![merged.clone()]);
 
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
         let states =
             snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
-        assert_eq!(states, vec![original.clone(), promoted]);
+        assert_eq!(states, vec![merged]);
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
@@ -974,11 +1113,13 @@ mod tests {
             session_id: "sess-active-idle".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: Vec::new(),
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-active".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
         }];
         let active = std::collections::HashSet::from([
             "sess-active".to_string(),
@@ -999,11 +1140,13 @@ mod tests {
                 profile: "vm0/default".into(),
                 history_generation_run_id: Some(RunId::new_v4()),
             }),
+            workspace_caches: Vec::new(),
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
         }];
 
         let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
@@ -1026,6 +1169,10 @@ mod tests {
                 .is_some(),
             "newer workspace-cache timestamps must preserve idle generation metadata"
         );
+        assert_eq!(
+            merged[0].workspace_caches,
+            vec![workspace_cache("vm0/default")]
+        );
     }
 
     #[test]
@@ -1037,17 +1184,51 @@ mod tests {
                 profile: "vm0/default".into(),
                 history_generation_run_id: None,
             }),
+            workspace_caches: Vec::new(),
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
         }];
 
         let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn merge_held_session_states_preserves_workspace_affinity_capability() {
+        let legacy = HeldSessionState {
+            session_id: "sess-capability".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![WorkspaceCacheState {
+                profile: "vm0/default".into(),
+                workspace_affinity_version: None,
+            }],
+        };
+        let capable = HeldSessionState {
+            session_id: "sess-capability".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
+        };
+
+        let merged = merge_held_session_states(
+            vec![legacy],
+            vec![capable],
+            &std::collections::HashSet::new(),
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].workspace_caches.len(), 1);
+        assert_eq!(
+            merged[0].workspace_caches[0].workspace_affinity_version,
+            Some(crate::types::WORKSPACE_AFFINITY_VERSION)
+        );
     }
 
     #[test]
@@ -1069,9 +1250,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -1103,9 +1282,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -1129,9 +1306,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,

@@ -1801,6 +1801,44 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("opens only the dialog download menu when the same artifact is in split view", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupHostedSiteArtifactPreview({
+      filename: "split-dialog-download.html",
+      htmlUrl: "https://split-dialog-download.sites.vm7.io",
+      label: "Split dialog download",
+      runId: "run-split-dialog-download",
+    });
+
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    const sidebarDownload = within(sidebar).getByLabelText("Download artifact");
+    const dialogDownload = within(lightbox).getByLabelText("Download options");
+
+    await user.click(dialogDownload);
+
+    await waitFor(() => {
+      expect(dialogDownload).toHaveAttribute("aria-expanded", "true");
+      expect(sidebarDownload).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getAllByRole("menu")).toHaveLength(1);
+      expect(
+        screen.getAllByTestId("artifact-download-menu-dismiss-layer"),
+      ).toHaveLength(1);
+    });
+  });
+
   it("prepares a hosted-site HTML comment edit session", async () => {
     const htmlUrl = "https://launch-site-demo.sites.vm7.io";
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {

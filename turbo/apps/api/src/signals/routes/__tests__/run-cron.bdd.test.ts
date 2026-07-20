@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
   expectApiError,
@@ -31,6 +32,18 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
  */
 
 const context = testContext();
+
+function resendSendCallsTo(recipient: string): number {
+  return context.mocks.resend.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    return (
+      typeof payload === "object" &&
+      payload !== null &&
+      "to" in payload &&
+      payload.to === recipient
+    );
+  }).length;
+}
 
 async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
   readonly agentId: string;
@@ -167,6 +180,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
       {
         sessionId: "session-bdd-held",
         lastCompletedAt: new Date(now()).toISOString(),
+        workspaceCaches: [{ profile: "vm0/default" }],
       },
     ];
 
@@ -435,5 +449,40 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
 
     const unauthorizedDrain = await email.drainEmailOutboxCron(false);
     expect(unauthorizedDrain.status).toBe(401);
+  });
+
+  it("drains a pending inbound-error email through Resend exactly once", async () => {
+    const email = createEmailApi(context);
+    const { from, subject } = await email.triggerInboundErrorEmail();
+    await flushWaitUntilForTest();
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-bdd-1" },
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+
+    const drain = await email.drainEmailOutboxCron(true);
+    if (drain.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(drain.body.success).toBeTruthy();
+    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: "Zero <vm0@mail.example.com>",
+        to: from,
+        subject: `Re: ${subject}`,
+        html: expect.stringContaining("not associated with a VM0 account"),
+      }),
+    );
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    const second = await email.drainEmailOutboxCron(true);
+    if (second.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(resendSendCallsTo(from)).toBe(1);
   });
 });

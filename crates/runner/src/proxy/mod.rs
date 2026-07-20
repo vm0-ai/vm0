@@ -13,6 +13,10 @@
 //! - `vm0_usage_state_id` identifies the currently running mitmdump/addon
 //!   process. Restart rotates this value so stale addon state from an older
 //!   child is rejected.
+//! - `vm0_addon_ready_path` points to a marker the addon writes only after its
+//!   hooks and runner options initialize successfully. Rust requires the
+//!   marker to contain the active usage state before accepting the TCP
+//!   listener as ready.
 //! - `usage-flush-request` is written by Rust before shutdown drain. The addon
 //!   acknowledges in `usage-pending` with the matching usage state, flush
 //!   request id, and pending flow/buffer/report counters.

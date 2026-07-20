@@ -167,6 +167,7 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
   connectNoAuthAndSettle: ConnectNoAuthAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
+  externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
   signal: AbortSignal;
@@ -205,9 +206,7 @@ function connectorExternalCodeFlowIsActive(
 ): boolean {
   return (
     state.connectorType === type &&
-    (state.status === "starting" ||
-      state.status === "pending" ||
-      state.status === "completing")
+    (state.status === "starting" || state.status === "pending")
   );
 }
 
@@ -261,7 +260,8 @@ function ManualGrantForm({
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const fieldValues = useGet(manualGrantFormValuesFor$(type));
+  const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
+  const fieldValues = manualGrantFormValuesFor(type);
 
   const allFilled = method.manualFields.every((field) => {
     return !field.required || hasTokenInputValue(fieldValues[field.id]);
@@ -606,11 +606,12 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
   const startOptions =
     props.method.grantKind === "device-auth" ? props.method.startOptions : [];
-  const startOptionValues = useGet(
-    connectorOAuthDeviceAuthStartOptionValuesFor$(
-      props.item.type,
-      props.authMethod,
-    ),
+  const connectorOAuthDeviceAuthStartOptionValuesFor = useGet(
+    connectorOAuthDeviceAuthStartOptionValuesFor$,
+  );
+  const startOptionValues = connectorOAuthDeviceAuthStartOptionValuesFor(
+    props.item.type,
+    props.authMethod,
   );
   const effectiveStartOptionValues = {
     ...defaultDeviceAuthStartOptionValues(startOptions),
@@ -730,7 +731,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
 
 type PendingConnectorExternalCodeState = Extract<
   ConnectorExternalCodeState,
-  { readonly status: "pending" | "completing" }
+  { readonly status: "pending" }
 >;
 type ExternalCodeButtonHandler = (event: unknown) => void;
 type ExternalCodeSubmitHandler = (event: FormEvent<HTMLFormElement>) => void;
@@ -777,6 +778,7 @@ function ExternalCodePendingContent({
   connectorLabel,
   method,
   current,
+  completing,
   onOpen,
   onCodeChange,
   onComplete,
@@ -784,11 +786,11 @@ function ExternalCodePendingContent({
   connectorLabel: string;
   method: ConnectorStatusAuthMethodDetail;
   current: PendingConnectorExternalCodeState;
+  completing: boolean;
   onOpen: ExternalCodeButtonHandler;
   onCodeChange: (code: string) => void;
   onComplete: ExternalCodeSubmitHandler;
 }) {
-  const completing = current.status === "completing";
   return (
     <form className="flex flex-col gap-3" onSubmit={onComplete}>
       {method.description && <ConnectorHelpText text={method.description} />}
@@ -890,12 +892,13 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
     );
   }
 
-  if (current?.status === "pending" || current?.status === "completing") {
+  if (current?.status === "pending") {
     return (
       <ExternalCodePendingContent
         connectorLabel={props.item.label}
         method={props.method}
         current={current}
+        completing={props.externalCodeCompleting}
         onOpen={() => {
           openAuthorizationPage(props.item.type, props.authMethod);
         }}
@@ -1097,6 +1100,7 @@ function StandardConnectMethodsContent({
   completeExternalCodeAndSettle,
   connectNoAuthAndSettle,
   submitManualGrant,
+  externalCodeCompleting,
   manualGrantSubmitting,
   noAuthSubmitting,
   signal,
@@ -1108,6 +1112,7 @@ function StandardConnectMethodsContent({
   completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
   connectNoAuthAndSettle: ConnectNoAuthAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
+  externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
   signal: AbortSignal;
@@ -1129,6 +1134,7 @@ function StandardConnectMethodsContent({
           completeExternalCodeAndSettle,
           connectNoAuthAndSettle,
           submitManualGrant,
+          externalCodeCompleting,
           manualGrantSubmitting,
           noAuthSubmitting,
           signal,
@@ -1153,9 +1159,8 @@ function ConnectModalContent({
   const [, connectExternalCodeCommand] = useLoadableSet(
     connectConnectorExternalCode$,
   );
-  const [, completeExternalCodeAndSettleCommand] = useLoadableSet(
-    completeConnectorExternalCodeAndSettle$,
-  );
+  const [completeExternalCodeLoadable, completeExternalCodeAndSettleCommand] =
+    useLoadableSet(completeConnectorExternalCodeAndSettle$);
   const [manualGrantLoadable, submitManualGrantCommand] =
     useLoadableSet(submitManualGrant$);
   const [noAuthLoadable, connectNoAuthAndSettleCommand] = useLoadableSet(
@@ -1177,6 +1182,8 @@ function ConnectModalContent({
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
+  const externalCodeCompleting =
+    completeExternalCodeLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
   const isPolling = pollingType === item.type;
@@ -1252,6 +1259,7 @@ function ConnectModalContent({
       completeExternalCodeAndSettle={completeExternalCodeAndSettle}
       connectNoAuthAndSettle={connectNoAuthAndSettle}
       submitManualGrant={submitManualGrant}
+      externalCodeCompleting={externalCodeCompleting}
       manualGrantSubmitting={manualGrantSubmitting}
       noAuthSubmitting={noAuthSubmitting}
       signal={pageSignal}

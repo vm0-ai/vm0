@@ -44,6 +44,15 @@ export const sessionHistoryDownloadSourceSchema = z.enum([
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 ]);
+export const sessionHistorySizeBucketSchema = z.enum([
+  "lt_64_kib",
+  "64_256_kib",
+  "256_kib_1_mib",
+  "1_4_mib",
+  "4_16_mib",
+  "16_64_mib",
+  "64_128_mib",
+]);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -68,25 +77,17 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
-const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
-const runnerPreLocalAdmissionOutcomeSchema = z.enum([
-  "not_protected",
-  "local_holder",
-  "missing_session_metadata",
+export const sessionAffinityResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
 ]);
-export const sessionHistoryGenerationRelationshipSchema = z.enum([
-  "exact",
-  "different",
-  "fresh",
-  "unknown_target",
-  "unknown_reserved",
+const sessionAffinityLocalResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
 ]);
-export const sessionHistoryGenerationLocalAvailabilitySchema = z.enum([
-  "parked_after_discovery",
-  "parked_before_discovery_lt_heartbeat_period",
-  "parked_before_discovery_ge_heartbeat_period",
-]);
+const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
 
+const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
@@ -99,11 +100,9 @@ const runnerClaimTelemetrySchema = z.object({
   directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
-  preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
-  sessionHistoryGenerationRelationship:
-    sessionHistoryGenerationRelationshipSchema.optional(),
-  sessionHistoryGenerationLocalAvailability:
-    sessionHistoryGenerationLocalAvailabilitySchema.optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
+  sessionAffinityLocalResource: sessionAffinityLocalResourceSchema.optional(),
+  localAdmissionResource: runnerLocalAdmissionResourceSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -190,6 +189,7 @@ export const jobSchema = z.object({
     .datetime({ offset: true })
     .nullable()
     .optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
 });
 
 export const heldSessionStateSchema = z.object({
@@ -202,6 +202,15 @@ export const heldSessionStateSchema = z.object({
       profile: z.string(),
       historyGenerationRunId: z.uuid().optional(),
     })
+    .optional(),
+  workspaceCaches: z
+    .array(
+      z.object({
+        profile: z.string(),
+        workspaceAffinityVersion: z.literal(1).optional(),
+      }),
+    )
+    .max(8)
     .optional(),
 });
 
@@ -233,6 +242,8 @@ export const runnersPollContract = c.router({
 /**
  * Storage entry in manifest
  */
+const archiveSizeSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+
 export const storageEntrySchema = z.object({
   name: z.string(),
   mountPath: z.string(),
@@ -240,6 +251,7 @@ export const storageEntrySchema = z.object({
   vasVersionId: z.string(),
   instructionsTargetFilename: z.string().optional(),
   archiveUrl: z.string(),
+  archiveSize: archiveSizeSchema.optional(),
 });
 
 /**
@@ -259,6 +271,7 @@ export const artifactEntrySchema = z
     vasStorageId: z.string(),
     vasVersionId: z.string(),
     archiveUrl: z.string().optional(),
+    archiveSize: archiveSizeSchema.optional(),
     empty: z.boolean().optional(),
     missingRootPolicy: artifactMissingRootPolicySchema.optional(),
   })
@@ -607,20 +620,64 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z.object({
-  runnerId: z.uuid(),
-  runnerName: z.string(),
-  group: runnerGroupSchema,
-  totalVcpu: z.number().int().nonnegative(),
-  totalMemoryMb: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  allocatedVcpu: z.number().int().nonnegative(),
-  allocatedMemoryMb: z.number().int().nonnegative(),
-  runningCount: z.number().int().nonnegative(),
-  admittableProfiles: runnerProfileListSchema,
-  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["starting", "running", "draining", "stopping"]),
-});
+export const heartbeatBodySchema = z
+  .object({
+    runnerId: z.uuid(),
+    runnerName: z.string(),
+    group: runnerGroupSchema,
+    // Optional for rolling compatibility: new APIs accept legacy runners, and
+    // old APIs ignore this additive pair from new runners.
+    snapshotGeneration: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    snapshotSequence: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    totalVcpu: z.number().int().nonnegative(),
+    totalMemoryMb: z.number().int().nonnegative(),
+    maxConcurrent: z.number().int().nonnegative(),
+    allocatedVcpu: z.number().int().nonnegative(),
+    allocatedMemoryMb: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    admittableProfiles: runnerProfileListSchema,
+    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    mode: z.enum(["starting", "running", "draining", "stopping"]),
+  })
+  .superRefine((heartbeat, ctx) => {
+    if (
+      (heartbeat.snapshotGeneration === undefined) !==
+      (heartbeat.snapshotSequence === undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["snapshotGeneration"],
+        message:
+          "snapshotGeneration and snapshotSequence must be provided together",
+      });
+    }
+
+    const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
+      (count, state) => {
+        return count + (state.workspaceCaches?.length ?? 0);
+      },
+      0,
+    );
+    if (workspaceCacheCount <= 1024) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["heldSessionStates"],
+      message: "heldSessionStates may contain at most 1024 workspace caches",
+    });
+  });
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
@@ -673,11 +730,11 @@ export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<
   typeof sessionHistoryDownloadSourceSchema
 >;
-export type SessionHistoryGenerationRelationship = z.infer<
-  typeof sessionHistoryGenerationRelationshipSchema
+export type SessionHistorySizeBucket = z.infer<
+  typeof sessionHistorySizeBucketSchema
 >;
-export type SessionHistoryGenerationLocalAvailability = z.infer<
-  typeof sessionHistoryGenerationLocalAvailabilitySchema
+export type SessionAffinityResource = z.infer<
+  typeof sessionAffinityResourceSchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

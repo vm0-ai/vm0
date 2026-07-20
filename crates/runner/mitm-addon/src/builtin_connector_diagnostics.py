@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 import builtin_firewall_cache
 import matching
@@ -25,12 +25,29 @@ class ConnectorDiagnosticCandidate:
     auth_query_param_names: tuple[str, ...]
 
 
+SharedBaseOwnershipReason = Literal[
+    "route_owner",
+    "active_route_owner",
+    "hint_owner",
+    "active_hint_owner",
+    "ambiguous_route_owners",
+    "base_only",
+]
+
+SharedBaseOwnershipHintStatus = Literal[
+    "absent",
+    "used",
+    "ignored",
+    "outside_candidate_set",
+]
+
+
 @dataclass(frozen=True)
 class SharedBaseOwnershipResolution:
     candidate: ConnectorDiagnosticCandidate | None
-    reason: str
+    reason: SharedBaseOwnershipReason
     candidate_connector_types: tuple[str, ...]
-    hint_status: str
+    hint_status: SharedBaseOwnershipHintStatus
 
 
 @dataclass(frozen=True)
@@ -71,7 +88,7 @@ class DiagnosticCatalogSnapshot:
     catalog_identity: builtin_firewall_cache.CatalogIdentity | None
     catalog: _DiagnosticCatalog | None
     cache_path: str | None
-    unavailable_reason: str | None
+    unavailable_reason: builtin_firewall_cache.CatalogUnavailableReason | None
 
 
 @dataclass(frozen=True)
@@ -172,10 +189,36 @@ def resolve_shared_base_ownership(
 ) -> SharedBaseOwnershipResolution | None:
     """Resolve shared-base ownership for an active unknown-endpoint allow.
 
-    The returned ``candidate`` is set only when the request should diagnose a
-    missing inactive sibling connector. Active-owner, base-only, and ambiguous
-    outcomes are represented with ``candidate=None`` so callers can keep normal
-    auth injection behavior.
+    Route-specific ownership takes precedence over connector intent.
+
+    ``reason`` values:
+    - ``route_owner``: one route-specific inactive connector owns the request;
+      ``candidate`` is that connector.
+    - ``active_route_owner``: the unique route owner is active; ``candidate`` is
+      ``None`` so normal authentication continues.
+    - ``hint_owner``: without a unique route owner, intent selects an inactive
+      connector; ``candidate`` is that connector.
+    - ``active_hint_owner``: intent selects an active connector; ``candidate`` is
+      ``None`` so normal authentication continues.
+    - ``ambiguous_route_owners``: multiple route owners remain and intent selects
+      none; ``candidate`` is ``None``.
+    - ``base_only``: only shared-base matches remain and intent selects none;
+      ``candidate`` is ``None``.
+
+    ``hint_status`` is ``absent`` when no intent was supplied, ``used`` when
+    intent selected the owner, ``ignored`` when a matching intent was not used
+    because a unique route owner took precedence, and ``outside_candidate_set``
+    when intent named no candidate. Route-owner reasons can use ``absent``,
+    ``ignored``, or ``outside_candidate_set``; hint-owner reasons use ``used``;
+    ambiguous and base-only reasons use ``absent`` or
+    ``outside_candidate_set``.
+
+    The current caller copies ownership fields into connector diagnostic proxy
+    logs only after accepting a non-``None`` candidate and finding no existing
+    request auth material. Consequently, logged ``ownership_reason`` values are
+    currently limited to ``route_owner`` and ``hint_owner``, while
+    ``ownership_hint_status`` follows the combinations above. Suppressing reasons
+    remain returned outcomes only.
     """
     catalog = diagnostic_snapshot.catalog
     if catalog is None:
@@ -280,7 +323,7 @@ def _hint_status(
     matches: list[_OwnershipMatch],
     *,
     used: bool,
-) -> str:
+) -> SharedBaseOwnershipHintStatus:
     if connector_intent is None:
         return "absent"
     if used:

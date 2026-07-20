@@ -26,6 +26,7 @@ export const googleCloud = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GOOGLE_CLOUD_ACCESS_TOKEN", "GOOGLE_CLOUD_REFRESH_TOKEN"],
           variables: [],
         },

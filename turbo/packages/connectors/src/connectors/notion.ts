@@ -17,6 +17,7 @@ export const notion = {
           clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["NOTION_ACCESS_TOKEN", "NOTION_REFRESH_TOKEN"],
           variables: [],
         },

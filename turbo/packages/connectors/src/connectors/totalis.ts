@@ -12,6 +12,7 @@ export const totalis = {
         helpText:
           "1. Sign in to your Totalis account\n2. Follow the [Totalis API docs](https://docs.totalis.trade/api-reference/introduction) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["TOTALIS_API_KEY"],
           variables: [],
         },

@@ -6,12 +6,15 @@ import pytest
 from mitmproxy.flow import Error
 
 import auth_base_forwarder
+import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 import upstream_destination_binding
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.requestheaders_helpers import _assert_no_request_stream
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 
@@ -1108,6 +1111,64 @@ async def test_public_destination_revalidates_cached_auth_base_hostname_classifi
         reason="non_public_destination",
     )
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_firewall_allow_header_auth_requestheaders_blocks_public_destination_private_host(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    api_entry: dict[str, object] = {
+        "base": "https://strapi.example.com",
+        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TEST_TOKEN }}"}},
+        "hostPolicy": {"kind": "publicDestination"},
+        builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER: True,
+        "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+    }
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="strapi",
+            api_entry=api_entry,
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="10.0.0.5",
+        sni="strapi.example.com",
+        method="POST",
+        path="/api/articles",
+        request_headers=headers(
+            ("Host", "strapi.example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        _assert_no_request_stream(flow)
+        assert "Authorization" not in flow.request.headers
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is None
+    assert flow.live is False
+    assert flow.error is not None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    assert "Authorization" not in flow.request.headers
 
 
 @pytest.mark.parametrize("request_stream", [False, True])

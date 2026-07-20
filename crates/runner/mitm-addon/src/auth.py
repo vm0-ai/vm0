@@ -9,7 +9,7 @@ import asyncio
 import hashlib
 import json
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from mitmproxy import http
@@ -67,6 +67,24 @@ _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
 _FIREWALL_AUTH_IDENTITY_VERSION = 1
+_FIREWALL_AUTH_IDENTITY_CACHE_KEY = "_firewallAuthIdentityCache"
+
+
+@dataclass(frozen=True)
+class _FirewallAuthIdentityCacheEntry:
+    """One resolved API identity retained for its VM snapshot lifetime."""
+
+    api_entry: dict = field(repr=False)
+    auth_identity: str
+
+
+@dataclass
+class _FirewallAuthIdentityCache:
+    """Lazy auth identities owned by one published VM registry snapshot."""
+
+    entries: dict[tuple[int, str, str], _FirewallAuthIdentityCacheEntry] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True)
@@ -143,7 +161,9 @@ def _build_firewall_auth_context(
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
         api_id=api_id,
-        auth_identity=_build_firewall_auth_identity(
+        auth_identity=_cached_firewall_auth_identity(
+            vm_info=vm_info,
+            api_entry=api_entry,
             firewall_name=allow.name,
             firewall_base=firewall_base,
             auth_request=auth_request,
@@ -177,6 +197,36 @@ def _build_firewall_auth_identity(
     return hashlib.sha256(canonical_json).hexdigest()
 
 
+def _cached_firewall_auth_identity(
+    *,
+    vm_info: dict,
+    api_entry: dict,
+    firewall_name: str,
+    firewall_base: str,
+    auth_request: FirewallAuthRequest,
+) -> str:
+    cache = vm_info.get(_FIREWALL_AUTH_IDENTITY_CACHE_KEY)
+    if not isinstance(cache, _FirewallAuthIdentityCache):
+        cache = _FirewallAuthIdentityCache()
+        vm_info[_FIREWALL_AUTH_IDENTITY_CACHE_KEY] = cache
+
+    key = (id(api_entry), firewall_name, firewall_base)
+    entry = cache.entries.get(key)
+    if entry is not None and entry.api_entry is api_entry:
+        return entry.auth_identity
+
+    auth_identity = _build_firewall_auth_identity(
+        firewall_name=firewall_name,
+        firewall_base=firewall_base,
+        auth_request=auth_request,
+    )
+    cache.entries[key] = _FirewallAuthIdentityCacheEntry(
+        api_entry=api_entry,
+        auth_identity=auth_identity,
+    )
+    return auth_identity
+
+
 def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) -> bool:
     return auth_config_injects_credentials(
         {
@@ -189,7 +239,7 @@ def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) ->
 
 
 def _request_method_forbids_managed_credentials(method: str) -> bool:
-    return method.upper() == "TRACE"
+    return method.upper() in ("TRACE", "TRACK")
 
 
 def _firewall_auth_context_needs_resolution(context: _FirewallAuthContext) -> bool:
@@ -565,7 +615,7 @@ def _preflight_firewall_auth(
         log_proxy_entry(
             context.proxy_log_path,
             "warn",
-            "Refusing to inject firewall credentials into TRACE request",
+            f"Refusing to inject firewall credentials into {request_method} request",
             type="firewall",
             firewall_base=context.firewall_base,
             request_method=request_method,
@@ -575,7 +625,7 @@ def _preflight_firewall_auth(
             status=403,
             action="BLOCK",
             error_code="unsafe_auth_method",
-            message="Firewall credentials cannot be injected into TRACE requests",
+            message=f"Firewall credentials cannot be injected into {request_method} requests",
             permission=context.allow.name,
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE

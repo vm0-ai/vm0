@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.61](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.60...vsock-host-v0.17.61) (2026-07-20)
+
+## [0.17.60](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.59...vsock-host-v0.17.60) (2026-07-19)
+
+
+### Bug Fixes
+
+* **sandbox:** align copy file publication contract ([#22120](https://github.com/vm0-ai/vm0/issues/22120)) ([715edec](https://github.com/vm0-ai/vm0/commit/715edecda445be930c12c5e5c54e053752dc0ebf))
+
+## [0.17.59](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.58...vsock-host-v0.17.59) (2026-07-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** preserve graceful shutdown failure details ([#22073](https://github.com/vm0-ai/vm0/issues/22073)) ([50ad121](https://github.com/vm0-ai/vm0/commit/50ad1210ebd12c90f294bd0e16e208deb8c4366c))
+
 ## [0.17.58](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.57...vsock-host-v0.17.58) (2026-07-16)
 
 

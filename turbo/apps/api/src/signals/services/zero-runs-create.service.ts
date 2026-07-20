@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 
+import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
@@ -12,14 +13,11 @@ import {
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -41,23 +39,13 @@ import {
   type ApiDispatchTimingActionType,
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
-import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
-import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
-  buildZeroMemoryRuntimeInjection,
-  zeroMemoryRuntimeRetrievalQuery,
-} from "./zero-memory-injection.service";
-import { loadGoalMemoryEmbedding } from "./zero-goal-memory-embedding.service";
-import { loadWorkflowAutomationMemoryEmbedding } from "./zero-workflow-automation-memory-embedding.service";
-import {
-  measureZeroMemoryTiming,
-  type ZeroMemoryTimingObserver,
-  type ZeroMemoryTimingStage,
-  zeroMemoryPromptLengthBucket,
-} from "./zero-memory-timing.service";
+  loadZeroRunExecutionScopeSnapshot,
+  loadZeroRunPromptContextSnapshot,
+  type UserInfo,
+} from "./zero-run-bootstrap-context.service";
+import type { RunWorkflowRef } from "./zero-workflow-data.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -104,34 +92,8 @@ interface ZeroAgentRunRecord {
   readonly content: ZeroAgentComposeContent;
 }
 
-interface UserInfo {
-  readonly name: string | null;
-  readonly email: string | null;
-  readonly timezone: string | null;
-  readonly slackDisplayName?: string;
-  readonly slackUserId?: string;
-  readonly teamsUserDisplayName?: string;
-  readonly teamsUserPrincipalName?: string;
-  readonly teamsUserId?: string;
-  readonly telegramDisplayName?: string;
-  readonly telegramUsername?: string;
-  readonly telegramUserId?: string;
-  readonly telegramLanguage?: string;
-  readonly agentphoneHandle?: string;
-}
-
 function optionalAgentSetting(value: string | null): string | undefined {
   return value === null ? undefined : value;
-}
-
-interface ZeroRunPromptContext {
-  readonly userInfo: UserInfo;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
 }
 
 interface ZeroAgentConfig {
@@ -171,7 +133,6 @@ interface CreateZeroRunCommandArgs {
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
-  readonly memoryRuntimeRetrievalQuery?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
     | "slackDisplayName"
@@ -193,7 +154,6 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly codexServiceTier?: "fast";
   readonly zeroRunMetadata?: ZeroRunMetadata;
-  readonly memoryEmbeddingWorkflowAutomationId?: string;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
@@ -268,6 +228,7 @@ function buildIntegrationToolsPrompt(
   zeroMailEnabled: boolean,
 ): readonly string[] {
   const localFileContext = [
+    `Prefer the workspace directory (\`${CANONICAL_WORKING_DIR}\`) for file operations and project work.`,
     "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
     "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime; users cannot rely on them as a way to view the result directly.",
     "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
@@ -291,7 +252,7 @@ function buildIntegrationToolsPrompt(
         crossIntegrationMessage,
         ...(zeroMailEnabled
           ? [
-              "- Email from web chat: use `zero mail list` to inspect the current agent's authorized Gmail and Outlook accounts, `zero mail connect gmail|outlook` to get a connect or authorization link, and `zero mail send --help` to create a persistent editable mail card. `zero mail send` creates the card but does not send the message; the user sends or cancels it from the card. The card appears automatically, so do not repeat the draft or command output in your response.",
+              "- Email from web chat: use the Gmail skill and `GMAIL_TOKEN` to create the draft directly in Gmail. For attachments, upload a valid RFC822 multipart message through Gmail's draft media-upload endpoint. Never call `messages.send` or `drafts.send`. After Gmail returns the draft ID, run `zero mail link <gmail-draft-id>` and return the link from the command to the user.",
             ]
           : []),
         ...localFileContextLines,
@@ -336,24 +297,12 @@ function buildIntegrationToolsPrompt(
   }
 }
 
-function buildZeroMemoryToolsPrompt(
-  relationshipMemoryEnabled: boolean,
-): readonly string[] {
-  if (!relationshipMemoryEnabled) {
-    return [];
-  }
-
-  return [
-    '- Relationship memory: when durable relationship context would materially help, use `zero memory recall "<query>"` to search structured memory or `zero memory context --query "<topic>"` for prompt-ready context. Run `zero memory --help` for options. These commands are read-only and use the authenticated user\'s active organization.',
-  ];
-}
-
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
-  readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly connectorActionCallbackEnabled: boolean;
 }): string {
   return [
     "# Agent Tools",
@@ -361,7 +310,6 @@ function buildAgentToolsPrompt(args: {
     "- Discover available commands: `zero --help`.",
     "- Capability questions: when the user asks what Zero can do, whether Zero can do a category of work, or compares Zero to another assistant, run `zero intro` first. Use its output to synthesize a concise answer in the user's language. Do not paste the intro verbatim.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
-    ...buildZeroMemoryToolsPrompt(args.relationshipMemoryEnabled),
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `zero workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction.",
@@ -383,14 +331,19 @@ function buildAgentToolsPrompt(args: {
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins.",
     "- Buy credits: use `zero credit <credits>` to create a Stripe checkout link for org admins. It supports `--auto-recharge`, `--auto-recharge-threshold`, and `--auto-recharge-amount`; non-admins should run `zero doctor credit`.",
-    "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero doctor check-connector --help` before trying ad hoc fixes.",
+    "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero connector check --help` before trying ad hoc fixes.",
     '- When the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
     "- If you choose a Zero generation command, wait for it to finish and use its returned artifact. Do not abandon it, switch to your own generation approach, or recreate the output yourself just because generation takes a long time.",
     "- Plan permission requests: identify all concrete connector operations required for the current task before asking for access. Do not include hypothetical future operations.",
     "- Check permission state: run `zero whoami --permissions` and skip permissions already allowed.",
-    "- Resolve unclear permission mappings: run `zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>`. Use the `url` field from the firewall denial response when present; omit query strings or fragments when they may contain secrets.",
-    "- Request missing permissions: for each one, run `zero doctor permission-change <connector-ref> --permission <name> --enable --duration <duration>`. Run one command per permission, then return all generated links in one response, one link per line, so the user can confirm each permission independently.",
-    "- Choose permission duration: use `1h` by default, `24h` or `7d` for longer user-approved work, and `always` only when explicitly requested. To deny a permission, replace `--enable --duration <duration>` with `--disable`.",
+    "- Diagnose failed connector requests before attributing them to Zero permission policy: run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`. Use the `url` field from a firewall denial response when present; omit query strings or fragments when they may contain secrets. Only request access when the check reports a deny or ask outcome.",
+    "- Request missing permissions: for each one, run `zero connector permission-request <connector-ref> --permission <name>`. Run one command per permission. The user chooses the grant duration in the confirmation UI.",
+    ...(args.connectorActionCallbackEnabled
+      ? [
+          "- Continue after a single access action: when the current web chat turn needs exactly one permission approval, add `--callback-prompt <prompt>` to `zero connector permission-request`; keep the prompt concise and do not include secrets. `zero connector check` and `zero connector status` show a callback URL or permission-command example when the current environment has `ZERO_CHAT_THREAD_ID`. Use a callback command or URL only when this is the turn's only connector or permission action. After sharing it, end the current turn; when the user completes the action, Zero starts the next round with the callback prompt.",
+          "- Multiple access actions: do not use callback commands or URLs when the turn needs multiple connector or permission actions. Return all generated links in one response, one link per line, using only ordinary non-callback links, and wait for the user to finish all of them.",
+        ]
+      : []),
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage workflows with `zero workflow --help`. Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`; its `SKILL.md` is synthesized from the name, description, and instruction. `--dir <path>` uploads supplementary files only and must not contain a `SKILL.md` (it is rejected). Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs.",
@@ -444,24 +397,22 @@ function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
-  readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
-  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
+  readonly connectorActionCallbackEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
-      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
+      connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
-    args.memoryRuntimeAppendSystemPrompt,
   ]
     .filter((part): part is string => {
       return Boolean(part);
@@ -541,6 +492,7 @@ function buildZeroRunExtraEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
+  readonly connectorActionCallbackEnabled: boolean;
 }): Record<string, string> {
   return {
     ZERO_AGENT_ID: args.agentId,
@@ -548,6 +500,9 @@ function buildZeroRunExtraEnvironment(args: {
     // in-sandbox CLI can bind a newly created automation to it (the create
     // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
     ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    ...(args.connectorActionCallbackEnabled
+      ? { ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED: "1" }
+      : {}),
     ...(args.codexServiceTier
       ? { VM0_CODEX_SERVICE_TIER: args.codexServiceTier }
       : {}),
@@ -564,53 +519,6 @@ function zeroRunTimingDimensions(args: {
   };
 }
 
-const ZERO_MEMORY_TIMING_ACTION_TYPES = {
-  runtime_injection:
-    "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
-  document_search: "api_dispatch_pre_create_zero_memory_document_search",
-  document_search_lexical:
-    "api_dispatch_pre_create_zero_memory_document_search_lexical",
-  document_search_semantic_embedding:
-    "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
-  document_search_semantic_query:
-    "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
-  document_search_hydrate:
-    "api_dispatch_pre_create_zero_memory_document_search_hydrate",
-  profile_static: "api_dispatch_pre_create_zero_memory_profile_static",
-  profile_dynamic: "api_dispatch_pre_create_zero_memory_profile_dynamic",
-  profile_search: "api_dispatch_pre_create_zero_memory_profile_search",
-  profile_search_exact_identity:
-    "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
-  profile_search_semantic_embedding:
-    "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
-  profile_search_semantic_query:
-    "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-  profile_search_graph_expansion:
-    "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
-  profile_search_seed_rank:
-    "api_dispatch_pre_create_zero_memory_profile_search_seed_rank",
-  profile_search_final_rank:
-    "api_dispatch_pre_create_zero_memory_profile_search_final_rank",
-  profile_hydrate: "api_dispatch_pre_create_zero_memory_profile_hydrate",
-  profile_load_sources:
-    "api_dispatch_pre_create_zero_memory_profile_load_sources",
-} as const satisfies Record<ZeroMemoryTimingStage, ApiDispatchTimingActionType>;
-
-function zeroMemoryTimingObserver(
-  timing: ApiDispatchTimingCollector,
-): ZeroMemoryTimingObserver {
-  return {
-    async measure(stage, operation, dimensions) {
-      return await timing.measure(
-        ZERO_MEMORY_TIMING_ACTION_TYPES[stage],
-        "nested",
-        operation,
-        dimensions,
-      );
-    },
-  };
-}
-
 function zeroRunOrigin(args: {
   readonly command: CreateZeroRunCommandArgs;
 }): ZeroRunOrigin {
@@ -623,267 +531,14 @@ function zeroRunOrigin(args: {
   return "zero_run";
 }
 
-/**
- * Resolves the firewall policies for a run.
- *
- * Runs resolve from the caller's agent permission grants. Automation-initiated
- * runs pass through the same agent-run permission path as chat runs.
- */
-async function resolveZeroRunPermissionPolicies(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorType[];
-    readonly checkedAt: Date;
-  },
-  signal: AbortSignal,
-): Promise<FirewallPolicies | null> {
-  const grants = await loadActiveUserPermissionGrants(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.agent.id,
-    },
-    args.checkedAt,
-  );
-  signal.throwIfAborted();
-
-  const resolved = await resolveFirewallServerMetadataPolicies(
-    permissionGrantsToFirewallPolicies(grants),
-    [...args.allowedConnectorTypes],
-  );
-  signal.throwIfAborted();
-
-  return resolved;
-}
-
-async function loadZeroRunWorkflowPermissionContext(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorType[];
-    readonly apiStartTime: number;
-    readonly timing: ApiDispatchTimingCollector;
-  },
-  signal: AbortSignal,
-) {
-  const workflows = await measureZeroPreCreate(
-    args.timing,
-    "api_dispatch_pre_create_zero_load_workflows",
-    async () => {
-      return await loadWorkflowsForRun(db, {
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: args.agent.id,
-      });
-    },
-  );
-  signal.throwIfAborted();
-
-  const runPermissionPolicies = await measureZeroPreCreate(
-    args.timing,
-    "api_dispatch_pre_create_zero_resolve_permission_policies",
-    async () => {
-      return await resolveZeroRunPermissionPolicies(
-        db,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          agent: args.agent,
-          allowedConnectorTypes: args.allowedConnectorTypes,
-          checkedAt: new Date(args.apiStartTime),
-        },
-        signal,
-      );
-    },
-  );
-  signal.throwIfAborted();
-
-  return { workflows, runPermissionPolicies };
-}
-
-async function loadUserInfo(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<UserInfo> {
-  const [row] = await db
-    .select({
-      name: userCache.name,
-      email: userCache.email,
-      timezone: orgMembersMetadata.timezone,
-    })
-    .from(userCache)
-    .leftJoin(
-      orgMembersMetadata,
-      and(
-        eq(orgMembersMetadata.userId, args.userId),
-        eq(orgMembersMetadata.orgId, args.orgId),
-      ),
-    )
-    .where(eq(userCache.userId, args.userId))
-    .limit(1);
-
-  return {
-    name: row?.name ?? null,
-    email: row?.email ?? null,
-    timezone: row?.timezone ?? null,
-  };
-}
-
-async function loadZeroRunFeatureSwitchState(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<{
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
-}> {
-  const context = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  const relationshipMemoryEnabled = isFeatureEnabled(
-    FeatureSwitchKey.RelationshipMemory,
-    context,
-  );
-  return {
-    featureSwitchContext: context,
-    relationshipMemoryEnabled,
-    relationshipMemoryRuntimeInjectionEnabled:
-      relationshipMemoryEnabled &&
-      isFeatureEnabled(
-        FeatureSwitchKey.RelationshipMemoryRuntimeInjection,
-        context,
-      ),
-    zeroScrapeEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroScrape, context),
-    zeroWebSearchEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroWebSearch,
-      context,
-    ),
-    zeroMailEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroMail, context),
-  };
-}
-
-async function loadZeroRunPromptContext(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<ZeroRunPromptContext> {
-  const [userInfo, featureSwitchState] = await Promise.all([
-    loadUserInfo(db, args),
-    loadZeroRunFeatureSwitchState(db, args),
-  ]);
-  return { userInfo, ...featureSwitchState };
-}
-
-async function loadMemoryRuntimeAppendSystemPrompt(
-  db: Db,
-  args: {
-    readonly enabled: boolean;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly prompt: string;
-    readonly retrievalQuery?: string;
-    readonly timing?: ZeroMemoryTimingObserver;
-    readonly goalId?: string;
-    readonly workflowAutomationId?: string;
-  },
-): Promise<string | undefined> {
-  const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
-  return await measureZeroMemoryTiming(
-    args.timing,
-    "runtime_injection",
-    async () => {
-      if (!args.enabled) {
-        return undefined;
-      }
-      const goalId = args.goalId;
-      const workflowAutomationId = args.workflowAutomationId;
-      const result = await buildZeroMemoryRuntimeInjection(db, {
-        orgId: args.orgId,
-        userId: args.userId,
-        prompt: args.prompt,
-        ...(args.retrievalQuery !== undefined
-          ? { retrievalQuery: args.retrievalQuery }
-          : {}),
-        timing: args.timing,
-        ...(goalId
-          ? {
-              semanticEmbeddingLoader: async (query: string) => {
-                return await loadGoalMemoryEmbedding(db, {
-                  goalId,
-                  query,
-                });
-              },
-            }
-          : workflowAutomationId
-            ? {
-                semanticEmbeddingLoader: async (query: string) => {
-                  return await loadWorkflowAutomationMemoryEmbedding(db, {
-                    workflowAutomationId,
-                    query,
-                  });
-                },
-              }
-            : {}),
-      });
-      return result.appendSystemPrompt || undefined;
-    },
-    {
-      memory_runtime_injection_enabled: String(args.enabled),
-      memory_runtime_prompt_length_bucket: zeroMemoryPromptLengthBucket(
-        args.prompt,
-      ),
-      memory_runtime_search_query_length_bucket:
-        zeroMemoryPromptLengthBucket(searchQuery),
-    },
-  );
-}
-
-async function triggerAgentIdForAuth(
-  db: Db,
-  auth: AuthContext & { readonly orgId: string },
-): Promise<string | undefined> {
-  if (auth.tokenType !== "sandbox" && auth.tokenType !== "zero") {
-    return undefined;
-  }
-
-  const [parentRun] = await db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(eq(agentRuns.id, auth.runId))
-    .limit(1);
-
-  return parentRun?.agentComposeId ?? undefined;
-}
-
 function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
-  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
+  readonly connectorActionCallbackEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
@@ -896,11 +551,10 @@ function createRunBody(args: {
     agent: args.agent,
     userInfo: args.userInfo,
     triggerSource,
-    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
     zeroScrapeEnabled: args.zeroScrapeEnabled,
     zeroWebSearchEnabled: args.zeroWebSearchEnabled,
     zeroMailEnabled: args.zeroMailEnabled,
-    memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
+    connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -931,11 +585,10 @@ function createIntegrationRunBody(args: {
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
-  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
+  readonly connectorActionCallbackEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
@@ -951,11 +604,10 @@ function createIntegrationRunBody(args: {
         agent: args.agent,
         userInfo: args.userInfo,
         triggerSource: args.triggerSource,
-        relationshipMemoryEnabled: args.relationshipMemoryEnabled,
         zeroScrapeEnabled: args.zeroScrapeEnabled,
         zeroWebSearchEnabled: args.zeroWebSearchEnabled,
         zeroMailEnabled: args.zeroMailEnabled,
-        memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
+        connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
       }),
       args.appendSystemPrompt,
     ),
@@ -1015,55 +667,84 @@ async function resolveZeroRunAgentId(
   );
 }
 
-async function loadZeroRunConnectorScopes(
+async function loadZeroRunPostAuthorizationContext(
   db: Db,
   args: {
-    readonly auth: AuthContext & { readonly orgId: string };
+    readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
+    readonly triggerRunId: string | undefined;
+    readonly apiStartTime: number;
+    readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
-): Promise<{
-  readonly allowedConnectorTypes: readonly ConnectorType[];
-  readonly allowedCustomConnectorIds: readonly string[];
-}> {
-  const scope = await loadAgentConnectorScope(db, {
-    userId: args.auth.userId,
-    orgId: args.auth.orgId,
-    agentId: args.agentId,
-  });
+) {
+  const [promptContext, executionScope] = await Promise.all([
+    measureZeroPreCreate(
+      args.timing,
+      "api_dispatch_pre_create_zero_load_prompt_snapshot",
+      async () => {
+        return await loadZeroRunPromptContextSnapshot(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+        });
+      },
+    ),
+    measureZeroPreCreate(
+      args.timing,
+      "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+      async () => {
+        return await loadZeroRunExecutionScopeSnapshot(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          agentId: args.agentId,
+          triggerRunId: args.triggerRunId,
+          checkedAt: new Date(args.apiStartTime),
+        });
+      },
+    ),
+  ]);
   signal.throwIfAborted();
-  return scope;
-}
 
-async function resolveZeroRunAutomationPreCreateContext(
-  db: Db,
-  args: CreateZeroRunCommandArgs,
-  signal: AbortSignal,
-): Promise<{
-  readonly triggerAgentId: string | undefined;
-}> {
-  const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
+  const runPermissionPolicies = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    async () => {
+      return await resolveFirewallServerMetadataPolicies(
+        permissionGrantsToFirewallPolicies(executionScope.permissionGrants),
+        [...executionScope.allowedConnectorTypes],
+      );
+    },
+  );
   signal.throwIfAborted();
-  return { triggerAgentId };
+
+  return {
+    ...promptContext,
+    ...executionScope,
+    runPermissionPolicies,
+  };
 }
 
 function buildZeroCreateAgentRunArgs(args: {
   readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
-  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly workflows: readonly RunWorkflowRef[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
   const command = args.command;
+  const connectorActionCallbackEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ConnectorActionCallback,
+    args.featureSwitchContext,
+  );
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
   return {
@@ -1073,11 +754,10 @@ function buildZeroCreateAgentRunArgs(args: {
       body: command.body,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
-      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
-      memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
+      connectorActionCallbackEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
@@ -1093,6 +773,7 @@ function buildZeroCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
+      connectorActionCallbackEnabled,
     }),
     callbacks: [
       ...(callbacksForAutomationAgent(args.triggerAgentId) ?? []),
@@ -1125,72 +806,25 @@ function buildZeroCreateAgentRunArgs(args: {
   };
 }
 
-async function buildZeroFinalAppendSystemPrompt(args: {
-  readonly db: Db;
-  readonly command: CreateZeroRunCommandArgs;
-  readonly agent: ZeroAgentRunRecord;
-  readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
-  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerAgentId: string | undefined;
-  readonly timing: ApiDispatchTimingCollector;
-}): Promise<string> {
-  const command = args.command;
-  const memoryRuntimeAppendSystemPrompt =
-    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
-      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
-      orgId: command.auth.orgId,
-      userId: command.auth.userId,
-      prompt: command.body.prompt,
-      ...(command.memoryRuntimeRetrievalQuery !== undefined
-        ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
-        : {}),
-      timing: zeroMemoryTimingObserver(args.timing),
-      ...(command.zeroRunMetadata?.goalId
-        ? { goalId: command.zeroRunMetadata.goalId }
-        : {}),
-      ...(command.memoryEmbeddingWorkflowAutomationId
-        ? {
-            workflowAutomationId: command.memoryEmbeddingWorkflowAutomationId,
-          }
-        : {}),
-    });
-  return createRunBody({
-    body: command.body,
-    agent: args.agent,
-    userInfo: { ...args.userInfo, ...command.userInfoExtras },
-    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
-    zeroScrapeEnabled: args.zeroScrapeEnabled,
-    zeroWebSearchEnabled: args.zeroWebSearchEnabled,
-    zeroMailEnabled: args.zeroMailEnabled,
-    memoryRuntimeAppendSystemPrompt,
-    permissionPolicies: args.runPermissionPolicies,
-    triggerAgentId: args.triggerAgentId,
-    triggerSource: command.triggerSource,
-    appendSystemPrompt: command.appendSystemPrompt,
-  }).appendSystemPrompt;
-}
-
 function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly command: CreateZeroIntegrationRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
-  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly workflows: readonly RunWorkflowRef[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
   const command = args.command;
+  const connectorActionCallbackEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ConnectorActionCallback,
+    args.featureSwitchContext,
+  );
   return {
     userId: command.userId,
     orgId: command.orgId,
@@ -1199,11 +833,10 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       sessionId: command.sessionId,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
-      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
-      memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
+      connectorActionCallbackEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
@@ -1211,7 +844,12 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     apiStartTime: command.apiStartTime,
     modelProviderId: optionalAgentSetting(args.agent.modelProviderId),
     selectedModelOverride: optionalAgentSetting(args.agent.selectedModel),
-    extraEnvironment: { ZERO_AGENT_ID: args.agent.id },
+    extraEnvironment: buildZeroRunExtraEnvironment({
+      agentId: args.agent.id,
+      chatThreadId: undefined,
+      codexServiceTier: undefined,
+      connectorActionCallbackEnabled,
+    }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
     enforceVm0Credits: true,
@@ -1229,72 +867,16 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   };
 }
 
-async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
-  readonly db: Db;
-  readonly command: CreateZeroIntegrationRunCommandArgs;
-  readonly agent: ZeroAgentRunRecord;
-  readonly userInfo: UserInfo;
-  readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
-  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly timing: ApiDispatchTimingCollector;
-}): Promise<string> {
-  const command = args.command;
-  const memoryRuntimeAppendSystemPrompt =
-    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
-      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
-      orgId: command.orgId,
-      userId: command.userId,
-      prompt: command.prompt,
-      timing: zeroMemoryTimingObserver(args.timing),
-    });
-  return createIntegrationRunBody({
-    prompt: command.prompt,
-    sessionId: command.sessionId,
-    agent: args.agent,
-    userInfo: { ...args.userInfo, ...command.userInfoExtras },
-    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
-    zeroScrapeEnabled: args.zeroScrapeEnabled,
-    zeroWebSearchEnabled: args.zeroWebSearchEnabled,
-    zeroMailEnabled: args.zeroMailEnabled,
-    memoryRuntimeAppendSystemPrompt,
-    permissionPolicies: args.runPermissionPolicies,
-    triggerSource: command.triggerSource,
-    appendSystemPrompt: command.appendSystemPrompt,
-  }).appendSystemPrompt;
-}
-
-async function settleZeroRunPreparation<T>(
-  finalAppendSystemPromptPromise: Promise<string>,
-  preparedAgentRunPromise: Promise<T>,
-): Promise<readonly [string, PromiseSettledResult<T>]> {
-  const [finalAppendSystemPromptResult, preparedAgentRunResult] =
-    await Promise.allSettled([
-      finalAppendSystemPromptPromise,
-      preparedAgentRunPromise,
-    ]);
-  if (finalAppendSystemPromptResult.status === "rejected") {
-    const error: unknown = finalAppendSystemPromptResult.reason;
-    throw error;
-  }
-  return [finalAppendSystemPromptResult.value, preparedAgentRunResult];
-}
-
 interface ZeroRunAfterPreCreateBase {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly workflows: readonly RunWorkflowRef[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }
@@ -1314,79 +896,51 @@ type ZeroRunAfterPreCreate =
   | RegularZeroRunAfterPreCreate
   | IntegrationZeroRunAfterPreCreate;
 
-function buildProvisionalZeroCreateAgentRunArgs(
+function buildZeroCreateAgentRunArgsForKind(
   input: ZeroRunAfterPreCreate,
 ): CreateAgentRunArgs {
   if (input.kind === "regular") {
-    return buildZeroCreateAgentRunArgs({
-      ...input,
-      memoryRuntimeAppendSystemPrompt: undefined,
-    });
+    return buildZeroCreateAgentRunArgs(input);
   }
-  return buildZeroIntegrationCreateAgentRunArgs({
-    ...input,
-    memoryRuntimeAppendSystemPrompt: undefined,
-  });
-}
-
-async function buildZeroFinalAppendSystemPromptForKind(
-  db: Db,
-  input: ZeroRunAfterPreCreate,
-): Promise<string> {
-  if (input.kind === "regular") {
-    return await buildZeroFinalAppendSystemPrompt({ db, ...input });
-  }
-  return await buildZeroIntegrationFinalAppendSystemPrompt({ db, ...input });
+  return buildZeroIntegrationCreateAgentRunArgs(input);
 }
 
 const createAgentRunAfterZeroPreCreate$ = command(
   async ({ set }, input: ZeroRunAfterPreCreate, signal: AbortSignal) => {
-    const db = set(writeDb$);
-    const provisionalCreateAgentRunArgs =
-      buildProvisionalZeroCreateAgentRunArgs(input);
-    const finalAppendSystemPromptPromise = (async () => {
-      const finalAppendSystemPrompt = await measureZeroPreCreate(
-        input.timing,
-        "api_dispatch_pre_create_zero_build_create_run_args",
-        async () => {
-          return await buildZeroFinalAppendSystemPromptForKind(db, input);
-        },
-      );
-      signal.throwIfAborted();
-      input.timing.recordElapsed(
-        "api_dispatch_pre_create_agent_run",
-        "top_level",
-        input.command.apiStartTime,
-      );
-      return finalAppendSystemPrompt;
-    })();
-    const preparedAgentRunPromise = set(
+    const createAgentRunArgs = await measureZeroPreCreate(
+      input.timing,
+      "api_dispatch_pre_create_zero_build_create_run_args",
+      () => {
+        return buildZeroCreateAgentRunArgsForKind(input);
+      },
+    );
+    signal.throwIfAborted();
+    input.timing.recordElapsed(
+      "api_dispatch_pre_create_agent_run",
+      "top_level",
+      input.command.apiStartTime,
+    );
+    const preparedAgentRun = await set(
       prepareAgentRun$,
       {
-        args: provisionalCreateAgentRunArgs,
+        args: createAgentRunArgs,
         timing: input.timing,
+        checkOrgPlanStatusBeforeContext: false,
         preloadedFeatureSwitchContext: input.featureSwitchContext,
       },
       signal,
     );
-    const [finalAppendSystemPrompt, preparedAgentRunResult] =
-      await settleZeroRunPreparation(
-        finalAppendSystemPromptPromise,
-        preparedAgentRunPromise,
-      );
     signal.throwIfAborted();
-    if (preparedAgentRunResult.status === "rejected") {
-      const error: unknown = preparedAgentRunResult.reason;
-      throw error;
-    }
-    const preparedAgentRun = preparedAgentRunResult.value;
     if ("status" in preparedAgentRun) {
       return preparedAgentRun;
     }
 
     return await set(
       completeAgentRun$,
-      { prepared: preparedAgentRun, finalAppendSystemPrompt },
+      {
+        prepared: preparedAgentRun,
+        finalAppendSystemPrompt: createAgentRunArgs.body.appendSystemPrompt,
+      },
       signal,
     );
   },
@@ -1421,48 +975,25 @@ export const createZeroIntegrationRun$ = command(
     const {
       userInfo,
       featureSwitchContext,
-      relationshipMemoryEnabled,
-      relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
       zeroMailEnabled,
-    } = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_user_info",
-      async () => {
-        return await loadZeroRunPromptContext(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    const { allowedConnectorTypes, allowedCustomConnectorIds } =
-      await measureZeroPreCreate(
+      allowedConnectorTypes,
+      allowedCustomConnectorIds,
+      workflows,
+      runPermissionPolicies,
+    } = await loadZeroRunPostAuthorizationContext(
+      db,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: agent.id,
+        triggerRunId: undefined,
+        apiStartTime: args.apiStartTime,
         timing,
-        "api_dispatch_pre_create_zero_load_connector_scopes",
-        async () => {
-          return await loadAgentConnectorScope(db, {
-            userId: args.userId,
-            orgId: args.orgId,
-            agentId: agent.id,
-          });
-        },
-      );
-    signal.throwIfAborted();
-    const { workflows, runPermissionPolicies } =
-      await loadZeroRunWorkflowPermissionContext(
-        db,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          agent,
-          allowedConnectorTypes,
-          apiStartTime: args.apiStartTime,
-          timing,
-        },
-        signal,
-      );
+      },
+      signal,
+    );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
@@ -1472,8 +1003,6 @@ export const createZeroIntegrationRun$ = command(
         agent,
         userInfo,
         featureSwitchContext,
-        relationshipMemoryEnabled,
-        relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,
         zeroWebSearchEnabled,
         zeroMailEnabled,
@@ -1527,64 +1056,33 @@ export const createZeroRun$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
+    const triggerRunId =
+      args.auth.tokenType === "sandbox" || args.auth.tokenType === "zero"
+        ? args.auth.runId
+        : undefined;
     const {
       userInfo,
       featureSwitchContext,
-      relationshipMemoryEnabled,
-      relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
       zeroMailEnabled,
-    } = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_user_info",
-      async () => {
-        return await loadZeroRunPromptContext(db, {
-          userId: args.auth.userId,
-          orgId: args.auth.orgId,
-        });
+      allowedConnectorTypes,
+      allowedCustomConnectorIds,
+      workflows,
+      runPermissionPolicies,
+      triggerAgentId,
+    } = await loadZeroRunPostAuthorizationContext(
+      db,
+      {
+        userId: args.auth.userId,
+        orgId: args.auth.orgId,
+        agentId: agent.id,
+        triggerRunId,
+        apiStartTime: args.apiStartTime,
+        timing,
       },
+      signal,
     );
-    signal.throwIfAborted();
-    const automationContext = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_resolve_automation_context",
-      async () => {
-        return await resolveZeroRunAutomationPreCreateContext(db, args, signal);
-      },
-    );
-    signal.throwIfAborted();
-    const { triggerAgentId } = automationContext;
-    const connectorScopes = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_connector_scopes",
-      async () => {
-        return await loadZeroRunConnectorScopes(
-          db,
-          {
-            auth: args.auth,
-            agentId: agent.id,
-          },
-          signal,
-        );
-      },
-    );
-    signal.throwIfAborted();
-    const { allowedConnectorTypes, allowedCustomConnectorIds } =
-      connectorScopes;
-    const { workflows, runPermissionPolicies } =
-      await loadZeroRunWorkflowPermissionContext(
-        db,
-        {
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          agent,
-          allowedConnectorTypes,
-          apiStartTime: args.apiStartTime,
-          timing,
-        },
-        signal,
-      );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
@@ -1594,8 +1092,6 @@ export const createZeroRun$ = command(
         agent,
         userInfo,
         featureSwitchContext,
-        relationshipMemoryEnabled,
-        relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,
         zeroWebSearchEnabled,
         zeroMailEnabled,

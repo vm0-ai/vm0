@@ -18,6 +18,7 @@ import {
   sql,
 } from "drizzle-orm";
 
+import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -120,6 +121,8 @@ interface BillingOrgRow {
 
 interface BillingStatusResponse {
   tier: string;
+  supportByok: boolean;
+  restrictedVm0Models: boolean;
   credits: number;
   onboardingPaymentPending: boolean;
   subscriptionStatus: string | null;
@@ -536,6 +539,8 @@ function scheduledBillingChange(
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
+  supportByok: boolean;
+  restrictedVm0Models: boolean;
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
@@ -557,6 +562,8 @@ function billingStatusResponse(args: {
 
   return {
     tier: org.tier,
+    supportByok: args.supportByok,
+    restrictedVm0Models: args.restrictedVm0Models,
     credits: displayedCredits,
     onboardingPaymentPending: org.onboardingPaymentPending,
     subscriptionStatus: org.subscriptionStatus,
@@ -633,7 +640,10 @@ export function zeroBillingStatus(
         .limit(1),
       db
         .select({
-          total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,
+          total:
+            sql`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`.mapWith(
+              pgIntegerDecoder,
+            ),
         })
         .from(creditExpiresRecord)
         .where(
@@ -669,6 +679,8 @@ export function zeroBillingStatus(
     return billingStatusResponse({
       orgId,
       org: org[0],
+      supportByok: capabilities?.supportByok ?? false,
+      restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,
       unsettledExpired: unsettledExpiredRow[0]?.total ?? 0,
       activeRecords,
       concurrencySubscriptions,

@@ -1,8 +1,11 @@
-//! Conservative Linux `execve` argv/environment size guards.
+//! Fixed Linux `execve` argv/environment size preflight guards.
 //!
-//! These helpers let the runner and guest-agent fail before spawning a process
-//! that would otherwise surface as an opaque `E2BIG` or shell-level
-//! "Argument list too long" error.
+//! These helpers reject values beyond vm0's configured budgets before spawning
+//! so the runner and guest-agent can return a descriptive error instead of an
+//! opaque `E2BIG` or shell-level "Argument list too long" error. Linux's
+//! effective aggregate limit also depends on the `RLIMIT_STACK` of the process
+//! that performs `execve`, so passing these checks does not guarantee that every
+//! later spawn will succeed.
 
 use std::fmt;
 
@@ -13,10 +16,15 @@ use std::fmt;
 /// one byte less of actual string payload.
 pub const EXECVE_STRING_MAX_BYTES: usize = 128 * 1024 - 1;
 
-/// Conservative aggregate byte budget for argv and environment strings.
+/// Fixed vm0 aggregate byte budget for argv and environment strings.
 ///
-/// This matches the common Linux `ARG_MAX` value and is used as a preflight
-/// guard rather than a product-level payload limit.
+/// Two MiB matches the common Linux `ARG_MAX` value with an 8 MiB soft
+/// `RLIMIT_STACK`. Linux derives the effective aggregate limit from the stack
+/// limit in force when `execve` runs; see [Linux's `execve` size limits]. This
+/// preflight therefore assumes that the actual spawning context permits at
+/// least this budget rather than defining a universal Linux limit.
+///
+/// [Linux's `execve` size limits]: https://man7.org/linux/man-pages/man2/execve.2.html#Limits_on_size_of_arguments_and_environment
 pub const EXECVE_ARG_ENV_MAX_BYTES: usize = 2 * 1024 * 1024;
 
 const EXECVE_POINTER_OVERHEAD_BYTES: usize = std::mem::size_of::<usize>();
@@ -119,7 +127,11 @@ impl fmt::Display for ExecBoundarySizeError {
 
 impl std::error::Error for ExecBoundarySizeError {}
 
-/// Validate argv/env string and aggregate sizes.
+/// Validate argv/env sizes against vm0's fixed preflight budgets.
+///
+/// Aggregate validation uses [`EXECVE_ARG_ENV_MAX_BYTES`]. The effective limit
+/// in the process that later calls `execve` can be lower, so successful
+/// validation does not rule out a subsequent `E2BIG` spawn failure.
 pub fn validate_exec_boundary_sizes(
     values: impl IntoIterator<Item = ExecBoundaryValue>,
 ) -> Result<(), ExecBoundarySizeError> {

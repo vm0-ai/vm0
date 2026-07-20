@@ -12,6 +12,7 @@ export const smolMachines = {
         helpText:
           "1. Sign in to your smol machines account\n2. Follow the [smol machines API docs](https://smolmachines.com/docs/cloud-api) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["SMOL_MACHINES_API_KEY"],
           variables: [],
         },

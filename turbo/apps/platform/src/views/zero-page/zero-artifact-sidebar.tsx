@@ -1364,6 +1364,7 @@ function ArtifactSidebarPreviewActions({
         ariaLabel="Download artifact"
         artifactKind={artifactKind}
         filename={title}
+        menuInstanceKey="artifact-sidebar"
         syncTarget={syncTarget}
         url={url}
       />
@@ -1664,7 +1665,6 @@ function ArtifactBody({
           onEditRequestStarted={onHtmlEditRequestStarted}
           pageSignal={pageSignal}
           status={htmlEditStatus}
-          url={url}
         />
       );
     }

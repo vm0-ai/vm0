@@ -2,6 +2,7 @@ import type { DBSchema, IDBPDatabase, OpenDBCallbacks, openDB } from "idb";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { CHAT_IDB_VERSION, CHAT_MESSAGES_STORE } from "./chat-idb-schema.ts";
 import { createChatIdbStore } from "./chat-idb-store.ts";
+import { createDeferredPromise } from "../utils.ts";
 
 type VersionChangeListener = (event: IDBVersionChangeEvent) => void;
 
@@ -130,7 +131,7 @@ describe("openChatIdb", () => {
     expect(calls[0]?.name).toBe("vm0-chat-user_1-org_1");
   });
 
-  it("uses separate open promises for different chat databases", async () => {
+  it("closes the previous connection before opening a different chat database", async () => {
     const firstDb = fakeDb();
     const secondDb = fakeDb();
     const { calls, subject } = setupSubject([firstDb, secondDb]);
@@ -146,6 +147,34 @@ describe("openChatIdb", () => {
         return call.name;
       }),
     ).toEqual(["vm0-chat-user_1-org_1", "vm0-chat-user_1-org_2"]);
+    expect(firstDb.close).toHaveBeenCalledTimes(1);
+    expect(secondDb.close).not.toHaveBeenCalled();
+  });
+
+  it("opens a different chat database while the previous open is pending", async () => {
+    const firstDb = fakeDb();
+    const secondDb = fakeDb();
+    const { openDatabaseMock, subject } = setupSubject([secondDb]);
+    const pendingFirst = createDeferredPromise<IDBPDatabase>(
+      AbortSignal.any([]),
+    );
+    openDatabaseMock.mockReturnValueOnce(pendingFirst.promise);
+
+    const first = subject.openChatIdb("user_1", "org_1");
+    const second = subject.openChatIdb("user_1", "org_2");
+
+    await expect(second).resolves.toBe(secondDb.db);
+    expect(openDatabaseMock).toHaveBeenCalledTimes(2);
+    expect(
+      openDatabaseMock.mock.calls.map(([name]) => {
+        return name;
+      }),
+    ).toEqual(["vm0-chat-user_1-org_1", "vm0-chat-user_1-org_2"]);
+    expect(firstDb.close).not.toHaveBeenCalled();
+
+    pendingFirst.resolve(firstDb.db);
+    await expect(first).resolves.toBe(firstDb.db);
+    expect(firstDb.close).toHaveBeenCalledTimes(1);
   });
 
   it("registers the shared upgrade callback", async () => {
@@ -200,7 +229,7 @@ describe("openChatIdb", () => {
     expect(openDatabaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it("prevents reusing another cached database after reload is pending", async () => {
+  it("invalidates the current connection after the identity changes", async () => {
     const firstDb = fakeDb();
     const secondDb = fakeDb();
     const { openDatabaseMock, subject } = setupSubject([firstDb, secondDb]);
@@ -208,7 +237,7 @@ describe("openChatIdb", () => {
     await subject.openChatIdb("user_1", "org_1");
     await subject.openChatIdb("user_1", "org_2");
 
-    firstDb.versionChangeListeners[0]?.(
+    secondDb.versionChangeListeners[0]?.(
       versionChangeEvent(CHAT_IDB_VERSION, CHAT_IDB_VERSION + 1),
     );
 
@@ -216,6 +245,8 @@ describe("openChatIdb", () => {
       "Chat IndexedDB is closing for a page reload",
     );
     expect(openDatabaseMock).toHaveBeenCalledTimes(2);
+    expect(firstDb.close).toHaveBeenCalledTimes(1);
+    expect(secondDb.close).toHaveBeenCalledTimes(1);
   });
 
   it("does not close or reload when this open request is blocked", async () => {

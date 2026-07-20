@@ -8,6 +8,7 @@ import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
+import * as storageArchiveSizeBackfillSchema from "./schema/storage-archive-size-backfill";
 import * as systemStoragePresignedUrlCacheSchema from "./schema/system-storage-presigned-url-cache";
 import * as blobSchema from "./schema/blob";
 
@@ -78,7 +79,6 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
-import * as zeroWorkflowQueueSchema from "./schema/zero-workflow-queue";
 import * as chatMessageQueueSchema from "./schema/chat-message-queue";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
@@ -100,13 +100,12 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
-import * as memorySubstrateSchema from "./schema/memory-substrate";
-import * as relationshipMemorySchema from "./schema/relationship-memory";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
+import * as mailDraftSchema from "./schema/mail-draft";
 
 export const schema = {
   ...userSchema,
@@ -119,6 +118,7 @@ export const schema = {
   ...checkpointSchema,
   ...agentSessionSchema,
   ...storageSchema,
+  ...storageArchiveSizeBackfillSchema,
   ...systemStoragePresignedUrlCacheSchema,
   ...blobSchema,
 
@@ -189,7 +189,6 @@ export const schema = {
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
-  ...zeroWorkflowQueueSchema,
   ...chatMessageQueueSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
@@ -211,13 +210,12 @@ export const schema = {
   ...bankingSchema,
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
-  ...memorySubstrateSchema,
-  ...relationshipMemorySchema,
   ...gmailEventSchema,
   ...notionEventSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
+  ...mailDraftSchema,
 };
 
 export type DatabaseSchema = typeof schema;

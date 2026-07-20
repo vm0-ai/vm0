@@ -35,13 +35,17 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
+import {
+  pgIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
-import { clerk$ } from "../external/clerk";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
+import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { tapError } from "../utils";
 import {
@@ -153,7 +157,9 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       triggerSource: zeroRuns.triggerSource,
       userId: agentRuns.userId,
       error: agentRuns.error,
-      promptPreview: sql<string>`substring(${agentRuns.prompt}, 1, 200)`,
+      promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
+        pgTextDecoder,
+      ),
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -237,7 +243,7 @@ async function loadComposeVersion(
 
 async function countMessages(db: ReadonlyDb, botId: string): Promise<number> {
   const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql`count(*)::int`.mapWith(pgIntegerDecoder) })
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, botId));
   return row?.count ?? 0;
@@ -1949,27 +1955,10 @@ const postTestTelegramState$ = command(
     }
 
     const email = readOptionalString(body.email) ?? DEFAULT_TEST_EMAIL;
-    const client = get(clerk$);
-    const { data: users } = await client.users.getUserList({
-      emailAddress: [email],
-    });
+    const userId = await set(testUserId$, { email, refresh: false }, signal);
     signal.throwIfAborted();
-    const userId = users[0]?.id;
-    if (!userId) {
-      throw new Error(`Test user not found for email: ${email}`);
-    }
-
-    const memberships = await client.users.getOrganizationMembershipList({
-      userId,
-    });
+    const orgId = await set(resolveTestOrgId$, userId, signal);
     signal.throwIfAborted();
-    const sortedMemberships = [...memberships.data].sort((a, b) => {
-      return a.createdAt - b.createdAt;
-    });
-    const orgId = sortedMemberships[0]?.organization.id;
-    if (!orgId) {
-      throw new Error(`Test user ${userId} has no organization membership`);
-    }
 
     const db = set(writeDb$);
     const defaultAgent = await seedDefaultAgent(

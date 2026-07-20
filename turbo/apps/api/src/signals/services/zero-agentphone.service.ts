@@ -50,6 +50,7 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
 } from "./agentphone-shared.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -324,13 +325,15 @@ export const ensureAgentPhoneArtifactStorage$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    const location = newStorageS3Location(args.orgId);
     const [storage] = await writeDb
       .insert(storages)
       .values({
+        id: location.storageId,
         name: "artifact",
         type: "artifact",
         userId: args.userId,
-        s3Prefix: `${args.orgId}/artifact/artifact`,
+        s3Prefix: location.s3Prefix,
         size: 0,
         fileCount: 0,
         orgId: args.orgId,
@@ -362,6 +365,7 @@ export const ensureAgentPhoneArtifactStorage$ = command(
     const versionId = computeContentHashFromHashes(currentStorage.id, []);
     const s3Key = `${currentStorage.s3Prefix}/${versionId}`;
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
+    const archiveBuffer = createEmptyTarGz();
 
     await Promise.all([
       get(
@@ -376,7 +380,7 @@ export const ensureAgentPhoneArtifactStorage$ = command(
         putS3Object(
           bucketName,
           `${s3Key}/archive.tar.gz`,
-          createEmptyTarGz(),
+          archiveBuffer,
           "application/gzip",
         ),
       ),
@@ -391,11 +395,15 @@ export const ensureAgentPhoneArtifactStorage$ = command(
           storageId: currentStorage.id,
           s3Key,
           size: 0,
+          archiveSize: archiveBuffer.length,
           fileCount: 0,
           message: "Initial empty artifact (auto-created)",
           createdBy: "user",
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: storageVersions.id,
+          set: { archiveSize: archiveBuffer.length },
+        });
 
       await tx
         .update(storages)

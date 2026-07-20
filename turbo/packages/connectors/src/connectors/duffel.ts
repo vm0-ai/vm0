@@ -12,6 +12,7 @@ export const duffel = {
         helpText:
           "1. Log in to the [Duffel dashboard](https://app.duffel.com)\n2. Click your organisation name, then **Developers > Access tokens**\n3. Click **New token**, give it a name, leave scope as **Read write**\n4. Click **Create token** and copy the value (format: `duffel_test_...` for test mode, `duffel_live_...` for live mode)",
         storage: {
+          version: 1,
           secrets: ["DUFFEL_TOKEN"],
           variables: [],
         },

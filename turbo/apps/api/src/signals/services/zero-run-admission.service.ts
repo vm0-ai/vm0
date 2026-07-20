@@ -1,6 +1,11 @@
 import { sql } from "drizzle-orm";
 import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+} from "../../lib/db-raw-rows";
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import {
@@ -11,10 +16,10 @@ import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 
 type CreditDb = Pick<Db, "execute" | "select">;
 
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
-}
+const creditCheckRowSchema = z.object({
+  credits: pgInt8ToSafeIntegerSchema.nullable(),
+  unsettled_expired: pgInt8ToSafeIntegerSchema.nullable(),
+});
 
 interface OrgCreditAvailability {
   readonly status: OrgPlanCapabilities["status"];
@@ -23,40 +28,44 @@ interface OrgCreditAvailability {
   readonly spendableCredits: number;
 }
 
-type OrgModelAdmissionCapabilities = Pick<
+type OrgPlanRunAdmissionCapabilities = Pick<
   OrgPlanCapabilities,
-  "supportByok" | "restrictedVm0Models"
+  "status" | "supportByok" | "restrictedVm0Models"
 >;
 
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
   readonly orgId: string;
 }): Promise<OrgCreditAvailability | null> {
-  const { rows } = await params.db.execute<CreditCheckRow>(sql`
-    WITH org AS (
-      SELECT credits FROM org_metadata
-      WHERE org_id = ${params.orgId}
-      LIMIT 1
-    ),
-    expired AS (
-      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-      FROM credit_expires_record
-      WHERE org_id = ${params.orgId}
-        AND expires_at <= now()
-        AND remaining > 0
-    )
-    SELECT
-      (SELECT credits FROM org) AS credits,
-      (SELECT total FROM expired) AS unsettled_expired
-  `);
+  const rows = await executeRawRows(
+    params.db,
+    sql`
+      WITH org AS (
+        SELECT credits FROM org_metadata
+        WHERE org_id = ${params.orgId}
+        LIMIT 1
+      ),
+      expired AS (
+        SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+        FROM credit_expires_record
+        WHERE org_id = ${params.orgId}
+          AND expires_at <= now()
+          AND remaining > 0
+      )
+      SELECT
+        (SELECT credits FROM org) AS credits,
+        (SELECT total FROM expired) AS unsettled_expired
+    `,
+    creditCheckRowSchema,
+  );
 
   const row = rows[0];
   if (!row || row.credits === null) {
     return null;
   }
 
-  const credits = Number(row.credits);
-  const unsettledExpired = Number(row.unsettled_expired ?? 0);
+  const credits = row.credits;
+  const unsettledExpired = row.unsettled_expired ?? 0;
   const spendableCredits = credits - unsettledExpired;
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   if (!capabilities) {
@@ -94,16 +103,13 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
   if (!availability) {
     return insufficientCredits();
   }
-  const modelAdmission = checkOrgModelRunAdmission({
+  const planAdmission = checkOrgPlanRunAdmission({
     capabilities: availability,
     modelProviderType: params.modelProviderType,
     selectedModel: params.selectedModel,
   });
-  if (modelAdmission) {
-    return modelAdmission;
-  }
-  if (availability.status !== "active") {
-    return insufficientCredits();
+  if (planAdmission) {
+    return planAdmission;
   }
 
   if (params.modelProviderType !== "vm0") {
@@ -123,14 +129,14 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
     : insufficientCredits();
 }
 
-export function checkOrgModelRunAdmission(params: {
-  readonly capabilities: OrgModelAdmissionCapabilities | null;
+export function checkOrgPlanRunAdmission(params: {
+  readonly capabilities: OrgPlanRunAdmissionCapabilities | null;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
 }): ReturnType<typeof insufficientCredits> | undefined {
   const { capabilities } = params;
-  if (!capabilities) {
-    return undefined;
+  if (!capabilities || capabilities.status !== "active") {
+    return insufficientCredits();
   }
   return (!capabilities.supportByok && params.modelProviderType !== "vm0") ||
     (capabilities.restrictedVm0Models &&

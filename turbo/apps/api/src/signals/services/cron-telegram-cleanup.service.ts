@@ -17,7 +17,7 @@ export const cleanupTelegramMessages$ = command(
     let batchDeleted: number;
 
     do {
-      const result = await db.execute(sql`
+      const { rowCount } = await db.execute(sql`
         DELETE FROM telegram_messages
         WHERE ctid IN (
           SELECT ctid FROM telegram_messages
@@ -27,7 +27,7 @@ export const cleanupTelegramMessages$ = command(
       `);
       signal.throwIfAborted();
 
-      batchDeleted = Number(result.rowCount ?? 0);
+      batchDeleted = rowCount ?? 0;
       totalDeleted += batchDeleted;
     } while (batchDeleted === TELEGRAM_MESSAGE_DELETE_BATCH_SIZE);
 

@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
   IconBrandGithub,
   IconBrandSlack,
@@ -41,10 +41,9 @@ import {
   teamMemberUsageAsync$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
-import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
+import { closeSettingsModal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { nowDate } from "../../../../lib/time.ts";
+import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
 import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
 
@@ -249,7 +248,12 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                         key={provider.provider}
                         className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
                       >
-                        <span className="truncate">{provider.provider}</span>
+                        <span className="truncate">
+                          {getCreditUsageDisplayName(
+                            segment.kind,
+                            provider.provider,
+                          )}
+                        </span>
                         <span className="shrink-0 tabular-nums">
                           {provider.credits.toLocaleString()}
                         </span>
@@ -267,8 +271,7 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
 }
 
 function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
-  const closeSettings = useSet(setSettingsDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
+  const closeSettings = useSet(closeSettingsModal$);
   const { label, Icon } = SOURCE_META[row.source];
   const title = row.title && row.title.length > 0 ? row.title : "Untitled";
 
@@ -276,7 +279,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
       return;
     }
-    detach(closeSettings(false, pageSignal), Reason.DomCallback);
+    closeSettings();
   };
   const credits = formatCredits(row.credits);
 

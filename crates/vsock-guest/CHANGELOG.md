@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.19.40](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.39...vsock-guest-v0.19.40) (2026-07-20)
+
+## [0.19.39](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.38...vsock-guest-v0.19.39) (2026-07-19)
+
+## [0.19.38](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.37...vsock-guest-v0.19.38) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
+## [0.19.37](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.36...vsock-guest-v0.19.37) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock-guest:** roll back cgroup setup failures ([#21977](https://github.com/vm0-ai/vm0/issues/21977)) ([1e5bfff](https://github.com/vm0-ai/vm0/commit/1e5bfff4ae2b3f4267cd78838834a06843841133))
+
+## [0.19.36](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.35...vsock-guest-v0.19.36) (2026-07-17)
+
+## [0.19.35](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.34...vsock-guest-v0.19.35) (2026-07-16)
+
+## [0.19.34](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.33...vsock-guest-v0.19.34) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.19.33](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.32...vsock-guest-v0.19.33) (2026-07-16)
 
 

@@ -11,14 +11,12 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
-import { agentRuns } from "./agent-run";
 import type {
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
-  ChatMessageMailDraft,
   ChatMessageRecommendedFollowups,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
@@ -30,7 +28,6 @@ export type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageIllustrationGenerationTemplate,
-  ChatMessageMailDraft,
   ChatMessagePresentationGenerationTemplate,
   ChatMessageRecommendedFollowup,
   ChatMessageRecommendedFollowupGenerationType,
@@ -80,25 +77,16 @@ export const chatMessages = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    runId: uuid("run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
+    // Historical run references remain after the corresponding run is deleted.
+    runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
       },
-      { onDelete: "set null" },
+      { onDelete: "no action" },
     ),
-    interruptsRunId: uuid("interrupts_run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
+    interruptsRunId: uuid("interrupts_run_id"),
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
@@ -119,7 +107,12 @@ export const chatMessages = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
-    mailDraft: jsonb("mail_draft").$type<ChatMessageMailDraft>(),
+    // Database-only rollout marker for API versions that still read legacy
+    // mail cards. Drop this column after the link-only reader has fully
+    // deployed; migrations run before API traffic promotion.
+    mailDraftId: uuid("mail_draft_id").unique(
+      "chat_messages_mail_draft_id_unique",
+    ),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),

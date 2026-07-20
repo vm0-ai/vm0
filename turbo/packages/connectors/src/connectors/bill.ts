@@ -14,7 +14,7 @@ export const bill = {
         label: "Spend & Expense API Token",
         helpText:
           "1. Sign in to BILL\n2. Open **Settings** and select **API & Webhooks**\n3. Create a Spend & Expense API token\n4. Copy the token",
-        storage: { secrets: ["BILL_TOKEN"], variables: [] },
+        storage: { version: 1, secrets: ["BILL_TOKEN"], variables: [] },
         grant: {
           kind: "manual",
           fields: {

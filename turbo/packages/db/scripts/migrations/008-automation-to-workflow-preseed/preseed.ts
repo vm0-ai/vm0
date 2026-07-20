@@ -401,11 +401,15 @@ async function preseedAutomationVolume(
         storageId: storage.id,
         s3Key,
         size: content.length,
+        archiveSize: archive.length,
         fileCount: fileEntries.length,
         message: "automation -> workflow preseed (#19959)",
         createdBy: "user",
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: storageVersions.id,
+        set: { archiveSize: archive.length },
+      });
     await tx
       .update(storages)
       .set({

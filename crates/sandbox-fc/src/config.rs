@@ -20,7 +20,9 @@ pub struct FirecrackerConfig {
     pub base_dir: PathBuf,
     /// Profile name (e.g., "vm0/default") used for per-profile isolation.
     pub profile: String,
-    /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
+    /// Host proxy port for outbound TCP redirects. When `dns_port` is also set,
+    /// those redirects exclude TCP 53 and 853: TCP 53 is redirected to
+    /// `dns_port`, while TCP 853 is blocked.
     pub proxy_port: Option<u16>,
     /// Port of the DNS proxy. When set, iptables rules redirect DNS queries through it.
     pub dns_port: Option<u16>,
@@ -192,6 +194,32 @@ mod tests {
         NonZeroU64::new(value).expect("test rate must be non-zero")
     }
 
+    fn positive_device_rate_limits() -> sandbox::DeviceRateLimits {
+        sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+                ops_per_sec: 10_000,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 50 * 1024 * 1024,
+                tx_bytes_per_sec: 25 * 1024 * 1024,
+            },
+        }
+    }
+
+    fn assert_zero_rate_rejected(limits: &sandbox::DeviceRateLimits, expected_dimension: &str) {
+        let err = FirecrackerDeviceRateLimits::try_from(limits).unwrap_err();
+
+        assert!(
+            err.contains(expected_dimension),
+            "error does not identify {expected_dimension}: {err}"
+        );
+        assert!(
+            err.contains("positive"),
+            "error does not require a positive rate: {err}"
+        );
+    }
+
     #[test]
     fn token_bucket_uses_100ms_refill_window() {
         let bucket = token_bucket(nonzero(100 * 1024 * 1024));
@@ -294,21 +322,34 @@ mod tests {
     }
 
     #[test]
-    fn device_limits_reject_zero_rates() {
-        let limits = sandbox::DeviceRateLimits {
-            block: sandbox::BlockRateLimits {
-                bandwidth_bytes_per_sec: 0,
-                ops_per_sec: 10_000,
-            },
-            network: sandbox::NetworkRateLimits {
-                rx_bytes_per_sec: 50 * 1024 * 1024,
-                tx_bytes_per_sec: 25 * 1024 * 1024,
-            },
-        };
+    fn device_limits_reject_zero_block_bandwidth() {
+        let mut limits = positive_device_rate_limits();
+        limits.block.bandwidth_bytes_per_sec = 0;
 
-        let err = FirecrackerDeviceRateLimits::try_from(&limits).unwrap_err();
+        assert_zero_rate_rejected(&limits, "block bandwidth_bytes_per_sec");
+    }
 
-        assert!(err.contains("block bandwidth_bytes_per_sec"));
-        assert!(err.contains("positive"));
+    #[test]
+    fn device_limits_reject_zero_block_ops() {
+        let mut limits = positive_device_rate_limits();
+        limits.block.ops_per_sec = 0;
+
+        assert_zero_rate_rejected(&limits, "block ops_per_sec");
+    }
+
+    #[test]
+    fn device_limits_reject_zero_network_rx_bandwidth() {
+        let mut limits = positive_device_rate_limits();
+        limits.network.rx_bytes_per_sec = 0;
+
+        assert_zero_rate_rejected(&limits, "network rx_bytes_per_sec");
+    }
+
+    #[test]
+    fn device_limits_reject_zero_network_tx_bandwidth() {
+        let mut limits = positive_device_rate_limits();
+        limits.network.tx_bytes_per_sec = 0;
+
+        assert_zero_rate_rejected(&limits, "network tx_bytes_per_sec");
     }
 }

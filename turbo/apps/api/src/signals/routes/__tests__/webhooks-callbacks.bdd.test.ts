@@ -14,6 +14,11 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
 import {
+  readStorageS3PrefixFixture,
+  seedStorageFixture,
+  seedStorageVersionFixture,
+} from "../../../test-fixtures/storage";
+import {
   deleteOrgPlanEntitlementFixture,
   readOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
@@ -556,6 +561,49 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
         return agent.displayName === "Zero";
       }),
     ).toHaveLength(1);
+
+    api.configureStripeBillingEnv();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+    context.mocks.ably.publish.mockClear();
+    const grantExpiresAtUnix = epochSeconds(7);
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_bootstrap_${randomUUID()}`,
+          customer: `cus_bdd_bootstrap_${randomUUID()}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId: orgOf(admin),
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_bootstrap_${randomUUID()}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "billing:changed",
+      null,
+    );
   });
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
@@ -1678,8 +1726,10 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       throw new Error("Expected the sandbox storage prepare to succeed");
     }
     expect(prepared.body.existing).toBeFalsy();
-    expect(prepared.body.uploads?.archive.key).toBe(
-      `${orgOf(actor)}/artifact/${storageName}/${prepared.body.versionId}/archive.tar.gz`,
+    expect(prepared.body.uploads?.archive.key).toMatch(
+      new RegExp(
+        `^${orgOf(actor)}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/${prepared.body.versionId}/archive\\.tar\\.gz$`,
+      ),
     );
     expect(prepared.body.uploads?.archive.presignedUrl).toMatch(/^https/);
     expect(prepared.body.uploads?.manifest.presignedUrl).toMatch(/^https/);
@@ -1788,6 +1838,60 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("uses each successful card payment as the customer default", async () => {
+    api.configureStripeBillingEnv();
+    const customerId = `cus_bdd_default_${randomUUID().slice(0, 8)}`;
+    const cardPaymentMethodId = `pm_bdd_card_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: cardPaymentMethodId,
+      type: "card",
+      customer: customerId,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_card_${randomUUID().slice(0, 8)}`,
+          customer: customerId,
+          payment_method: cardPaymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      customerId,
+      {
+        invoice_settings: {
+          default_payment_method: cardPaymentMethodId,
+        },
+      },
+    );
+
+    context.mocks.stripe.customers.update.mockClear();
+    const bankPaymentMethodId = `pm_bdd_bank_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: bankPaymentMethodId,
+      type: "us_bank_account",
+      customer: customerId,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_bank_${randomUUID().slice(0, 8)}`,
+          customer: customerId,
+          payment_method: bankPaymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).not.toHaveBeenCalled();
+  });
+
   it("grants and renews Atom invoice-backed Team entitlements", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
@@ -1799,7 +1903,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
-    await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Atom Grant" });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2310,7 +2414,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const grantExpiresAtUnix = epochSeconds(30);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Custom Grant" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Custom Grant" });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2621,7 +2725,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Trial Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Trial Agent" });
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_trial_${suffix}`;
@@ -3329,7 +3433,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Binding Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Binding Agent" });
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_bind_${suffix}`;
@@ -3556,7 +3660,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Credits Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Credits Agent" });
     const baselineCredits = (await billing.readBillingStatus(actor)).credits;
 
     // A one-time checkout before payment settles grants nothing.
@@ -4045,6 +4149,25 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       vm0_environment: "preview",
       job_ref: "pr-bdd-456",
     };
+    const paymentMethodId = `pm_bdd_preview_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: granted.customerId,
+      deleted: false,
+      metadata: mismatchedMetadata,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_preview_skip_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          payment_method: paymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).not.toHaveBeenCalled();
     await api.postStripeEvent(
       stripeEvent({
         type: "invoice.paid",
@@ -4113,6 +4236,35 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
+
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: granted.customerId,
+      deleted: false,
+      metadata: { vm0_environment: "preview", job_ref: "pr-bdd-123" },
+    });
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: paymentMethodId,
+      type: "card",
+      customer: granted.customerId,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_preview_match_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          payment_method: paymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      granted.customerId,
+      {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      },
+    );
   });
 });
 
@@ -4246,7 +4398,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
-    await bdd.setupOnboarding(plainActor, {
+    await bdd.bootstrapOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
     });
     api.verifyNextClerkWebhook({
@@ -4411,6 +4563,126 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(preserved.subscriptionStatus).toBe("active");
   });
 
+  it("spares other users' objects on legacy shared prefixes during user teardown", async () => {
+    const bdd = createBddApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+
+    const doomed = bdd.user();
+    const orgId = orgOf(doomed);
+    const peer = bdd.user({ orgId, orgRole: "org:member" });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [{ publicUserData: { userId: peer.userId } }],
+      },
+    );
+
+    // Legacy prefixes carry no user segment, so two users' same-named
+    // artifacts share one prefix. Seed that production shape plus an
+    // exclusive legacy prefix for the doomed user.
+    const sharedPrefix = `${orgId}/artifact/memory`;
+    const doomedShared = await seedStorageFixture({
+      orgId,
+      userId: doomed.userId,
+      name: "memory",
+      type: "artifact",
+      s3Prefix: sharedPrefix,
+    });
+    const peerShared = await seedStorageFixture({
+      orgId,
+      userId: peer.userId,
+      name: "memory",
+      type: "artifact",
+      s3Prefix: sharedPrefix,
+    });
+    const doomedVersion = await seedStorageVersionFixture({
+      storageId: doomedShared.storageId,
+      versionId: createHash("sha256").update(randomUUID()).digest("hex"),
+    });
+    const peerVersion = await seedStorageVersionFixture({
+      storageId: peerShared.storageId,
+      versionId: createHash("sha256").update(randomUUID()).digest("hex"),
+    });
+    const exclusivePrefix = `${orgId}/artifact/scratch`;
+    await seedStorageFixture({
+      orgId,
+      userId: doomed.userId,
+      name: "scratch",
+      type: "artifact",
+      s3Prefix: exclusivePrefix,
+    });
+
+    const listedPrefixes: string[] = [];
+    const deletedKeys: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if (typeof input.Prefix === "string") {
+        listedPrefixes.push(input.Prefix);
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: `${input.Prefix}stale.bin`,
+              Size: 1,
+              LastModified: nowDate(),
+            },
+          ],
+        });
+      }
+      const removal = input.Delete as
+        | { readonly Objects?: readonly { readonly Key?: string }[] }
+        | undefined;
+      for (const object of removal?.Objects ?? []) {
+        if (object.Key) {
+          deletedKeys.push(object.Key);
+        }
+      }
+      return Promise.resolve({});
+    });
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: doomed.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    await waitForExpectation(() => {
+      // The exclusive prefix is wiped wholesale (bounded listing), which
+      // also removes orphan objects that never got a version row.
+      expect(listedPrefixes).toContain(`${exclusivePrefix}/`);
+      // The shared prefix falls back to per-version deletion: only the
+      // doomed user's version directory is listed.
+      expect(listedPrefixes).toContain(`${doomedVersion.s3Key}/`);
+    });
+    expect(listedPrefixes).not.toContain(`${sharedPrefix}/`);
+    expect(deletedKeys).toContain(`${exclusivePrefix}/stale.bin`);
+    expect(deletedKeys).toContain(`${doomedVersion.s3Key}/stale.bin`);
+    for (const key of deletedKeys) {
+      expect(key.startsWith(`${peerVersion.s3Key}/`)).toBeFalsy();
+    }
+
+    // The doomed user's rows are gone while the peer's survive untouched.
+    await waitForExpectation(async () => {
+      await expect(
+        readStorageS3PrefixFixture({
+          orgId,
+          userId: doomed.userId,
+          name: "memory",
+          type: "artifact",
+        }),
+      ).rejects.toThrow();
+    });
+    await expect(
+      readStorageS3PrefixFixture({
+        orgId,
+        userId: peer.userId,
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toBe(sharedPrefix);
+  });
+
   it("does not update a Stripe subscription already canceled upstream", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
@@ -4542,7 +4814,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     ).Prefix;
     expect(
       typeof firstCleanupS3Prefix === "string" &&
-        firstCleanupS3Prefix.startsWith(`${orgOf(doomed)}/artifact/`),
+        firstCleanupS3Prefix.startsWith(`${orgOf(doomed)}/`) &&
+        firstCleanupS3Prefix.endsWith("/"),
     ).toBeTruthy();
 
     await waitForExpectation(() => {

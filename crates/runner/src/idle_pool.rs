@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
-use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
+use sandbox::{
+    DeviceRateLimits, Sandbox, SandboxFactory, SandboxId, SandboxParkNonReusableReason,
+    SandboxParkOutcome,
+};
 
 use crate::idle_reuse_preparation::prepare_sandbox_for_idle_reuse;
 use crate::ids::RunId;
@@ -22,7 +25,7 @@ use crate::workspace_image_cache::{
     WorkspaceImagePromotionIdentityRequest,
 };
 use crate::workspace_promotion::{
-    abandon_unpublished_workspace_promotion, promote_workspace_image_from_parked_sandbox,
+    abandon_unpublished_workspace_promotion, prepare_workspace_image_from_parked_sandbox,
 };
 
 #[cfg(test)]
@@ -230,6 +233,16 @@ pub struct ParkedIdleCandidate {
     budget_lease: BudgetLease,
 }
 
+/// Result after the sandbox successfully reaches the parked state.
+#[must_use = "parked outcomes must be admitted for reuse or explicitly destroyed"]
+pub(crate) enum IdleParkOutcome {
+    Reusable(ParkedIdleCandidate),
+    NonReusable {
+        candidate: ParkedIdleCandidate,
+        reason: SandboxParkNonReusableReason,
+    },
+}
+
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
 pub(crate) struct IdleParkFailure {
     resources: IdleSandboxResources,
@@ -258,7 +271,7 @@ impl IdleParkRequest {
         Self { parts }
     }
 
-    pub(crate) async fn park_for_idle(self) -> Result<ParkedIdleCandidate, IdleParkFailure> {
+    pub(crate) async fn park_for_idle(self) -> Result<IdleParkOutcome, IdleParkFailure> {
         let IdleParkRequestParts {
             run_id,
             mut sandbox,
@@ -346,15 +359,23 @@ impl IdleParkRequest {
         }
 
         match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
-            Ok(Ok(())) => Ok(ParkedIdleCandidate {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    workspace_promotion,
-                },
-                metadata,
-                budget_lease,
-            }),
+            Ok(Ok(outcome)) => {
+                let candidate = ParkedIdleCandidate {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion,
+                    },
+                    metadata,
+                    budget_lease,
+                };
+                Ok(match outcome {
+                    SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
+                    SandboxParkOutcome::NonReusable(reason) => {
+                        IdleParkOutcome::NonReusable { candidate, reason }
+                    }
+                })
+            }
             Ok(Err(e)) => Err(IdleParkFailure {
                 resources: IdleSandboxResources {
                     sandbox,
@@ -379,6 +400,28 @@ impl IdleParkRequest {
                     reason: "park_panicked",
                     error: "sandbox park panicked".into(),
                 })
+            }
+        }
+    }
+}
+
+impl IdleParkOutcome {
+    pub(crate) fn into_parts(self) -> (ParkedIdleCandidate, Option<SandboxParkNonReusableReason>) {
+        match self {
+            Self::Reusable(candidate) => (candidate, None),
+            Self::NonReusable { candidate, reason } => (candidate, Some(reason)),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expect_reusable(self) -> ParkedIdleCandidate {
+        match self {
+            Self::Reusable(candidate) => candidate,
+            Self::NonReusable { reason, .. } => {
+                panic!(
+                    "expected reusable parked candidate, got {}",
+                    reason.as_str()
+                )
             }
         }
     }
@@ -589,12 +632,12 @@ impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     #[cfg(test)]
     pub(crate) async fn stop_and_destroy(self) -> DestroyOutcome {
-        self.promote_then_stop_and_destroy("idle_destroy")
+        self.finalize_workspace_and_destroy("idle_destroy")
             .await
             .outcome
     }
 
-    pub(crate) async fn promote_then_stop_and_destroy(
+    pub(crate) async fn finalize_workspace_and_destroy(
         self,
         context: &'static str,
     ) -> IdleDestroyResult {
@@ -603,9 +646,9 @@ impl IdleDestroyPayload {
             factory,
             workspace_promotion,
         } = self.resources;
-        let workspace_cache_promoted = match self.workspace_promotion_policy {
+        let prepared_promotion = match self.workspace_promotion_policy {
             WorkspacePromotionPolicy::Promote => {
-                promote_workspace_image_from_parked_sandbox(
+                prepare_workspace_image_from_parked_sandbox(
                     sandbox.as_mut(),
                     workspace_promotion,
                     context,
@@ -614,18 +657,30 @@ impl IdleDestroyPayload {
             }
             WorkspacePromotionPolicy::AbandonUnpublished(reason) => {
                 abandon_unpublished_workspace_promotion(workspace_promotion, reason).await;
-                false
+                None
             }
         };
         let mut uncertain = false;
-        match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => tracing::warn!(error = %e, "failed to stop idle sandbox"),
+        let stopped = match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+            Ok(Ok(())) => true,
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "failed to stop idle sandbox");
+                false
+            }
             Err(_) => {
                 tracing::warn!("idle sandbox stop panicked");
                 uncertain = true;
+                false
             }
-        }
+        };
+        let workspace_cache_promoted = match (prepared_promotion, stopped) {
+            (Some(promotion), true) => promotion.publish().await,
+            (Some(promotion), false) => {
+                promotion.abandon("idle_sandbox_stop_failed").await;
+                false
+            }
+            (None, _) => false,
+        };
         if AssertUnwindSafe(factory.destroy(sandbox))
             .catch_unwind()
             .await
@@ -680,7 +735,7 @@ impl IdleDestroyJob {
             cli_agent_session_id: _,
             profile_name: _,
         } = self;
-        let result = payload.promote_then_stop_and_destroy(context).await;
+        let result = payload.finalize_workspace_and_destroy(context).await;
         RetainedIdleDestroyResult {
             outcome: result.outcome,
             workspace_cache_promoted: result.workspace_cache_promoted,
@@ -878,14 +933,6 @@ impl IdleEntry {
 impl ReservedIdleSandbox {
     pub fn cli_agent_session_id(&self) -> &str {
         self.entry.cli_agent_session_id()
-    }
-
-    pub(crate) fn parked_at(&self) -> Instant {
-        self.entry.parked_at
-    }
-
-    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
-        self.entry.metadata.history_generation_run_id
     }
 
     pub fn validate_workspace_promotion_identity(
@@ -1152,6 +1199,7 @@ impl IdlePool {
                             profile: entry.metadata.profile_name.clone(),
                             history_generation_run_id: entry.metadata.history_generation_run_id,
                         }),
+                        workspace_caches: Vec::new(),
                     })
             })
             .collect();
@@ -1330,7 +1378,7 @@ mod tests {
         .await;
 
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate,
+            Ok(outcome) => outcome.expect_reusable(),
             Err(_) => panic!("park should succeed"),
         };
 
@@ -1450,7 +1498,7 @@ mod tests {
         });
 
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate,
+            Ok(outcome) => outcome.expect_reusable(),
             Err(_) => panic!("park should succeed"),
         };
 
@@ -1468,10 +1516,6 @@ mod tests {
         let reservation = pool
             .reserve_reusable(session_id, profile_name, &None)
             .expect("idle entry should be reserved");
-        assert_eq!(
-            reservation.history_generation_run_id(),
-            Some(history_generation_run_id)
-        );
 
         let IdleUnparkResult::Reused {
             sandbox,
@@ -1624,7 +1668,7 @@ mod tests {
         assert_eq!(pool.len(), 1);
         assert_eq!(pool.status_snapshot().revision, parked_revision);
 
-        let reservation = pool
+        let _reservation = pool
             .reserve_reusable_generation(
                 "session-generation",
                 "vm0/default",
@@ -1632,10 +1676,6 @@ mod tests {
                 held_generation_run_id,
             )
             .expect("the exact generation should reserve");
-        assert_eq!(
-            reservation.history_generation_run_id(),
-            Some(held_generation_run_id)
-        );
         assert_eq!(pool.len(), 0);
     }
 
@@ -1961,6 +2001,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: Some(history_generation_run_id),
                     }),
+                    workspace_caches: Vec::new(),
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
@@ -1969,6 +2010,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: None,
                     }),
+                    workspace_caches: Vec::new(),
                 },
             ],
         );

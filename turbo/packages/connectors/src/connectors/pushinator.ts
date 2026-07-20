@@ -10,6 +10,7 @@ export const pushinator = {
       "api-token": {
         label: "API Token",
         storage: {
+          version: 1,
           secrets: ["PUSHINATOR_TOKEN"],
           variables: [],
         },

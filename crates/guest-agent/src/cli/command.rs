@@ -291,9 +291,6 @@ fn build_codex_command_with_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static SYSTEM_LOG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
@@ -324,7 +321,7 @@ mod tests {
         settings: &str,
         replay_user_messages: bool,
     ) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model: "",
@@ -338,7 +335,7 @@ mod tests {
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         build_claude_command_with_config(
             use_mock,
@@ -360,7 +357,7 @@ mod tests {
     }
 
     fn build_claude_args_for_model_test(model: &str) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model,
@@ -422,7 +419,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_resume_log_omits_resume_id() {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
@@ -469,7 +466,7 @@ mod tests {
     }
 
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(model, "", &[], false, resume_id, "");
         assert!(!args.iter().any(|arg| arg == prompt));
@@ -477,7 +474,7 @@ mod tests {
     }
 
     fn build_codex_fast_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(model, "", &[], true, resume_id, "");
         assert!(!args.iter().any(|arg| arg == prompt));
@@ -490,7 +487,7 @@ mod tests {
         resume_id: &str,
         prompt: &str,
     ) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(model, openai_base_url, &[], false, resume_id, "");
         assert!(!args.iter().any(|arg| arg == prompt));
@@ -502,7 +499,7 @@ mod tests {
         startup_config_overrides: &[String],
         prompt: &str,
     ) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(model, "", startup_config_overrides, false, "", "");
         assert!(!args.iter().any(|arg| arg == prompt));
@@ -515,7 +512,7 @@ mod tests {
         append_system_prompt: &str,
         prompt: &str,
     ) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(model, "", &[], false, resume_id, append_system_prompt);
         assert!(!args.iter().any(|arg| arg == prompt));
@@ -528,7 +525,7 @@ mod tests {
     }
 
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         build_codex_command_with_config(
             use_mock,
@@ -550,7 +547,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_resume_log_omits_resume_id() {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
@@ -631,7 +628,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_prefers_structured_runtime_config_over_openai_base_url() {
-        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let args = build_codex_args(
             "MiniMax-M3",

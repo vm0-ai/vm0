@@ -17,6 +17,7 @@ export const googleMeet = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GOOGLE_MEET_ACCESS_TOKEN", "GOOGLE_MEET_REFRESH_TOKEN"],
           variables: [],
         },

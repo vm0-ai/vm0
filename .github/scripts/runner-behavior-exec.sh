@@ -26,6 +26,8 @@ SUBMIT_PID=""
 DNS_ISOLATION_NS=""
 DNS_ISOLATION_HOST_IF=""
 DNS_ISOLATION_LOCK_FD=""
+SPOOF_NS=""
+SPOOF_IP=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -36,8 +38,68 @@ cleanup_submit_pid() {
   wait "$pid" 2>/dev/null || true
 }
 
+cleanup_spoof_address() {
+  if [ -n "$SPOOF_NS" ] && [ -n "$SPOOF_IP" ]; then
+    sudo ip -n "$SPOOF_NS" address delete "${SPOOF_IP}/32" \
+      dev veth0 2>/dev/null || true
+  fi
+  SPOOF_NS=""
+  SPOOF_IP=""
+}
+
+rule_values() {
+  local option=$1
+  awk -v option="$option" '
+    {
+      for (i = 1; i < NF; i++) {
+        if ($i == option) {
+          value = $(i + 1)
+          gsub(/^"|"$/, "", value)
+          print value
+        }
+      }
+    }
+  '
+}
+
+rule_value() {
+  local rule=$1 option=$2
+  printf '%s\n' "$rule" | rule_values "$option" | head -n 1
+}
+
+rule_packet_count() {
+  local rule=$1
+  printf '%s\n' "$rule" | awk '
+    $1 ~ /^\[[0-9]+:[0-9]+\]$/ {
+      gsub(/^\[/, "", $1)
+      split($1, counter, ":")
+      print counter[1]
+      exit
+    }
+  '
+}
+
+send_udp_dns_query() {
+  local namespace=$1 source_ip=$2
+  sudo ip netns exec "$namespace" python3 - "$source_ip" <<'PY'
+import socket
+import sys
+
+query = bytes.fromhex(
+    "123401000001000000000000"
+    "0c736f757263652d6775617264"
+    "07696e76616c69640000010001"
+)
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((sys.argv[1], 0))
+sock.sendto(query, ("192.0.2.1", 53))
+sock.close()
+PY
+}
+
 cleanup() {
   echo "--- Cleanup ---"
+  cleanup_spoof_address
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   cleanup_submit_pid "$SUBMIT_PID"
   if [ -n "$DNS_ISOLATION_NS" ]; then
@@ -80,6 +142,248 @@ done
 [ "$DNS_READINESS_LOGGED" = true ] \
   || fail "runner did not activate namespace DNS readiness"
 
+# Inspect the rules while the prewarmed namespace pool is fully idle. Matching
+# by this runner's unique proxy and DNS ports avoids parallel CI runners on the
+# host, and running before local submit avoids holding a Firecracker VM during
+# the source-identity probe.
+PROXY_PORT=""
+DNS_PORT=""
+for _ in $(seq 1 30); do
+  if sudo jq -e '.proxy_port != null and .dns_port != null' \
+    "$RUNNER_DIR/status.json" >/dev/null 2>&1; then
+    PROXY_PORT=$(sudo jq -r '.proxy_port' "$RUNNER_DIR/status.json")
+    DNS_PORT=$(sudo jq -r '.dns_port' "$RUNNER_DIR/status.json")
+    break
+  fi
+  sleep 1
+done
+[ -n "$PROXY_PORT" ] || fail "proxy port missing from runner status"
+[ -n "$DNS_PORT" ] || fail "DNS port missing from runner status"
+
+DNS_LISTENERS=$(sudo ss -H -luntp \
+  | grep -E ":${DNS_PORT}[[:space:]]" || true)
+DNS_LISTENER_COUNT=$(printf '%s\n' "$DNS_LISTENERS" \
+  | grep -c . || true)
+[ "$DNS_LISTENER_COUNT" -ge 2 ] \
+  || fail "expected UDP/TCP dnsmasq wildcard listeners, found $DNS_LISTENER_COUNT"
+[ "$DNS_LISTENER_COUNT" -le 4 ] \
+  || fail "dnsmasq created per-address listeners: $DNS_LISTENERS"
+if printf '%s\n' "$DNS_LISTENERS" \
+  | grep -E '10\.200\.|%vm0-ve-' >/dev/null; then
+  fail "dnsmasq listener set contains VM interface addresses: $DNS_LISTENERS"
+fi
+
+NAT_RULES=$(sudo iptables-save -t nat) || fail "failed to read nat rules"
+FILTER_RULES=$(sudo iptables-save -t filter) || fail "failed to read filter rules"
+RAW_RULES=$(sudo iptables-save -t raw) || fail "failed to read raw rules"
+
+PROXY_RULES=$(printf '%s\n' "$NAT_RULES" \
+  | grep -E -- "--to-ports? ${PROXY_PORT}([[:space:]]|$)" || true)
+[ -n "$PROXY_RULES" ] || fail "generic TCP proxy rules not found"
+if printf '%s\n' "$PROXY_RULES" \
+  | grep -Fv -- "-m multiport ! --dports 53,853" >/dev/null; then
+  fail "generic TCP proxy rule does not exclude ports 53 and 853"
+fi
+
+DNS_TCP_RULES=$(printf '%s\n' "$NAT_RULES" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | grep -F -- "-p tcp" \
+  | grep -F -- "--dport 53" || true)
+[ -n "$DNS_TCP_RULES" ] || fail "TCP/53 dnsmasq redirect rule not found"
+
+printf '%s\n' "$FILTER_RULES" \
+  | grep -E -- "-A FORWARD .* -p tcp .*--dport 53 .* -j DROP" >/dev/null \
+  || fail "TCP/53 FORWARD drop rule not found"
+printf '%s\n' "$FILTER_RULES" \
+  | grep -E -- "-A FORWARD .* -p tcp .*--dport 853 .* -j DROP" >/dev/null \
+  || fail "TCP/853 FORWARD drop rule not found"
+
+# Verify that source IP is an identity only after the packet arrives on its
+# owning host veth. Then inject one namespace's peer IP through another veth
+# and prove the raw guard rejects it before the victim DNS rule can attribute it.
+mapfile -t RUNNER_NAMESPACES < <(
+  printf '%s\n' "$PROXY_RULES" \
+    | rule_values --comment \
+    | sort -u
+)
+RUNNER_NAMESPACE_COUNT=${#RUNNER_NAMESPACES[@]}
+[ "$RUNNER_NAMESPACE_COUNT" -ge 2 ] \
+  || fail "expected at least two runner namespaces, found $RUNNER_NAMESPACE_COUNT"
+
+ATTACKER_NS=${RUNNER_NAMESPACES[0]}
+VICTIM_NS=${RUNNER_NAMESPACES[1]}
+for namespace in "$ATTACKER_NS" "$VICTIM_NS"; do
+  NAMESPACE_PIDS=$(sudo ip netns pids "$namespace") \
+    || fail "failed to inspect namespace processes: $namespace"
+  [ -z "$NAMESPACE_PIDS" ] \
+    || fail "pre-submit namespace unexpectedly active: $namespace"
+done
+RUNNER_POOL_PREFIX="${ATTACKER_NS%-*}-"
+ATTACKER_IF=${ATTACKER_NS/vm0-ns-/vm0-ve-}
+VICTIM_IF=${VICTIM_NS/vm0-ns-/vm0-ve-}
+
+ATTACKER_PROXY_RULE=$(printf '%s\n' "$PROXY_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | head -n 1 || true)
+VICTIM_PROXY_RULE=$(printf '%s\n' "$PROXY_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_PROXY_RULE" ] || fail "attacker proxy rule not found"
+[ -n "$VICTIM_PROXY_RULE" ] || fail "victim proxy rule not found"
+
+ATTACKER_CIDR=$(rule_value "$ATTACKER_PROXY_RULE" -s)
+VICTIM_CIDR=$(rule_value "$VICTIM_PROXY_RULE" -s)
+[ "${ATTACKER_CIDR#*/}" = 32 ] \
+  || fail "attacker proxy source is not an exact /32: $ATTACKER_CIDR"
+[ "${VICTIM_CIDR#*/}" = 32 ] \
+  || fail "victim proxy source is not an exact /32: $VICTIM_CIDR"
+[ "$(rule_value "$ATTACKER_PROXY_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker proxy rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$VICTIM_PROXY_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim proxy rule is not bound to $VICTIM_IF"
+ATTACKER_PEER=${ATTACKER_CIDR%/32}
+VICTIM_PEER=${VICTIM_CIDR%/32}
+
+ATTACKER_GUARD_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+VICTIM_GUARD_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_GUARD_RULE" ] || fail "attacker source guard not found"
+[ -n "$VICTIM_GUARD_RULE" ] || fail "victim source guard not found"
+[ "$(rule_value "$ATTACKER_GUARD_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker source guard is not bound to $ATTACKER_IF"
+[ "$(rule_value "$VICTIM_GUARD_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim source guard is not bound to $VICTIM_IF"
+printf '%s\n' "$ATTACKER_GUARD_RULE" \
+  | grep -F -- "! -s ${ATTACKER_CIDR}" >/dev/null \
+  || fail "attacker source guard does not reject non-peer sources"
+printf '%s\n' "$VICTIM_GUARD_RULE" \
+  | grep -F -- "! -s ${VICTIM_CIDR}" >/dev/null \
+  || fail "victim source guard does not reject non-peer sources"
+
+ATTACKER_MASQUERADE_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A POSTROUTING" \
+  | grep -F -- "-j MASQUERADE" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_MASQUERADE_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "host masquerade rule does not use the exact attacker peer"
+
+ATTACKER_OUTBOUND_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A FORWARD" \
+  | grep -F -- "-i ${ATTACKER_IF}" \
+  | grep -F -- "-j ACCEPT" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_OUTBOUND_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "outbound forwarding rule does not use the exact attacker peer"
+
+ATTACKER_RETURN_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A FORWARD" \
+  | grep -F -- "-o ${ATTACKER_IF}" \
+  | grep -F -- "-j ACCEPT" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_RETURN_RULE" -d)" = "$ATTACKER_CIDR" ] \
+  || fail "return forwarding rule does not use the exact attacker peer"
+
+ATTACKER_LOG_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "VM0:${ATTACKER_PEER}:" \
+  | grep -F -- "-j LOG" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_LOG_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "non-TCP log rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_LOG_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "non-TCP log rule does not use the exact attacker peer"
+
+ATTACKER_DNS_DROP_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "DNS drop rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "DNS drop rule does not use the exact attacker peer"
+
+VICTIM_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+[ "$(rule_value "$VICTIM_DNS_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim DNS redirect is not bound to $VICTIM_IF"
+[ "$(rule_value "$VICTIM_DNS_RULE" -s)" = "$VICTIM_CIDR" ] \
+  || fail "victim DNS redirect does not use the exact peer"
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_BEFORE=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ -n "$ATTACKER_GUARD_BEFORE" ] || fail "source guard counter missing"
+send_udp_dns_query "$ATTACKER_NS" "$ATTACKER_PEER"
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ "$ATTACKER_GUARD_AFTER_CONTROL" -eq "$ATTACKER_GUARD_BEFORE" ] \
+  || fail "source guard rejected the namespace's assigned peer"
+
+VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+VICTIM_DNS_BEFORE=$(rule_packet_count "$VICTIM_DNS_COUNTED")
+[ -n "$VICTIM_DNS_BEFORE" ] || fail "victim DNS redirect counter missing"
+
+SPOOF_NS=$ATTACKER_NS
+SPOOF_IP=$VICTIM_PEER
+sudo ip -n "$SPOOF_NS" address add "${SPOOF_IP}/32" dev veth0 \
+  || fail "failed to add forged victim source to attacker namespace"
+send_udp_dns_query "$SPOOF_NS" "$SPOOF_IP"
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_SPOOF=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+VICTIM_DNS_AFTER=$(rule_packet_count "$VICTIM_DNS_COUNTED")
+cleanup_spoof_address
+
+[ "$ATTACKER_GUARD_AFTER_SPOOF" -gt "$ATTACKER_GUARD_AFTER_CONTROL" ] \
+  || fail "source guard did not reject the forged victim source"
+[ "$VICTIM_DNS_AFTER" -eq "$VICTIM_DNS_BEFORE" ] \
+  || fail "forged source reached the victim DNS attribution rule"
+echo "PASS: source identity guard"
+
+DNS_FILTER_COMMENT=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -E -- "-A INPUT .*--dport ${DNS_PORT} .*--comment vm0-ns-[0-9a-f]{2}-dns.*-j REJECT" \
+  | sed -nE 's/.*--comment "?([^ " ]+)"?.*/\1/p' \
+  | head -n 1)
+[ -n "$DNS_FILTER_COMMENT" ] || fail "DNS INPUT filter comment missing"
+
 # Submit a long-running job in background (keeps sandbox alive during tests)
 echo "--- Submitting long-running job ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
@@ -117,19 +421,87 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo hello-from-
 echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
 echo "PASS: basic exec"
 
-# Test 3: exit code propagation
+# Test 3: one-shot exec owns detached descendants, including through the
+# production non-sudo `su` boundary. The long-running job above can own another
+# valid leaf concurrently, so record and verify this exec's exact leaf.
+echo "--- Test: one-shot process containment ---"
+ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
+set -eu
+identity=/tmp/vm0-one-shot-containment.identity
+group_file=/tmp/vm0-one-shot-containment.group
+rm -f "$identity" "$group_file"
+relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
+own_group=${relative##*/}
+case "$own_group" in
+  exec-*) ;;
+  *) echo "unexpected one-shot cgroup: $relative" >&2; exit 1 ;;
+esac
+printf '%s\n' "$own_group" > "$group_file"
+setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-one-shot-containment.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >/dev/null 2>&1 &
+for _ in $(seq 1 100); do
+  [ -s "$identity" ] && break
+  sleep 0.01
+done
+test -s "$identity"
+SCRIPT
+)
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$ONE_SHOT_COMMAND" \
+  || fail "one-shot descendant setup failed"
+VERIFY_ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
+set -eu
+identity=/tmp/vm0-one-shot-containment.identity
+group_file=/tmp/vm0-one-shot-containment.group
+read -r pid start_time < "$identity"
+if current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat" 2>/dev/null); then
+  current_state=${current_identity%% *}
+  current_start=${current_identity#* }
+  case "$current_state" in
+    Z|X|x) ;;
+    *)
+      [ "$current_start" != "$start_time" ] || {
+        echo "one-shot descendant is still running: pid=$pid" >&2
+        exit 1
+      }
+      ;;
+  esac
+fi
+base=/sys/fs/cgroup/vm0-exec
+relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
+own_group=${relative##*/}
+test -n "$own_group"
+test -d "$base/$own_group"
+old_group=$(cat "$group_file")
+case "$old_group" in
+  exec-*) ;;
+  *) echo "unexpected recorded one-shot cgroup: $old_group" >&2; exit 1 ;;
+esac
+[ "$old_group" != "$own_group" ] || {
+  echo "one-shot cgroup was reused: $old_group" >&2
+  exit 1
+}
+[ ! -e "$base/$old_group" ] || {
+  echo "one-shot cgroup leaf survived cleanup: $old_group" >&2
+  exit 1
+}
+SCRIPT
+)
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$VERIFY_ONE_SHOT_COMMAND" \
+  || fail "one-shot descendant or cgroup leaf survived cleanup"
+echo "PASS: one-shot process containment"
+
+# Test 4: exit code propagation
 echo "--- Test: exit code propagation ---"
 sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"
 echo "PASS: exit code propagation"
 
-# Test 4: prefix matching
+# Test 5: prefix matching
 echo "--- Test: prefix matching ---"
 PREFIX=$(echo "$SANDBOX_ID" | cut -c1-8)
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$PREFIX" -- hostname)
 [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
 echo "PASS: prefix matching"
 
-# Test 5: argv boundary preservation — regression guard for #9019.
+# Test 6: argv boundary preservation — regression guard for #9019.
 # NOTE: each assertion relies on the surrounding bash (this
 # heredoc, running on the metal runner) to tokenise quoted
 # arguments and pass them to runner as separate argv entries.
@@ -173,7 +545,7 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- echo "roo
 [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
 echo "PASS: argv boundary preservation"
 
-# Test 6: verify pre-installed language runtimes and databases
+# Test 7: verify pre-installed language runtimes and databases
 echo "--- Test: runtime availability ---"
 for cmd in \
   "node --version" \
@@ -229,14 +601,15 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
   "$pg_bin/pg_ctl" -D /tmp/pgdata -l /tmp/pgdata/log -o "-c listen_addresses=localhost" -w -t 30 start
   pg_isready -h localhost
   [ "$(psql -h localhost -d postgres -Atc "select 1")" = "1" ]
+  psql -h localhost -d postgres -v ON_ERROR_STOP=1 -c "CREATE EXTENSION vector"
   "$pg_bin/pg_ctl" -D /tmp/pgdata stop
   pg_started=0
 ' \
-  || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
-echo "  PostgreSQL start/stop: ok"
+  || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL/pgvector smoke test"; }
+echo "  PostgreSQL/pgvector smoke test: ok"
 echo "PASS: runtime availability"
 
-# Test 7: verify /etc/environment is loaded for both user and root
+# Test 8: verify /etc/environment is loaded for both user and root
 # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
 echo "--- Test: environment variables ---"
 EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -267,7 +640,7 @@ check_env "user" ""
 check_env "root" "--sudo"
 echo "PASS: environment variables"
 
-# Test 8: verify HTTPS works through proxy for each runtime
+# Test 9: verify HTTPS works through proxy for each runtime
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.vm0.ai"
@@ -305,7 +678,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf 
 echo "  HTTPS go: ok"
 echo "PASS: HTTPS through proxy"
 
-# Test 9: verify DNS resolution works inside sandbox
+# Test 10: verify DNS resolution works inside sandbox
 # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
 echo "--- Test: DNS resolution ---"
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \
@@ -327,55 +700,6 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "$TCP
 [ "$OUTPUT" = "TCP_DNS_OK=true" ] || fail "unexpected TCP DNS output: $OUTPUT"
 echo "  tcp: $OUTPUT"
 
-# Inspect the actual rules installed for this runner. Matching by its
-# unique proxy and DNS ports avoids parallel CI runners on the host.
-PROXY_PORT=$(sudo jq -r '.proxy_port // empty' "$RUNNER_DIR/status.json")
-DNS_PORT=$(sudo jq -r '.dns_port // empty' "$RUNNER_DIR/status.json")
-[ -n "$PROXY_PORT" ] || fail "proxy port missing from runner status"
-[ -n "$DNS_PORT" ] || fail "DNS port missing from runner status"
-
-DNS_LISTENERS=$(sudo ss -H -luntp \
-  | grep -E ":${DNS_PORT}[[:space:]]" || true)
-DNS_LISTENER_COUNT=$(printf '%s\n' "$DNS_LISTENERS" \
-  | grep -c . || true)
-[ "$DNS_LISTENER_COUNT" -ge 2 ] \
-  || fail "expected UDP/TCP dnsmasq wildcard listeners, found $DNS_LISTENER_COUNT"
-[ "$DNS_LISTENER_COUNT" -le 4 ] \
-  || fail "dnsmasq created per-address listeners: $DNS_LISTENERS"
-if printf '%s\n' "$DNS_LISTENERS" \
-  | grep -E '10\.200\.|%vm0-ve-' >/dev/null; then
-  fail "dnsmasq listener set contains VM interface addresses: $DNS_LISTENERS"
-fi
-
-NAT_RULES=$(sudo iptables-save -t nat) || fail "failed to read nat rules"
-FILTER_RULES=$(sudo iptables-save -t filter) || fail "failed to read filter rules"
-
-PROXY_RULES=$(printf '%s\n' "$NAT_RULES" \
-  | grep -E -- "--to-ports? ${PROXY_PORT}([[:space:]]|$)" || true)
-[ -n "$PROXY_RULES" ] || fail "generic TCP proxy rules not found"
-if printf '%s\n' "$PROXY_RULES" \
-  | grep -Fv -- "-m multiport ! --dports 53,853" >/dev/null; then
-  fail "generic TCP proxy rule does not exclude ports 53 and 853"
-fi
-
-DNS_TCP_RULES=$(printf '%s\n' "$NAT_RULES" \
-  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
-  | grep -F -- "-p tcp" \
-  | grep -F -- "--dport 53" || true)
-[ -n "$DNS_TCP_RULES" ] || fail "TCP/53 dnsmasq redirect rule not found"
-
-printf '%s\n' "$FILTER_RULES" \
-  | grep -E -- "-A FORWARD .* -p tcp .*--dport 53 .* -j DROP" >/dev/null \
-  || fail "TCP/53 FORWARD drop rule not found"
-printf '%s\n' "$FILTER_RULES" \
-  | grep -E -- "-A FORWARD .* -p tcp .*--dport 853 .* -j DROP" >/dev/null \
-  || fail "TCP/853 FORWARD drop rule not found"
-
-DNS_FILTER_COMMENT=$(printf '%s\n' "$FILTER_RULES" \
-  | grep -E -- "-A INPUT .*--dport ${DNS_PORT} .*--comment vm0-ns-[0-9a-f]{2}-dns.*-j REJECT" \
-  | sed -nE 's/.*--comment "?([^ " ]+)"?.*/\1/p' \
-  | head -n 1)
-[ -n "$DNS_FILTER_COMMENT" ] || fail "DNS INPUT filter comment missing"
 
 # Default dnsmasq wildcard sockets must still reject requests that
 # arrive through a non-runner interface before a TCP handshake or
@@ -486,6 +810,12 @@ if sudo ip6tables-save -t filter \
   | grep -F -- "--comment ${DNS_FILTER_COMMENT}" >/dev/null; then
   fail "IPv6 DNS INPUT filter leaked after runner stop"
 fi
+RAW_RULES_AFTER_STOP=$(sudo iptables-save -t raw) \
+  || fail "failed to read raw rules after runner stop"
+LEAKED_SOURCE_GUARDS=$(printf '%s\n' "$RAW_RULES_AFTER_STOP" \
+  | grep -F -- "$RUNNER_POOL_PREFIX" || true)
+[ -z "$LEAKED_SOURCE_GUARDS" ] \
+  || fail "IPv4 source guards leaked after runner stop: $LEAKED_SOURCE_GUARDS"
 cleanup_submit_pid "$SUBMIT_PID"
 SUBMIT_PID=""
 trap - EXIT

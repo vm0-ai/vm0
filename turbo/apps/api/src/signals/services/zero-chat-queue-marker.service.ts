@@ -3,6 +3,10 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import {
+  deleteChatMessage,
+  insertChatMessage,
+} from "./zero-chat-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -16,10 +20,6 @@ export interface QueueMarkerRevokeNotification {
   readonly userId: string;
 }
 
-interface LockedRunStatusRow extends Record<string, unknown> {
-  readonly status: string;
-}
-
 export async function appendQueuedRunAssistantMarker(
   tx: DbTransaction,
   args: {
@@ -29,13 +29,11 @@ export async function appendQueuedRunAssistantMarker(
     readonly createdAfter?: Date;
   },
 ): Promise<void> {
-  const runRows = await tx.execute<LockedRunStatusRow>(sql`
-    SELECT ${agentRuns.status} AS "status"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${args.runId}
-    FOR UPDATE
-  `);
-  const run = runRows.rows[0];
+  const [run] = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, args.runId))
+    .for("update");
   if (run?.status !== "queued") {
     return;
   }
@@ -55,7 +53,7 @@ export async function appendQueuedRunAssistantMarker(
     return;
   }
 
-  await tx.insert(chatMessages).values({
+  await insertChatMessage(tx, {
     chatThreadId: args.chatThreadId,
     role: "assistant",
     content: QUEUED_RUN_ASSISTANT_MESSAGE,
@@ -97,19 +95,13 @@ export async function revokeQueuedRunAssistantMarkers(
 
   let notifiedThreadId: string | null = null;
   for (const marker of markers) {
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: marker.chatThreadId,
-        role: "assistant",
-        content: null,
-        runId: args.runId,
-        runGroupId: marker.runGroupId ?? undefined,
-        revokesMessageId: marker.id,
-        runEventId: QUEUED_RUN_MARKER_REVOKE_EVENT_ID,
-      })
-      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
-      .returning({ id: chatMessages.id });
+    const inserted = await deleteChatMessage(tx, marker.id, {
+      chatThreadId: marker.chatThreadId,
+      role: "assistant",
+      runId: args.runId,
+      runGroupId: marker.runGroupId ?? undefined,
+      runEventId: QUEUED_RUN_MARKER_REVOKE_EVENT_ID,
+    });
     if (inserted) {
       notifiedThreadId = marker.chatThreadId;
     }

@@ -431,13 +431,19 @@ pub(super) async fn is_unit_enabled_bounded(
     unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
 }
 
-/// Get the main PID of a systemd unit.
-pub(super) async fn get_service_pid(unit: &RunnerServiceUnit) -> RunnerResult<Option<u32>> {
+/// Check whether systemd currently reports a main process for a unit.
+pub(super) async fn has_service_main_process(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
     let properties = ["LoadState", "MainPID"];
     let output = run_systemctl_show(svc, &properties).await?;
     let values = parse_systemctl_show_output(svc, &properties, &output)?;
-    service_pid_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
+    service_main_process_present_from_systemctl_show(
+        svc,
+        &properties,
+        &output.status,
+        &values,
+        &output.stderr,
+    )
 }
 
 /// Get the effective systemd Restart policy of a service unit.
@@ -652,13 +658,13 @@ fn service_unit_state_from_systemctl_show(
     })
 }
 
-fn service_pid_from_systemctl_show(
+fn service_main_process_present_from_systemctl_show(
     svc: &str,
     properties: &[&str],
     status: &ExitStatus,
     values: &BTreeMap<String, String>,
     stderr: &[u8],
-) -> RunnerResult<Option<u32>> {
+) -> RunnerResult<bool> {
     let load_state = required_systemctl_property(svc, values, "LoadState")?;
     let pid_str = required_systemctl_property(svc, values, "MainPID")?;
     let pid = match parse_main_pid(svc, pid_str) {
@@ -670,7 +676,7 @@ fn service_pid_from_systemctl_show(
     };
     let missing_unit = load_state == "not-found" && pid.is_none();
     ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
-    Ok(pid)
+    Ok(pid.is_some())
 }
 
 fn parse_main_pid(svc: &str, value: &str) -> RunnerResult<Option<u32>> {
@@ -1512,7 +1518,7 @@ mod tests {
     }
 
     #[test]
-    fn service_pid_from_systemctl_show_returns_pid_on_success() {
+    fn service_main_process_present_from_systemctl_show_returns_true_on_success() {
         use std::os::unix::process::ExitStatusExt;
 
         let properties = ["LoadState", "MainPID"];
@@ -1524,21 +1530,20 @@ mod tests {
         .unwrap();
         let status = ExitStatus::from_raw(0);
 
-        assert_eq!(
-            service_pid_from_systemctl_show(
+        assert!(
+            service_main_process_present_from_systemctl_show(
                 "vm0-runner-test.service",
                 &properties,
                 &status,
                 &values,
                 b"",
             )
-            .unwrap(),
-            Some(123)
+            .unwrap()
         );
     }
 
     #[test]
-    fn service_pid_from_systemctl_show_allows_not_found_zero_on_failed_status() {
+    fn service_main_process_present_from_systemctl_show_allows_not_found_zero_on_failed_status() {
         use std::os::unix::process::ExitStatusExt;
 
         let properties = ["LoadState", "MainPID"];
@@ -1550,16 +1555,15 @@ mod tests {
         .unwrap();
         let status = ExitStatus::from_raw(0x100);
 
-        assert_eq!(
-            service_pid_from_systemctl_show(
+        assert!(
+            !service_main_process_present_from_systemctl_show(
                 "vm0-runner-test.service",
                 &properties,
                 &status,
                 &values,
                 b"Unit not found\n",
             )
-            .unwrap(),
-            None
+            .unwrap()
         );
     }
 
@@ -1642,7 +1646,7 @@ mod tests {
     }
 
     #[test]
-    fn service_pid_from_systemctl_show_rejects_nonzero_loaded_zero() {
+    fn service_main_process_present_from_systemctl_show_rejects_nonzero_loaded_zero() {
         use std::os::unix::process::ExitStatusExt;
 
         let properties = ["LoadState", "MainPID"];
@@ -1653,7 +1657,7 @@ mod tests {
         )
         .unwrap();
         let status = ExitStatus::from_raw(0x100);
-        let err = service_pid_from_systemctl_show(
+        let err = service_main_process_present_from_systemctl_show(
             "vm0-runner-test.service",
             &properties,
             &status,
@@ -1667,7 +1671,7 @@ mod tests {
     }
 
     #[test]
-    fn service_pid_from_systemctl_show_rejects_malformed_pid_on_failed_status() {
+    fn service_main_process_present_from_systemctl_show_rejects_malformed_pid_on_failed_status() {
         use std::os::unix::process::ExitStatusExt;
 
         let properties = ["LoadState", "MainPID"];
@@ -1678,7 +1682,7 @@ mod tests {
         )
         .unwrap();
         let status = ExitStatus::from_raw(0x100);
-        let err = service_pid_from_systemctl_show(
+        let err = service_main_process_present_from_systemctl_show(
             "vm0-runner-test.service",
             &properties,
             &status,

@@ -10,21 +10,29 @@ import {
   connectors$,
   type ConnectorCatalogDisplayMetadata,
 } from "../external/connectors.ts";
-import {
-  justConnectedTypes$,
-  setSelectedConnectorType$,
-} from "../zero-page/settings/connectors.ts";
+import { setSelectedConnectorType$ } from "../zero-page/settings/connectors.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
+import {
+  chatActionCallbackFromUrl,
+  runChatActionCallback$,
+  type ChatActionCallback,
+} from "./action-callback.ts";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
   connectorRef: ConnectorCatalogRef;
   agentId: string;
   originalUrl: string;
+  callbackPrompt: ChatActionCallback["callbackPrompt"];
+  threadId: ChatActionCallback["threadId"];
 }
 
-export interface ConnectorActionSignals {
+export interface ConnectorSignals extends ConnectorActionDescriptor {
   displayMetadata$: Computed<Promise<ConnectorCatalogDisplayMetadata | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
@@ -33,11 +41,10 @@ export interface ConnectorActionSignals {
   activate$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export type ConnectorActionBlock = ConnectorActionDescriptor &
-  ConnectorActionSignals & {
-    type: "connector-action";
-    id: string;
-  };
+export interface ConnectorCardSignalsRegistry {
+  register(descriptor: ConnectorActionDescriptor): ConnectorSignals;
+  resolve(resourceKey: string): ConnectorSignals;
+}
 
 export interface CustomConnectorActionDescriptor {
   displayName: string;
@@ -45,16 +52,14 @@ export interface CustomConnectorActionDescriptor {
   originalUrl: string;
 }
 
-export type CustomConnectorActionBlock = CustomConnectorActionDescriptor & {
-  type: "custom-connector-action";
-  id: string;
-};
+export type CustomConnectorSignals = CustomConnectorActionDescriptor;
 
-type ActiveChatConnectorAction = ConnectorActionDescriptor & {
-  markComplete$: Command<void, []>;
-};
+export interface CustomConnectorCardSignalsRegistry {
+  register(descriptor: CustomConnectorActionDescriptor): CustomConnectorSignals;
+  resolve(resourceKey: string): CustomConnectorSignals;
+}
 
-const activeChatConnectorActionState$ = state<ActiveChatConnectorAction | null>(
+const activeChatConnectorActionState$ = state<ConnectorActionDescriptor | null>(
   null,
 );
 
@@ -65,15 +70,6 @@ export const activeChatConnectorAction$ = computed((get) => {
 export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(activeChatConnectorActionState$, null);
   set(setSelectedConnectorType$, null);
-});
-
-export const completeChatConnectorActionConnect$ = command(({ get, set }) => {
-  const active = get(activeChatConnectorActionState$);
-  if (!active) {
-    return;
-  }
-  set(active.markComplete$);
-  set(closeChatConnectorActionConnectDialog$);
 });
 
 const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
@@ -103,6 +99,7 @@ export function parseConnectorAuthorizeUrl(
     connectorRef: parsedConnectorRef.data,
     agentId,
     originalUrl: value,
+    ...chatActionCallbackFromUrl(url),
   };
 }
 
@@ -135,29 +132,15 @@ export function parseCustomConnectorProposalUrl(
   };
 }
 
-export function createCustomConnectorActionBlock(
-  id: string,
+export function createCustomConnectorSignals(
   descriptor: CustomConnectorActionDescriptor,
-): CustomConnectorActionBlock {
-  return {
-    type: "custom-connector-action",
-    id,
-    ...descriptor,
-  };
+): CustomConnectorSignals {
+  return descriptor;
 }
 
-export function createConnectorActionBlock(
-  id: string,
+export function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
-): ConnectorActionBlock {
-  const connectedOverride$ = state(false);
-  const authorizedOverride$ = state(false);
-
-  const markComplete$ = command(({ set }) => {
-    set(connectedOverride$, true);
-    set(authorizedOverride$, true);
-  });
-
+): ConnectorSignals {
   const displayMetadata$ = computed(async (get) => {
     const metadataByRef = await get(connectorCatalogDisplayMetadataByRef$);
     return metadataByRef.get(descriptor.connectorRef) ?? null;
@@ -169,20 +152,11 @@ export function createConnectorActionBlock(
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
-    if (
-      get(connectedOverride$) ||
-      get(justConnectedTypes$).has(descriptor.connectorRef)
-    ) {
-      return true;
-    }
     const statusByRef = await get(connectorCatalogStatusByRef$);
     return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {
-    if (get(authorizedOverride$)) {
-      return true;
-    }
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
@@ -220,23 +194,27 @@ export function createConnectorActionBlock(
         descriptor.agentId,
         signal,
       );
-      signal.throwIfAborted();
-      set(markComplete$);
+      if (descriptor.callbackPrompt && descriptor.threadId) {
+        await set(
+          runChatActionCallback$,
+          {
+            threadId: descriptor.threadId,
+            agentId: descriptor.agentId,
+            callbackPrompt: descriptor.callbackPrompt,
+          },
+          signal,
+        );
+      }
       return;
     }
 
     await get(connectors$);
     signal.throwIfAborted();
-    set(activeChatConnectorActionState$, {
-      ...descriptor,
-      markComplete$,
-    });
+    set(activeChatConnectorActionState$, descriptor);
     set(setSelectedConnectorType$, descriptor.connectorRef);
   });
 
   return {
-    type: "connector-action",
-    id,
     ...descriptor,
     displayMetadata$,
     available$,
@@ -244,5 +222,41 @@ export function createConnectorActionBlock(
     authorized$,
     complete$,
     activate$,
+  };
+}
+
+export function createConnectorCardSignalsRegistry(): ConnectorCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, ConnectorSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.originalUrl,
+        () => {
+          return createConnectorSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
+  };
+}
+
+export function createCustomConnectorCardSignalsRegistry(): CustomConnectorCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, CustomConnectorSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.originalUrl,
+        () => {
+          return createCustomConnectorSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
   };
 }

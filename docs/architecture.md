@@ -130,6 +130,26 @@ The orchestration layer coordinates job execution between web API and runners.
 - Official runners: HMAC signature using `OFFICIAL_RUNNER_SECRET`
 - User runners: JWT bearer token with userId claim
 
+#### Per-Thread Chat Scheduling
+
+A chat thread runs at most one run at a time. Queued work lives in
+`chat_message_queue` with two item types: `user_message` (a chat message
+waiting for its run) and `workflow_event` (a fired workflow automation event
+carrying its encrypted payload). Admission and consumption serialize on a
+per-thread Postgres advisory lock and pop in `ORDER BY created_at, id` order,
+with user messages always draining before workflow events.
+
+All scheduling flows converge on a single drain entry
+(`drainChatThreadQueueForThread$` in
+`turbo/apps/api/src/signals/services/chat-thread-queue-drain.service.ts`):
+terminal run callbacks, run cancellation, queue resume, and a cron sweep for
+threads missed by callbacks. A run-creation failure for a dequeued workflow
+event restores the event at its original queue position and pauses the
+thread's queue (`chat_threads.queue_paused_at` / `pause_reason`); pause
+freezes consumption while intake continues. Schedule ticks coalesce to at
+most one pending event per automation. The drain entry is the designated
+mounting point for a future unified per-thread rate limiter.
+
 ---
 
 ## Infrastructure
@@ -249,10 +269,14 @@ profiles:
 - Guest fixed IP: `192.168.241.2` (same across VMs, isolated by namespace)
 - NAT/MASQUERADE: Guest traffic routed through namespace to external network
 
-**HTTP Proxy**: mitmproxy (dynamically allocated port)
+**Transparent TCP Proxy**: mitmproxy (dynamically allocated port)
 
-- Intercepts all HTTP/HTTPS traffic
-- Logs requests/responses to per-run JSONL files
+- Redirects outbound TCP through mitmproxy
+- Intercepts HTTP/HTTPS; non-HTTP TCP uses raw TCP passthrough
+- When DNS proxying is enabled, UDP/TCP 53 is redirected to dnsmasq and TCP 853
+  is blocked; TCP 53 and 853 are excluded from the general mitmproxy redirect
+- Logs HTTP requests/responses and raw TCP connection metadata to per-run JSONL
+  files
 - CA certificate injected into VM trust store
 - Proxy registry: `{base_dir}/proxy-registry.json` (flock-based coordination)
 

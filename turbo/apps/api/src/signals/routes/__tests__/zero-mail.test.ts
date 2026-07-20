@@ -1,5 +1,12 @@
 import { Buffer } from "node:buffer";
 
+import {
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -7,6 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -16,6 +24,7 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -23,8 +32,171 @@ const chat = createChatFilesBddApi(context);
 const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
 const mocks = createZeroRouteMocks(context);
-const GMAIL_SEND_URL =
-  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GMAIL_DRAFT_ID = "r-test-draft";
+const GMAIL_THREAD_ID = "gmail-thread-id";
+const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
+const GMAIL_SENT_MESSAGE_ID = "gmail-sent-message-id";
+
+function encodedBody(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function gmailPayload() {
+  return {
+    mimeType: "multipart/mixed",
+    filename: "",
+    headers: [
+      { name: "From", value: "Sender <sender@example.com>" },
+      { name: "To", value: "recipient@example.com" },
+      { name: "Cc", value: "copy@example.com" },
+      { name: "Subject", value: "Attachment review" },
+    ],
+    body: { size: 0 },
+    parts: [
+      {
+        mimeType: "text/plain",
+        filename: "",
+        headers: [],
+        body: { size: 9, data: encodedBody("Mail body") },
+      },
+      {
+        mimeType: "application/pdf",
+        filename: "report.pdf",
+        headers: [],
+        body: { attachmentId: "attachment-1", size: 248_192 },
+      },
+    ],
+  };
+}
+
+interface GmailDraftTestState {
+  exists: boolean;
+  sendCount: number;
+  deleteCount: number;
+  sentBody: unknown;
+}
+
+function mockGmailDraftApi(): GmailDraftTestState {
+  const state: GmailDraftTestState = {
+    exists: true,
+    sendCount: 0,
+    deleteCount: 0,
+    sentBody: null,
+  };
+  server.use(
+    http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
+      expect(params.draftId).toBe(GMAIL_DRAFT_ID);
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer gmail-mail-card-token",
+      );
+      expect(new URL(request.url).searchParams.get("format")).toBe("full");
+      if (!state.exists) {
+        return new HttpResponse(null, { status: 404 });
+      }
+      return HttpResponse.json({
+        id: GMAIL_DRAFT_ID,
+        message: {
+          id: GMAIL_MESSAGE_ID,
+          threadId: GMAIL_THREAD_ID,
+          payload: gmailPayload(),
+        },
+      });
+    }),
+    http.post(`${GMAIL_API_BASE}/drafts/send`, async ({ request }) => {
+      state.sentBody = await request.json();
+      state.exists = false;
+      state.sendCount += 1;
+      return HttpResponse.json({
+        id: GMAIL_SENT_MESSAGE_ID,
+        threadId: GMAIL_THREAD_ID,
+      });
+    }),
+    http.get(`${GMAIL_API_BASE}/messages/:messageId`, ({ params, request }) => {
+      expect(params.messageId).toBe(GMAIL_SENT_MESSAGE_ID);
+      expect(new URL(request.url).searchParams.get("format")).toBe("full");
+      return HttpResponse.json({
+        id: GMAIL_SENT_MESSAGE_ID,
+        threadId: GMAIL_THREAD_ID,
+        payload: gmailPayload(),
+      });
+    }),
+    http.delete(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params }) => {
+      expect(params.draftId).toBe(GMAIL_DRAFT_ID);
+      state.exists = false;
+      state.deleteCount += 1;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  return state;
+}
+
+interface LegacyGmailDraftTestState {
+  raw: string;
+  sendCount: number;
+}
+
+function mockLegacyGmailDraftApi(): LegacyGmailDraftTestState {
+  const state: LegacyGmailDraftTestState = { raw: "", sendCount: 0 };
+  server.use(
+    http.post(`${GMAIL_API_BASE}/drafts`, async ({ request }) => {
+      const body = (await request.json()) as {
+        message: { raw: string; threadId?: string };
+      };
+      state.raw = body.message.raw;
+      return HttpResponse.json({
+        id: GMAIL_DRAFT_ID,
+        message: {
+          id: GMAIL_MESSAGE_ID,
+          threadId: body.message.threadId ?? GMAIL_THREAD_ID,
+        },
+      });
+    }),
+    http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
+      expect(params.draftId).toBe(GMAIL_DRAFT_ID);
+      expect(new URL(request.url).searchParams.get("format")).toBe("raw");
+      return HttpResponse.json({
+        id: GMAIL_DRAFT_ID,
+        message: {
+          id: GMAIL_MESSAGE_ID,
+          threadId: GMAIL_THREAD_ID,
+          raw: state.raw,
+        },
+      });
+    }),
+    http.put(
+      `${GMAIL_API_BASE}/drafts/:draftId`,
+      async ({ params, request }) => {
+        expect(params.draftId).toBe(GMAIL_DRAFT_ID);
+        const body = (await request.json()) as {
+          message: { raw: string; threadId: string };
+        };
+        state.raw = body.message.raw;
+        return HttpResponse.json({
+          id: GMAIL_DRAFT_ID,
+          message: {
+            id: `${GMAIL_MESSAGE_ID}-updated`,
+            threadId: body.message.threadId,
+          },
+        });
+      },
+    ),
+    http.post(`${GMAIL_API_BASE}/drafts/send`, async ({ request }) => {
+      const body = (await request.json()) as {
+        id: string;
+        message: { raw: string; threadId: string };
+      };
+      expect(body.id).toBe(GMAIL_DRAFT_ID);
+      state.raw = body.message.raw;
+      state.sendCount += 1;
+      return HttpResponse.json({
+        id: GMAIL_SENT_MESSAGE_ID,
+        threadId: body.message.threadId,
+      });
+    }),
+  );
+  return state;
+}
 
 async function seedGmailMailCardFixture() {
   const actor = bdd.user();
@@ -66,31 +238,232 @@ function client() {
   return setupApp({ context })(zeroMailContract);
 }
 
+function stateClient() {
+  return setupApp({ context, routes: testMailDraftStateRoutes })(
+    testMailDraftStateContract,
+  );
+}
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-describe("POST /api/zero/mail/drafts", () => {
-  it("persists edits, sends through Gmail once, and persists sent state", async () => {
+function legacyAppHeaders() {
+  return {
+    ...authHeaders(),
+    [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+    [CLIENT_VERSION_HEADER]: "0.606.1",
+    [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
+  };
+}
+
+async function linkDraft(
+  fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+) {
+  return await accept(
+    client().linkDraft({
+      headers: authHeaders(),
+      body: {
+        threadId: fixture.thread.id,
+        agentId: fixture.agent.agentId,
+        gmailDraftId: GMAIL_DRAFT_ID,
+      },
+    }),
+    [200],
+  );
+}
+
+describe("POST /api/zero/mail/drafts/link", () => {
+  it("links without injecting a duplicate card and sends without rebuilding MIME", async () => {
     const fixture = await seedGmailMailCardFixture();
-    const delivered: {
-      readonly authorization: string | null;
-      readonly raw: string;
-    }[] = [];
+    const gmail = mockGmailDraftApi();
+
+    const linked = await linkDraft(fixture);
+    expect(linked.body.mailDraftUrl).toBe(
+      `http://localhost:3002/mail/drafts/${linked.body.mailDraftId}`,
+    );
+
+    const duplicateLink = await linkDraft(fixture);
+    expect(duplicateLink.body).toStrictEqual(linked.body);
+
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(loaded.body.mailDraft).toMatchObject({
+      version: 3,
+      provider: "gmail",
+      from: "sender@example.com",
+      fromName: "Sender",
+      to: ["recipient@example.com"],
+      cc: ["copy@example.com"],
+      subject: "Attachment review",
+      body: "Mail body",
+      status: "draft",
+      attachments: [
+        {
+          filename: "report.pdf",
+          contentType: "application/pdf",
+          size: 248_192,
+        },
+      ],
+    });
+
+    const sent = await accept(
+      client().sendDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(sent.body.mailDraft.status).toBe("sent");
+    expect(sent.body.mailDraft.sentGmailMessageId).toBe(GMAIL_SENT_MESSAGE_ID);
+    expect(gmail.sentBody).toStrictEqual({ id: GMAIL_DRAFT_ID });
+    expect(gmail.sendCount).toBe(1);
+
+    const duplicateSend = await accept(
+      client().sendDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [409],
+    );
+    expect(duplicateSend.body.error.message).toContain("can no longer be sent");
+    expect(gmail.sendCount).toBe(1);
+
+    const page = await chat.listThreadMessages(
+      fixture.actor,
+      fixture.thread.id,
+    );
+    expect(page.messages).toHaveLength(0);
+  });
+
+  it("rejects a missing Gmail draft and cross-chat relinking", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    gmail.exists = false;
+
+    const missing = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [404],
+    );
+    expect(missing.body.error.message).toBe("Gmail draft not found");
+
+    gmail.exists = true;
+    await linkDraft(fixture);
+    const otherThread = await chat.createThread(fixture.actor, {
+      agentId: fixture.agent.agentId,
+      title: "Other mail review",
+    });
+    const conflict = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: otherThread.id,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(conflict.body.error.message).toContain("already linked");
+  });
+
+  it("does not refresh a known mismatched Gmail storage version", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setConnectorCredentialStorageState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorRef: "gmail",
+      storageVersion: 2,
+      tokenExpiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    let refreshCalls = 0;
     server.use(
-      http.post(GMAIL_SEND_URL, async ({ request }) => {
-        const body = (await request.json()) as { raw: string };
-        delivered.push({
-          authorization: request.headers.get("authorization"),
-          raw: Buffer.from(body.raw, "base64url").toString("utf8"),
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "must-not-be-written",
+          expires_in: 3600,
         });
-        return HttpResponse.json({ id: "gmail-message-id" });
       }),
     );
 
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Reconnect Gmail before continuing",
+    );
+    expect(refreshCalls).toBe(0);
+  });
+
+  it("deletes Gmail only for an explicit draft deletion", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    await accept(
+      client().deleteDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [204],
+    );
+    expect(gmail.deleteCount).toBe(1);
+
+    const deleted = await accept(
+      stateClient().get({
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(deleted.body.exists).toBeFalsy();
+  });
+
+  it("only removes the link when its chat thread is deleted", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    await chat.deleteThread(fixture.actor, fixture.thread.id);
+    expect(gmail.deleteCount).toBe(0);
+    expect(gmail.exists).toBeTruthy();
+
+    const unlinked = await accept(
+      stateClient().get({
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(unlinked.body.exists).toBeFalsy();
+  });
+});
+
+describe("legacy v2 mail contract compatibility", () => {
+  it("accepts the previous create, update, and body-bearing send requests", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockLegacyGmailDraftApi();
+
     const created = await accept(
       client().createDraft({
-        headers: authHeaders(),
+        headers: legacyAppHeaders(),
         body: {
           threadId: fixture.thread.id,
           agentId: fixture.agent.agentId,
@@ -102,87 +475,46 @@ describe("POST /api/zero/mail/drafts", () => {
       [201],
     );
     expect(created.body.mailDraft).toMatchObject({
-      provider: "gmail",
-      from: "sender@example.com",
-      status: "draft",
+      version: 2,
+      to: ["first@example.com"],
+      subject: "Initial subject",
     });
 
-    const edited = await accept(
+    const updated = await accept(
       client().updateDraft({
-        headers: authHeaders(),
-        params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
-        },
+        headers: legacyAppHeaders(),
+        params: { mailDraftId: created.body.mailDraftId },
         body: {
-          to: ["final@example.com"],
+          to: ["updated@example.com"],
           subject: "Updated subject",
           body: "Updated body",
         },
       }),
       [200],
     );
-    expect(edited.body.mailDraft).toMatchObject({
-      to: ["final@example.com"],
+    expect(updated.body.mailDraft).toMatchObject({
+      version: 2,
+      to: ["updated@example.com"],
       subject: "Updated subject",
-      body: "Updated body",
-      status: "draft",
     });
 
     const sent = await accept(
       client().sendDraft({
-        headers: authHeaders(),
-        params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
-        },
+        headers: legacyAppHeaders(),
+        params: { mailDraftId: created.body.mailDraftId },
         body: {
-          to: ["final@example.com"],
+          to: ["updated@example.com"],
           subject: "Updated subject",
           body: "Updated body",
         },
       }),
       [200],
     );
-    expect(sent.body.mailDraft.status).toBe("sent");
-    expect(sent.body.mailDraft.sentAt).toBeDefined();
-    expect(delivered).toHaveLength(1);
-    expect(delivered[0]?.authorization).toBe("Bearer gmail-mail-card-token");
-    expect(delivered[0]?.raw).toContain("To: final@example.com");
-    expect(delivered[0]?.raw).toContain(
-      Buffer.from("Updated body", "utf8").toString("base64"),
-    );
-
-    const duplicate = await accept(
-      client().sendDraft({
-        headers: authHeaders(),
-        params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
-        },
-        body: {
-          to: ["final@example.com"],
-          subject: "Updated subject",
-          body: "Updated body",
-        },
-      }),
-      [409],
-    );
-    expect(duplicate.body.error.message).toContain("already been sent");
-    expect(delivered).toHaveLength(1);
-
-    const page = await chat.listThreadMessages(
-      fixture.actor,
-      fixture.thread.id,
-    );
-    const persisted = page.messages.find((message) => {
-      return message.id === created.body.messageId;
-    });
-    expect(persisted?.mailDraft).toMatchObject({
-      to: ["final@example.com"],
-      subject: "Updated subject",
-      body: "Updated body",
+    expect(sent.body.mailDraft).toMatchObject({
+      version: 2,
       status: "sent",
+      subject: "Updated subject",
     });
+    expect(gmail.sendCount).toBe(1);
   });
 });

@@ -37,11 +37,7 @@ import {
 
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
@@ -169,13 +165,9 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openManage = useSet(setOrgManageDialogOpen$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const handleInvite = () => {
-    setTab("members");
-    setSubPage(false);
-    detach(openManage(true, pageSignal), Reason.DomCallback);
+    detach(openSettings("people", pageSignal), Reason.DomCallback);
   };
   return (
     <Button

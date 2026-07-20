@@ -20,7 +20,7 @@ use guest_common::log_warn;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
@@ -29,7 +29,7 @@ use crate::error::AgentError;
 
 use super::{
     LOG_TAG, child_env, child_exit_notifier::ChildExitNotifier, diagnostics, exec_boundary,
-    process_group::ChildProcessGroup,
+    line_reader, process_group::ChildProcessGroup,
 };
 
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -1039,56 +1039,28 @@ async fn read_stdout_line<R>(
 where
     R: AsyncBufRead + Unpin,
 {
-    loop {
-        let (consumed, reached_line_end) = {
-            let available = stdout_reader.fill_buf().await?;
-            if available.is_empty() {
-                if partial_line.is_empty() {
-                    return Ok(None);
+    match line_reader::read_bounded_utf8_line(stdout_reader, partial_line, STDOUT_MAX_LINE_BYTES)
+        .await
+    {
+        Ok(line) => Ok(line),
+        Err(line_reader::BoundedLineError::Io(error)) => Err(CodexAppServerError::Io(error)),
+        Err(line_reader::BoundedLineError::TooLong) => Err(stdout_line_too_large_error()),
+        Err(line_reader::BoundedLineError::InvalidUtf8 {
+            valid_up_to,
+            error_len,
+            line_bytes,
+        }) => {
+            let utf8_error = match error_len {
+                Some(error_len) => {
+                    format!("invalid utf-8 sequence of {error_len} bytes from index {valid_up_to}")
                 }
-                let line = std::mem::take(partial_line);
-                return decode_stdout_line(line).map(Some);
-            }
-
-            if let Some(newline_index) = available.iter().position(|byte| *byte == b'\n') {
-                if partial_line.len() + newline_index > STDOUT_MAX_LINE_BYTES {
-                    return Err(stdout_line_too_large_error());
-                }
-                let line_chunk = available.get(..newline_index).ok_or_else(|| {
-                    CodexAppServerError::Protocol(
-                        "app-server stdout reader returned an invalid newline offset".to_string(),
-                    )
-                })?;
-                partial_line.extend_from_slice(line_chunk);
-                (newline_index + 1, true)
-            } else {
-                if partial_line.len() + available.len() > STDOUT_MAX_LINE_BYTES {
-                    return Err(stdout_line_too_large_error());
-                }
-                partial_line.extend_from_slice(available);
-                (available.len(), false)
-            }
-        };
-
-        stdout_reader.consume(consumed);
-        if reached_line_end {
-            if partial_line.last() == Some(&b'\r') {
-                partial_line.pop();
-            }
-            let line = std::mem::take(partial_line);
-            return decode_stdout_line(line).map(Some);
+                None => format!("incomplete utf-8 byte sequence from index {valid_up_to}"),
+            };
+            Err(CodexAppServerError::Protocol(format!(
+                "app-server stdout line is not UTF-8: {utf8_error}; line_bytes={line_bytes}"
+            )))
         }
     }
-}
-
-fn decode_stdout_line(line: Vec<u8>) -> Result<String, CodexAppServerError> {
-    String::from_utf8(line).map_err(|error| {
-        CodexAppServerError::Protocol(format!(
-            "app-server stdout line is not UTF-8: {}; line_bytes={}",
-            error.utf8_error(),
-            error.as_bytes().len()
-        ))
-    })
 }
 
 fn stdout_line_too_large_error() -> CodexAppServerError {

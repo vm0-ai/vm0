@@ -193,7 +193,11 @@ function OpenAgentListDialog({
   );
 }
 
-export function PinnedAgentListSection() {
+export function PinnedAgentListSection({
+  layout = "vertical",
+}: {
+  layout?: "vertical" | "horizontal";
+}) {
   const activeRoute = useGet(activeRoute$);
   const pathParams = useGet(pathParams$);
   const routeAgentId =
@@ -228,6 +232,70 @@ export function PinnedAgentListSection() {
         })
       : [];
   const displayedPinnedAgents = [...pinnedAgents, ...unreadOnlyAgents];
+
+  const selectedAgentId =
+    routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
+
+  if (layout === "horizontal") {
+    return (
+      <div className="shrink-0" data-testid="pinned-agents-horizontal">
+        <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+          Pinned agents
+        </span>
+        <div className="flex items-start gap-1 overflow-x-auto pb-1">
+          {pinnedAgentsLoadable.state === "hasData" &&
+            displayedPinnedAgents.map((agent) => {
+              const isPrimarySelected =
+                isChatRoute(activeRoute) && selectedAgentId === agent.id;
+              const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
+              const hasUnreadIndicator =
+                agentUnreadIndicatorsEnabled && hasUnread;
+              return (
+                <Link
+                  key={agent.id}
+                  pathname="/agents/:agentId/chat"
+                  options={{ pathParams: { agentId: agent.id } }}
+                  data-testid="pinned-agent-card"
+                  className={`group flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+                    isPrimarySelected
+                      ? "bg-gray-200 text-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <span className="relative">
+                    <AgentAvatarImg
+                      name={agent.id}
+                      alt={agent.displayName ?? agent.id}
+                      className="h-9 w-9 rounded-full object-cover object-top"
+                    />
+                    {hasUnreadIndicator && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
+                    )}
+                  </span>
+                  <span className="w-full truncate text-center text-[11px] leading-tight">
+                    {agent.displayName ?? agent.id}
+                  </span>
+                </Link>
+              );
+            })}
+          <button
+            type="button"
+            onClick={() => {
+              openAgentListDialog();
+            }}
+            aria-label="Open a conversation"
+            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
+              <IconPlus size={16} stroke={2} />
+            </span>
+            <span className="text-[11px] leading-tight">New</span>
+          </button>
+        </div>
+        <AgentListDialogContainer />
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0">
@@ -285,8 +353,6 @@ export function PinnedAgentListSection() {
           )}
           {pinnedAgentsLoadable.state === "hasData" &&
             displayedPinnedAgents.map((agent) => {
-              const selectedAgentId =
-                routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
               const isPrimarySelected =
                 isChatRoute(activeRoute) && selectedAgentId === agent.id;
               const isFromChat = sidebarAgentId === agent.id;

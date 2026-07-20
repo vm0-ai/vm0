@@ -17,6 +17,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::Args;
 use sandbox::{RemoteKillResult, SandboxControl, SandboxControlError};
@@ -26,8 +27,12 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 use crate::process::{
     self, DiscoveredProcesses, FirecrackerProcessIdentity, FirecrackerProcessInfo, ProcessStat,
+    ProcessStatRead,
 };
 use crate::run_resolution;
+
+const ORPHAN_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+const ORPHAN_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -81,8 +86,9 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                     } else {
                         kill_current_target(refreshed.target.clone(), true, control).await
                     };
-                    report_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
-                        .await;
+                    let exit_code =
+                        finish_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
+                            .await;
                     info!(
                         sandbox_id = %refreshed.target.sandbox_id,
                         pid = refreshed.target.pid,
@@ -91,22 +97,21 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                         outcome = ?outcome,
                         "kill command fell back to owner-aware orphan handling after target rediscovery failed"
                     );
-                    return if outcome.is_success() {
-                        Ok(ExitCode::SUCCESS)
-                    } else {
-                        Ok(ExitCode::FAILURE)
-                    };
+                    return Ok(exit_code);
                 }
 
-                let discovered_after_error = process::discover_all().await;
+                let discovered_after_error = process::discover_all_with_status().await;
                 if should_cleanup_disappeared_initial_orphan(
                     &initial.target,
                     is_initial_orphan,
-                    &discovered_after_error,
-                ) && !initial_process_still_live(&initial.target).await
+                    discovered_after_error.proc_scan_complete,
+                    &discovered_after_error.processes,
+                ) && initial_process_confirmed_terminated(&initial.target).await
                 {
                     let outcome = KillOutcome::OrphanAlreadyExited(initial.target.clone());
-                    report_kill_outcome(&initial.target, &initial.target, &outcome, control).await;
+                    let exit_code =
+                        finish_kill_outcome(&initial.target, &initial.target, &outcome, control)
+                            .await;
                     info!(
                         sandbox_id = %initial.target.sandbox_id,
                         pid = initial.target.pid,
@@ -115,7 +120,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                         outcome = ?outcome,
                         "kill command cleaned up orphan target that disappeared during rediscovery"
                     );
-                    return Ok(ExitCode::SUCCESS);
+                    return Ok(exit_code);
                 }
             }
             println!(
@@ -127,7 +132,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
     };
     let is_orphan = process::is_orphan(current.target.pid, &current.runner_pids).await;
     let outcome = kill_current_target(current.target.clone(), is_orphan, control).await;
-    report_kill_outcome(&initial.target, &current.target, &outcome, control).await;
+    let exit_code = finish_kill_outcome(&initial.target, &current.target, &outcome, control).await;
 
     info!(
         sandbox_id = %current.target.sandbox_id,
@@ -137,11 +142,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
         "kill command completed"
     );
 
-    if outcome.is_success() {
-        Ok(ExitCode::SUCCESS)
-    } else {
-        Ok(ExitCode::FAILURE)
-    }
+    Ok(exit_code)
 }
 
 #[derive(Debug)]
@@ -211,23 +212,15 @@ enum KillOutcome {
     OwnerAccepted(RemoteKillResult),
     OrphanKilled(KillTarget),
     OrphanAlreadyExited(KillTarget),
+    OrphanTerminationUnconfirmed {
+        target: KillTarget,
+        failure: OrphanExitFailure,
+    },
     AlreadyExitedOrChanged(KillTarget),
     SignalFailed(KillTarget),
     RefusedManagedIdle,
     RefusedManagedControlFailed(String),
     RefusedTargetChanged(String),
-}
-
-impl KillOutcome {
-    fn is_success(&self) -> bool {
-        matches!(
-            self,
-            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
-                | KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped)
-                | KillOutcome::OrphanKilled(_)
-                | KillOutcome::OrphanAlreadyExited(_)
-        )
-    }
 }
 
 async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
@@ -413,9 +406,11 @@ fn same_firecracker_identity(initial: &KillTarget, current: &KillTarget) -> bool
 fn should_cleanup_disappeared_initial_orphan(
     initial: &KillTarget,
     was_orphan: bool,
+    proc_scan_complete: bool,
     discovered_after_error: &DiscoveredProcesses,
 ) -> bool {
-    was_orphan
+    proc_scan_complete
+        && was_orphan
         && target_has_workspace_identity(initial)
         && !discovered_has_same_or_unidentified_firecracker(initial, discovered_after_error)
 }
@@ -550,8 +545,8 @@ async fn retry_as_orphan_if_owner_disappeared(
 }
 
 async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
-    let pgid = match validate_orphan_target(target).await {
-        OrphanTargetValidation::Valid { pgid } => pgid,
+    let identity = match validate_orphan_target(target).await {
+        OrphanTargetValidation::Valid { identity } => identity,
         OrphanTargetValidation::AlreadyGone => {
             return already_gone_orphan_outcome(target).await;
         }
@@ -560,17 +555,27 @@ async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
         }
     };
 
-    match signal_process_group(target.pid, pgid) {
-        ProcessGroupSignalResult::Signaled => KillOutcome::OrphanKilled(target.clone()),
+    match signal_process_group(target.pid, identity.pgid) {
+        ProcessGroupSignalResult::Signaled => match wait_for_orphan_exit(&identity).await {
+            Ok(()) => KillOutcome::OrphanKilled(target.clone()),
+            Err(failure) => KillOutcome::OrphanTerminationUnconfirmed {
+                target: target.clone(),
+                failure,
+            },
+        },
         ProcessGroupSignalResult::AlreadyGone => already_gone_orphan_outcome(target).await,
         ProcessGroupSignalResult::Failed => KillOutcome::SignalFailed(target.clone()),
     }
 }
 
 async fn already_gone_orphan_outcome(target: &KillTarget) -> KillOutcome {
-    let discovered = process::discover_all().await;
-    if should_cleanup_disappeared_initial_orphan(target, true, &discovered)
-        && !initial_process_still_live(target).await
+    let discovered = process::discover_all_with_status().await;
+    if should_cleanup_disappeared_initial_orphan(
+        target,
+        true,
+        discovered.proc_scan_complete,
+        &discovered.processes,
+    ) && initial_process_confirmed_terminated(target).await
     {
         KillOutcome::OrphanAlreadyExited(target.clone())
     } else {
@@ -579,7 +584,9 @@ async fn already_gone_orphan_outcome(target: &KillTarget) -> KillOutcome {
 }
 
 enum OrphanTargetValidation {
-    Valid { pgid: u32 },
+    Valid {
+        identity: FirecrackerProcessIdentity,
+    },
     AlreadyGone,
     Changed,
 }
@@ -603,12 +610,30 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return OrphanTargetValidation::Changed;
     }
 
-    let Some(stat) = process::read_process_stat(target.pid).await else {
-        tracing::warn!(
-            pid = target.pid,
-            "failed to read process stat before orphan kill"
-        );
-        return OrphanTargetValidation::AlreadyGone;
+    let stat = match process::read_process_stat_checked(target.pid).await {
+        ProcessStatRead::Found(stat) => stat,
+        ProcessStatRead::Missing => {
+            tracing::warn!(
+                pid = target.pid,
+                "orphan target disappeared before validation"
+            );
+            return OrphanTargetValidation::AlreadyGone;
+        }
+        ProcessStatRead::Unreadable(error) => {
+            tracing::warn!(
+                pid = target.pid,
+                %error,
+                "refusing orphan kill because process stat is unreadable"
+            );
+            return OrphanTargetValidation::Changed;
+        }
+        ProcessStatRead::Invalid => {
+            tracing::warn!(
+                pid = target.pid,
+                "refusing orphan kill because process stat is invalid"
+            );
+            return OrphanTargetValidation::Changed;
+        }
     };
     if !process_stat_matches_identity(identity, &stat) {
         tracing::warn!(
@@ -657,12 +682,30 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return classify_orphan_validation_after_unreadable_pid_fact(target.pid, identity).await;
     }
 
-    let Some(final_stat) = process::read_process_stat(target.pid).await else {
-        tracing::warn!(
-            pid = target.pid,
-            "failed to reread process stat before orphan kill"
-        );
-        return OrphanTargetValidation::AlreadyGone;
+    let final_stat = match process::read_process_stat_checked(target.pid).await {
+        ProcessStatRead::Found(stat) => stat,
+        ProcessStatRead::Missing => {
+            tracing::warn!(
+                pid = target.pid,
+                "orphan target disappeared during validation"
+            );
+            return OrphanTargetValidation::AlreadyGone;
+        }
+        ProcessStatRead::Unreadable(error) => {
+            tracing::warn!(
+                pid = target.pid,
+                %error,
+                "refusing orphan kill because process stat became unreadable"
+            );
+            return OrphanTargetValidation::Changed;
+        }
+        ProcessStatRead::Invalid => {
+            tracing::warn!(
+                pid = target.pid,
+                "refusing orphan kill because process stat became invalid"
+            );
+            return OrphanTargetValidation::Changed;
+        }
     };
     if !process_stat_matches_identity(identity, &final_stat) {
         tracing::warn!(
@@ -685,7 +728,7 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
     }
 
     OrphanTargetValidation::Valid {
-        pgid: identity.pgid,
+        identity: identity.clone(),
     }
 }
 
@@ -693,31 +736,162 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
     pid: u32,
     identity: &FirecrackerProcessIdentity,
 ) -> OrphanTargetValidation {
-    match process::read_process_stat(pid).await {
-        Some(stat)
+    match process::read_process_stat_checked(pid).await {
+        ProcessStatRead::Found(stat)
             if process_stat_matches_identity(identity, &stat)
                 && !process::process_stat_is_live(&stat) =>
         {
             OrphanTargetValidation::AlreadyGone
         }
-        Some(stat) if process_stat_matches_identity(identity, &stat) => {
+        ProcessStatRead::Found(stat) if process_stat_matches_identity(identity, &stat) => {
             OrphanTargetValidation::Changed
         }
-        Some(_) => OrphanTargetValidation::Changed,
-        None => OrphanTargetValidation::AlreadyGone,
+        ProcessStatRead::Found(_) => OrphanTargetValidation::Changed,
+        ProcessStatRead::Missing => OrphanTargetValidation::AlreadyGone,
+        ProcessStatRead::Unreadable(_) | ProcessStatRead::Invalid => {
+            OrphanTargetValidation::Changed
+        }
     }
 }
 
-async fn initial_process_still_live(target: &KillTarget) -> bool {
-    let stat = process::read_process_stat(target.pid).await;
-    same_initial_process_still_live(target, stat.as_ref())
-}
-
-fn same_initial_process_still_live(target: &KillTarget, stat: Option<&ProcessStat>) -> bool {
-    let (Some(identity), Some(stat)) = (&target.identity, stat) else {
+async fn initial_process_confirmed_terminated(target: &KillTarget) -> bool {
+    let Some(identity) = &target.identity else {
         return false;
     };
-    process_stat_matches_identity(identity, stat) && process::process_stat_is_live(stat)
+    matches!(
+        classify_orphan_exit_observation(
+            identity,
+            process::read_process_stat_checked(target.pid).await,
+        ),
+        OrphanExitObservation::Terminated
+    )
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum OrphanExitObservation {
+    Live,
+    Terminated,
+    IdentityChanged {
+        expected_pgid: u32,
+        observed_pgid: u32,
+        expected_starttime: u64,
+        observed_starttime: u64,
+    },
+    Unverifiable(String),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum OrphanExitFailure {
+    TimedOut,
+    IdentityChanged {
+        expected_pgid: u32,
+        observed_pgid: u32,
+        expected_starttime: u64,
+        observed_starttime: u64,
+    },
+    Unverifiable(String),
+}
+
+impl std::fmt::Display for OrphanExitFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TimedOut => f.write_str("process is still live at the termination deadline"),
+            Self::IdentityChanged {
+                expected_pgid,
+                observed_pgid,
+                expected_starttime,
+                observed_starttime,
+            } => write!(
+                f,
+                "process identity changed while waiting for termination \
+                 (PGID {expected_pgid} -> {observed_pgid}, starttime \
+                 {expected_starttime} -> {observed_starttime})"
+            ),
+            Self::Unverifiable(error) => {
+                write!(f, "process termination could not be verified: {error}")
+            }
+        }
+    }
+}
+
+fn classify_orphan_exit_observation(
+    identity: &FirecrackerProcessIdentity,
+    read: ProcessStatRead,
+) -> OrphanExitObservation {
+    match read {
+        ProcessStatRead::Found(stat) if !process_stat_matches_identity(identity, &stat) => {
+            OrphanExitObservation::IdentityChanged {
+                expected_pgid: identity.pgid,
+                observed_pgid: stat.pgid,
+                expected_starttime: identity.starttime,
+                observed_starttime: stat.starttime,
+            }
+        }
+        ProcessStatRead::Found(stat) if process::process_stat_is_live(&stat) => {
+            OrphanExitObservation::Live
+        }
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => OrphanExitObservation::Terminated,
+        ProcessStatRead::Unreadable(error) => {
+            OrphanExitObservation::Unverifiable(error.to_string())
+        }
+        ProcessStatRead::Invalid => {
+            OrphanExitObservation::Unverifiable("process stat is invalid".into())
+        }
+    }
+}
+
+async fn wait_for_orphan_exit(
+    identity: &FirecrackerProcessIdentity,
+) -> Result<(), OrphanExitFailure> {
+    wait_for_orphan_exit_with(
+        identity,
+        ORPHAN_EXIT_TIMEOUT,
+        ORPHAN_EXIT_POLL_INTERVAL,
+        process::read_process_stat_checked,
+    )
+    .await
+}
+
+async fn wait_for_orphan_exit_with<ReadStat, ReadStatFuture>(
+    identity: &FirecrackerProcessIdentity,
+    timeout: Duration,
+    poll_interval: Duration,
+    mut read_stat: ReadStat,
+) -> Result<(), OrphanExitFailure>
+where
+    ReadStat: FnMut(u32) -> ReadStatFuture,
+    ReadStatFuture: std::future::Future<Output = ProcessStatRead>,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let failure =
+            match classify_orphan_exit_observation(identity, read_stat(identity.pid).await) {
+                OrphanExitObservation::Terminated => return Ok(()),
+                OrphanExitObservation::IdentityChanged {
+                    expected_pgid,
+                    observed_pgid,
+                    expected_starttime,
+                    observed_starttime,
+                } => {
+                    return Err(OrphanExitFailure::IdentityChanged {
+                        expected_pgid,
+                        observed_pgid,
+                        expected_starttime,
+                        observed_starttime,
+                    });
+                }
+                OrphanExitObservation::Live => OrphanExitFailure::TimedOut,
+                OrphanExitObservation::Unverifiable(error) => {
+                    OrphanExitFailure::Unverifiable(error)
+                }
+            };
+
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(failure);
+        }
+        tokio::time::sleep(poll_interval.min(deadline - now)).await;
+    }
 }
 
 fn process_stat_matches_identity(
@@ -795,12 +969,25 @@ fn signal_process_group(pid: u32, pgid: u32) -> ProcessGroupSignalResult {
     }
 }
 
+async fn finish_kill_outcome(
+    initial: &KillTarget,
+    current: &KillTarget,
+    outcome: &KillOutcome,
+    control: &dyn SandboxControl,
+) -> ExitCode {
+    if report_kill_outcome(initial, current, outcome, control).await {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 async fn report_kill_outcome(
     initial: &KillTarget,
     current: &KillTarget,
     outcome: &KillOutcome,
     control: &dyn SandboxControl,
-) {
+) -> bool {
     match outcome {
         KillOutcome::OwnerAccepted(RemoteKillResult::Accepted) => {
             println!(
@@ -808,6 +995,7 @@ async fn report_kill_outcome(
                 current.sandbox_id, current.pid
             );
             println!("Owning runner will handle cleanup.");
+            true
         }
         KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped) => {
             println!(
@@ -815,38 +1003,50 @@ async fn report_kill_outcome(
                 current.sandbox_id
             );
             println!("Owning runner will handle cleanup.");
+            true
         }
         KillOutcome::OrphanKilled(target) => {
             println!(
                 "Killed orphan sandbox {} (PID {})",
                 target.sandbox_id, target.pid
             );
-            cleanup_validated_orphan(target, control).await;
+            cleanup_validated_orphan(target, control).await
         }
         KillOutcome::OrphanAlreadyExited(target) => {
             println!(
                 "Orphan sandbox {} (PID {}) already exited before signal.",
                 target.sandbox_id, target.pid
             );
-            cleanup_validated_orphan(target, control).await;
+            cleanup_validated_orphan(target, control).await
+        }
+        KillOutcome::OrphanTerminationUnconfirmed { target, failure } => {
+            println!(
+                "Failed to confirm termination of orphan sandbox {} (PID {}) - {failure}",
+                target.sandbox_id, target.pid
+            );
+            println!("Preserved orphan workspace and runtime state for recovery.");
+            false
         }
         KillOutcome::AlreadyExitedOrChanged(target) => {
             println!(
                 "Refused to kill sandbox {} (PID {}) - process already exited or changed identity",
                 target.sandbox_id, target.pid
             );
+            false
         }
         KillOutcome::SignalFailed(target) => {
             println!(
                 "Failed to kill sandbox {} (PID {})",
                 target.sandbox_id, target.pid
             );
+            false
         }
         KillOutcome::RefusedManagedControlFailed(error) => {
             println!(
                 "Refused direct kill for managed sandbox {} (PID {}) - owning runner control failed: {error}",
                 current.sandbox_id, current.pid
             );
+            false
         }
         KillOutcome::OwnerAccepted(RemoteKillResult::RefusedIdle)
         | KillOutcome::RefusedManagedIdle => {
@@ -857,28 +1057,31 @@ async fn report_kill_outcome(
             println!(
                 "Use runner drain/shutdown or wait for idle eviction so the owner can destroy it cleanly."
             );
+            false
         }
         KillOutcome::RefusedTargetChanged(error) => {
             println!(
                 "Refused to kill sandbox {} (PID {}) - {error}",
                 initial.sandbox_id, initial.pid
             );
+            false
         }
     }
 }
 
-async fn cleanup_validated_orphan(target: &KillTarget, control: &dyn SandboxControl) {
+async fn cleanup_validated_orphan(target: &KillTarget, control: &dyn SandboxControl) -> bool {
     if let Some(base_dir) = target.base_dir.as_deref() {
         let results = cleanup_orphan(&target.sandbox_id, base_dir, control).await;
-        print_cleanup_results(&results);
+        print_cleanup_results(&results)
     } else {
         println!("Skipped orphan cleanup because sandbox workspace identity is unavailable.");
+        false
     }
 }
 
-fn print_cleanup_results(results: &[(String, bool)]) {
+fn print_cleanup_results(results: &[(String, bool)]) -> bool {
     if results.is_empty() {
-        return;
+        return true;
     }
 
     println!("Orphan cleanup:");
@@ -886,6 +1089,7 @@ fn print_cleanup_results(results: &[(String, bool)]) {
         let icon = if *success { "ok" } else { "FAIL" };
         println!("  [{icon}] {step}");
     }
+    results.iter().all(|(_, success)| *success)
 }
 
 // ---------------------------------------------------------------------------
@@ -967,11 +1171,15 @@ async fn confirm() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
     use std::path::PathBuf;
 
     use sandbox_mock::MockSandboxControl;
 
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+    const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
 
     fn make_fc(pid: u32, sandbox_id: &str) -> FirecrackerProcessInfo {
         FirecrackerProcessInfo {
@@ -1000,6 +1208,13 @@ mod tests {
         }
     }
 
+    fn make_target_at_base(pid: u32, sandbox_id: &str, base_dir: &Path) -> KillTarget {
+        let mut target = make_target(pid, sandbox_id);
+        target.base_dir = Some(base_dir.to_path_buf());
+        target.identity.as_mut().unwrap().base_dir = Some(base_dir.to_path_buf());
+        target
+    }
+
     fn make_run_target(pid: u32, run_id: &str, sandbox_id: &str) -> KillTarget {
         KillTarget {
             run_id: Some(run_id.into()),
@@ -1018,8 +1233,12 @@ mod tests {
     }
 
     fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
+        process_stat_with_state(identity, 'S')
+    }
+
+    fn process_stat_with_state(identity: &FirecrackerProcessIdentity, state: char) -> ProcessStat {
         ProcessStat {
-            state: 'S',
+            state,
             ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
@@ -1279,6 +1498,20 @@ mod tests {
         assert!(should_cleanup_disappeared_initial_orphan(
             &initial,
             true,
+            true,
+            &discovered
+        ));
+    }
+
+    #[test]
+    fn incomplete_process_scan_rejects_disappeared_orphan_cleanup() {
+        let initial = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![]);
+
+        assert!(!should_cleanup_disappeared_initial_orphan(
+            &initial,
+            true,
+            false,
             &discovered
         ));
     }
@@ -1291,6 +1524,7 @@ mod tests {
         assert!(!should_cleanup_disappeared_initial_orphan(
             &initial,
             false,
+            true,
             &discovered
         ));
     }
@@ -1304,6 +1538,7 @@ mod tests {
         assert!(!should_cleanup_disappeared_initial_orphan(
             &initial,
             true,
+            true,
             &discovered
         ));
     }
@@ -1315,6 +1550,7 @@ mod tests {
 
         assert!(!should_cleanup_disappeared_initial_orphan(
             &initial,
+            true,
             true,
             &discovered
         ));
@@ -1333,6 +1569,7 @@ mod tests {
 
         assert!(!should_cleanup_disappeared_initial_orphan(
             &initial,
+            true,
             true,
             &discovered
         ));
@@ -1528,53 +1765,243 @@ mod tests {
     }
 
     #[test]
-    fn same_initial_process_still_live_detects_matching_non_zombie() {
+    fn orphan_exit_observation_distinguishes_live_and_terminal_states() {
         let target = make_target(200, "sbox-123");
-        let stat = process_stat(target.identity.as_ref().unwrap());
+        let identity = target.identity.as_ref().unwrap();
 
-        assert!(same_initial_process_still_live(&target, Some(&stat)));
+        assert_eq!(
+            classify_orphan_exit_observation(
+                identity,
+                ProcessStatRead::Found(process_stat(identity)),
+            ),
+            OrphanExitObservation::Live
+        );
+        for state in ['Z', 'X', 'x'] {
+            assert_eq!(
+                classify_orphan_exit_observation(
+                    identity,
+                    ProcessStatRead::Found(process_stat_with_state(identity, state)),
+                ),
+                OrphanExitObservation::Terminated
+            );
+        }
+        assert_eq!(
+            classify_orphan_exit_observation(identity, ProcessStatRead::Missing),
+            OrphanExitObservation::Terminated
+        );
     }
 
     #[test]
-    fn same_initial_process_still_live_rejects_zombie() {
+    fn orphan_exit_observation_rejects_identity_changes() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            state: 'Z',
-            ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
-
-        assert!(!same_initial_process_still_live(&target, Some(&stat)));
-    }
-
-    #[test]
-    fn same_initial_process_still_live_rejects_dead_state() {
-        let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            state: 'x',
-            ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
-
-        assert!(!same_initial_process_still_live(&target, Some(&stat)));
-    }
-
-    #[test]
-    fn same_initial_process_still_live_rejects_changed_identity() {
-        let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            state: 'S',
-            ppid: 7,
-            pgid: identity.pgid,
+        let changed = ProcessStat {
+            pgid: identity.pgid + 1,
             starttime: identity.starttime + 1,
+            ..process_stat(identity)
         };
 
-        assert!(!same_initial_process_still_live(&target, Some(&stat)));
+        assert_eq!(
+            classify_orphan_exit_observation(identity, ProcessStatRead::Found(changed)),
+            OrphanExitObservation::IdentityChanged {
+                expected_pgid: identity.pgid,
+                observed_pgid: identity.pgid + 1,
+                expected_starttime: identity.starttime,
+                observed_starttime: identity.starttime + 1,
+            }
+        );
+    }
+
+    #[test]
+    fn orphan_exit_observation_rejects_unverifiable_reads() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+
+        assert!(matches!(
+            classify_orphan_exit_observation(
+                identity,
+                ProcessStatRead::Unreadable(std::io::Error::from(
+                    std::io::ErrorKind::PermissionDenied,
+                )),
+            ),
+            OrphanExitObservation::Unverifiable(_)
+        ));
+        assert_eq!(
+            classify_orphan_exit_observation(identity, ProcessStatRead::Invalid),
+            OrphanExitObservation::Unverifiable("process stat is invalid".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_exit_wait_observes_delayed_termination() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let mut reads = VecDeque::from([
+            ProcessStatRead::Found(process_stat(identity)),
+            ProcessStatRead::Found(process_stat_with_state(identity, 'Z')),
+        ]);
+
+        let result = wait_for_orphan_exit_with(
+            identity,
+            Duration::from_secs(1),
+            Duration::ZERO,
+            move |_| std::future::ready(reads.pop_front().unwrap()),
+        )
+        .await;
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn orphan_exit_wait_times_out_while_identity_is_live() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+
+        let result = wait_for_orphan_exit_with(identity, Duration::ZERO, Duration::ZERO, |_| {
+            std::future::ready(ProcessStatRead::Found(process_stat(identity)))
+        })
+        .await;
+
+        assert_eq!(result, Err(OrphanExitFailure::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn orphan_exit_wait_fails_when_identity_changes() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let changed = ProcessStat {
+            pgid: identity.pgid + 1,
+            starttime: identity.starttime + 1,
+            ..process_stat(identity)
+        };
+
+        let result =
+            wait_for_orphan_exit_with(identity, Duration::from_secs(1), Duration::ZERO, |_| {
+                std::future::ready(ProcessStatRead::Found(changed.clone()))
+            })
+            .await;
+
+        let Err(failure) = result else {
+            panic!("changed process identity should fail the exit wait");
+        };
+        assert_eq!(
+            failure,
+            OrphanExitFailure::IdentityChanged {
+                expected_pgid: identity.pgid,
+                observed_pgid: identity.pgid + 1,
+                expected_starttime: identity.starttime,
+                observed_starttime: identity.starttime + 1,
+            }
+        );
+        assert_eq!(
+            failure.to_string(),
+            "process identity changed while waiting for termination \
+             (PGID 1200 -> 1201, starttime 123456 -> 123457)"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_exit_wait_recovers_from_transient_unverifiable_read() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let mut reads = VecDeque::from([ProcessStatRead::Invalid, ProcessStatRead::Missing]);
+
+        let result = wait_for_orphan_exit_with(
+            identity,
+            Duration::from_secs(1),
+            Duration::ZERO,
+            move |_| std::future::ready(reads.pop_front().unwrap()),
+        )
+        .await;
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn orphan_exit_wait_fails_when_observation_remains_unverifiable() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+
+        let result = wait_for_orphan_exit_with(identity, Duration::ZERO, Duration::ZERO, |_| {
+            std::future::ready(ProcessStatRead::Invalid)
+        })
+        .await;
+
+        let Err(failure) = result else {
+            panic!("unverifiable process state should fail at the exit deadline");
+        };
+        assert_eq!(
+            failure,
+            OrphanExitFailure::Unverifiable("process stat is invalid".into())
+        );
+        assert_eq!(
+            failure.to_string(),
+            "process termination could not be verified: process stat is invalid"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_kill_validates_signals_and_waits_for_real_exit() {
+        run_ignored_child_test(
+            "cmd::kill::tests::orphan_kill_validates_signals_and_waits_for_real_exit_child",
+            (ORPHAN_KILL_CHILD_ENV, "1"),
+            &[],
+            Duration::from_secs(30),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by orphan_kill_validates_signals_and_waits_for_real_exit"]
+    async fn orphan_kill_validates_signals_and_waits_for_real_exit_child() {
+        if !ignored_child_test_env_guard_enabled((ORPHAN_KILL_CHILD_ENV, "1")) {
+            return;
+        }
+
+        let base_dir = tempfile::tempdir().unwrap();
+        let sandbox_id = "test-sandbox";
+        let workspace = base_dir.path().join("workspaces").join(sandbox_id);
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        let firecracker = base_dir.path().join("firecracker");
+        std::os::unix::fs::symlink("/bin/sleep", &firecracker).unwrap();
+
+        let mut child = tokio::process::Command::new(&firecracker)
+            .arg("60")
+            .current_dir(&workspace)
+            .process_group(0)
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id().unwrap();
+        let ProcessStatRead::Found(stat) = process::read_process_stat_checked(pid).await else {
+            panic!("spawned process stat should be readable");
+        };
+        let target = KillTarget {
+            pid,
+            ppid: None,
+            run_id: None,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
+            identity: Some(FirecrackerProcessIdentity {
+                pid,
+                pgid: stat.pgid,
+                starttime: stat.starttime,
+                sandbox_id: sandbox_id.into(),
+                base_dir: Some(base_dir.path().to_path_buf()),
+            }),
+        };
+
+        let outcome = kill_orphan_process_group(&target).await;
+        assert!(
+            matches!(&outcome, KillOutcome::OrphanKilled(killed) if killed == &target),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
+
+        let status = child.wait().await.unwrap();
+        assert!(!status.success());
     }
 
     #[tokio::test]
@@ -1667,14 +2094,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn orphan_already_exited_outcome_is_success() {
-        let target = make_target(200, "sbox-123");
-        let outcome = KillOutcome::OrphanAlreadyExited(target);
-
-        assert!(outcome.is_success());
-    }
-
     #[tokio::test]
     async fn orphan_kill_nonexistent_pid_reports_gone_when_cleanup_is_safe() {
         // u32::MAX exceeds any valid PID — /proc/{pid}/stat won't exist
@@ -1702,6 +2121,87 @@ mod tests {
     // -----------------------------------------------------------------------
     // Orphan cleanup tests (using sandbox-mock)
     // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn unconfirmed_orphan_termination_preserves_cleanup_paths() {
+        let workspace_base = tempfile::tempdir().unwrap();
+        let socket_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(socket_base.path());
+        let target = make_target_at_base(200, "sbox-123", workspace_base.path());
+        let workspace = workspace_base.path().join("workspaces/sbox-123");
+        let socket_dir = control.runtime_dir("sbox-123");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&socket_dir).await.unwrap();
+        let outcome = KillOutcome::OrphanTerminationUnconfirmed {
+            target: target.clone(),
+            failure: OrphanExitFailure::TimedOut,
+        };
+
+        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
+
+        assert_eq!(exit_code, ExitCode::FAILURE);
+        assert!(workspace.exists());
+        assert!(socket_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn confirmed_orphan_termination_cleans_paths_and_succeeds() {
+        let workspace_base = tempfile::tempdir().unwrap();
+        let socket_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(socket_base.path());
+        let target = make_target_at_base(200, "sbox-123", workspace_base.path());
+        let workspace = workspace_base.path().join("workspaces/sbox-123");
+        let socket_dir = control.runtime_dir("sbox-123");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&socket_dir).await.unwrap();
+        let outcome = KillOutcome::OrphanKilled(target.clone());
+
+        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
+
+        assert_eq!(exit_code, ExitCode::SUCCESS);
+        assert!(!workspace.exists());
+        assert!(!socket_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn cleanup_failure_fails_command_and_attempts_remaining_steps() {
+        let workspace_base = tempfile::tempdir().unwrap();
+        let socket_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(socket_base.path());
+        let target = make_target_at_base(200, "sbox-123", workspace_base.path());
+        let workspace = workspace_base.path().join("workspaces/sbox-123");
+        let socket_dir = control.runtime_dir("sbox-123");
+        tokio::fs::create_dir_all(workspace.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&workspace, "not a directory")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(&socket_dir).await.unwrap();
+        let outcome = KillOutcome::OrphanKilled(target.clone());
+
+        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
+
+        assert_eq!(exit_code, ExitCode::FAILURE);
+        assert!(workspace.exists());
+        assert!(
+            !socket_dir.exists(),
+            "socket cleanup should still run after workspace cleanup fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn already_exited_orphan_with_missing_paths_succeeds() {
+        let workspace_base = tempfile::tempdir().unwrap();
+        let socket_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(socket_base.path());
+        let target = make_target_at_base(200, "sbox-123", workspace_base.path());
+        let outcome = KillOutcome::OrphanAlreadyExited(target.clone());
+
+        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
+
+        assert_eq!(exit_code, ExitCode::SUCCESS);
+    }
 
     #[tokio::test]
     async fn cleanup_orphan_removes_workspace_and_socket_dir() {

@@ -131,10 +131,10 @@ def _catalog_source_for_name(
         )
     catalog_firewall = cached_catalog.firewalls.get(raw_name)
     if catalog_firewall is None:
-        _, catalog_digest, catalog_version, _ = cached_catalog.identity
         raise FirewallEntryResolutionError(
             f'builtin firewall "{raw_name}" missing from catalog cache '
-            f"(catalog_digest={catalog_digest}, catalog_version={catalog_version})"
+            f"(catalog_digest={cached_catalog.identity.catalog_digest}, "
+            f"catalog_version={cached_catalog.identity.catalog_version})"
         )
     return catalog_firewall, cached_catalog.identity
 
@@ -231,8 +231,13 @@ def resolve_firewall_entries(
     registry pass cannot mix catalog versions.
 
     Inline firewalls are deep-copied and receive per-entry `None` builtin cache
-    keys. API IDs are assigned after expansion and before returning. Callers must
-    validate `vm["runId"]` as a non-empty string before calling.
+    keys. Builtin catalog API IDs are discarded during expansion, so builtin
+    APIs receive generated run-scoped IDs. Inline APIs preserve an existing
+    non-empty string ID; absent, empty, or non-string IDs are generated.
+    Generated IDs use `<runId>:<index>`, where the zero-based index advances over
+    dictionary API entries in resolved firewall order, including entries whose
+    IDs are preserved. Callers must validate `vm["runId"]` as a non-empty string
+    before calling.
 
     Raises `FirewallEntryResolutionError` for malformed firewall lists or
     entries, unsupported entry kinds, unknown builtins, invalid builtin base URL

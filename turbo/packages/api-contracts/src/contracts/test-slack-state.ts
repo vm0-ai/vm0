@@ -133,6 +133,7 @@ export const testSlackStateContract = c.router({
     path: "/api/test/slack-state",
     query: z.object({
       team_id: z.string().optional(),
+      empty_team_id: z.literal("1").optional(),
       org_id: z.string().optional(),
       user_id: z.string().optional(),
     }),

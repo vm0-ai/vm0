@@ -1,7 +1,10 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, eq, like, or, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { db } from "../lib/db";
+import { executeRawRows } from "../lib/db-raw-rows";
 import { createDeferredPromise } from "../signals/utils";
 
 /**
@@ -13,6 +16,8 @@ const VM0_BDD_API_KEY_PREFIXES = [
   "vm0-key-bdd-fake-",
   "vm0-key-bdd-dev-seed-",
 ] as const;
+const databasePidRowSchema = z.object({ pid: z.int() });
+const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 
 function bddVm0ApiKeyFilter(vendor: string, model: string) {
   const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
@@ -124,12 +129,16 @@ export async function holdOrgAdmissionLockFixture(args: {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
-    const result = await tx.execute<{ readonly pid: number }>(sql`
-      SELECT
-        pg_backend_pid() AS "pid",
-        pg_advisory_xact_lock(hashtext(${args.orgId}))
-    `);
-    const holderPid = result.rows[0]?.pid;
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext(${args.orgId}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
     if (!holderPid) {
       throw new Error("Expected the admission lock holder pid");
     }
@@ -146,20 +155,89 @@ export async function holdOrgAdmissionLockFixture(args: {
     },
     done,
     waiterCount: async () => {
-      const result = await db().execute<{ readonly waiterCount: number }>(sql`
-        SELECT count(*)::int AS "waiterCount"
-        FROM pg_locks AS waiting
-        WHERE waiting.locktype = 'advisory'
-          AND NOT waiting.granted
-          AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
-            SELECT held.classid, held.objid, held.objsubid
-            FROM pg_locks AS held
-            WHERE held.locktype = 'advisory'
-              AND held.pid = ${holderPid}
-              AND held.granted
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT count(*)::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Holds a table lock that permits row selection but pauses chat-message writes.
+ * This is a timing-only boundary exception for proving queue claim races through
+ * the product API; the transaction neither creates nor changes product rows.
+ */
+export async function holdChatMessageWritesFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    await tx.execute(sql`LOCK TABLE ${chatMessages} IN SHARE MODE`);
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-message lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          WITH RECURSIVE blocked("pid") AS (
+            SELECT activity.pid
+            FROM pg_stat_activity AS activity
+            WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+
+            UNION
+
+            SELECT activity.pid
+            FROM pg_stat_activity AS activity
+            INNER JOIN blocked AS blocker
+              ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
           )
-      `);
-      return result.rows[0]?.waiterCount ?? 0;
+          SELECT count(*)::int AS "waiterCount"
+          FROM blocked
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
     },
   };
 }

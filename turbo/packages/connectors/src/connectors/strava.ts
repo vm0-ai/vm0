@@ -17,6 +17,7 @@ export const strava = {
           clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["STRAVA_ACCESS_TOKEN", "STRAVA_REFRESH_TOKEN"],
           variables: [],
         },

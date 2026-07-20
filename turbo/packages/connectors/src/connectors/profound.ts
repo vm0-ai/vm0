@@ -21,6 +21,7 @@ export const profound = {
         helpText:
           "1. Log in to [Profound](https://platform.tryprofound.com)\n2. Open **Settings** from the user menu\n3. Select **API Keys** in the sidebar\n4. Enter a key name and expiration date\n5. Click **Create API Key**\n6. Copy the generated key immediately (it will not be shown again)",
         storage: {
+          version: 1,
           secrets: ["PROFOUND_API_KEY"],
           variables: [],
         },

@@ -23,7 +23,6 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroOnboardingSetupRoutes } from "../zero-onboarding-setup";
 import { zeroScrapeRoutes } from "../zero-scrape";
 import {
   createBddApi,
@@ -37,7 +36,6 @@ const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
 const scrapeRoutes: readonly RouteEntry[] = [
-  ...zeroOnboardingSetupRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroScrapeRoutes,
 ];
@@ -99,8 +97,8 @@ async function rawScrapeRequest(
   return await app.request(request);
 }
 
-async function setupOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).setupOnboarding(actor, {
+async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
+  await createBddApi(context).bootstrapOnboarding(actor, {
     displayName: "Zero Scrape Test",
   });
 }
@@ -116,7 +114,7 @@ async function setActorCredits(
 }
 
 async function fundActor(actor: ApiTestUser): Promise<void> {
-  await setupOnboarding(actor);
+  await bootstrapOnboarding(actor);
   await setActorCredits(actor, 1000);
 }
 
@@ -227,7 +225,7 @@ describe("zero scrape route", () => {
     if (!actor.orgId) {
       throw new Error("Zero Scrape test actor must belong to an organization");
     }
-    await setupOnboarding(actor);
+    await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -429,7 +427,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await setupOnboarding(actor);
+    await bootstrapOnboarding(actor);
     await setActorCredits(actor, 0);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {

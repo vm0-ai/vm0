@@ -12,6 +12,7 @@ export const brightData = {
         helpText:
           "1. Log in to [Bright Data](https://brightdata.com/cp)\n2. Go to **Account settings**\n3. Click **Add API key** and configure permissions\n4. Copy the token (shown only once)",
         storage: {
+          version: 1,
           secrets: ["BRIGHTDATA_TOKEN"],
           variables: [],
         },

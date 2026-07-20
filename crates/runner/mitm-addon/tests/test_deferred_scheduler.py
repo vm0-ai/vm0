@@ -9,10 +9,10 @@ from mitmproxy import tcp
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
 from tests.model_provider_websocket_helpers import (
-    _append_websocket_message,
-    _openai_model_websocket_flow,
-    _openai_websocket_usage_frame,
+    append_websocket_message,
+    openai_websocket_usage_frame,
 )
 
 
@@ -23,14 +23,14 @@ async def _run_ready_tasks() -> None:
 
 
 async def test_model_websocket_trim_uses_real_event_loop_scheduler(tmp_path, mitm_ctx, real_flow):
-    flow = _openai_model_websocket_flow(tmp_path, real_flow)
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     mitm_addon.responseheaders(flow)
-    old_client = _append_websocket_message(flow, from_client=True, content=b"client-old")
-    old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
-    latest_server = _append_websocket_message(
+    old_client = append_websocket_message(flow, from_client=True, content=b"client-old")
+    old_server = append_websocket_message(flow, from_client=False, content=b"server-old")
+    latest_server = append_websocket_message(
         flow,
         from_client=False,
-        content=_openai_websocket_usage_frame("resp_ws_latest"),
+        content=openai_websocket_usage_frame("resp_ws_latest"),
     )
     assert flow.websocket is not None
     messages = flow.websocket.messages
@@ -51,21 +51,21 @@ async def test_model_websocket_trim_coalesces_with_real_event_loop_scheduler(
     mitm_ctx,
     real_flow,
 ):
-    flow = _openai_model_websocket_flow(tmp_path, real_flow)
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     mitm_addon.responseheaders(flow)
-    first_server = _append_websocket_message(
+    first_server = append_websocket_message(
         flow,
         from_client=False,
-        content=_openai_websocket_usage_frame("resp_ws_first"),
+        content=openai_websocket_usage_frame("resp_ws_first"),
     )
 
     with mitm_ctx():
         mitm_addon.websocket_message(flow)
 
-    latest_server = _append_websocket_message(
+    latest_server = append_websocket_message(
         flow,
         from_client=False,
-        content=_openai_websocket_usage_frame("resp_ws_latest"),
+        content=openai_websocket_usage_frame("resp_ws_latest"),
     )
     with mitm_ctx():
         mitm_addon.websocket_message(flow)

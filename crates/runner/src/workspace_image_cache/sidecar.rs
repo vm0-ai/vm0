@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 use tokio::fs;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::ids::RunId;
 use crate::restored_session_identity::{RestoredSessionIdentity, RestoredSessionIdentityFields};
 
 use super::fs::{
-    allocated_bytes, ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
+    ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
     workspace_cache_existing_path_allocated_bytes,
 };
 use super::metadata::WorkspaceImageFileIdentity;
@@ -34,7 +35,6 @@ struct WorkspaceSessionHistorySidecarMetadata {
     representation: WorkspaceSessionHistorySidecarRepresentation,
     encoded_size: u64,
     body_file: WorkspaceImageFileIdentity,
-    allocated_bytes: u64,
 }
 
 impl WorkspaceSessionHistorySidecarMetadata {
@@ -59,7 +59,6 @@ impl WorkspaceSessionHistorySidecarMetadata {
             representation: source.representation,
             encoded_size: source.encoded_size,
             body_file: WorkspaceImageFileIdentity::from_metadata(body_metadata),
-            allocated_bytes: allocated_bytes(body_metadata),
         })
     }
 
@@ -97,6 +96,19 @@ impl WorkspaceSessionHistorySidecarMetadata {
             _ => Err(WorkspaceSessionHistorySidecarMiss::UnsupportedFormat),
         }
     }
+
+    fn validate_body_metadata(
+        &self,
+        body_metadata: &std::fs::Metadata,
+    ) -> Result<(), WorkspaceSessionHistorySidecarMiss> {
+        if !body_metadata.is_file()
+            || WorkspaceImageFileIdentity::from_metadata(body_metadata) != self.body_file
+            || body_metadata.len() != self.encoded_size
+        {
+            return Err(WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch);
+        }
+        Ok(())
+    }
 }
 
 impl SessionWorkspaceCache {
@@ -119,12 +131,7 @@ impl SessionWorkspaceCache {
                     WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
                 }
             })?;
-        if !body_metadata.is_file()
-            || WorkspaceImageFileIdentity::from_metadata(&body_metadata) != metadata.body_file
-            || body_metadata.len() != metadata.encoded_size
-        {
-            return Err(WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch);
-        }
+        metadata.validate_body_metadata(&body_metadata)?;
         Ok(WorkspaceSessionHistorySidecar {
             path: paths.session_history_sidecar().to_path_buf(),
             representation: metadata.representation,
@@ -135,7 +142,7 @@ impl SessionWorkspaceCache {
     pub(super) async fn publish_session_history_sidecar(
         &self,
         cache_key: &str,
-        run_id: crate::ids::RunId,
+        run_id: RunId,
         source: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
     ) -> RunnerResult<()> {
         let paths = self.entry_paths(cache_key);
@@ -180,7 +187,7 @@ impl SessionWorkspaceCache {
     async fn publish_session_history_sidecar_source(
         &self,
         cache_key: &str,
-        run_id: crate::ids::RunId,
+        run_id: RunId,
         paths: &CacheEntryPaths,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
     ) -> RunnerResult<()> {

@@ -14,7 +14,7 @@ from flow_metadata_linter.ast_helpers import (
     _pattern_names,
     _scope_bound_name_visitor,
     _statement_can_fall_through,
-    _static_call_argument_nodes,
+    _static_first_call_argument_nodes,
     _target_names,
     _type_alias_target_names,
     _type_alias_value,
@@ -39,6 +39,11 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
     "setdefault",
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
+_DIRECT_UNBOUND_METADATA_KEY_CALL_ARGUMENTS = {
+    ("dict", "__getitem__"): (0, 1),
+    ("dict", "get"): (0, 1),
+    ("operator", "getitem"): (0, 1),
+}
 
 
 @dataclass
@@ -71,6 +76,23 @@ def _metadata_match_pattern_alias_names(pattern: ast.pattern) -> set[str]:
             names.update(_metadata_match_pattern_alias_names(child_pattern))
         return names
     return set()
+
+
+def _direct_unbound_metadata_key_arguments(node: ast.Call) -> tuple[ast.AST, ast.AST] | None:
+    if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+        return None
+    argument_indexes = _DIRECT_UNBOUND_METADATA_KEY_CALL_ARGUMENTS.get(
+        (node.func.value.id, node.func.attr)
+    )
+    if argument_indexes is None:
+        return None
+    mapping_index, key_index = argument_indexes
+    last_required_index = max(argument_indexes)
+    if len(node.args) <= last_required_index or any(
+        isinstance(argument, ast.Starred) for argument in node.args[: last_required_index + 1]
+    ):
+        return None
+    return node.args[mapping_index], node.args[key_index]
 
 
 class _MetadataKeyVisitor(ast.NodeVisitor):
@@ -653,10 +675,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._record_metadata_merge_key_violations(keyword.value)
         if isinstance(node.func, ast.Attribute) and self._is_metadata_alias_value(node.func.value):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
-                for key_arg in _static_call_argument_nodes(node.args, 0):
+                for key_arg in _static_first_call_argument_nodes(node.args):
                     self._add_violations(_metadata_key_expression_violations(self.path, key_arg))
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
-                for update_arg in _static_call_argument_nodes(node.args, 0):
+                for update_arg in _static_first_call_argument_nodes(node.args):
                     self._record_metadata_dict_key_violations(update_arg)
                 for keyword in node.keywords:
                     if keyword.arg is None:
@@ -665,6 +687,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                     key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
                     if key_name is not None:
                         self._add_violation(_violation(self.path, keyword, key_name))
+        direct_unbound_arguments = _direct_unbound_metadata_key_arguments(node)
+        if direct_unbound_arguments is not None:
+            mapping_arg, key_arg = direct_unbound_arguments
+            if self._is_metadata_alias_value(mapping_arg):
+                self._add_violations(_metadata_key_expression_violations(self.path, key_arg))
         self.visit(node.func)
         for argument in node.args:
             self.visit(argument)
@@ -739,7 +766,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             exit_aliases.update(orelse_aliases)
         self._replace_current_aliases(exit_aliases)
 
-    def visit_For(self, node: ast.For) -> None:
+    def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> None:
         self._record_metadata_merge_key_violations(node.iter)
         self.visit(node.iter)
         base_aliases = set(self._metadata_aliases)
@@ -755,21 +782,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         )
         self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
 
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for_statement(node)
+
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        self._record_metadata_merge_key_violations(node.iter)
-        self.visit(node.iter)
-        base_aliases = set(self._metadata_aliases)
-        self._discard_alias_target(node.target)
-        body_aliases, _body_falls_through = self._visit_branch_body(
-            node.body, set(self._metadata_aliases)
-        )
-        loop_exit_aliases = base_aliases | body_aliases
-        orelse_aliases = (
-            self._visit_branch_body(node.orelse, loop_exit_aliases)[0]
-            if node.orelse
-            else loop_exit_aliases
-        )
-        self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
+        self._visit_for_statement(node)
 
     def visit_While(self, node: ast.While) -> None:
         self._record_metadata_merge_key_violations(node.test)

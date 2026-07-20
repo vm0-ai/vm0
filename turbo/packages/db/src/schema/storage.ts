@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -55,20 +56,31 @@ export const storages = pgTable(
  * Stores individual versions of each storage with content-addressable SHA-256 hash IDs
  * Version ID is computed from the content itself, enabling deduplication and verification
  */
-export const storageVersions = pgTable("storage_versions", {
-  id: varchar("id", { length: 64 }).primaryKey(),
-  storageId: uuid("storage_id")
-    .notNull()
-    .references(
-      () => {
-        return storages.id;
-      },
-      { onDelete: "cascade" },
-    ),
-  s3Key: text("s3_key").notNull(),
-  size: bigint("size", { mode: "number" }).notNull().default(0),
-  fileCount: integer("file_count").notNull().default(0),
-  message: text("message"),
-  createdBy: text("created_by").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const storageVersions = pgTable(
+  "storage_versions",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    storageId: uuid("storage_id")
+      .notNull()
+      .references(
+        () => {
+          return storages.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    s3Key: text("s3_key").notNull(),
+    size: bigint("size", { mode: "number" }).notNull().default(0),
+    archiveSize: bigint("archive_size", { mode: "number" }),
+    fileCount: integer("file_count").notNull().default(0),
+    message: text("message"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return {
+      archiveSizeNullIdx: index("idx_storage_versions_archive_size_null")
+        .on(table.id)
+        .where(sql`${table.archiveSize} IS NULL`),
+    };
+  },
+);

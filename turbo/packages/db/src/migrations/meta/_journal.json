@@ -4264,6 +4264,139 @@
       "when": 1784177952821,
       "tag": "0608_cleanup_stale_user_message_queue_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 609,
+      "version": "7",
+      "when": 1784196245309,
+      "tag": "0609_add_usage_event_gross_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 610,
+      "version": "7",
+      "when": 1784200108803,
+      "tag": "0610_cheerful_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 611,
+      "version": "7",
+      "when": 1784222545951,
+      "tag": "0611_curved_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 612,
+      "version": "7",
+      "when": 1784222569566,
+      "tag": "0612_chilly_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1784229392155,
+      "tag": "0613_add_kimi_k3_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1784229404189,
+      "tag": "0614_migrate_kimi_k3_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1784232246678,
+      "tag": "0615_retire_orphaned_queued_chat_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1784233890680,
+      "tag": "0616_white_stature",
+      "breakpoints": true
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1784235403657,
+      "tag": "0617_preserve_chat_message_run_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1784235417148,
+      "tag": "0618_protect_chat_event_rows_from_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1784362482169,
+      "tag": "0619_flaky_fenris",
+      "breakpoints": true
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1784371013888,
+      "tag": "0620_drop_legacy_workflow_queue_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 621,
+      "version": "7",
+      "when": 1784372472936,
+      "tag": "0621_contract_workflow_automation_callback_identifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 622,
+      "version": "7",
+      "when": 1784389437299,
+      "tag": "0622_wakeful_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 623,
+      "version": "7",
+      "when": 1784461989208,
+      "tag": "0623_pretty_red_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 624,
+      "version": "7",
+      "when": 1784475312139,
+      "tag": "0624_slippery_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 625,
+      "version": "7",
+      "when": 1784480663564,
+      "tag": "0625_lyrical_sumo",
+      "breakpoints": true
+    },
+    {
+      "idx": 626,
+      "version": "7",
+      "when": 1784524716294,
+      "tag": "0626_white_madripoor",
+      "breakpoints": true
+    },
+    {
+      "idx": 627,
+      "version": "7",
+      "when": 1784534410768,
+      "tag": "0627_expand_chat_message_queue_automation_id",
+      "breakpoints": true
     }
   ]
 }

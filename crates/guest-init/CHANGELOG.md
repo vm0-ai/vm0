@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.16.121](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.120...guest-init-v0.16.121) (2026-07-20)
+
+## [0.16.120](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.119...guest-init-v0.16.120) (2026-07-19)
+
+## [0.16.119](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.118...guest-init-v0.16.119) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
+## [0.16.118](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.117...guest-init-v0.16.118) (2026-07-17)
+
+## [0.16.117](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.116...guest-init-v0.16.117) (2026-07-17)
+
+## [0.16.116](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.115...guest-init-v0.16.116) (2026-07-17)
+
+
+### Performance Improvements
+
+* **guest-init:** replace pid 1 polling with signal waits ([#21941](https://github.com/vm0-ai/vm0/issues/21941)) ([9799699](https://github.com/vm0-ai/vm0/commit/979969903255a319417c9b212bccbc2700084a32))
+
+## [0.16.115](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.114...guest-init-v0.16.115) (2026-07-16)
+
+## [0.16.114](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.113...guest-init-v0.16.114) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.16.113](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.112...guest-init-v0.16.113) (2026-07-16)
 
 

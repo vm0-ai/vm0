@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult, SessionAffinityResource};
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,56 +46,31 @@ impl JobDiscoverySource {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PreLocalAdmissionOutcome {
-    NotProtected,
-    LocalHolder,
-    MissingSessionMetadata,
+pub(crate) enum SessionAffinityLocalResource {
+    ReusableSandbox,
+    WorkspaceCache,
 }
 
-impl PreLocalAdmissionOutcome {
+impl SessionAffinityLocalResource {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::NotProtected => "not_protected",
-            Self::LocalHolder => "local_holder",
-            Self::MissingSessionMetadata => "missing_session_metadata",
+            Self::ReusableSandbox => "reusableSandbox",
+            Self::WorkspaceCache => "workspaceCache",
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionHistoryGenerationRelationship {
-    Exact,
-    Different,
+pub(crate) enum LocalAdmissionResourceKind {
+    ReusableSandbox,
     Fresh,
-    UnknownTarget,
-    UnknownReserved,
 }
 
-impl SessionHistoryGenerationRelationship {
+impl LocalAdmissionResourceKind {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::Exact => "exact",
-            Self::Different => "different",
+            Self::ReusableSandbox => "reusableSandbox",
             Self::Fresh => "fresh",
-            Self::UnknownTarget => "unknown_target",
-            Self::UnknownReserved => "unknown_reserved",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionHistoryGenerationLocalAvailability {
-    AfterDiscovery,
-    BeforeDiscoveryLtHeartbeatPeriod,
-    BeforeDiscoveryGeHeartbeatPeriod,
-}
-
-impl SessionHistoryGenerationLocalAvailability {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::AfterDiscovery => "parked_after_discovery",
-            Self::BeforeDiscoveryLtHeartbeatPeriod => "parked_before_discovery_lt_heartbeat_period",
-            Self::BeforeDiscoveryGeHeartbeatPeriod => "parked_before_discovery_ge_heartbeat_period",
         }
     }
 }
@@ -115,15 +90,14 @@ pub struct JobCandidate {
     discovery_source: Option<JobDiscoverySource>,
     direct_candidate_notification_to_enqueue_elapsed: Option<Duration>,
     direct_candidate_inbox_wait_elapsed: Option<Duration>,
-    pre_local_admission_outcome: Option<PreLocalAdmissionOutcome>,
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
+    session_affinity_resource: Option<SessionAffinityResource>,
+    session_affinity_local_resource: Option<SessionAffinityLocalResource>,
+    local_admission_resource: Option<LocalAdmissionResourceKind>,
     history_generation_run_id: Option<RunId>,
-    session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
-    session_history_generation_local_availability:
-        Option<SessionHistoryGenerationLocalAvailability>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
@@ -151,14 +125,14 @@ impl JobCandidate {
             discovery_source: None,
             direct_candidate_notification_to_enqueue_elapsed: None,
             direct_candidate_inbox_wait_elapsed: None,
-            pre_local_admission_outcome: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
+            session_affinity_resource: None,
+            session_affinity_local_resource: None,
+            local_admission_resource: None,
             history_generation_run_id: None,
-            session_history_generation_relationship: None,
-            session_history_generation_local_availability: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
@@ -209,10 +183,6 @@ impl JobCandidate {
         self.discovered_at.elapsed()
     }
 
-    pub(crate) fn discovered_at(&self) -> Instant {
-        self.discovered_at
-    }
-
     pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
         self.local_admission_started_at
             .map(|started| started.elapsed())
@@ -232,10 +202,6 @@ impl JobCandidate {
 
     pub(crate) fn main_loop_to_local_admission_elapsed(&self) -> Option<Duration> {
         self.main_loop_to_local_admission_elapsed
-    }
-
-    pub(crate) fn pre_local_admission_outcome(&self) -> Option<PreLocalAdmissionOutcome> {
-        self.pre_local_admission_outcome
     }
 
     pub(crate) fn discovery_source(&self) -> Option<JobDiscoverySource> {
@@ -258,20 +224,20 @@ impl JobCandidate {
         self.cli_agent_session_id.as_deref()
     }
 
+    pub(crate) fn session_affinity_resource(&self) -> Option<SessionAffinityResource> {
+        self.session_affinity_resource
+    }
+
+    pub(crate) fn session_affinity_local_resource(&self) -> Option<SessionAffinityLocalResource> {
+        self.session_affinity_local_resource
+    }
+
+    pub(crate) fn local_admission_resource(&self) -> Option<LocalAdmissionResourceKind> {
+        self.local_admission_resource
+    }
+
     pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
         self.history_generation_run_id
-    }
-
-    pub(crate) fn session_history_generation_relationship(
-        &self,
-    ) -> Option<SessionHistoryGenerationRelationship> {
-        self.session_history_generation_relationship
-    }
-
-    pub(crate) fn session_history_generation_local_availability(
-        &self,
-    ) -> Option<SessionHistoryGenerationLocalAvailability> {
-        self.session_history_generation_local_availability
     }
 
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
@@ -308,6 +274,14 @@ impl JobCandidate {
         self
     }
 
+    pub(crate) fn with_session_affinity_resource(
+        mut self,
+        resource: Option<SessionAffinityResource>,
+    ) -> Self {
+        self.session_affinity_resource = resource;
+        self
+    }
+
     pub(crate) fn with_history_generation_run_id(
         mut self,
         history_generation_run_id: Option<RunId>,
@@ -326,18 +300,15 @@ impl JobCandidate {
         self
     }
 
-    pub(crate) fn set_session_history_generation_relationship(
+    pub(crate) fn set_session_affinity_local_resource(
         &mut self,
-        relationship: SessionHistoryGenerationRelationship,
+        resource: SessionAffinityLocalResource,
     ) {
-        self.session_history_generation_relationship = Some(relationship);
+        self.session_affinity_local_resource = Some(resource);
     }
 
-    pub(crate) fn set_session_history_generation_local_availability(
-        &mut self,
-        availability: SessionHistoryGenerationLocalAvailability,
-    ) {
-        self.session_history_generation_local_availability = Some(availability);
+    pub(crate) fn set_local_admission_resource(&mut self, resource: LocalAdmissionResourceKind) {
+        self.local_admission_resource = Some(resource);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
@@ -352,14 +323,6 @@ impl JobCandidate {
     ) -> Self {
         self.direct_candidate_notification_to_enqueue_elapsed = notification_to_enqueue_elapsed;
         self.direct_candidate_inbox_wait_elapsed = inbox_wait_elapsed;
-        self
-    }
-
-    pub(crate) fn with_pre_local_admission_outcome(
-        mut self,
-        outcome: PreLocalAdmissionOutcome,
-    ) -> Self {
-        self.pre_local_admission_outcome = Some(outcome);
         self
     }
 

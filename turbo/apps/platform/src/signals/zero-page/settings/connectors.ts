@@ -54,7 +54,6 @@ import {
 import {
   jsonParseOr,
   resetSignal,
-  settle,
   setLoop,
   tapError,
   withCleanup,
@@ -62,6 +61,7 @@ import {
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 
@@ -697,7 +697,7 @@ export type ConnectorExternalCodeState =
       readonly requestId: string;
     }
   | (ActiveConnectorExternalCodeState & {
-      readonly status: "pending" | "completing";
+      readonly status: "pending";
     })
   | {
       readonly status: "expired" | "error";
@@ -783,11 +783,7 @@ function connectorOAuthDeviceAuthStateIsActive(
 function connectorExternalCodeStateIsActive(
   state: ConnectorExternalCodeState,
 ): boolean {
-  return (
-    state.status === "starting" ||
-    state.status === "pending" ||
-    state.status === "completing"
-  );
+  return state.status === "starting" || state.status === "pending";
 }
 
 function connectorConnectOperationIsActive({
@@ -816,18 +812,14 @@ function connectorOAuthDeviceAuthStartOptionsKey(
   return `${type}:${authMethod}`;
 }
 
-export const connectorOAuthDeviceAuthStartOptionValuesFor$ = (
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-) => {
-  return computed((get) => {
+export const connectorOAuthDeviceAuthStartOptionValuesFor$ = computed((get) => {
+  const values = get(connectorOAuthDeviceAuthStartOptionValues$);
+  return (type: ConnectorType, authMethod: ConnectorAuthMethodId) => {
     return (
-      get(connectorOAuthDeviceAuthStartOptionValues$)[
-        connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)
-      ] ?? {}
+      values[connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)] ?? {}
     );
-  });
-};
+  };
+});
 
 export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
   (
@@ -909,11 +901,12 @@ export const clearManualGrantForm$ = command(({ get, set }, type: string) => {
   set(manualGrantFormValues$, updated);
 });
 
-export const manualGrantFormValuesFor$ = (type: string) => {
-  return computed((get) => {
-    return get(manualGrantFormValues$)[type] ?? {};
-  });
-};
+export const manualGrantFormValuesFor$ = computed((get) => {
+  const values = get(manualGrantFormValues$);
+  return (type: string) => {
+    return values[type] ?? {};
+  };
+});
 
 export const setManualGrantFormSubmitting$ = command(
   ({ set }, value: string | null) => {
@@ -938,6 +931,9 @@ const finishConnectorConnection$ = command(
     });
     if (options.reloadConnectors !== false) {
       set(reloadConnectors$);
+    }
+    if (options.agentId) {
+      set(reloadAgentConnectorAuthorizations$);
     }
 
     const hidden = new Set(get(hiddenConnectorTypes$));
@@ -1300,10 +1296,6 @@ function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
   return `${type}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function oauthDeviceAuthErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Connection failed";
-}
-
 function getOAuthDeviceAuthTerminalMessage(
   result: Extract<
     ConnectorOauthDeviceAuthSessionPollResponse,
@@ -1433,27 +1425,18 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
           status: "polling",
         });
 
-        const acceptPoll = async () => {
-          const response = await accept(
-            client.poll({
-              params: { type, sessionId: current.sessionId },
-              body: { sessionToken: current.sessionToken },
-              fetchOptions: { signal },
-            }),
-            [200],
-          );
-          if (response.body.status === "complete") {
-            connectorStateChanged = true;
-          }
-          return response;
-        };
-        const pollSettled = await settle(acceptPoll(), signal);
-        const pollResult = pollSettled.ok
-          ? pollSettled.value.body
-          : {
-              status: "error" as const,
-              errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
-            };
+        const pollResponse = await accept(
+          client.poll({
+            params: { type, sessionId: current.sessionId },
+            body: { sessionToken: current.sessionToken },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        const pollResult = pollResponse.body;
+        if (pollResult.status === "complete") {
+          connectorStateChanged = true;
+        }
 
         const latest = get(internalConnectorOAuthDeviceAuthState$);
         if (
@@ -1565,6 +1548,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
       },
       0,
       signal,
+      { retryTransientErrors: false },
     );
     signal.throwIfAborted();
 
@@ -1686,7 +1670,6 @@ const connectConnectorOAuthDeviceAuth$ = command(
         });
         set(internalConnectorOAuthDeviceAuthState$, (current) => {
           if (
-            !signal.aborted ||
             requestId === null ||
             current.connectorType !== type ||
             (current.status !== "starting" &&
@@ -1753,20 +1736,16 @@ function createConnectorExternalCodeRequestId(type: ConnectorType): string {
   return `${type}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function externalCodeErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Connection failed";
-}
-
 function isCurrentConnectorExternalCodeRequest(
   state: ConnectorExternalCodeState,
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorExternalCodeState & {
-  readonly status: "pending" | "completing";
+  readonly status: "pending";
 } {
   return (
-    (state.status === "pending" || state.status === "completing") &&
+    state.status === "pending" &&
     state.connectorType === type &&
     state.authMethod === authMethod &&
     state.requestId === requestId
@@ -1792,7 +1771,7 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
   ) => {
     const current = get(internalConnectorExternalCodeState$);
     if (
-      (current.status !== "pending" && current.status !== "completing") ||
+      current.status !== "pending" ||
       current.connectorType !== args.type ||
       current.authMethod !== args.authMethod
     ) {
@@ -1930,9 +1909,7 @@ export const connectConnectorExternalCode$ = command(
             !signal.aborted ||
             requestId === null ||
             current.connectorType !== type ||
-            (current.status !== "starting" &&
-              current.status !== "pending" &&
-              current.status !== "completing") ||
+            (current.status !== "starting" && current.status !== "pending") ||
             current.authMethod !== authMethod ||
             current.requestId !== requestId
           ) {
@@ -1981,7 +1958,6 @@ const completeConnectorExternalCode$ = command(
 
     set(internalConnectorExternalCodeState$, {
       ...current,
-      status: "completing",
       code,
       errorMessage: null,
     });
@@ -1994,21 +1970,18 @@ const completeConnectorExternalCode$ = command(
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
           apiBase: OAUTH_WEB_API_BASE,
         });
-        const completeSettled = await settle(
-          accept(
-            client.complete({
-              params: { type, sessionId: current.sessionId },
-              body: {
-                sessionToken: current.sessionToken,
-                code,
-              },
-              fetchOptions: { signal: flowSignal },
-            }),
-            [200],
-            { toast: false },
-          ),
+        const completeResult = await accept(
+          client.complete({
+            params: { type, sessionId: current.sessionId },
+            body: {
+              sessionToken: current.sessionToken,
+              code,
+            },
+            fetchOptions: { signal: flowSignal },
+          }),
+          [200, 400],
         );
-        if (completeSettled.ok) {
+        if (completeResult.status === 200) {
           connectorStateChanged = true;
         }
         signal.throwIfAborted();
@@ -2025,14 +1998,10 @@ const completeConnectorExternalCode$ = command(
           return false;
         }
 
-        if (!completeSettled.ok) {
-          if (flowSignal.aborted) {
-            return false;
-          }
+        if (completeResult.status === 400) {
           set(internalConnectorExternalCodeState$, {
             ...latest,
-            status: "pending",
-            errorMessage: externalCodeErrorMessage(completeSettled.error),
+            errorMessage: completeResult.body.error.message,
           });
           return false;
         }

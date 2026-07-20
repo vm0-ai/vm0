@@ -152,7 +152,7 @@ enum AcquirePlan {
 struct ReleasePlan {
     info: NetnsInfo,
     kind: NetnsKind,
-    active_at_prepare: bool,
+    reusable_at_prepare: bool,
     ops: NetnsLifecycleOps,
 }
 
@@ -799,7 +799,9 @@ impl NetnsPoolState {
         }
 
         let kind = self.active_kind();
-        let reusable = self.active && !self.non_reusable.contains(active_lease.name());
+        let reusable = self.active
+            && active_lease.reuse_eligible()
+            && !self.non_reusable.contains(active_lease.name());
         if reusable
             && self
                 .target_queue(kind)
@@ -819,7 +821,7 @@ impl NetnsPoolState {
         Ok(ReleasePlan {
             info: active_lease.info().clone(),
             kind,
-            active_at_prepare: reusable,
+            reusable_at_prepare: reusable,
             ops: self.ops.clone(),
         })
     }
@@ -1077,13 +1079,13 @@ impl NetnsPoolInner {
                 Ok(plan) => plan,
                 Err(message) => return NetnsReleaseOutcome::InvalidLease(message),
             };
-            if plan.active_at_prepare {
+            if plan.reusable_at_prepare {
                 state.mark_non_reusable(&plan);
             }
             plan
         };
 
-        let can_requeue = if plan.active_at_prepare {
+        let can_requeue = if plan.reusable_at_prepare {
             (plan.ops.flush_conntrack)(plan.info.peer_ip.clone())
                 .await
                 .is_trusted()
@@ -1180,6 +1182,7 @@ impl NetnsPool {
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
         let config = config
             .into_checked()
+            .await
             .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
         Self::create_checked(config).await
     }
@@ -1246,6 +1249,13 @@ impl NetnsPool {
     }
 
     #[cfg(test)]
+    pub(crate) fn active_for_test() -> Self {
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        Self::from_state_for_test(state)
+    }
+
+    #[cfg(test)]
     pub(crate) fn inactive_for_test() -> Self {
         Self::from_state_for_test(NetnsPoolState::inactive_for_test())
     }
@@ -1285,6 +1295,11 @@ impl NetnsPoolHandle {
     }
 
     #[cfg(test)]
+    pub(crate) async fn is_active_for_test(&self) -> bool {
+        self.inner.state.lock().await.active
+    }
+
+    #[cfg(test)]
     fn from_state_for_test(state: NetnsPoolState) -> Self {
         Self {
             inner: NetnsPoolInner::new(state),
@@ -1321,6 +1336,22 @@ where
     F: Future<Output = Result<NetnsInfo>>,
 {
     let namespace = create.await?;
+
+    // Pool locking and the reserved namespace index give this new namespace
+    // exclusive current ownership of its peer IP. Clear leftovers before the
+    // readiness probe or a restored guest can reuse a tuple that still points
+    // at a previous runner's REDIRECT port.
+    if !(ops.flush_conntrack)(namespace.peer_ip.clone())
+        .await
+        .is_trusted()
+    {
+        let error = NetworkError::ConntrackReset {
+            namespace: namespace.name.clone(),
+            peer_ip: namespace.peer_ip.clone(),
+        };
+        delete_namespaces_with_ops(ops, vec![namespace]).await;
+        return Err(error);
+    }
     let Some((probe, timeout)) = readiness else {
         return Ok(namespace);
     };
@@ -1382,6 +1413,15 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    const TEST_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
+
+    async fn wait_for_sync<T>(phase: &'static str, future: impl Future<Output = T>) -> T {
+        match tokio::time::timeout(TEST_SYNC_TIMEOUT, future).await {
+            Ok(value) => value,
+            Err(_) => panic!("test synchronization timed out waiting for {phase}"),
+        }
+    }
+
     async fn blocking_plain_creation(
         name: &'static str,
         entered: Arc<tokio::sync::Notify>,
@@ -1418,6 +1458,7 @@ mod tests {
 
     struct CountedLifecycle {
         ops: NetnsLifecycleOps,
+        flush_count: Arc<AtomicUsize>,
         delete_count: Arc<AtomicUsize>,
     }
 
@@ -1489,11 +1530,19 @@ mod tests {
         flush_outcome: ConntrackFlushOutcome,
         delete_outcome: NamespaceDeleteOutcome,
     ) -> CountedLifecycle {
+        let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
+        let flush_count_for_ops = Arc::clone(&flush_count);
         let delete_count_for_ops = Arc::clone(&delete_count);
         CountedLifecycle {
             ops: NetnsLifecycleOps {
-                flush_conntrack: Arc::new(move |_| Box::pin(async move { flush_outcome })),
+                flush_conntrack: Arc::new(move |_| {
+                    let flush_count = Arc::clone(&flush_count_for_ops);
+                    Box::pin(async move {
+                        flush_count.fetch_add(1, Ordering::SeqCst);
+                        flush_outcome
+                    })
+                }),
                 delete_namespace: Arc::new(move |_| {
                     let delete_count = Arc::clone(&delete_count_for_ops);
                     Box::pin(async move {
@@ -1502,8 +1551,79 @@ mod tests {
                     })
                 }),
             },
+            flush_count,
             delete_count,
         }
+    }
+
+    #[tokio::test]
+    async fn new_namespace_resets_conntrack_before_dns_readiness() {
+        let phase = Arc::new(AtomicUsize::new(0));
+        let phase_for_flush = Arc::clone(&phase);
+        let phase_for_probe = Arc::clone(&phase);
+        let ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |peer_ip| {
+                let phase = Arc::clone(&phase_for_flush);
+                Box::pin(async move {
+                    assert_eq!(peer_ip, "10.200.0.2");
+                    assert_eq!(phase.fetch_add(1, Ordering::SeqCst), 0);
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(|_| Box::pin(async { NamespaceDeleteOutcome::Deleted })),
+        };
+        let probe = probe_for_test(move |namespace| {
+            let phase = Arc::clone(&phase_for_probe);
+            async move {
+                assert_eq!(namespace, "vm0-ns-test-00");
+                assert_eq!(phase.fetch_add(1, Ordering::SeqCst), 1);
+                Ok(1)
+            }
+        });
+
+        let namespace = create_namespace_with_readiness(
+            async { Ok(test_info("vm0-ns-test-00")) },
+            Some((probe, Duration::from_secs(1))),
+            ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(namespace.name, "vm0-ns-test-00");
+        assert_eq!(phase.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn untrusted_creation_conntrack_reset_deletes_namespace_before_readiness() {
+        let lifecycle = untrusted_flush_counted_deleted_lifecycle();
+        let probe_count = Arc::new(AtomicUsize::new(0));
+        let probe_count_for_probe = Arc::clone(&probe_count);
+        let probe = probe_for_test(move |_| {
+            let probe_count = Arc::clone(&probe_count_for_probe);
+            async move {
+                probe_count.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        });
+
+        let error = create_namespace_with_readiness(
+            async { Ok(test_info("vm0-ns-test-00")) },
+            Some((probe, Duration::from_secs(1))),
+            lifecycle.ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            NetworkError::ConntrackReset {
+                namespace,
+                peer_ip,
+            } if namespace == "vm0-ns-test-00" && peer_ip == "10.200.0.2"
+        ));
+        assert_eq!(lifecycle.flush_count.load(Ordering::SeqCst), 1);
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+        assert_eq!(probe_count.load(Ordering::SeqCst), 0);
     }
 
     fn blocking_trusted_flush_lifecycle() -> BlockingFlushLifecycle {
@@ -1796,7 +1916,7 @@ mod tests {
         let mut pool = NetnsPool::from_state_for_test(state);
         let inner = pool.inner.clone();
         let activation = tokio::spawn(async move { inner.activate_dns_readiness().await });
-        entered.notified().await;
+        wait_for_sync("DNS readiness probe to start", entered.notified()).await;
 
         activation.abort();
         assert!(activation.await.unwrap_err().is_cancelled());
@@ -1863,7 +1983,12 @@ mod tests {
         let mut completion = state.completion_wake_tx.subscribe();
         state.spawn_proxy_creation_for_test(async { Ok(test_info("vm0-ns-test-bad")) });
         let mut pool = NetnsPool::from_state_for_test(state);
-        completion.changed().await.unwrap();
+        wait_for_sync(
+            "parallel proxy namespace creation to complete",
+            completion.changed(),
+        )
+        .await
+        .unwrap();
 
         let mut lease = Some(pool.acquire().await.unwrap());
 
@@ -2013,8 +2138,12 @@ mod tests {
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
-        entered.notified().await;
-        waiting.notified().await;
+        wait_for_sync("plain namespace creation to start", entered.notified()).await;
+        wait_for_sync(
+            "shared acquire to wait for namespace creation",
+            waiting.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2051,8 +2180,16 @@ mod tests {
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
-        entered.notified().await;
-        waiting.notified().await;
+        wait_for_sync(
+            "plain namespace creation to start before acquire cancellation",
+            entered.notified(),
+        )
+        .await;
+        wait_for_sync(
+            "shared acquire to wait before cancellation",
+            waiting.notified(),
+        )
+        .await;
         acquire.abort();
         let _ = acquire.await;
 
@@ -2088,6 +2225,7 @@ mod tests {
         let CountedLifecycle {
             ops,
             delete_count: deleted,
+            ..
         } = counted_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.ops = ops;
@@ -2110,6 +2248,7 @@ mod tests {
         let CountedLifecycle {
             ops,
             delete_count: deleted,
+            ..
         } = counted_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
@@ -2180,6 +2319,7 @@ mod tests {
         let CountedLifecycle {
             ops,
             delete_count: deleted,
+            ..
         } = counted_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.ops = ops;
@@ -2194,19 +2334,20 @@ mod tests {
         drop(pool);
         release.notify_one();
 
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        wait_for_sync("late namespace deletion after pool drop", async {
             while deleted.load(Ordering::SeqCst) == 0 {
                 tokio::task::yield_now().await;
             }
         })
-        .await
-        .expect("late pending namespace should be deleted after pool drop");
+        .await;
     }
 
     #[tokio::test]
     async fn cleanup_rejects_acquire_and_deletes_late_completion() {
         let release = Arc::new(tokio::sync::Notify::new());
-        let CountedLifecycle { ops, delete_count } = counted_deleted_lifecycle();
+        let CountedLifecycle {
+            ops, delete_count, ..
+        } = counted_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.ops = ops;
@@ -2223,12 +2364,15 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        loop {
-            if !handle.inner.state.lock().await.active {
-                break;
+        wait_for_sync("cleanup to mark namespace pool inactive", async {
+            loop {
+                if !handle.inner.state.lock().await.active {
+                    break;
+                }
+                tokio::task::yield_now().await;
             }
-            tokio::task::yield_now().await;
-        }
+        })
+        .await;
 
         let err = handle.acquire().await.unwrap_err();
         assert!(matches!(err, NetworkError::PoolNotActive));
@@ -2262,7 +2406,11 @@ mod tests {
                 (outcome, lease)
             }
         });
-        flush_entered.notified().await;
+        wait_for_sync(
+            "shared release conntrack flush to start",
+            flush_entered.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2300,7 +2448,11 @@ mod tests {
                 (outcome, lease)
             }
         });
-        flush_entered.notified().await;
+        wait_for_sync(
+            "shared release conntrack flush to start before cleanup",
+            flush_entered.notified(),
+        )
+        .await;
 
         handle.cleanup().await.unwrap();
         flush_release.notify_one();
@@ -2335,7 +2487,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 outcome = &mut release => panic!("release completed before flush was cancelled: {outcome:?}"),
-                _ = flush_entered.notified() => {}
+                _ = wait_for_sync(
+                    "release conntrack flush to start before cancellation",
+                    flush_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2380,7 +2535,10 @@ mod tests {
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before flush finished: {outcome:?}"),
-            _ = flush_entered.notified() => {}
+            _ = wait_for_sync(
+                "trusted release conntrack flush to start",
+                flush_entered.notified(),
+            ) => {}
         }
         let guard = handle.inner.state.lock().await;
         first_flush_release.notify_one();
@@ -2431,7 +2589,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 result = &mut release => panic!("release completed before flush was cancelled: {result:?}"),
-                _ = flush_entered.notified() => {}
+                _ = wait_for_sync(
+                    "direct release conntrack flush to start before cancellation",
+                    flush_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2459,7 +2620,9 @@ mod tests {
 
     #[tokio::test]
     async fn untrusted_conntrack_flush_deletes_without_requeue() {
-        let CountedLifecycle { ops, delete_count } = untrusted_flush_counted_deleted_lifecycle();
+        let CountedLifecycle {
+            ops, delete_count, ..
+        } = untrusted_flush_counted_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.ops = ops;
@@ -2474,6 +2637,60 @@ mod tests {
         let pool = handle.inner.state.lock().await;
         assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn attachment_marked_non_reusable_is_deleted_without_conntrack_flush() {
+        let CountedLifecycle {
+            ops,
+            flush_count,
+            delete_count,
+        } = counted_deleted_lifecycle();
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.active = true;
+        pool.ops = ops;
+        let mut lease = pool.checkout(test_info("failed-ns")).unwrap();
+        lease.mark_non_reusable();
+        let mut lease = Some(lease);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
+
+        let outcome = handle.release(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
+        assert!(lease.is_none());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 0);
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = handle.inner.state.lock().await;
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn attachment_reapproved_after_readiness_uses_normal_release_path() {
+        let CountedLifecycle {
+            ops,
+            flush_count,
+            delete_count,
+        } = counted_deleted_lifecycle();
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.active = true;
+        pool.ops = ops;
+        let mut lease = pool.checkout(test_info("ready-ns")).unwrap();
+        lease.mark_non_reusable();
+        lease.mark_reusable();
+        let mut lease = Some(lease);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
+
+        let outcome = handle.release(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Released));
+        assert!(lease.is_none());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        assert_eq!(delete_count.load(Ordering::SeqCst), 0);
+        let pool = handle.inner.state.lock().await;
+        assert!(pool.in_flight.is_empty());
+        assert_eq!(pool.plain_queue.len(), 1);
+        assert_eq!(pool.plain_queue.front().unwrap().name(), "ready-ns");
     }
 
     #[tokio::test]
@@ -2496,7 +2713,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 outcome = &mut release => panic!("release completed before delete was cancelled: {outcome:?}"),
-                _ = delete_entered.notified() => {}
+                _ = wait_for_sync(
+                    "untrusted release namespace deletion to start",
+                    delete_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2542,7 +2762,10 @@ mod tests {
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before delete finished: {outcome:?}"),
-            _ = delete_entered.notified() => {}
+            _ = wait_for_sync(
+                "namespace deletion to start before release commit",
+                delete_entered.notified(),
+            ) => {}
         }
         let guard = handle.inner.state.lock().await;
         first_delete_release.notify_one();
@@ -2592,7 +2815,11 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        delete_entered.notified().await;
+        wait_for_sync(
+            "shared cleanup namespace deletion to start",
+            delete_entered.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2625,7 +2852,11 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        delete_entered.notified().await;
+        wait_for_sync(
+            "cleanup namespace deletion to start before cancellation",
+            delete_entered.notified(),
+        )
+        .await;
         cleanup.abort();
         let _ = cleanup.await;
 
@@ -2754,8 +2985,9 @@ mod tests {
 
     #[tokio::test]
     async fn release_abandoned_delete_consumes_lease_and_clears_tracking() {
-        let CountedLifecycle { ops, delete_count } =
-            untrusted_flush_counted_abandoned_delete_lifecycle();
+        let CountedLifecycle {
+            ops, delete_count, ..
+        } = untrusted_flush_counted_abandoned_delete_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.ops = ops;
@@ -2793,7 +3025,10 @@ mod tests {
             tokio::pin!(cleanup);
             tokio::select! {
                 result = &mut cleanup => panic!("cleanup completed before pending task was released: {result:?}"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "pending namespace creation to start before cleanup cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
@@ -2832,7 +3067,10 @@ mod tests {
             tokio::pin!(acquire);
             tokio::select! {
                 result = &mut acquire => panic!("acquire completed before pending task was released: {result:?}"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "pending namespace creation to start before acquire cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
@@ -2875,7 +3113,10 @@ mod tests {
             tokio::pin!(deletion);
             tokio::select! {
                 _ = &mut deletion => panic!("delete completed before test released it"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "queued namespace deletion to start before cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
@@ -2902,8 +3143,9 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_removes_queued_namespace_after_abandoned_delete() {
-        let CountedLifecycle { ops, delete_count } =
-            trusted_flush_counted_abandoned_delete_lifecycle();
+        let CountedLifecycle {
+            ops, delete_count, ..
+        } = trusted_flush_counted_abandoned_delete_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.plain_queue.push_back(test_info("test-ns"));

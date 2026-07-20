@@ -512,6 +512,20 @@ wait
     }
 
     #[test]
+    fn template_installs_and_verifies_pgvector() {
+        assert!(
+            template_build_installs_apt_package("postgresql-18-pgvector"),
+            "build-template.sh should install pgvector into sandbox templates"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(
+                r#"check_bin "/usr/share/postgresql/*/extension/vector.control" "pgvector extension""#
+            ),
+            "verify-rootfs.sh should verify pgvector is present in sandbox images"
+        );
+    }
+
+    #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
         assert!(
             VERIFY_SCRIPT.contains("resolve_rootfs_path()"),
@@ -552,22 +566,13 @@ wait
                 ][..],
             ),
             (
-                "workspace mount runtime",
+                "workspace mount and freeze runtime",
                 &[
                     "/usr/bin/mountpoint",
                     "/usr/bin/mount",
-                    "/usr/bin/umount",
-                    "/usr/bin/sync",
+                    "/usr/sbin/fsfreeze",
                     "/usr/bin/chown",
                     "/usr/bin/mkdir",
-                    "/usr/bin/stat",
-                    "/usr/bin/cat",
-                    "/usr/bin/readlink",
-                    "/usr/bin/cut",
-                    "/usr/bin/sort",
-                    "/usr/bin/wc",
-                    "/usr/bin/kill",
-                    "/usr/bin/sleep",
                 ][..],
             ),
         ] {

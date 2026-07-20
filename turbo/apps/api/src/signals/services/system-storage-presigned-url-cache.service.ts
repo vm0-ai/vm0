@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import type { Computed } from "ccstate";
 import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { nowDate, timestampWithoutTimeZone } from "../external/time";
@@ -28,6 +30,7 @@ const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY =
   "workflow-skill-storage-url-v1";
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 32;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
+const deletedCacheRowSchema = z.object({ cacheKey: z.string() });
 
 type StoragePresignedUrlCacheStatus =
   | "hit"
@@ -329,8 +332,10 @@ async function pruneInactiveExpiredCacheRows(
   const inactiveCutoff = activeCutoff(issuedAt);
   const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
   const inactiveCutoffTimestamp = timestampWithoutTimeZone(inactiveCutoff);
-  const deletedRows = await db.execute<{ readonly cacheKey: string }>(sql`
-    WITH candidates AS (
+  const deletedRows = await executeRawRows(
+    db,
+    sql`
+      WITH candidates AS (
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
       WHERE
@@ -358,10 +363,12 @@ async function pruneInactiveExpiredCacheRows(
     DELETE FROM ${systemStoragePresignedUrlCache}
     USING locked
     WHERE ${systemStoragePresignedUrlCache.cacheKey} = locked."cacheKey"
-    RETURNING ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
-  `);
+      RETURNING ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
+    `,
+    deletedCacheRowSchema,
+  );
   signal?.throwIfAborted();
-  return deletedRows.rows.length;
+  return deletedRows.length;
 }
 
 async function resolveStoragePresignedUrls<TRequest>(args: {

@@ -29,6 +29,7 @@ mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
 mod framework;
+mod line_reader;
 mod process_group;
 mod termination;
 
@@ -40,11 +41,12 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
+use crate::failure_patterns;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use event_delivery::{PreparedEvent, run_event_sender};
+use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -62,12 +64,16 @@ use std::time::{Duration, Instant};
 use termination::{
     CliTerminationRuntime, ControlTerminationLog, PostResultCleanupPolicy, TerminationReason,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::time::Sleep;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
+/// Maximum retained bytes for one ordinary CLI stdout record before parsing.
+///
+/// LF is excluded. A preceding CR counts before CRLF normalization.
+const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -509,26 +515,16 @@ impl CliEventIngestor {
         event: serde_json::Value,
         masker: &SecretMasker,
         should_send_events: bool,
-        event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
-    ) {
+        event_tx: &EventDeliverySender,
+    ) -> Result<(), AgentError> {
+        let sequence = self.seq;
+        self.seq += 1;
         if should_send_events {
             let payload =
-                events::prepare_event_payload_for_run_id(event, self.seq, masker, &self.run_id);
-            if event_tx
-                .send(PreparedEvent {
-                    sequence: self.seq,
-                    payload,
-                })
-                .is_err()
-            {
-                log_warn!(
-                    LOG_TAG,
-                    "Event channel closed, dropping event seq={}",
-                    self.seq
-                );
-            }
+                events::prepare_event_payload_for_run_id(event, sequence, masker, &self.run_id);
+            event_tx.try_send(sequence, payload)?;
         }
-        self.seq += 1;
+        Ok(())
     }
 
     fn last_read_event_at(&self) -> Option<Instant> {
@@ -707,8 +703,9 @@ async fn execute_cli_inner(
     // writes, so if the agent's HTTP POSTs are slow and the pipe buffer
     // fills, the CLI's entire event loop blocks — including TCP I/O.
     // See: https://github.com/vm0-ai/vm0/issues/3645
-    let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let mut stdout_eof = false;
+    let mut reader = tokio::io::BufReader::new(stdout);
+    let mut stdout_partial_line = Vec::new();
+    let mut stdout_closed = false;
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
@@ -754,16 +751,12 @@ async fn execute_cli_inner(
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
-    // Background event sender: HTTP POSTs happen here, never in the
-    // stdout reading loop.  Unbounded channel because events are small
-    // and CLI lifetime is bounded by JOB_TIMEOUT.
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
-    let should_send_events = http.has_api();
-    let event_sender = tokio::spawn(run_event_sender(
-        event_rx,
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-    ));
+    // Background event sender: HTTP POSTs happen here, never in the stdout
+    // reading loop. Admission is non-blocking and bounded by count and bytes;
+    // overload enters controlled CLI termination rather than blocking stdout.
+    let mut should_send_events = http.has_api();
+    let event_delivery =
+        EventDeliveryRuntime::start(http.clone(), runtime.event_error_flag.to_string());
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;
@@ -785,12 +778,12 @@ async fn execute_cli_inner(
                     &mut cli_exit_at,
                     &active_input_controller,
                     &mut termination_runtime,
-                    stdout_eof,
+                    stdout_closed,
                     drain_deadline.as_mut(),
                 )? {
                     CliExitObservation::NoNewExit => {}
                     CliExitObservation::ExitedDrainingStdout => continue,
-                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 let can_terminate_for_stdin_error = termination_runtime
                     .can_begin_initial_prompt_stdin_control_failure(cli_status.is_some());
@@ -827,7 +820,11 @@ async fn execute_cli_inner(
                     None => {}
                 }
             }
-            line_result = reader.next_line(), if !stdout_eof => {
+            line_result = line_reader::read_bounded_utf8_line(
+                &mut reader,
+                &mut stdout_partial_line,
+                STDOUT_MAX_LINE_BYTES,
+            ), if !stdout_closed => {
                 match line_result {
                     Ok(Some(line)) => {
                         let stripped = line.trim();
@@ -896,12 +893,12 @@ async fn execute_cli_inner(
                                     &mut cli_exit_at,
                                     &active_input_controller,
                                     &mut termination_runtime,
-                                    stdout_eof,
+                                    stdout_closed,
                                     drain_deadline.as_mut(),
                                 )? {
                                     CliExitObservation::NoNewExit
                                     | CliExitObservation::ExitedDrainingStdout => {}
-                                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                                 }
                             }
                             // Print Claude Code final result to stdout if applicable.
@@ -954,19 +951,91 @@ async fn execute_cli_inner(
                             );
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
-                            event_ingestor.enqueue_event(event, masker, should_send_events, &event_tx);
+                            if let Err(error) = event_ingestor.enqueue_event(
+                                event,
+                                masker,
+                                should_send_events,
+                                event_delivery.sender(),
+                            ) {
+                                should_send_events = false;
+                                if cli_status.is_some() {
+                                    break Err(error);
+                                }
+                                let error_log = error.to_string();
+                                termination_runtime.begin_control_failure(
+                                    TerminationReason::EventDelivery,
+                                    error,
+                                    ControlTerminationLog::EventDeliveryFailed { error: error_log },
+                                    termination_deadline.as_mut(),
+                                );
+                            }
                         } else {
                             CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {
-                        stdout_eof = true;
+                        stdout_closed = true;
                         active_input_controller.close_terminal();
                         if cli_status.is_some() {
                             break Ok(());
                         }
                     }
-                    Err(e) => break Err(AgentError::Io(e)),
+                    Err(error) => {
+                        stdout_closed = true;
+                        active_input_controller.close_terminal();
+                        let error = match error {
+                            line_reader::BoundedLineError::Io(error) => AgentError::Io(error),
+                            line_reader::BoundedLineError::TooLong => AgentError::Execution(
+                                format!(
+                                    "CLI stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+                                ),
+                            ),
+                            line_reader::BoundedLineError::InvalidUtf8 {
+                                valid_up_to,
+                                error_len,
+                                line_bytes,
+                            } => {
+                                let utf8_error = match error_len {
+                                    Some(error_len) => format!(
+                                        "invalid utf-8 sequence of {error_len} bytes from index {valid_up_to}"
+                                    ),
+                                    None => format!(
+                                        "incomplete utf-8 byte sequence from index {valid_up_to}"
+                                    ),
+                                };
+                                AgentError::Execution(format!(
+                                    "CLI stdout line is not UTF-8: {utf8_error}; line_bytes={line_bytes}"
+                                ))
+                            }
+                        };
+
+                        if cli_status.is_some() {
+                            break Err(error);
+                        }
+                        match try_observe_cli_exit(
+                            &mut child,
+                            &mut cli_status,
+                            &mut cli_exit_at,
+                            &active_input_controller,
+                            &mut termination_runtime,
+                            stdout_closed,
+                            drain_deadline.as_mut(),
+                        )? {
+                            CliExitObservation::NoNewExit => {
+                                let error_log = error.to_string();
+                                termination_runtime.begin_control_failure(
+                                    TerminationReason::StdoutIngestion,
+                                    error,
+                                    ControlTerminationLog::StdoutIngestionFailed {
+                                        error: error_log,
+                                    },
+                                    termination_deadline.as_mut(),
+                                );
+                            }
+                            CliExitObservation::ExitedDrainingStdout
+                            | CliExitObservation::ExitedAndStdoutClosed => break Err(error),
+                        }
+                    }
                 }
             }
             status = child.wait(), if cli_status.is_none() => {
@@ -979,10 +1048,10 @@ async fn execute_cli_inner(
                                 &mut cli_exit_at,
                                 &active_input_controller,
                                 &mut termination_runtime,
-                                stdout_eof,
+                                stdout_closed,
                                 drain_deadline.as_mut(),
                             ),
-                            CliExitObservation::ExitedAndStdoutEof
+                            CliExitObservation::ExitedAndStdoutClosed
                         ) {
                             break Ok(());
                         }
@@ -997,12 +1066,12 @@ async fn execute_cli_inner(
                     &mut cli_exit_at,
                     &active_input_controller,
                     &mut termination_runtime,
-                    stdout_eof,
+                    stdout_closed,
                     drain_deadline.as_mut(),
                 )? {
                     CliExitObservation::NoNewExit => {}
                     CliExitObservation::ExitedDrainingStdout => continue,
-                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
@@ -1033,12 +1102,12 @@ async fn execute_cli_inner(
                         &mut cli_exit_at,
                         &active_input_controller,
                         &mut termination_runtime,
-                        stdout_eof,
+                        stdout_closed,
                         drain_deadline.as_mut(),
                     )? {
                         CliExitObservation::NoNewExit => {}
                         CliExitObservation::ExitedDrainingStdout => continue,
-                        CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                        CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                     }
                     let timeout_error = AgentError::Execution(format!(
                         "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
@@ -1067,12 +1136,12 @@ async fn execute_cli_inner(
                     &mut cli_exit_at,
                     &active_input_controller,
                     &mut termination_runtime,
-                    stdout_eof,
+                    stdout_closed,
                     drain_deadline.as_mut(),
                 )? {
                     CliExitObservation::NoNewExit => {}
                     CliExitObservation::ExitedDrainingStdout => continue,
-                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {
@@ -1143,25 +1212,14 @@ async fn execute_cli_inner(
         event_result.err()
     };
 
-    // Close the channel so the background sender can finish.
-    // On error (e.g. heartbeat failure) the server is likely unreachable,
-    // so we drop unsent events to avoid stalling on retries.
-    drop(event_tx);
-    let mut last_event_sequence = None;
-    if event_error.is_none() && !has_control_error {
-        match event_sender.await {
-            Ok(sequence) => {
-                last_event_sequence = sequence;
-            }
-            Err(e) => {
-                log_warn!(LOG_TAG, "Event sender task failed: {e}");
-            }
-        }
+    // On success, boundedly drain accepted events. On any execution or
+    // control error, abort unsent delivery rather than stalling on retries.
+    let delivery_result = if event_error.is_none() && !has_control_error {
+        event_delivery.finish().await
     } else {
-        event_sender.abort();
-        let _ = event_sender.await;
-    }
-
+        event_delivery.abort().await;
+        Ok(None)
+    };
     let status = match cli_status {
         Some(s) => s,
         None => {
@@ -1214,6 +1272,7 @@ async fn execute_cli_inner(
     if let Some(err) = event_error {
         return Err(err);
     }
+    let last_event_sequence = delivery_result?;
 
     Ok(CliExecutionResult {
         exit_code,
@@ -1250,7 +1309,7 @@ fn cli_exit_summary_from_status(status: &ExitStatus) -> (i32, Option<CliObserved
 enum CliExitObservation {
     NoNewExit,
     ExitedDrainingStdout,
-    ExitedAndStdoutEof,
+    ExitedAndStdoutClosed,
 }
 
 fn try_observe_cli_exit(
@@ -1259,7 +1318,7 @@ fn try_observe_cli_exit(
     cli_exit_at: &mut Option<Instant>,
     active_input_controller: &ActiveInputController,
     termination_runtime: &mut CliTerminationRuntime,
-    stdout_eof: bool,
+    stdout_closed: bool,
     drain_deadline: Pin<&mut Sleep>,
 ) -> Result<CliExitObservation, AgentError> {
     if cli_status.is_some() {
@@ -1276,7 +1335,7 @@ fn try_observe_cli_exit(
         cli_exit_at,
         active_input_controller,
         termination_runtime,
-        stdout_eof,
+        stdout_closed,
         drain_deadline,
     ))
 }
@@ -1287,7 +1346,7 @@ fn record_cli_exit(
     cli_exit_at: &mut Option<Instant>,
     active_input_controller: &ActiveInputController,
     termination_runtime: &mut CliTerminationRuntime,
-    stdout_eof: bool,
+    stdout_closed: bool,
     mut drain_deadline: Pin<&mut Sleep>,
 ) -> CliExitObservation {
     debug_assert!(cli_status.is_none(), "CLI exit recorded more than once");
@@ -1302,8 +1361,8 @@ fn record_cli_exit(
     // termination FSM so it can't re-arm on late result/control events while
     // stdout is draining.
     termination_runtime.mark_child_exited();
-    if stdout_eof {
-        return CliExitObservation::ExitedAndStdoutEof;
+    if stdout_closed {
+        return CliExitObservation::ExitedAndStdoutClosed;
     }
 
     drain_deadline.as_mut().reset(
@@ -1364,7 +1423,7 @@ fn has_specific_failure_diagnostic(diagnostic: &CliFailureDiagnostic) -> bool {
 }
 
 fn has_specific_failure_message(diagnostic: &CliFailureDiagnostic) -> bool {
-    !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
+    !failure_patterns::is_generic_codex_failure_diagnostic(&diagnostic.message)
 }
 
 fn with_carried_failure_reason(

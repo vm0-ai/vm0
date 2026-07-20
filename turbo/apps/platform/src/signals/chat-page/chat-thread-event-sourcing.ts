@@ -15,6 +15,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
+import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -116,10 +117,14 @@ export const sidebarActiveThreadIds$ = computed(
 
 const chatThreadEventStores$ = computed(
   async (get): Promise<ChatThreadEventStores> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
+    const identityPromise = get(authenticatedIdentity$);
+    const dbPromise = get(chatIdb$);
+    const { userId, orgId } = await identityPromise;
     return {
       ownerKey: `${userId}:${orgId}`,
-      stores: createIdbChatThreadEventStores(userId, orgId),
+      stores: createIdbChatThreadEventStores(() => {
+        return dbPromise;
+      }),
     };
   },
 );

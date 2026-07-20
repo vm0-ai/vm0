@@ -208,9 +208,7 @@ async function openMembersTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=people" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Members" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "People" })).toBeInTheDocument();
   });
 }
 

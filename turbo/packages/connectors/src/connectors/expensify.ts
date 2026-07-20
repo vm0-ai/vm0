@@ -15,6 +15,7 @@ export const expensify = {
         helpText:
           "1. Sign in to Expensify\n2. Open [Integration Server credentials](https://www.expensify.com/tools/integrations/)\n3. Generate and copy the partner user ID and partner user secret",
         storage: {
+          version: 1,
           secrets: ["EXPENSIFY_PARTNER_USER_SECRET"],
           variables: ["EXPENSIFY_PARTNER_USER_ID"],
         },

@@ -101,7 +101,6 @@ import {
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
 } from "@vm0/core";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -115,6 +114,7 @@ import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
 } from "../../lib/posthog.ts";
+import { getCreditUsageDisplayName } from "../../lib/credit-usage-display.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
@@ -125,19 +125,17 @@ import {
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
-  enrichBlocksWithTextPreviews,
-  parseBodyRenderBlocks,
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  completeChatConnectorActionConnect$,
-  type CustomConnectorActionBlock,
-  type ConnectorActionBlock,
+  type ConnectorSignals,
+  type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
   completedWorkExpandedKeys$,
@@ -150,8 +148,13 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
-import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import {
+  emptyMailDraftSignalsById$,
+  type MailDraftSignals,
+} from "../../signals/chat-page/mail-draft.ts";
+import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -165,7 +168,6 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -196,14 +198,9 @@ import {
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  headerWorkflowAutomationsForThread,
-  runHeaderWorkflowAutomationNow$,
-  reloadHeaderAutomationMenu$,
-  updateHeaderWorkflowGmailLabelAppliedAutomation$,
-  updateHeaderWorkflowGmailNewMessageAutomation$,
-  updateHeaderWorkflowScheduleAutomation$,
-  type HeaderWorkflowAutomationEntry,
+import type {
+  HeaderAutomationSignals,
+  HeaderWorkflowAutomationEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
@@ -213,13 +210,8 @@ import {
   openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
-import {
-  clearWorkflowQueue$,
-  setWorkflowQueuePaused$,
-  skipWorkflowQueueEvent$,
-  workflowQueueForThread,
-} from "../../signals/chat-page/workflow-queue.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
+import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -232,6 +224,7 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
+
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
@@ -280,18 +273,8 @@ import {
   useZeroChatComposer,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
-  type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
-import {
-  feedbackItemsValue$,
-  feedbackThreadIdValue$,
-  feedbackSendCountValue$,
-  setFeedbackItemNote$,
-  removeFeedbackItem$,
-  submitFeedback$,
-  dismissFeedback$,
-} from "../../signals/zero-page/chat-feedback.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
@@ -300,20 +283,14 @@ import {
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
+import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import { agentById } from "../../signals/agent.ts";
 import {
   applyUserPermissionGrant$,
   findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
-  userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -381,25 +358,25 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
-  threadId,
+  thread,
   ariaLabel = "Automations",
 }: {
-  threadId: string;
+  thread: ChatThreadSignals;
   ariaLabel?: string;
 }) {
-  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const reloadAutomations = useSet(thread.headerAutomations.reload$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
-  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+  const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const queue = useLastResolved(workflowQueueForThread(threadId));
+  const queue = useLastResolved(thread.workflowQueue.queue$);
   const pendingCount = queue?.pending.length ?? 0;
-  const open = openThreadId === threadId;
+  const open = openThreadId === thread.threadId;
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -423,7 +400,7 @@ export function AutomationMenuButton({
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
-              openAutomationSidebar(threadId);
+              openAutomationSidebar(thread.threadId);
             }}
           >
             <IconClock size={18} />
@@ -488,7 +465,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton threadId={thread.threadId} />
+        <AutomationMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>
@@ -1816,15 +1793,15 @@ function headerWorkflowAutomationRows(
 
 function HeaderWorkflowAutomationCard({
   automation,
+  headerAutomations,
 }: {
   automation: HeaderWorkflowAutomationEntry;
+  headerAutomations: HeaderAutomationSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
   const editingAutomationId = useGet(currentEditingHeaderWorkflowAutomationId$);
   const setEditingAutomationId = useSet(setEditingHeaderWorkflowAutomationId$);
-  const [runningLoadable, runNow] = useLoadableSet(
-    runHeaderWorkflowAutomationNow$,
-  );
+  const [runningLoadable, runNow] = useLoadableSet(headerAutomations.runNow$);
   const running = runningLoadable.state === "loading";
   const title =
     automation.workflowDisplayName?.trim() || automation.workflowName;
@@ -1895,6 +1872,7 @@ function HeaderWorkflowAutomationCard({
       />
       <HeaderWorkflowAutomationEditDialog
         automation={automation.automation}
+        headerAutomations={headerAutomations}
         displayTimezone={automation.timezone}
         open={editing}
         onOpenChange={(open) => {
@@ -1907,11 +1885,13 @@ function HeaderWorkflowAutomationCard({
 
 function HeaderWorkflowAutomationEditDialog({
   automation,
+  headerAutomations,
   displayTimezone,
   open,
   onOpenChange,
 }: {
   readonly automation: ChatThreadWorkflowAutomation;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -1935,6 +1915,7 @@ function HeaderWorkflowAutomationEditDialog({
         {automation.kind === "schedule" ? (
           <HeaderScheduleAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             displayTimezone={displayTimezone}
             onDone={() => {
               onOpenChange(false);
@@ -1945,6 +1926,7 @@ function HeaderWorkflowAutomationEditDialog({
         automation.eventType === "gmail-new-message" ? (
           <HeaderGmailNewMessageAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             onDone={() => {
               onOpenChange(false);
             }}
@@ -1954,6 +1936,7 @@ function HeaderWorkflowAutomationEditDialog({
         automation.eventType === "gmail-label-applied" ? (
           <HeaderGmailLabelAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             onDone={() => {
               onOpenChange(false);
             }}
@@ -2017,6 +2000,7 @@ function scheduleFromHeaderAutomationForm(
 
 function HeaderScheduleAutomationEditForm({
   automation,
+  headerAutomations,
   displayTimezone,
   onDone,
 }: {
@@ -2024,12 +2008,13 @@ function HeaderScheduleAutomationEditForm({
     ChatThreadWorkflowAutomation,
     { kind: "schedule" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly displayTimezone: string;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowScheduleAutomation$,
+    headerAutomations.updateSchedule$,
   );
   const saving = updateLoadable.state === "loading";
   const schedule = automation.schedule;
@@ -2146,17 +2131,19 @@ function HeaderIntervalField({
 
 function HeaderGmailNewMessageAutomationEditForm({
   automation,
+  headerAutomations,
   onDone,
 }: {
   readonly automation: Extract<
     ChatThreadWorkflowAutomation,
     { eventType: "gmail-new-message" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowGmailNewMessageAutomation$,
+    headerAutomations.updateGmailNewMessage$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2237,17 +2224,19 @@ function HeaderGmailNewMessageAutomationEditForm({
 
 function HeaderGmailLabelAutomationEditForm({
   automation,
+  headerAutomations,
   onDone,
 }: {
   readonly automation: Extract<
     ChatThreadWorkflowAutomation,
     { eventType: "gmail-label-applied" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowGmailLabelAppliedAutomation$,
+    headerAutomations.updateGmailLabelApplied$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2304,12 +2293,12 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
-  const queue = useLastResolved(workflowQueueForThread(threadId));
+function HeaderWorkflowQueueSection({ thread }: { thread: ChatThreadSignals }) {
+  const queue = useLastResolved(thread.workflowQueue.queue$);
   const pageSignal = useGet(pageSignal$);
-  const skipEvent = useSet(skipWorkflowQueueEvent$);
-  const clearQueue = useSet(clearWorkflowQueue$);
-  const setPaused = useSet(setWorkflowQueuePaused$);
+  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
+  const clearQueue = useSet(thread.workflowQueue.clear$);
+  const setPaused = useSet(thread.workflowQueue.setPaused$);
 
   if (!queue) {
     return null;
@@ -2339,10 +2328,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
           className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           aria-label={paused ? "Resume queue" : "Pause queue"}
           onClick={() => {
-            detach(
-              setPaused({ threadId, paused: !paused }, pageSignal),
-              Reason.DomCallback,
-            );
+            detach(setPaused(!paused, pageSignal), Reason.DomCallback);
           }}
         >
           {paused ? (
@@ -2357,7 +2343,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
             type="button"
             className="inline-flex h-6 items-center rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-destructive"
             onClick={() => {
-              detach(clearQueue(threadId, pageSignal), Reason.DomCallback);
+              detach(clearQueue(pageSignal), Reason.DomCallback);
             }}
           >
             Clear queue ({queue.pending.length})
@@ -2424,8 +2410,8 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
   );
 }
 
-function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
-  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
+  const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
   const close = useSet(closeHeaderAutomationSidebar$);
@@ -2470,7 +2456,7 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
           </div>
         ) : (
           <div className="grid gap-6">
-            <HeaderWorkflowQueueSection threadId={threadId} />
+            <HeaderWorkflowQueueSection thread={thread} />
             {workflowAutomations.length > 0 ? (
               <div className="grid gap-3">
                 {workflowAutomations.map((automation) => {
@@ -2478,6 +2464,7 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
                     <HeaderWorkflowAutomationCard
                       key={automation.id}
                       automation={automation}
+                      headerAutomations={thread.headerAutomations}
                     />
                   );
                 })}
@@ -2653,6 +2640,26 @@ function ChatThreadArea({
   );
 }
 
+function useSelectedMailDraftSignals(
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+): MailDraftSignals | undefined {
+  const selectedMailDraftId = useGet(currentMailDraftId$);
+  const leftMailDraftSignalsById = useGet(
+    leftThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
+  );
+  const rightMailDraftSignalsById = useGet(
+    rightThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
+  );
+  if (!selectedMailDraftId) {
+    return undefined;
+  }
+  return (
+    leftMailDraftSignalsById.get(selectedMailDraftId) ??
+    rightMailDraftSignalsById.get(selectedMailDraftId)
+  );
+}
+
 export function ZeroChatThreadPage() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
@@ -2660,14 +2667,23 @@ export function ZeroChatThreadPage() {
   const artifactRef = useGet(currentArtifactRef$);
   const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
   const automationPanelThreadId = useGet(currentHeaderAutomationThreadId$);
+  const automationPanelThread = [leftThread, rightThread].find((thread) => {
+    return thread?.threadId === automationPanelThreadId;
+  });
   const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
+  const selectedMailDraftSignals = useSelectedMailDraftSignals(
+    leftThread,
+    rightThread,
+  );
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
   const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen = automationPanelThreadId !== null;
-  const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
+  const automationPanelOpen = automationPanelThread !== undefined;
+  const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
+  const rightPanelOpen =
+    artifactPanelOpen || automationPanelOpen || mailDraftPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
@@ -2729,8 +2745,10 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {automationPanelOpen && automationPanelThreadId ? (
-            <HeaderAutomationSidebar threadId={automationPanelThreadId} />
+          {selectedMailDraftSignals ? (
+            <MailDraftSidebar signals={selectedMailDraftSignals} />
+          ) : automationPanelThread ? (
+            <HeaderAutomationSidebar thread={automationPanelThread} />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
@@ -3213,9 +3231,7 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) ||
-      Boolean(message.error) ||
-      Boolean(message.mailDraft))
+    (Boolean(message.content) || Boolean(message.error))
   );
 }
 
@@ -3673,7 +3689,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection />
+      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
     </>
   );
 }
@@ -4084,20 +4100,9 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleFeedbackSend = (text: string): Promise<boolean> => {
-    return send(
-      text,
-      {
-        includeDraftAttachments: true,
-      },
-      rootSignal,
-    );
-  };
-
   return {
     handleSend,
     handleQueue,
-    handleFeedbackSend,
     submissionLoading:
       sendLoadable.state === "loading" || queueLoadable.state === "loading",
     templatePicker: {
@@ -4154,55 +4159,6 @@ function useChatThreadComputerUse(
       selectedHostId: selectedComputerUseHostId,
       onChange: handleComputerUseHostChange,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
-  };
-}
-
-// Bridges the global inline-feedback signals to the composer's `feedback` prop.
-// Returns undefined when no feedback is drafted in this thread, so the composer
-// keeps its textarea.
-function useChatThreadComposerFeedback(
-  thread: ChatThreadSignals,
-  sendFeedback: (prompt: string) => Promise<boolean>,
-): ComposerFeedback | undefined {
-  const items = useGet(feedbackItemsValue$);
-  const feedbackThreadId = useGet(feedbackThreadIdValue$);
-  const sendCount = useGet(feedbackSendCountValue$);
-  const setNote = useSet(setFeedbackItemNote$);
-  const removeItem = useSet(removeFeedbackItem$);
-  const compose = useSet(submitFeedback$);
-  const dismiss = useSet(dismissFeedback$);
-
-  // Feedback is owned by the thread it was drafted in; other threads keep their
-  // own composer textarea so a draft never bleeds across chats.
-  if (feedbackThreadId !== thread.threadId) {
-    return undefined;
-  }
-  return {
-    items,
-    sendCount,
-    onChangeNote: (id, note) => {
-      setNote({ id, note });
-    },
-    onRemove: (id) => {
-      removeItem(id);
-    },
-    onSubmit: () => {
-      const prompt = compose();
-      if (prompt === null) {
-        return;
-      }
-      detach(
-        (async () => {
-          if (await sendFeedback(prompt)) {
-            dismiss();
-          }
-        })(),
-        Reason.DomCallback,
-      );
-    },
-    onDismiss: () => {
-      dismiss();
     },
   };
 }
@@ -4312,17 +4268,12 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   );
   const { modelPicker, modelPickerLoading, submitBlockerProps } =
     useChatComposerModel(thread, pageSignal);
-  const {
-    handleSend,
-    handleQueue,
-    handleFeedbackSend,
-    submissionLoading,
-    templatePicker,
-  } = useChatThreadComposerSendState({
-    thread,
-    computerUseHostIdForSend,
-    clearComputerUseHostOverride,
-  });
+  const { handleSend, handleQueue, submissionLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      computerUseHostIdForSend,
+      clearComputerUseHostOverride,
+    });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
@@ -4331,7 +4282,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
     pageSignal,
@@ -4371,7 +4321,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onRemoveQueuedItem,
     activeGoal,
     onCancelActiveGoal,
-    feedback,
   };
   const composer = useZeroChatComposer(composerOptions);
 
@@ -4751,99 +4700,29 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
-  escapeMarkdownHtml = false,
+  sanitizeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
-  escapeMarkdownHtml?: boolean;
+  sanitizeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
 }) {
+  const cardOccurrences = new Map<string, number>();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
   return (
     <div className="flex flex-col gap-3">
       {blocks.map((block) => {
-        if (block.type === "markdown") {
-          return (
-            <Markdown
-              key={block.id}
-              source={
-                hardBreaks
-                  ? block.content.replace(/\n/g, "  \n")
-                  : block.content
-              }
-              mediaPreview={markdownMediaPreview}
-              mathEnabled
-              escapeHtml={escapeMarkdownHtml}
-              style={{ fontSize: "inherit", lineHeight: "inherit" }}
-            />
-          );
-        }
-
-        if (block.type === "connector-action") {
-          return <ConnectorActionCard key={block.id} block={block} />;
-        }
-
-        if (block.type === "custom-connector-action") {
-          return <CustomConnectorActionCard key={block.id} block={block} />;
-        }
-
-        if (block.type === "permission-action") {
-          return <PermissionActionCard key={block.id} block={block} />;
-        }
-
-        if (block.type === "computer-use-authorization") {
-          return <ComputerUseAuthorizationCard key={block.id} block={block} />;
-        }
-
-        if (block.preview.kind === "image") {
-          return (
-            <ChatImagePreviewLink
-              key={block.id}
-              alt={block.preview.filename}
-              ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="block h-full w-full object-contain"
-              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-              onPreview={() => {
-                openLightbox(block.preview.url);
-              }}
-              placeholderClassName="h-full w-full"
-              url={block.preview.url}
-            />
-          );
-        }
-
-        if (block.preview.kind === "video") {
-          return (
-            <ChatVideoPreviewButton
-              key={block.id}
-              ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-              filename={block.preview.filename}
-              onPreview={() => {
-                openVideoLightbox({
-                  url: block.preview.url,
-                  filename: block.preview.filename,
-                });
-              }}
-              posterClassName="h-full w-full"
-              url={block.preview.url}
-              videoClassName="h-full w-full object-contain"
-            />
-          );
-        }
-
         return (
-          <AttachmentPreview
-            key={block.id}
-            attachment={{
-              filename: block.preview.filename,
-              url: block.preview.url,
-              contentType: contentTypeForBodyPreviewKind(block.preview.kind),
-            }}
-            text$={block.preview.text$}
+          <BodyRenderBlockView
+            key={bodyRenderBlockKey(block, cardOccurrences)}
+            block={block}
+            openLightbox={openLightbox}
+            openVideoLightbox={openVideoLightbox}
+            hardBreaks={hardBreaks}
+            sanitizeMarkdownHtml={sanitizeMarkdownHtml}
+            markdownMediaPreview={markdownMediaPreview}
           />
         );
       })}
@@ -4851,13 +4730,123 @@ function BodyContentBlocks({
   );
 }
 
-function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
+function bodyRenderBlockKey(
+  block: BodyRenderBlock,
+  cardOccurrences: Map<string, number>,
+): string {
+  if (block.type === "markdown") {
+    return block.id;
+  }
+  const resourceKey = `${block.type}:${block.resourceKey}`;
+  const occurrence = (cardOccurrences.get(resourceKey) ?? 0) + 1;
+  cardOccurrences.set(resourceKey, occurrence);
+  return `${resourceKey}:${String(occurrence)}`;
+}
+
+function BodyRenderBlockView({
+  block,
+  openLightbox,
+  openVideoLightbox,
+  hardBreaks,
+  sanitizeMarkdownHtml,
+  markdownMediaPreview,
+}: {
+  block: BodyRenderBlock;
+  openLightbox: (url: string) => void;
+  openVideoLightbox: (value: { url: string; filename: string }) => void;
+  hardBreaks: boolean;
+  sanitizeMarkdownHtml: boolean;
+  markdownMediaPreview: boolean;
+}) {
+  switch (block.type) {
+    case "markdown": {
+      return (
+        <Markdown
+          source={
+            hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
+          }
+          mediaPreview={markdownMediaPreview}
+          mathEnabled
+          sanitizeHtml={sanitizeMarkdownHtml}
+          style={{ fontSize: "inherit", lineHeight: "inherit" }}
+        />
+      );
+    }
+    case "connector-action": {
+      return <ConnectorActionCard signals={block.signals} />;
+    }
+    case "custom-connector-action": {
+      return <CustomConnectorActionCard signals={block.signals} />;
+    }
+    case "permission-action": {
+      return <PermissionActionCard signals={block.signals} />;
+    }
+    case "computer-use-authorization": {
+      return <ComputerUseAuthorizationCard signals={block.signals} />;
+    }
+    case "mail-draft": {
+      return <MailDraftCard signals={block.signals} />;
+    }
+    case "artifact": {
+      const { signals } = block;
+      if (signals.kind === "image") {
+        return (
+          <ChatImagePreviewLink
+            alt={signals.filename}
+            ariaLabel={`Preview ${signals.filename}`}
+            imageClassName="block h-full w-full object-contain"
+            linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+            onPreview={() => {
+              openLightbox(signals.url);
+            }}
+            placeholderClassName="h-full w-full"
+            url={signals.url}
+          />
+        );
+      }
+      if (signals.kind === "video") {
+        return (
+          <ChatVideoPreviewButton
+            ariaLabel={`Preview ${signals.filename}`}
+            buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
+            filename={signals.filename}
+            onPreview={() => {
+              openVideoLightbox({
+                url: signals.url,
+                filename: signals.filename,
+              });
+            }}
+            posterClassName="h-full w-full"
+            url={signals.url}
+            videoClassName="h-full w-full object-contain"
+          />
+        );
+      }
+      return (
+        <AttachmentPreview
+          attachment={{
+            filename: signals.filename,
+            url: signals.url,
+            contentType: contentTypeForBodyPreviewKind(signals.kind),
+          }}
+          text$={signals.text$}
+        />
+      );
+    }
+  }
+}
+
+function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
-  const available = useLastResolved(block.available$) ?? false;
-  const complete = useLastResolved(block.complete$) ?? false;
-  const displayMetadata = useLastResolved(block.displayMetadata$);
-  const [activateLoadable, activate] = useLoadableSet(block.activate$);
-  const activating = activateLoadable.state === "loading";
+  const available = useLastResolved(signals.available$) ?? false;
+  const completeLoadable = useLoadable(signals.complete$);
+  const complete =
+    completeLoadable.state === "hasData" && completeLoadable.data;
+  const displayMetadata = useLastResolved(signals.displayMetadata$);
+  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
+  const loading =
+    completeLoadable.state === "loading" ||
+    activateLoadable.state === "loading";
   if (!available || !displayMetadata) {
     return null;
   }
@@ -4882,13 +4871,13 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || loading}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {activating && <IconLoader2 size={15} className="animate-spin" />}
+        {loading && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
       </button>
     </div>
@@ -4896,9 +4885,9 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
 }
 
 function CustomConnectorActionCard({
-  block,
+  signals,
 }: {
-  block: CustomConnectorActionBlock;
+  signals: CustomConnectorSignals;
 }) {
   return (
     <div
@@ -4911,17 +4900,17 @@ function CustomConnectorActionCard({
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {block.displayName}
+            {signals.displayName}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {block.agentId
+            {signals.agentId
               ? "Review, connect, and authorize this custom connector for the agent."
               : "Review and connect this custom connector."}
           </div>
         </div>
       </div>
       <a
-        href={block.originalUrl}
+        href={signals.originalUrl}
         target="_blank"
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
@@ -4934,9 +4923,9 @@ function CustomConnectorActionCard({
 }
 
 function ComputerUseAuthorizationCard({
-  block,
+  signals,
 }: {
-  block: ComputerUseAuthorizationBlock;
+  signals: ComputerUseAuthorizationSignals;
 }) {
   return (
     <div
@@ -4957,7 +4946,7 @@ function ComputerUseAuthorizationCard({
         </div>
       </div>
       <a
-        href={block.href}
+        href={signals.href}
         target="_blank"
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
@@ -5168,7 +5157,7 @@ function isPermissionActionAlreadyApplied(params: {
 }
 
 function findPermissionActionPermission(
-  block: PermissionActionBlock,
+  block: PermissionSignals,
   metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ) {
   return metadata
@@ -5178,7 +5167,7 @@ function findPermissionActionPermission(
 
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionActionBlock,
+  block: PermissionSignals,
   metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
@@ -5190,7 +5179,7 @@ function permissionActionUserGrantPolicy(
 
 function permissionActionUserGrant(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionActionBlock,
+  block: PermissionSignals,
 ): PermissionActionUserGrant | undefined {
   const grants = loadableData(loadable);
   if (!grants) {
@@ -5268,7 +5257,7 @@ function createPermissionActionCardStatus(params: {
 }
 
 function createPermissionActionCardViewState(params: {
-  block: PermissionActionBlock;
+  block: PermissionSignals;
   hasAgent: boolean;
   agentLoadableState: string;
   permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
@@ -5342,13 +5331,21 @@ function runPermissionAction(params: {
 }
 
 function createPermissionActionHandler(params: {
-  block: PermissionActionBlock;
+  block: PermissionSignals;
   pageSignal: AbortSignal;
   focusedPermission: { name: string } | undefined;
   status: PermissionActionCardStatus;
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   applyGrant: ApplyUserPermissionGrantFn;
+  runCallback: (
+    args: {
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly callbackPrompt: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
 }): () => void {
   return () => {
     const permissionName =
@@ -5357,18 +5354,30 @@ function createPermissionActionHandler(params: {
       status: params.status,
       runUserGrant: () => {
         detach(
-          params.applyGrant(
-            {
-              agentId: params.block.agentId,
-              connectorRef: params.block.connectorRef,
-              permission: permissionName,
-              action: params.block.action,
-              ...(params.expirationAvailable
-                ? { expiresIn: params.expiresIn }
-                : {}),
-            },
-            params.pageSignal,
-          ),
+          (async () => {
+            await params.applyGrant(
+              {
+                agentId: params.block.agentId,
+                connectorRef: params.block.connectorRef,
+                permission: permissionName,
+                action: params.block.action,
+                ...(params.expirationAvailable
+                  ? { expiresIn: params.expiresIn }
+                  : {}),
+              },
+              params.pageSignal,
+            );
+            if (params.block.callbackPrompt && params.block.threadId) {
+              await params.runCallback(
+                {
+                  threadId: params.block.threadId,
+                  agentId: params.block.agentId,
+                  callbackPrompt: params.block.callbackPrompt,
+                },
+                params.pageSignal,
+              );
+            }
+          })(),
           Reason.DomCallback,
         );
       },
@@ -5377,7 +5386,7 @@ function createPermissionActionHandler(params: {
 }
 
 function PermissionActionCardContent({
-  block,
+  signals,
   icon,
   connectorLabel,
   actionLabel,
@@ -5389,7 +5398,7 @@ function PermissionActionCardContent({
   expiresAt,
   onClick,
 }: {
-  block: PermissionActionBlock;
+  signals: PermissionSignals;
   icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
@@ -5442,7 +5451,10 @@ function PermissionActionCardContent({
             ariaLabel="Permission duration"
           />
         )}
-        <PermissionActionTerminalStatus status={status} action={block.action} />
+        <PermissionActionTerminalStatus
+          status={status}
+          action={signals.action}
+        />
         <PermissionActionButton status={status} onClick={onClick} />
       </div>
     </div>
@@ -5450,46 +5462,39 @@ function PermissionActionCardContent({
 }
 
 function PermissionActionCardForTarget({
-  block,
+  signals,
   hasTarget,
   targetLoadableState,
   userGrantsLoadable,
 }: {
-  block: PermissionActionBlock;
+  signals: PermissionSignals;
   hasTarget: boolean;
   targetLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const expirationAvailable = block.action === "allow";
-  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expirationAvailable = signals.action === "allow";
+  const durationScope = `${signals.href}\u0000${signals.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
     expiresInByScope[durationScope] ??
-    block.expiresIn ??
+    signals.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const permissionMetadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({
-      connectorRef: block.connectorRef,
-    }),
-  );
+  const permissionMetadataLoadable = useLoadable(signals.metadata$);
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
+  const runCallback = useSet(runChatActionCallback$);
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
   const savedGrantActive = savedGrant
     ? isActiveUserPermissionGrant(savedGrant)
     : false;
-  const rawUserGrants = loadableData(userGrantsLoadable) ?? [];
-  useUserPermissionGrantExpiryTick(
-    savedGrant ? [...rawUserGrants, savedGrant] : rawUserGrants,
-  );
-  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, signals);
   const existingGrantActive = existingGrant
     ? isActiveUserPermissionGrant(existingGrant)
     : false;
   const actionState = createPermissionActionCardViewState({
-    block,
+    block: signals,
     hasAgent: hasTarget,
     agentLoadableState: targetLoadableState,
     permissionMetadataLoadable,
@@ -5511,11 +5516,11 @@ function PermissionActionCardForTarget({
 
   return (
     <PermissionActionCardContent
-      block={block}
+      signals={signals}
       icon={permissionMetadata?.icon}
-      connectorLabel={permissionMetadata?.label ?? block.connectorRef}
+      connectorLabel={permissionMetadata?.label ?? signals.connectorRef}
       actionLabel={actionState.actionLabel}
-      permissionName={actionState.focusedPermission?.name ?? block.permission}
+      permissionName={actionState.focusedPermission?.name ?? signals.permission}
       status={actionState.status}
       expirationAvailable={expirationAvailable}
       expiresIn={expiresIn}
@@ -5524,33 +5529,26 @@ function PermissionActionCardForTarget({
       }}
       expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler({
-        block,
+        block: signals,
         pageSignal,
         focusedPermission: actionState.focusedPermission,
         status: actionState.status,
         expirationAvailable,
         expiresIn,
         applyGrant,
+        runCallback,
       })}
     />
   );
 }
 
-function AgentPermissionActionCard({
-  block,
-}: {
-  block: PermissionActionBlock;
-}) {
-  const agentLoadable = useLastLoadable(agentById(block.agentId));
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId: block.agentId,
-    }),
-  );
+function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
+  const agentLoadable = useLastLoadable(signals.agent$);
+  const userGrantsLoadable = useLoadable(signals.grants$);
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
   return (
     <PermissionActionCardForTarget
-      block={block}
+      signals={signals}
       hasTarget={Boolean(agent)}
       targetLoadableState={agentLoadable.state}
       userGrantsLoadable={userGrantsLoadable}
@@ -5558,14 +5556,11 @@ function AgentPermissionActionCard({
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
-  return <AgentPermissionActionCard block={block} />;
-}
-
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
-  const complete = useSet(completeChatConnectorActionConnect$);
+  const runCallback = useSet(runChatActionCallback$);
+  const pageSignal = useGet(pageSignal$);
 
   if (!active) {
     return null;
@@ -5575,8 +5570,17 @@ function ChatConnectorActionConnectModal() {
     <ConnectModal
       agentId={active.agentId}
       onClose={close}
-      onSuccess={() => {
-        complete();
+      onSuccess={async () => {
+        if (active.callbackPrompt && active.threadId) {
+          await runCallback(
+            {
+              threadId: active.threadId,
+              agentId: active.agentId,
+              callbackPrompt: active.callbackPrompt,
+            },
+            pageSignal,
+          );
+        }
       }}
     />
   );
@@ -5741,8 +5745,7 @@ function InsufficientCreditsCard() {
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const [creditCheckoutLoadable, creditCheckout] =
     useLoadableSet(startCreditCheckout$);
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveOrgManageTab$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
 
@@ -5773,9 +5776,8 @@ function InsufficientCreditsCard() {
   });
 
   const openBilling = () => {
-    setTab("billing");
     setSubPage(false);
-    detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+    detach(openSettings("billing", pageSignal), Reason.DomCallback);
   };
 
   const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -5827,8 +5829,7 @@ function isBillingRecoveryError(error: string): boolean {
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveOrgManageTab$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
 
   if (isBillingRecoveryError(error)) {
@@ -5868,8 +5869,7 @@ function AssistantErrorContent({ error }: { error: string }) {
             type="button"
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
             onClick={() => {
-              setTab("providers");
-              detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+              detach(openSettings("model", pageSignal), Reason.DomCallback);
             }}
           >
             Set one up in Workspace Settings
@@ -6460,7 +6460,7 @@ function GoalUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  escapeMarkdownHtml
+                  sanitizeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
@@ -6485,18 +6485,16 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
-  // user sent only files with no typed text — strip it so the bubble shows
-  // just the attachments.
-  const strippedContent =
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
-  const bodyBlocks = enrichBlocksWithTextPreviews(
-    parseBodyRenderBlocks(strippedContent, { previews: false }).blocks,
-  );
+  const hasStructuredAttachments =
+    message.attachFiles !== undefined && message.attachFiles.length > 0;
+  const copyText =
+    !hasStructuredAttachments && parsed.length === 0
+      ? content
+      : hasStructuredAttachments &&
+          cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+        ? ""
+        : cleanContent;
+  const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -6507,7 +6505,6 @@ function PagedUserMessage({
   const copyMessage = useSet(thread.copyMessage$);
   const allAttachments = resolveAttachments(message, parsed);
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
-  const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
 
   const handleCopy = () => {
@@ -6557,7 +6554,7 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  escapeMarkdownHtml
+                  sanitizeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
@@ -6617,7 +6614,6 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
-        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6667,34 +6663,15 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
-  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
-  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-
-  if (message.mailDraft) {
-    return (
-      <div
-        className={cn(
-          "zero-chat-bubble-assistant px-0 min-w-0",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
-      >
-        <MailDraftCard
-          threadId={thread.threadId}
-          messageId={message.id}
-          mailDraft={message.mailDraft}
-        />
-      </div>
-    );
-  }
 
   if (message.error) {
     return (
@@ -6709,7 +6686,7 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content) {
+  if (message.content || message.blocks.length > 0) {
     const { blocks } = message;
     return (
       <div
@@ -6742,77 +6719,12 @@ interface RunUsageDisplayRow {
   readonly credits: number;
 }
 
-function titleCaseUsageToken(token: string): string {
-  const upper = token.toUpperCase();
-  if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
-    return upper;
-  }
-
-  return token.charAt(0).toUpperCase() + token.slice(1);
-}
-
-function formatUsageIdentifier(value: string): string {
-  const normalized = value.trim();
-  if (!normalized) {
-    return "Usage";
-  }
-
-  return normalized
-    .split(/[/._-]+/)
-    .filter((token) => {
-      return token.length > 0;
-    })
-    .map(titleCaseUsageToken)
-    .join(" ");
-}
-
 function isUsageModelBackedKind(kind: string): boolean {
   return kind === "model" || kind === "image" || kind === "video";
 }
 
 function isUsageCategoryPart(part: string): boolean {
   return part.startsWith("tokens.") || part.startsWith("output_");
-}
-
-function stripUsageProviderPrefix(value: string): string {
-  const normalized = value.trim();
-  if (normalized.startsWith("fal-ai/")) {
-    return normalized.slice("fal-ai/".length);
-  }
-  if (normalized.startsWith("bytedance/")) {
-    return normalized.slice("bytedance/".length);
-  }
-  if (normalized.startsWith("dreamina-")) {
-    return normalized.slice("dreamina-".length);
-  }
-  return normalized;
-}
-
-function getUsageModelDisplayName(model: string): string {
-  const directDisplayName = getModelDisplayName(model);
-  if (directDisplayName !== model) {
-    return directDisplayName;
-  }
-
-  const strippedModel = stripUsageProviderPrefix(model);
-  const strippedDisplayName = getModelDisplayName(strippedModel);
-  if (strippedDisplayName !== strippedModel) {
-    return strippedDisplayName;
-  }
-
-  return formatUsageIdentifier(strippedModel);
-}
-
-function usageDisplayLabel(kind: string, provider: string): string {
-  if (isUsageModelBackedKind(kind) && provider && provider !== "unknown") {
-    return getUsageModelDisplayName(provider);
-  }
-
-  if (provider && provider !== "unknown") {
-    return formatUsageIdentifier(provider);
-  }
-
-  return formatUsageIdentifier(kind);
 }
 
 function parseUsageKind(kind: string): {
@@ -6850,7 +6762,8 @@ function buildRunUsageDisplayRows(
       const credits = Math.max(0, providerBreakdown.credits);
       rows.set(key, {
         key,
-        label: existing?.label ?? usageDisplayLabel(parsed.kind, provider),
+        label:
+          existing?.label ?? getCreditUsageDisplayName(parsed.kind, provider),
         credits: (existing?.credits ?? 0) + credits,
       });
     }

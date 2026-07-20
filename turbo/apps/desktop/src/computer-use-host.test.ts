@@ -242,6 +242,33 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("uses the five-second cold interval for a newly started idle host", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(4_999);
+
+    expect(nextCalls).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(nextCalls).toBe(1);
+
+    await runtime.stop();
+  });
+
   it("clears command polling recovery when the next idle claim succeeds", async () => {
     vi.useFakeTimers();
     const heartbeat = deferred<Response>();
@@ -264,7 +291,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(runtime.getState()).toMatchObject({
       status: "recovering",
@@ -303,7 +330,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     heartbeat.resolve(new Response("{}", { status: 401 }));
     await vi.advanceTimersByTimeAsync(0);
@@ -340,7 +367,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(runtime.getState()).toMatchObject({
       status: "unauthenticated",
@@ -357,6 +384,10 @@ describe("ComputerUseHostRuntime", () => {
         },
       ],
     });
+
+    const requestCount = hostFetch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hostFetch).toHaveBeenCalledTimes(requestCount);
   });
 
   it("deactivates for restart when command completion rejects the host token", async () => {
@@ -383,7 +414,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(runtime.getState()).toMatchObject({
       status: "unauthenticated",
@@ -454,7 +485,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch, executeCommand });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     const [entry] = runtime.getState().localCommandLog;
     expect(entry).toMatchObject({
@@ -521,6 +552,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
       if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        if (nextCommandId === 25) {
+          return jsonResponse({ status: "idle" });
+        }
         nextCommandId++;
         return jsonResponse({
           status: "command",
@@ -539,8 +573,9 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
+    await vi.advanceTimersByTimeAsync(5_000);
     for (let index = 0; index < 25; index++) {
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersToNextTimerAsync();
     }
 
     const entries = runtime.getState().localCommandLog;
@@ -602,7 +637,7 @@ describe("ComputerUseHostRuntime", () => {
     });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(onCommandFailure).toHaveBeenCalledWith({ command, failure });
     expect(runtime.getState()).toMatchObject({
@@ -655,7 +690,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch, executeCommand });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(executeCommand).toHaveBeenCalledOnce();
     expect(completeCalls).toBe(0);
@@ -708,7 +743,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(completeCalls).toBe(1);
 
@@ -723,7 +758,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("keeps polling after command completion is already terminal on the server", async () => {
+  it("polls immediately when command completion is already terminal on the server", async () => {
     vi.useFakeTimers();
     let nextCalls = 0;
     let completeCalls = 0;
@@ -753,7 +788,8 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersToNextTimerAsync();
 
     expect(completeCalls).toBe(1);
     expect(runtime.getState()).toMatchObject({
@@ -763,13 +799,107 @@ describe("ComputerUseHostRuntime", () => {
     });
     expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
 
-    await vi.advanceTimersByTimeAsync(2_000);
-
     expect(nextCalls).toBe(2);
     expect(runtime.getState()).toMatchObject({
       status: "online",
       lastError: null,
     });
+
+    await runtime.stop();
+  });
+
+  it("moves through burst and active polling before returning to cold", async () => {
+    vi.useFakeTimers();
+    const startedAtMs = Date.parse("2026-06-10T10:00:00.000Z");
+    vi.setSystemTime(startedAtMs);
+    const claimOffsets: number[] = [];
+    let firstCommandClaimed = false;
+    let secondCommandClaimed = false;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        const offset = Date.now() - startedAtMs;
+        claimOffsets.push(offset);
+        if (offset === 5_000 && !firstCommandClaimed) {
+          firstCommandClaimed = true;
+          return jsonResponse({
+            status: "command",
+            command: {
+              id: "cmd-1",
+              kind: "app.state",
+              payload: { app: "Chrome" },
+            },
+          });
+        }
+        if (offset === 16_001 && !secondCommandClaimed) {
+          secondCommandClaimed = true;
+          return jsonResponse({
+            status: "command",
+            command: {
+              id: "cmd-2",
+              kind: "app.state",
+              payload: { app: "Chrome" },
+            },
+          });
+        }
+        return jsonResponse({ status: "idle" });
+      }
+      if (url.includes("/api/zero/computer-use/host/commands/cmd-")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(claimOffsets).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersToNextTimerAsync();
+    expect(claimOffsets).toEqual([5_000, 5_001]);
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(claimOffsets.at(-1)).toBe(5_001);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(claimOffsets.at(-1)).toBe(5_501);
+
+    await vi.advanceTimersByTimeAsync(9_500);
+    expect(claimOffsets.at(-1)).toBe(15_001);
+    const burstCallCount = claimOffsets.length;
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(claimOffsets).toHaveLength(burstCallCount);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersToNextTimerAsync();
+    expect(claimOffsets.slice(-2)).toEqual([16_001, 16_002]);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(claimOffsets.at(-1)).toBe(16_502);
+
+    await vi.advanceTimersByTimeAsync(9_500);
+    expect(claimOffsets.at(-1)).toBe(26_002);
+    const resetBurstCallCount = claimOffsets.length;
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(claimOffsets).toHaveLength(resetBurstCallCount);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(claimOffsets.at(-1)).toBe(27_002);
+
+    await vi.advanceTimersByTimeAsync(49_000);
+    expect(claimOffsets.at(-1)).toBe(76_002);
+    const activeCallCount = claimOffsets.length;
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(claimOffsets).toHaveLength(activeCallCount);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(claimOffsets.at(-1)).toBe(81_002);
 
     await runtime.stop();
   });
@@ -806,7 +936,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(completeCalls).toBe(1);
 
@@ -942,7 +1072,7 @@ describe("ComputerUseHostRuntime", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(heartbeatCalls).toBe(1);
-    expect(nextCalls).toBe(1);
+    expect(nextCalls).toBe(0);
 
     await vi.advanceTimersByTimeAsync(10_000);
 
@@ -988,7 +1118,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(nextCalls).toBe(1);
 
@@ -1016,7 +1146,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("backs off command claim failures and clears recovery after idle", async () => {
+  it("uses recovery backoff instead of burst cadence after a claim failure", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
     let nextCalls = 0;
@@ -1026,18 +1156,32 @@ describe("ComputerUseHostRuntime", () => {
       }
       if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
         nextCalls++;
-        return nextCalls === 1
+        if (nextCalls === 1) {
+          return jsonResponse({
+            status: "command",
+            command: {
+              id: "cmd-1",
+              kind: "app.state",
+              payload: { app: "Chrome" },
+            },
+          });
+        }
+        return nextCalls === 2
           ? new Response("{}", { status: 500 })
           : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
     });
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersToNextTimerAsync();
 
-    expect(nextCalls).toBe(1);
+    expect(nextCalls).toBe(2);
     expect(runtime.getState()).toMatchObject({
       status: "recovering",
       lastError: "Computer Use command claim failed: 500",
@@ -1048,9 +1192,12 @@ describe("ComputerUseHostRuntime", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(2_000);
-
+    await vi.advanceTimersByTimeAsync(1_999);
     expect(nextCalls).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(nextCalls).toBe(3);
     expect(runtime.getState()).toMatchObject({
       status: "online",
       lastError: null,
@@ -1082,7 +1229,7 @@ describe("ComputerUseHostRuntime", () => {
     const { runtime } = createRuntime({ hostFetch });
 
     await runtime.start();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(runtime.getState()).toMatchObject({
       status: "recovering",
@@ -1090,7 +1237,7 @@ describe("ComputerUseHostRuntime", () => {
         phase: "command_poll",
         attempt: 1,
         retryDelayMs: 7_000,
-        nextRetryAt: "2026-06-10T10:00:09.000Z",
+        nextRetryAt: "2026-06-10T10:00:12.000Z",
       },
     });
 
@@ -1146,6 +1293,7 @@ describe("ComputerUseHostRuntime", () => {
   });
 
   it("stops the registered host through the host API", async () => {
+    vi.useFakeTimers();
     const hostFetch = vi.fn<ComputerUseHostFetch>(async () => {
       return jsonResponse({ ok: true, hostId: "host-1" });
     });
@@ -1168,6 +1316,9 @@ describe("ComputerUseHostRuntime", () => {
       hostId: null,
       lastError: null,
     });
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hostFetch).toHaveBeenCalledOnce();
   });
 
   it("reports heartbeat active host conflicts without retrying", async () => {

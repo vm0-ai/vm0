@@ -5,6 +5,7 @@ import {
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
+  zeroConnectorExternalCodeSessionContract,
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
@@ -29,6 +30,7 @@ import type {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -208,6 +210,32 @@ function mockConnectors(
       };
     }),
   );
+}
+
+async function setupAwsExternalCodeConnection(): Promise<{
+  dialog: HTMLElement;
+  complete: HTMLElement;
+}> {
+  mockConnectors([]);
+  context.mocks.browser.open(createMockAuthWindow());
+  detachedSetupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+  });
+
+  await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
+  click(await screen.findByLabelText("Connect AWS"));
+  const dialog = await screen.findByRole("dialog", { name: "AWS" });
+  click(buttonByText("Start AWS sign-in", dialog));
+  await fill(
+    await within(dialog).findByTestId("connector-external-code-input"),
+    "INVALID-CODE",
+  );
+  return {
+    dialog,
+    complete: within(dialog).getByTestId("connector-external-code-complete"),
+  };
 }
 
 function customConnector(
@@ -912,6 +940,7 @@ describe("connectors page", () => {
     await expectConnectorCardsVisible({ github: true, asana: true });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
+    expect(filterTrigger).toHaveClass("hidden", "sm:inline-flex");
     click(filterTrigger);
     click(menuItemByText("Connected"));
 
@@ -1915,6 +1944,70 @@ describe("connectors page", () => {
     expect(startCount).toBe(1);
   });
 
+  it("returns device auth to a retryable state after an unexpected poll error", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Stripe",
+        authMethods: [
+          {
+            id: "cli",
+            label: "Stripe CLI",
+            description: "Approve access with Stripe CLI.",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.browser.open(createMockAuthWindow());
+    let pollCount = 0;
+    context.mocks.http.post(
+      "*/api/zero/connectors/stripe/oauth/device/sessions/:sessionId/poll",
+      () => {
+        pollCount += 1;
+        if (pollCount === 1) {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Stripe device authorization is unavailable",
+                code: "UNAVAILABLE",
+              },
+            },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.error();
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Stripe"));
+    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
+    click(buttonByText("Connect Stripe", dialog));
+    click(await within(dialog).findByTestId("connector-oauth-device-open"));
+
+    await expect(
+      screen.findByText("Stripe device authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
+    });
+
+    click(buttonByText("Connect Stripe", dialog));
+    click(await within(dialog).findByTestId("connector-oauth-device-open"));
+    await expect(
+      screen.findByText("Failed to fetch"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
+    });
+  });
+
   it("connects a manual token connector", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -2642,6 +2735,63 @@ describe("connectors page", () => {
           /@arn:aws:iam::000000000000:user\/mock-aws/u,
         ),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
+    let completeCount = 0;
+    context.mocks.api(
+      zeroConnectorExternalCodeSessionContract.complete,
+      ({ respond }) => {
+        completeCount += 1;
+        if (completeCount === 1) {
+          return respond(400, {
+            error: { message: "Invalid AWS code", code: "BAD_REQUEST" },
+          });
+        }
+        return respond(500, {
+          error: {
+            message: "AWS authorization is unavailable",
+            code: "UNAVAILABLE",
+          },
+        });
+      },
+    );
+
+    const { dialog, complete } = await setupAwsExternalCodeConnection();
+    click(complete);
+
+    await expect(
+      within(dialog).findByText("Invalid AWS code"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(complete).toBeEnabled();
+    });
+
+    click(complete);
+    await expect(
+      screen.findByText("AWS authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(complete).toBeEnabled();
+    });
+  });
+
+  it("toasts external-code transport errors and restores a retryable state", async () => {
+    context.mocks.http.post(
+      "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
+      () => {
+        return HttpResponse.error();
+      },
+    );
+
+    const { complete } = await setupAwsExternalCodeConnection();
+    click(complete);
+    await expect(
+      screen.findByText("Failed to fetch"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(complete).toBeEnabled();
     });
   });
 

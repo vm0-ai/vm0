@@ -20,7 +20,7 @@ use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
 use super::codex_app_server_events::{IGNORED_NOTIFICATION_METHODS, notification_to_codex_event};
-use super::event_delivery::{PreparedEvent, run_event_sender};
+use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
     CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
     LOG_TAG, ParsedEventAction, command,
@@ -50,7 +50,7 @@ struct EventIngestSink<'a> {
     log_file: &'a mut tokio::fs::File,
     masker: &'a SecretMasker,
     should_send_events: bool,
-    event_tx: &'a tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    event_tx: &'a EventDeliverySender,
 }
 
 struct CodexTurnScope<'a> {
@@ -72,41 +72,27 @@ pub(super) async fn execute_codex_app_server_for_runtime(
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
-    let event_sender = tokio::spawn(run_event_sender(
-        event_rx,
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-    ));
+    let event_delivery =
+        EventDeliveryRuntime::start(http.clone(), runtime.event_error_flag.to_string());
 
     let run_result = run_codex_app_server(
         masker,
         &mut heartbeat_monitor,
         should_send_events,
-        &event_tx,
+        event_delivery.sender(),
         active_input,
         runtime,
     )
     .await;
 
-    drop(event_tx);
-
     match run_result {
         Ok(mut result) => {
-            match event_sender.await {
-                Ok(sequence) => {
-                    result.last_event_sequence = sequence;
-                }
-                Err(error) => {
-                    log_warn!(LOG_TAG, "Event sender task failed: {error}");
-                }
-            }
+            result.last_event_sequence = event_delivery.finish().await?;
             Ok(result)
         }
         Err(error) => {
-            event_sender.abort();
-            let _ = event_sender.await;
+            event_delivery.abort().await;
             Err(error)
         }
     }
@@ -116,7 +102,7 @@ async fn run_codex_app_server(
     masker: &SecretMasker,
     heartbeat_monitor: &mut HeartbeatMonitor,
     should_send_events: bool,
-    event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    event_tx: &EventDeliverySender,
     mut active_input: ActiveInputWriter,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
@@ -810,8 +796,12 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
             if let Some(text) = codex_agent_message_text(&event) {
                 println!("{}", sink.masker.mask_string(text));
             }
-            sink.ingestor
-                .enqueue_event(event, sink.masker, sink.should_send_events, sink.event_tx);
+            sink.ingestor.enqueue_event(
+                event,
+                sink.masker,
+                sink.should_send_events,
+                sink.event_tx,
+            )?;
         }
         ParsedEventAction::Skip => {}
     }

@@ -4,6 +4,7 @@ import { gzipSync } from "node:zlib";
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 
 import type { TestContext } from "../../../../__tests__/test-context";
+import { readStorageS3PrefixFixture } from "../../../../test-fixtures/storage";
 import type { ApiTestUser } from "./api-bdd";
 import { createStoragesBddApi } from "./api-bdd-storages";
 
@@ -46,6 +47,8 @@ export async function commitMemoryVersion(
     storageType: "artifact",
     files: entries,
   });
+  storagesApi.mockStorageObjectExistsOnce();
+  storagesApi.mockStorageObjectExistsOnce();
   await storagesApi.commitStorage(actor, {
     storageName: MEMORY_ARTIFACT_NAME,
     storageType: "artifact",
@@ -53,9 +56,15 @@ export async function commitMemoryVersion(
     files: entries,
   });
 
+  const s3Prefix = await readStorageS3PrefixFixture({
+    orgId: actor.orgId,
+    userId: actor.userId,
+    name: MEMORY_ARTIFACT_NAME,
+    type: "artifact",
+  });
   return {
     versionId: prepared.versionId,
-    s3Key: `${actor.orgId}/artifact/${MEMORY_ARTIFACT_NAME}/${prepared.versionId}`,
+    s3Key: `${s3Prefix}/${prepared.versionId}`,
   };
 }
 
@@ -142,6 +151,12 @@ function commandKey(command: unknown): string {
   return (input as { Key: string }).Key;
 }
 
+function commandName(command: unknown): string {
+  return typeof command === "object" && command !== null
+    ? command.constructor.name
+    : "";
+}
+
 export function mockMemoryContent(
   context: TestContext,
   args: MemoryContentMockArgs,
@@ -175,9 +190,15 @@ export function mockMemoryContent(
   context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
     const key = commandKey(cmd);
     if (key === `${args.s3Key}/manifest.json`) {
+      if (commandName(cmd) === "HeadObjectCommand") {
+        return Promise.resolve({ ContentLength: manifestBuffer.length });
+      }
       return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
     }
     if (key === `${args.s3Key}/archive.tar.gz`) {
+      if (commandName(cmd) === "HeadObjectCommand") {
+        return Promise.resolve({ ContentLength: archive.length });
+      }
       return Promise.resolve({ Body: asyncIterableOf(archive) });
     }
     return Promise.resolve({});

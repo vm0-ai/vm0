@@ -6,6 +6,7 @@ import type { Db } from "../external/db";
 import {
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
+  runnerSessionAffinityTelemetryResource,
 } from "./runner-session-affinity";
 import { tapError } from "../utils";
 
@@ -60,6 +61,7 @@ export async function notifyRunnerJob(
       historyGenerationAffinityProtectedUntil:
         affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
       affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
+      sessionAffinityResource: affinity.resource,
       historyGenerationRunId: args.historyGenerationRunId,
     },
   );
@@ -70,6 +72,7 @@ export async function notifyRunnerJob(
     profile: args.profile,
     notification_target: "broadcast",
     session_affinity: affinity.status,
+    session_affinity_resource: runnerSessionAffinityTelemetryResource(affinity),
     history_generation_affinity: affinity.historyGenerationStatus,
   };
   // Queue-relative actions are cumulative boundaries. Affinity and publish

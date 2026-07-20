@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use nix::fcntl::Flock;
 use tokio::fs;
 #[cfg(test)]
@@ -10,7 +11,10 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
+use crate::types::{
+    HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
+    MAX_WORKSPACE_CACHES_PER_SESSION, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState,
+};
 
 use super::entry::is_cache_key_name;
 use super::fs::{
@@ -18,7 +22,8 @@ use super::fs::{
     remove_non_directory_workspace_cache_entry, remove_workspace_cache_path_if_exists, sparse_copy,
 };
 use super::metadata::{
-    WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
+    WorkspaceCacheMetadata, WorkspaceCacheState as WorkspaceCacheEntryState,
+    WorkspaceImageFileIdentity, WorkspaceTrust,
 };
 use super::path_safety::{
     filter_storage_fingerprints_for_working_dir, is_safe_guest_working_dir,
@@ -70,9 +75,11 @@ pub(crate) struct WorkspaceImagePromotionContext {
     restored_session_identity: Option<crate::restored_session_identity::RestoredSessionIdentity>,
 }
 
-pub(crate) struct WorkspaceSessionHistorySidecarEntryGuard<'a> {
-    promotion: &'a WorkspaceImagePromotionContext,
-    restored_session_identity: &'a crate::restored_session_identity::RestoredSessionIdentity,
+pub(crate) struct WorkspaceSessionHistorySidecarEntryGuard {
+    cache: SessionWorkspaceCache,
+    cache_key: String,
+    run_id: RunId,
+    restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
     _late_entry_lock: Option<Flock<std::fs::File>>,
 }
 
@@ -566,7 +573,24 @@ impl SessionWorkspaceCache {
         }
     }
 
+    pub(crate) async fn held_session_states_for_profiles(
+        &self,
+        profile_image_sizes_bytes: &BTreeMap<&str, u64>,
+    ) -> Vec<HeldSessionState> {
+        self.held_session_states_matching_profiles(Some(profile_image_sizes_bytes))
+            .await
+    }
+
+    /// Inspect cache state without a running profile configuration in tests.
+    #[cfg(test)]
     pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
+        self.held_session_states_matching_profiles(None).await
+    }
+
+    async fn held_session_states_matching_profiles(
+        &self,
+        profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
+    ) -> Vec<HeldSessionState> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -603,32 +627,64 @@ impl SessionWorkspaceCache {
                 }
             };
             if self
-                .metadata_is_publishable_held_session_state(cache_key, &metadata)
+                .metadata_is_publishable_held_session_state(
+                    cache_key,
+                    &metadata,
+                    profile_image_sizes_bytes,
+                )
                 .await
             {
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
                     last_completed_at: metadata.last_completed_at,
                     reusable_sandbox: None,
+                    workspace_caches: vec![WorkspaceCacheState {
+                        profile: metadata.profile_name,
+                        workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    }],
                 });
             }
             drop(lock);
         }
-        cap_workspace_held_session_states(states)
+        let observed_workspace_caches = states
+            .iter()
+            .map(|state| state.workspace_caches.len())
+            .sum::<usize>();
+        let states = cap_workspace_held_session_states(states);
+        let retained_workspace_caches = states
+            .iter()
+            .map(|state| state.workspace_caches.len())
+            .sum::<usize>();
+        if retained_workspace_caches < observed_workspace_caches {
+            info!(
+                observed_workspace_caches,
+                retained_sessions = states.len(),
+                retained_workspace_caches,
+                "workspace cache held session state truncated"
+            );
+        }
+        states
     }
 
     async fn metadata_is_publishable_held_session_state(
         &self,
         cache_key: &str,
         metadata: &WorkspaceCacheMetadata,
+        profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
     ) -> bool {
         metadata.format_version == CACHE_FORMAT_VERSION
             && metadata.key_version == CACHE_KEY_VERSION
             && metadata.cache_scope == self.inner.cache_scope
             && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
-            && metadata.state == WorkspaceCacheState::Current
+            && metadata.state == WorkspaceCacheEntryState::Current
             && metadata.workspace_trust == WorkspaceTrust::Clean
             && is_safe_guest_working_dir(&metadata.working_dir)
+            && profile_image_sizes_bytes.is_none_or(|profile_image_sizes_bytes| {
+                metadata.working_dir == CANONICAL_WORKING_DIR
+                    && profile_image_sizes_bytes
+                        .get(metadata.profile_name.as_str())
+                        .is_some_and(|image_size| *image_size == metadata.logical_image_size_bytes)
+            })
             && self.metadata_matches_cache_key(cache_key, metadata)
             && self
                 .metadata_matches_current_image(cache_key, metadata)
@@ -905,7 +961,7 @@ impl SessionWorkspaceCache {
                 input.storage_fingerprints,
                 input.working_dir,
             ),
-            state: WorkspaceCacheState::Current,
+            state: WorkspaceCacheEntryState::Current,
         };
         if let Err(e) = self
             .write_metadata(input.cache_key, input.run_id, metadata)
@@ -1177,8 +1233,8 @@ impl WorkspaceImagePromotionContext {
 
     pub(crate) async fn try_acquire_session_history_sidecar_entry_guard(
         &self,
-    ) -> Option<WorkspaceSessionHistorySidecarEntryGuard<'_>> {
-        let restored_session_identity = self.restored_session_identity.as_ref()?;
+    ) -> Option<WorkspaceSessionHistorySidecarEntryGuard> {
+        let restored_session_identity = self.restored_session_identity.clone()?;
         let late_entry_lock = match self.entry_lock.as_ref() {
             Some(_) => None,
             None => {
@@ -1197,7 +1253,9 @@ impl WorkspaceImagePromotionContext {
             }
         };
         Some(WorkspaceSessionHistorySidecarEntryGuard {
-            promotion: self,
+            cache: self.cache.clone(),
+            cache_key: self.cache_key.clone(),
+            run_id: self.run_id,
             restored_session_identity,
             _late_entry_lock: late_entry_lock,
         })
@@ -1386,11 +1444,10 @@ impl WorkspaceImagePromotionContext {
     }
 }
 
-impl WorkspaceSessionHistorySidecarEntryGuard<'_> {
+impl WorkspaceSessionHistorySidecarEntryGuard {
     pub(crate) fn session_history_sidecar_tmp_path(&self) -> PathBuf {
-        self.promotion
-            .cache
-            .session_workspace_cache_tmp_sidecar(&self.promotion.cache_key, self.promotion.run_id)
+        self.cache
+            .session_workspace_cache_tmp_sidecar(&self.cache_key, self.run_id)
     }
 
     pub(crate) fn session_history_sidecar_source(
@@ -1411,45 +1468,110 @@ impl WorkspaceSessionHistorySidecarEntryGuard<'_> {
         &self,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
     ) {
-        self.promotion
-            .cache
+        self.cache
             .discard_session_history_sidecar_source(source)
             .await;
     }
 
     pub(crate) async fn promote_with_session_history_sidecar(
         &self,
+        promotion: &WorkspaceImagePromotionContext,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
-        self.promotion.promote_locked(Some(source)).await
+        if self.cache_key != promotion.cache_key || self.run_id != promotion.run_id {
+            return Err(RunnerError::Internal(
+                "workspace session history sidecar guard does not match promotion context".into(),
+            ));
+        }
+        promotion.promote_locked(Some(source)).await
     }
 }
 
-pub(super) fn cap_workspace_held_session_states(
+pub(crate) fn cap_workspace_held_session_states(
     states: Vec<HeldSessionState>,
 ) -> Vec<HeldSessionState> {
-    let mut newest_by_session = BTreeMap::<String, HeldSessionState>::new();
+    struct ObservedSessionState {
+        last_completed_at: String,
+        reusable_sandbox: Option<crate::types::ReusableSandboxState>,
+        workspace_caches: BTreeMap<String, (String, WorkspaceCacheState)>,
+    }
+
+    let mut by_session = BTreeMap::<String, ObservedSessionState>::new();
     for state in states {
-        match newest_by_session.get_mut(&state.session_id) {
-            Some(existing) if state.last_completed_at > existing.last_completed_at => {
-                *existing = state;
-            }
-            Some(_) => {}
-            None => {
-                newest_by_session.insert(state.session_id.clone(), state);
+        let session = by_session
+            .entry(state.session_id.clone())
+            .or_insert_with(|| ObservedSessionState {
+                last_completed_at: state.last_completed_at.clone(),
+                reusable_sandbox: state.reusable_sandbox.clone(),
+                workspace_caches: BTreeMap::new(),
+            });
+        if state.last_completed_at > session.last_completed_at {
+            session.last_completed_at = state.last_completed_at.clone();
+        }
+        if session.reusable_sandbox.is_none() {
+            session.reusable_sandbox = state.reusable_sandbox;
+        }
+        for workspace_cache in state.workspace_caches {
+            match session
+                .workspace_caches
+                .entry(workspace_cache.profile.clone())
+            {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert((state.last_completed_at.clone(), workspace_cache));
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let (existing_completed_at, existing) = entry.get_mut();
+                    let capability_order = workspace_cache
+                        .workspace_affinity_version
+                        .cmp(&existing.workspace_affinity_version);
+                    if capability_order.is_gt()
+                        || (capability_order.is_eq()
+                            && state.last_completed_at > *existing_completed_at)
+                    {
+                        *existing_completed_at = state.last_completed_at.clone();
+                        *existing = workspace_cache;
+                    }
+                }
             }
         }
     }
 
-    let mut states: Vec<HeldSessionState> = newest_by_session.into_values().collect();
-    if states.len() > MAX_HELD_SESSION_STATES {
-        states.sort_unstable_by(|a, b| {
-            b.last_completed_at
-                .cmp(&a.last_completed_at)
-                .then_with(|| a.session_id.cmp(&b.session_id))
-        });
-        states.truncate(MAX_HELD_SESSION_STATES);
+    let mut states: Vec<HeldSessionState> = by_session
+        .into_iter()
+        .map(|(session_id, state)| HeldSessionState {
+            session_id,
+            last_completed_at: state.last_completed_at,
+            reusable_sandbox: state.reusable_sandbox,
+            workspace_caches: state
+                .workspace_caches
+                .into_values()
+                .map(|(_, workspace_cache)| workspace_cache)
+                .take(MAX_WORKSPACE_CACHES_PER_SESSION)
+                .collect(),
+        })
+        .collect();
+    states.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+
+    let mut retained = Vec::new();
+    let mut retained_workspace_caches = 0;
+    for mut state in states {
+        if retained.len() == MAX_HELD_SESSION_STATES
+            || retained_workspace_caches == MAX_WORKSPACE_CACHES_PER_HEARTBEAT
+        {
+            break;
+        }
+        let remaining = MAX_WORKSPACE_CACHES_PER_HEARTBEAT - retained_workspace_caches;
+        state.workspace_caches.truncate(remaining);
+        if state.workspace_caches.is_empty() {
+            continue;
+        }
+        retained_workspace_caches += state.workspace_caches.len();
+        retained.push(state);
     }
-    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
-    states
+    retained.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    retained
 }

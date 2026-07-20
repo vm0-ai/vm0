@@ -6,67 +6,30 @@ from pathlib import Path
 
 import pytest
 from mitmproxy import http
-from mitmproxy.flow import Error
-from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
-    make_openai_responses_websocket_request_flow,
-    make_openai_responses_websocket_response_headers,
+    make_openai_responses_websocket_flow,
+    model_provider_usage_sources,
 )
 from tests.model_provider_websocket_helpers import (
-    _append_websocket_message,
-    _capture_deferred_websocket_trims,
-    _feed_websocket_server_message,
-    _feed_websocket_server_text_message,
-    _model_websocket_usage_sources,
-    _openai_model_websocket_flow,
-    _openai_websocket_usage_frame,
-    _run_deferred_websocket_trims,
-    _ScheduledWebSocketTrim,
-    _set_websocket_message,
+    ScheduledWebSocketTrim,
+    capture_deferred_websocket_trims,
+    feed_websocket_server_message,
+    feed_websocket_server_text_message,
+    openai_websocket_usage_frame,
+    set_websocket_message,
 )
-from tests.pending_helpers import assert_pending
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 
 @pytest.fixture(autouse=True)
 def deferred_websocket_trim_scheduler(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[_ScheduledWebSocketTrim]:
-    return _capture_deferred_websocket_trims(monkeypatch)
-
-
-def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
-    firewall_name = "model-provider:openai-api-key"
-    return _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-abc-123",
-            sandbox_marker="tok-xyz",
-            firewall_name=firewall_name,
-            api_entry={
-                "base": "https://api.openai.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "responses", "rules": ["GET /v1/responses"]}],
-            },
-            network_policy={
-                "allow": ["responses"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=[firewall_name],
-            vm_fields={
-                "cliAgentType": "codex",
-                "modelUsageProvider": "gpt-5.5",
-            },
-        ),
-    )
+) -> list[ScheduledWebSocketTrim]:
+    return capture_deferred_websocket_trims(monkeypatch)
 
 
 def _sum_quantities_by_category(events: list[dict]) -> dict[str, int]:
@@ -102,6 +65,112 @@ def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = 
     ).encode()
 
 
+class TestModelProviderWebSocketUsageSourceRelease:
+    """Tests for sources that cannot be delivered to the usage webhook."""
+
+    def test_model_websocket_missing_context_releases_positive_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with mitm_ctx(api_url="https://api.vm0.ai"):
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_missing_context",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
+
+        assert model_provider_usage_sources(flow) == {}
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
+        [observation_entry] = [
+            entry for entry in entries if entry.get("type") == "model_usage_observation"
+        ]
+        assert entry["type"] == "usage_underbilling"
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["underbilling_class"] == "confirmed"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["firewall_name"] == "model-provider:openai-api-key"
+        assert entry["missing_sandbox_token"] is True
+        assert entry["missing_api_url"] is False
+        assert observation_entry["level"] == "warn"
+        assert (
+            observation_entry["message"]
+            == "Cannot report model usage observation: missing sandbox_token or api_url"
+        )
+
+    def test_model_websocket_missing_api_url_releases_positive_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with mitm_ctx(api_url=""):
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_missing_api_url",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
+
+        assert model_provider_usage_sources(flow) == {}
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["missing_sandbox_token"] is False
+        assert entry["missing_api_url"] is True
+
+    def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        feed_websocket_server_message(
+            flow,
+            openai_websocket_usage_frame(
+                "resp_ws_zero_missing_context",
+                input_tokens=0,
+                output_tokens=0,
+            ),
+        )
+
+        assert model_provider_usage_sources(flow) == {}
+        assert not jsonl_exists_after_flush(proxy_log)
+
+    def test_model_websocket_missing_api_url_releases_zero_only_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with mitm_ctx(api_url=""):
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_zero_missing_api_url",
+                    input_tokens=0,
+                    output_tokens=0,
+                ),
+            )
+
+        assert model_provider_usage_sources(flow) == {}
+        assert not jsonl_exists_after_flush(proxy_log)
+
+
 class TestModelProviderWebSocketUsage:
     """Tests for model-provider WebSocket usage reporting."""
 
@@ -109,28 +178,10 @@ class TestModelProviderWebSocketUsage:
     def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
         self._usage_webhook_api = usage_webhook_api
 
-    def _run_response(self, flow: http.HTTPFlow):
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.response(flow)
-            usage.flush_usage_events(trigger="test")
-        return webhook
-
-    def _run_error(self, flow: http.HTTPFlow):
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.error(flow)
-            usage.flush_usage_events(trigger="test")
-        return webhook
-
-    def _run_websocket_end(self, flow: http.HTTPFlow):
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.websocket_end(flow)
-            usage.flush_usage_events(trigger="test")
-        return webhook
-
     def _run_websocket_messages_and_end(self, flow: http.HTTPFlow, *messages: bytes):
         with self._usage_webhook_api() as webhook:
             for message in messages:
-                _feed_websocket_server_message(flow, message)
+                feed_websocket_server_message(flow, message)
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
         return webhook
@@ -144,7 +195,7 @@ class TestModelProviderWebSocketUsage:
 
     def test_full_pipeline_model_websocket_reports_usage(self, tmp_path, real_flow):
         """Codex Responses WebSocket frames should bill like SSE events."""
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         assert flow.metadata["model_websocket_usage_enabled"] is True
         assert "model_json_usage_finish" not in flow.metadata
@@ -152,7 +203,7 @@ class TestModelProviderWebSocketUsage:
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
-        _set_websocket_message(
+        set_websocket_message(
             flow,
             from_client=False,
             content=json.dumps(
@@ -180,7 +231,7 @@ class TestModelProviderWebSocketUsage:
         by_category = _sum_quantities_by_category(events)
         assert len(events) == len(by_category)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert by_category == {
             "tokens.input": 25,
             "tokens.output": 20,
@@ -188,127 +239,25 @@ class TestModelProviderWebSocketUsage:
             "tokens.cache_creation": 15,
         }
 
-    def test_model_websocket_missing_context_releases_positive_source(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-
-        with mitm_ctx(api_url="https://api.vm0.ai"):
-            _feed_websocket_server_message(
-                flow,
-                _openai_websocket_usage_frame(
-                    "resp_ws_missing_context",
-                    input_tokens=10,
-                    output_tokens=4,
-                ),
-            )
-
-        assert _model_websocket_usage_sources(flow) == {}
-        entries = read_jsonl_entries_after_flush(proxy_log)
-        [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
-        [observation_entry] = [
-            entry for entry in entries if entry.get("type") == "model_usage_observation"
-        ]
-        assert entry["type"] == "usage_underbilling"
-        assert entry["reason"] == "missing_reporting_context"
-        assert entry["underbilling_class"] == "confirmed"
-        assert entry["run_id"] == "run-abc-123"
-        assert entry["firewall_name"] == "model-provider:openai-api-key"
-        assert entry["missing_sandbox_token"] is True
-        assert entry["missing_api_url"] is False
-        assert observation_entry["level"] == "warn"
-        assert (
-            observation_entry["message"]
-            == "Cannot report model usage observation: missing sandbox_token or api_url"
-        )
-
-    def test_model_websocket_missing_api_url_releases_positive_source(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-
-        with mitm_ctx(api_url=""):
-            _feed_websocket_server_message(
-                flow,
-                _openai_websocket_usage_frame(
-                    "resp_ws_missing_api_url",
-                    input_tokens=10,
-                    output_tokens=4,
-                ),
-            )
-
-        assert _model_websocket_usage_sources(flow) == {}
-        [entry] = [
-            entry
-            for entry in read_jsonl_entries_after_flush(proxy_log)
-            if entry.get("type") == "usage_underbilling"
-        ]
-        assert entry["reason"] == "missing_reporting_context"
-        assert entry["missing_sandbox_token"] is False
-        assert entry["missing_api_url"] is True
-
-    def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-
-        _feed_websocket_server_message(
-            flow,
-            _openai_websocket_usage_frame(
-                "resp_ws_zero_missing_context",
-                input_tokens=0,
-                output_tokens=0,
-            ),
-        )
-
-        assert _model_websocket_usage_sources(flow) == {}
-        assert not jsonl_exists_after_flush(proxy_log)
-
-    def test_model_websocket_missing_api_url_releases_zero_only_source(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-
-        with mitm_ctx(api_url=""):
-            _feed_websocket_server_message(
-                flow,
-                _openai_websocket_usage_frame(
-                    "resp_ws_zero_missing_api_url",
-                    input_tokens=0,
-                    output_tokens=0,
-                ),
-            )
-
-        assert _model_websocket_usage_sources(flow) == {}
-        assert not jsonl_exists_after_flush(proxy_log)
-
     def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=10,
                 output_tokens=4,
             ),
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_2",
                 input_tokens=3,
                 output_tokens=2,
             ),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 13,
             "tokens.output": 6,
@@ -321,24 +270,24 @@ class TestModelProviderWebSocketUsage:
     def test_model_websocket_late_same_id_frame_after_release_is_duplicate(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=20,
                 output_tokens=12,
             ),
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=10,
                 output_tokens=7,
             ),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 20,
             "tokens.output": 12,
@@ -351,7 +300,7 @@ class TestModelProviderWebSocketUsage:
     def test_model_websocket_late_same_id_frame_can_add_new_category_after_release(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -378,7 +327,7 @@ class TestModelProviderWebSocketUsage:
             ).encode(),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 20,
             "tokens.output": 12,
@@ -391,7 +340,7 @@ class TestModelProviderWebSocketUsage:
     def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -446,12 +395,12 @@ class TestModelProviderWebSocketUsage:
         assert len({event["idempotencyKey"] for event in observation_events}) == 3
         assert observations_by_category == by_category
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
 
     def test_model_websocket_zero_frame_model_is_used_by_later_positive_frame(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -477,7 +426,7 @@ class TestModelProviderWebSocketUsage:
             ).encode(),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert {
             (event["provider"], event["category"]): event["quantity"]
             for event in webhook.usage_events()
@@ -494,26 +443,26 @@ class TestModelProviderWebSocketUsage:
         }
 
     def test_model_websocket_zero_frame_without_model_releases_source(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         with self._usage_webhook_api() as webhook:
-            _feed_websocket_server_message(
+            feed_websocket_server_message(
                 flow,
                 _openai_websocket_zero_usage_frame("resp_ws_zero_no_model", model=None),
             )
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
 
     def test_model_websocket_zero_frame_with_flow_model_releases_source(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-flow-model"
         mitm_addon.responseheaders(flow)
 
         with self._usage_webhook_api() as webhook:
-            _feed_websocket_server_message(
+            feed_websocket_server_message(
                 flow,
                 _openai_websocket_zero_usage_frame(
                     "resp_ws_zero_flow_model", model="gpt-frame-model"
@@ -522,15 +471,15 @@ class TestModelProviderWebSocketUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
 
     def test_model_websocket_zero_frames_are_bounded(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         with self._usage_webhook_api() as webhook:
             for index in range(70):
-                _feed_websocket_server_message(
+                feed_websocket_server_message(
                     flow,
                     _openai_websocket_zero_usage_frame(
                         f"resp_ws_zero_{index}", model=f"gpt-zero-{index}"
@@ -539,27 +488,27 @@ class TestModelProviderWebSocketUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        usage_sources = _model_websocket_usage_sources(flow)
+        usage_sources = model_provider_usage_sources(flow)
         assert usage_sources == {}
 
     def test_model_websocket_flow_model_reports_later_positive_usage_without_zero_hint(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         with self._usage_webhook_api() as webhook:
             for index in range(70):
-                _feed_websocket_server_message(
+                feed_websocket_server_message(
                     flow,
                     _openai_websocket_zero_usage_frame(
                         f"resp_ws_zero_{index}", model=f"gpt-zero-{index}"
                     ),
                 )
 
-            assert "resp_ws_zero_0" not in _model_websocket_usage_sources(flow)
+            assert "resp_ws_zero_0" not in model_provider_usage_sources(flow)
 
-            _feed_websocket_server_message(
+            feed_websocket_server_message(
                 flow,
                 json.dumps(
                     {
@@ -573,7 +522,7 @@ class TestModelProviderWebSocketUsage:
             )
             usage.flush_usage_events(trigger="test")
 
-        usage_sources = _model_websocket_usage_sources(flow)
+        usage_sources = model_provider_usage_sources(flow)
         assert "resp_ws_zero_0" not in usage_sources
         assert usage_sources == {}
         assert {
@@ -592,11 +541,11 @@ class TestModelProviderWebSocketUsage:
         }
 
     def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         with self._usage_webhook_api() as webhook:
-            _feed_websocket_server_text_message(
+            feed_websocket_server_text_message(
                 flow,
                 json.dumps(
                     {
@@ -611,7 +560,7 @@ class TestModelProviderWebSocketUsage:
             )
             usage.flush_usage_events(trigger="test")
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert {
             (event["provider"], event["category"]): event["quantity"]
             for event in webhook.usage_events()
@@ -630,14 +579,14 @@ class TestModelProviderWebSocketUsage:
     def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
 
         with self._usage_webhook_api() as webhook:
-            _feed_websocket_server_message(
+            feed_websocket_server_message(
                 flow,
-                _openai_websocket_usage_frame(
+                openai_websocket_usage_frame(
                     "resp_ws_invalid_sources",
                     input_tokens=10,
                     output_tokens=4,
@@ -645,7 +594,7 @@ class TestModelProviderWebSocketUsage:
             )
             usage.flush_usage_events(trigger="test")
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 10,
@@ -659,24 +608,24 @@ class TestModelProviderWebSocketUsage:
     def test_model_websocket_same_id_zero_after_positive_does_not_double_bill(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=20,
                 output_tokens=12,
             ),
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=0,
                 output_tokens=0,
             ),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 20,
             "tokens.output": 12,
@@ -689,18 +638,18 @@ class TestModelProviderWebSocketUsage:
     def test_full_pipeline_model_websocket_uses_context_model_for_response_ids(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
             flow,
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=10,
                 output_tokens=4,
                 model="gpt-5.5",
             ),
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_2",
                 input_tokens=3,
                 output_tokens=2,
@@ -708,7 +657,7 @@ class TestModelProviderWebSocketUsage:
             ),
         )
 
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_field_and_category(webhook.usage_events(), "provider") == {
             ("gpt-5.5", "tokens.input"): 13,
             ("gpt-5.5", "tokens.output"): 6,
@@ -723,7 +672,7 @@ class TestModelProviderWebSocketUsage:
     def test_full_pipeline_model_websocket_reports_id_and_missing_id_usage(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -737,7 +686,7 @@ class TestModelProviderWebSocketUsage:
                     },
                 }
             ).encode(),
-            _openai_websocket_usage_frame(
+            openai_websocket_usage_frame(
                 "resp_ws_1",
                 input_tokens=10,
                 output_tokens=4,
@@ -750,7 +699,7 @@ class TestModelProviderWebSocketUsage:
             "tokens.input": 7,
             "tokens.output": 1,
         }
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
             "tokens.input": 17,
             "tokens.output": 5,
@@ -771,7 +720,7 @@ class TestModelProviderWebSocketUsage:
         real_flow,
         later_cache_write_tokens,
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         later_input_details = {"cached_tokens": 20}
         if later_cache_write_tokens is not None:
@@ -831,283 +780,12 @@ class TestModelProviderWebSocketUsage:
         }
         assert len(observation_events) == len(observations_by_category) == 4
         assert observations_by_category == by_category
-        assert _model_websocket_usage_sources(flow) == {}
-
-    async def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
-        self,
-        tmp_path,
-        real_flow,
-        mitm_ctx,
-        fake_firewall_headers,
-        usage_webhook_server,
-    ):
-        """The HTTP 101 response hook must not complete the WebSocket usage lifecycle."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-        reg_path = _write_openai_model_websocket_registry(tmp_path)
-
-        flow = make_openai_responses_websocket_request_flow(real_flow)
-
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
-            fake_firewall_headers(),
-        ):
-            await mitm_addon.request(flow)
-            usage.write_pending_snapshot(flush_request_id="before-response")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="before-response",
-            )
-
-            flow.response = tutils.tresp(
-                status_code=101,
-                headers=make_openai_responses_websocket_response_headers(),
-            )
-            mitm_addon.responseheaders(flow)
-            mitm_addon.response(flow)
-            usage.write_pending_snapshot(flush_request_id="after-response")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="after-response",
-            )
-
-            _feed_websocket_server_message(
-                flow,
-                json.dumps(
-                    {
-                        "type": "response.completed",
-                        "response": {
-                            "id": "resp_ws_1",
-                            "model": "gpt-5.5",
-                            "usage": {
-                                "input_tokens": 50,
-                                "output_tokens": 20,
-                                "input_tokens_details": {"cached_tokens": 10},
-                            },
-                        },
-                    }
-                ).encode(),
-            )
-            mitm_addon.websocket_end(flow)
-            usage.flush_usage_events(trigger="test")
-
-        events = usage_webhook_server.usage_events()
-        assert len(events) == 3
-        by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == {
-            "tokens.input": 40,
-            "tokens.output": 20,
-            "tokens.cache_read": 10,
-        }
-        observation_events = usage_webhook_server.model_usage_observation_events()
-        assert len(observation_events) == len(events)
-        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
-        assert {event["model"] for event in observation_events} == {"gpt-5.5"}
-        usage.write_pending_snapshot(flush_request_id="after-websocket-end")
-        assert_pending(
-            pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="after-websocket-end",
-        )
-
-    async def test_non_websocket_switching_protocols_response_releases_usage_flow(
-        self,
-        tmp_path,
-        real_flow,
-        mitm_ctx,
-        fake_firewall_headers,
-        usage_webhook_server,
-    ):
-        """A non-WebSocket 101 response is terminal and must not wait for websocket_end()."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-        reg_path = _write_openai_model_websocket_registry(tmp_path)
-
-        flow = real_flow(
-            with_response=False,
-            client_ip="10.200.0.5",
-            host="api.openai.com",
-            path="/v1/responses",
-            method="GET",
-        )
-
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
-            fake_firewall_headers(),
-        ):
-            await mitm_addon.request(flow)
-            usage.write_pending_snapshot(flush_request_id="before-response")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="before-response",
-            )
-
-            flow.response = tutils.tresp(
-                status_code=101,
-                headers=http.Headers(upgrade="h2c"),
-            )
-            mitm_addon.responseheaders(flow)
-            mitm_addon.response(flow)
-            usage.write_pending_snapshot(flush_request_id="after-response")
-
-        assert_pending(
-            pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="after-response",
-        )
-
-    @pytest.mark.parametrize(
-        "response_headers",
-        [
-            pytest.param(
-                make_openai_responses_websocket_response_headers(upgrade="h2c"),
-                id="non-websocket-upgrade",
-            ),
-            pytest.param(
-                make_openai_responses_websocket_response_headers(connection=None),
-                id="missing-connection-upgrade",
-            ),
-            pytest.param(
-                make_openai_responses_websocket_response_headers(accept="wrong"),
-                id="wrong-accept",
-            ),
-        ],
-    )
-    async def test_invalid_websocket_switching_protocols_response_releases_usage_flow(
-        self,
-        tmp_path,
-        real_flow,
-        mitm_ctx,
-        fake_firewall_headers,
-        usage_webhook_server,
-        response_headers: http.Headers,
-    ):
-        """A malformed 101 WebSocket response must not wait for websocket_end()."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-        reg_path = _write_openai_model_websocket_registry(tmp_path)
-
-        flow = make_openai_responses_websocket_request_flow(real_flow)
-
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
-            fake_firewall_headers(),
-        ):
-            await mitm_addon.request(flow)
-            usage.write_pending_snapshot(flush_request_id="before-response")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="before-response",
-            )
-
-            flow.response = tutils.tresp(status_code=101, headers=response_headers)
-            mitm_addon.responseheaders(flow)
-            mitm_addon.response(flow)
-            usage.write_pending_snapshot(flush_request_id="after-response")
-
-        assert_pending(
-            pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="after-response",
-        )
-
-    async def test_model_websocket_error_releases_usage_flow_after_upgrade(
-        self,
-        tmp_path,
-        real_flow,
-        mitm_ctx,
-        fake_firewall_headers,
-        usage_webhook_server,
-    ):
-        """A WebSocket connection error after HTTP 101 is terminal for usage tracking."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-        reg_path = _write_openai_model_websocket_registry(tmp_path)
-
-        flow = make_openai_responses_websocket_request_flow(real_flow)
-
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
-            fake_firewall_headers(),
-        ):
-            await mitm_addon.request(flow)
-            flow.response = tutils.tresp(
-                status_code=101,
-                headers=make_openai_responses_websocket_response_headers(),
-            )
-            mitm_addon.responseheaders(flow)
-            mitm_addon.response(flow)
-            usage.write_pending_snapshot(flush_request_id="after-response")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="after-response",
-            )
-
-            _feed_websocket_server_message(
-                flow,
-                json.dumps(
-                    {
-                        "type": "response.completed",
-                        "response": {
-                            "id": "resp_ws_error",
-                            "model": "gpt-5.5",
-                            "usage": {
-                                "input_tokens": 10,
-                                "output_tokens": 4,
-                            },
-                        },
-                    }
-                ).encode(),
-            )
-            flow.error = Error("connection reset by peer")
-            mitm_addon.error(flow)
-            usage.flush_usage_events(trigger="test")
-
-        events = usage_webhook_server.usage_events()
-        assert len(events) == 2
-        by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-        observation_events = usage_webhook_server.model_usage_observation_events()
-        assert len(observation_events) == len(events)
-        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
-        assert {event["model"] for event in observation_events} == {"gpt-5.5"}
-        usage.write_pending_snapshot(flush_request_id="after-error")
-        assert_pending(
-            pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="after-error",
-        )
+        assert model_provider_usage_sources(flow) == {}
 
     def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(
         self, tmp_path, real_flow
     ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -1144,7 +822,7 @@ class TestModelProviderWebSocketUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
-        assert _model_websocket_usage_sources(flow) == {}
+        assert model_provider_usage_sources(flow) == {}
         assert by_category == {
             "tokens.input": 100,
             "tokens.output": 40,
@@ -1155,9 +833,9 @@ class TestModelProviderWebSocketUsage:
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
     def test_model_websocket_ignores_client_messages(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        _set_websocket_message(
+        set_websocket_message(
             flow,
             from_client=True,
             content=json.dumps(
@@ -1176,187 +854,4 @@ class TestModelProviderWebSocketUsage:
 
         assert webhook.request_count == 0
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert _model_websocket_usage_sources(flow) == {}
-
-    def test_model_websocket_deferred_trim_keeps_latest_server_message(
-        self,
-        tmp_path,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        old_client = _append_websocket_message(flow, from_client=True, content=b"client-old")
-        old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
-        latest_server = _append_websocket_message(
-            flow,
-            from_client=False,
-            content=_openai_websocket_usage_frame("resp_ws_latest"),
-        )
-        assert flow.websocket is not None
-        messages = flow.websocket.messages
-
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.websocket_message(flow)
-            usage.flush_usage_events(trigger="test")
-
-        assert messages == [old_client, old_server, latest_server]
-        assert _model_websocket_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert len(deferred_websocket_trim_scheduler) == 1
-
-        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
-
-        assert flow.websocket.messages is messages
-        assert flow.websocket.messages == [latest_server]
-
-    def test_model_websocket_deferred_trim_keeps_latest_client_message(
-        self,
-        tmp_path,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
-        latest_client = _append_websocket_message(
-            flow,
-            from_client=True,
-            content=_openai_websocket_usage_frame("resp_ws_client"),
-        )
-
-        mitm_addon.websocket_message(flow)
-
-        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert _model_websocket_usage_sources(flow) == {}
-        assert len(deferred_websocket_trim_scheduler) == 1
-
-        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
-
-        assert flow.websocket is not None
-        assert flow.websocket.messages == [latest_client]
-        assert old_server not in flow.websocket.messages
-
-    def test_model_websocket_deferred_trim_coalesces_and_keeps_latest_at_callback(
-        self,
-        tmp_path,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        first_server = _append_websocket_message(
-            flow,
-            from_client=False,
-            content=_openai_websocket_usage_frame(
-                "resp_ws_first",
-                input_tokens=1,
-                output_tokens=1,
-            ),
-        )
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.websocket_message(flow)
-            assert len(deferred_websocket_trim_scheduler) == 1
-
-            latest_server = _append_websocket_message(
-                flow,
-                from_client=False,
-                content=_openai_websocket_usage_frame("resp_ws_latest"),
-            )
-            mitm_addon.websocket_message(flow)
-            usage.flush_usage_events(trigger="test")
-
-        assert len(deferred_websocket_trim_scheduler) == 1
-        assert flow.websocket is not None
-        assert flow.websocket.messages == [first_server, latest_server]
-
-        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
-
-        assert flow.websocket.messages == [latest_server]
-        assert _model_websocket_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 11,
-            "tokens.output": 5,
-        }
-        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-
-    def test_non_model_websocket_message_retention_is_unchanged(
-        self,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        first = _append_websocket_message(flow, from_client=True, content=b"client")
-        second = _append_websocket_message(flow, from_client=False, content=b"server")
-
-        mitm_addon.websocket_message(flow)
-
-        assert deferred_websocket_trim_scheduler == []
-        assert flow.websocket is not None
-        assert flow.websocket.messages == [first, second]
-
-    def test_model_websocket_end_clears_final_retained_message(
-        self,
-        tmp_path,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        _append_websocket_message(
-            flow,
-            from_client=False,
-            content=_openai_websocket_usage_frame("resp_ws_1"),
-        )
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.websocket_message(flow)
-            assert len(deferred_websocket_trim_scheduler) == 1
-            mitm_addon.websocket_end(flow)
-            usage.flush_usage_events(trigger="test")
-
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-        assert flow.websocket is not None
-        assert flow.websocket.messages == []
-        assert "model_websocket_usage_enabled" not in flow.metadata
-
-        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
-        assert flow.websocket.messages == []
-
-    def test_model_websocket_error_clears_final_retained_message(
-        self,
-        tmp_path,
-        real_flow,
-        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
-    ):
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        flow.error = Error("connection reset by peer")
-        _append_websocket_message(
-            flow,
-            from_client=False,
-            content=_openai_websocket_usage_frame("resp_ws_1"),
-        )
-        with self._usage_webhook_api() as webhook:
-            mitm_addon.websocket_message(flow)
-            assert len(deferred_websocket_trim_scheduler) == 1
-            mitm_addon.error(flow)
-            usage.flush_usage_events(trigger="test")
-
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-        assert flow.websocket is not None
-        assert flow.websocket.messages == []
-        assert "model_websocket_usage_enabled" not in flow.metadata
-
-        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
-        assert flow.websocket.messages == []
+        assert model_provider_usage_sources(flow) == {}

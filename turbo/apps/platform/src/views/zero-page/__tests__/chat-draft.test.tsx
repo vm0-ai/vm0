@@ -658,6 +658,83 @@ describe("chat drafts", () => {
     });
   });
 
+  it("keeps pasted plain text inline at the caret", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-plain-text-paste";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Before after");
+    await user.keyboard(
+      "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
+    );
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain" ? "pasted " : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        Array.from(editor.children, (element) => {
+          return element.textContent ?? "";
+        }).filter((text) => {
+          return text.length > 0;
+        }),
+      ).toStrictEqual(["Before pasted after"]);
+    });
+  });
+
+  it("joins multiline prompt items only at the paste boundaries", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-multiline-paste";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Before after");
+    await user.keyboard(
+      "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
+    );
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain"
+            ? `first\n[Thread 1](/chats/${THREAD_ONE_ID})\nlast `
+            : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        Array.from(editor.children, (element) => {
+          return element.textContent ?? "";
+        }).filter((text) => {
+          return text.length > 0;
+        }),
+      ).toStrictEqual(["Before first", "Thread 1", "last after"]);
+      expect(
+        editor.querySelector(
+          `span[data-chat-thread-mention="${THREAD_ONE_ID}"]`,
+        ),
+      ).toHaveTextContent("Thread 1");
+    });
+  });
+
   it("restores copied chat text and attachments from the clipboard", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "thread-copied-attachment";

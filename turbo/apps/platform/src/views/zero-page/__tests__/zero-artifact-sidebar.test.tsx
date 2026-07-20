@@ -627,6 +627,9 @@ function setupPresentationArtifactThread(
     readonly featureSwitches?: Parameters<
       typeof detachedSetupPage
     >[0]["featureSwitches"];
+    readonly hostedResources?: Readonly<
+      Record<string, { readonly body: string; readonly contentType: string }>
+    >;
   } = {},
 ): void {
   const filename =
@@ -636,7 +639,16 @@ function setupPresentationArtifactThread(
       headers: { "Content-Type": "text/html" },
     });
   });
-  context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+    const targetUrl = new URL(request.url).searchParams.get("url");
+    const resource = targetUrl
+      ? options.hostedResources?.[targetUrl]
+      : undefined;
+    if (resource) {
+      return new Response(resource.body, {
+        headers: { "Content-Type": resource.contentType },
+      });
+    }
     return new Response(html, {
       headers: { "Content-Type": "text/html" },
     });
@@ -702,7 +714,10 @@ async function enterHostedSiteEditMode(
   await user.click(within(sidebar).getByLabelText("Edit page"));
 }
 
-function assetBackedPresentationHtml(assetUrl: string): string {
+function assetBackedPresentationHtml(
+  assetUrl: string,
+  externalAssetUrl: string,
+): string {
   return `<!doctype html>
 <html>
   <head>
@@ -715,6 +730,7 @@ function assetBackedPresentationHtml(assetUrl: string): string {
     <section data-vm0-slide data-slide-id="asset-slide" class="slide-bg" style="border-image: url('${assetUrl}') 30">
       <h1 data-vm0-editable="text" data-vm0-edit-id="title">Asset backed deck</h1>
       <img src="${assetUrl}" alt="Roadmap cover" />
+      <img src="${externalAssetUrl}" alt="External cover" />
     </section>
   </body>
 </html>`;
@@ -792,12 +808,16 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
-function mockIntersectionObserver(): { triggerAll: () => void } {
+function mockIntersectionObserver(): {
+  activeRoots: () => (Document | Element | null)[];
+  observedTargetCount: () => number;
+  triggerAll: () => void;
+} {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "IntersectionObserver",
   );
-  const observers: { trigger: () => void }[] = [];
+  const observers: TestIntersectionObserver[] = [];
 
   class TestIntersectionObserver implements IntersectionObserver {
     readonly root: Element | Document | null;
@@ -839,6 +859,10 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
       return [];
     }
 
+    observedTargetCount(): number {
+      return this.observedTargets.length;
+    }
+
     trigger(): void {
       const entries = this.observedTargets.map((target) => {
         return {
@@ -878,6 +902,16 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
   );
 
   return {
+    activeRoots: () => {
+      return observers.flatMap((observer) => {
+        return observer.observedTargetCount() > 0 ? [observer.root] : [];
+      });
+    },
+    observedTargetCount: () => {
+      return observers.reduce((count, observer) => {
+        return count + observer.observedTargetCount();
+      }, 0);
+    },
     triggerAll: () => {
       for (const observer of observers) {
         observer.trigger();
@@ -3331,16 +3365,26 @@ ${openFencedHostedSiteUrl}`,
     ).toBe("#f6f5f1");
   });
 
-  it("downloads an asset-backed presentation without speaker notes", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/asset-backed-deck.html";
-    const assetUrl = "https://assets.test/roadmap-cover.png";
+  it("resolves relative presentation assets before downloading without speaker notes", async () => {
+    const presentationUrl =
+      "https://fast-deployment-repro-0bf41598-7febdf9b.sites.vm7.io/";
+    const assetPath = "assets/deployment-pipeline.svg";
+    const expectedAssetUrl =
+      "https://fast-deployment-repro-0bf41598-7febdf9b.sites.vm7.io/assets/deployment-pipeline.svg";
+    const externalAssetUrl =
+      "https://images.unsplash.com/photo-1497366754035-f200968a6e72";
     const downloads = captureDownloads(context.signal);
-    context.mocks.http.get(assetUrl, () => {
-      return new Response(new Blob(["png"], { type: "image/png" }));
-    });
     setupPresentationArtifactThread(
       presentationUrl,
-      assetBackedPresentationHtml(assetUrl),
+      assetBackedPresentationHtml(assetPath, externalAssetUrl),
+      {
+        hostedResources: {
+          [expectedAssetUrl]: {
+            body: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+            contentType: "image/svg+xml",
+          },
+        },
+      },
     );
 
     await waitFor(() => {
@@ -3361,10 +3405,29 @@ ${openFencedHostedSiteUrl}`,
       expect(frame).toBeInstanceOf(HTMLIFrameElement);
       return frame as HTMLIFrameElement;
     });
+    const exportDocument = new DOMParser().parseFromString(
+      exportFrame.srcdoc,
+      "text/html",
+    );
+    expect(exportDocument.querySelector("base")?.getAttribute("href")).toBe(
+      presentationUrl,
+    );
+    const images = Array.from(exportDocument.querySelectorAll("img"));
+    const inlinedAssetUrl = images[0]?.getAttribute("src");
+    expect(inlinedAssetUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(images[1]?.getAttribute("src")).toBe(externalAssetUrl);
+    expect(exportDocument.querySelector("style")?.textContent).toContain(
+      `url("${inlinedAssetUrl}")`,
+    );
+    expect(
+      exportDocument.querySelector("section")?.getAttribute("style"),
+    ).toContain(`url("${inlinedAssetUrl}")`);
     completePresentationPptxExport(exportFrame, await presentationPptxBlob());
 
     await waitFor(() => {
-      expect(downloads).toContain("asset-backed-deck.pptx");
+      expect(downloads).toContain(
+        "fast-deployment-repro-0bf41598-7febdf9b.pptx",
+      );
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
@@ -4169,8 +4232,10 @@ ${openFencedHostedSiteUrl}`,
   });
 
   it("exits the presentation editor without publishing draft changes", async () => {
+    const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl =
       "https://deck.sites.vm7.io/exit-without-saving.html";
+    const browser = context.mocks.browser.blobDownload();
     let redeployCount = 0;
 
     context.mocks.api(
@@ -4198,6 +4263,20 @@ ${openFencedHostedSiteUrl}`,
         "Open with launch metrics.",
       );
     });
+    const slideList = screen.getByTestId("presentation-editor-slide-list");
+    await waitFor(() => {
+      expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
+      expect(thumbnailObserver.observedTargetCount()).toBe(1);
+    });
+    const activeThumbnail = document.querySelector(
+      'iframe[data-slide-thumbnail-frame="slide-intro"]',
+    );
+    if (!(activeThumbnail instanceof HTMLIFrameElement)) {
+      throw new Error("Active presentation thumbnail frame not found");
+    }
+    const activeThumbnailUrl = activeThumbnail.dataset.vm0EditorObjectUrl;
+    expect(activeThumbnailUrl).toMatch(/^blob:/u);
+
     await fill(
       screen.getByLabelText("Speaker notes"),
       "Discard this local draft.",
@@ -4212,12 +4291,17 @@ ${openFencedHostedSiteUrl}`,
       ).toBeInTheDocument();
     });
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(1);
 
     click(screen.getByText("Discard"));
     await waitFor(() => {
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(0);
+    expect(browser.revokedUrls).toContain(activeThumbnailUrl);
 
     click(screen.getByLabelText("Edit presentation"));
     await waitFor(() => {
@@ -4225,6 +4309,11 @@ ${openFencedHostedSiteUrl}`,
         "Open with launch metrics.",
       );
     });
+    const reopenedSlideList = screen.getByTestId(
+      "presentation-editor-slide-list",
+    );
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([reopenedSlideList]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(1);
 
     click(screen.getByLabelText("Close presentation editor"));
     await waitFor(() => {
@@ -4236,6 +4325,8 @@ ${openFencedHostedSiteUrl}`,
       }),
     ).not.toBeInTheDocument();
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(0);
   });
 
   it("edits and downloads a presentation artifact from the editor", async () => {

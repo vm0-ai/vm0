@@ -29,6 +29,7 @@ struct StoragePlanEntry {
     instructions_target_filename: Option<String>,
     vas_storage_name: String,
     vas_version_id: String,
+    archive_size: Option<u64>,
     action: StorageAction,
 }
 
@@ -46,6 +47,7 @@ struct ArtifactPlanEntry {
     vas_storage_name: String,
     vas_storage_id: String,
     vas_version_id: String,
+    archive_size: Option<u64>,
     missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
     action: ArtifactAction,
 }
@@ -119,6 +121,7 @@ pub(crate) struct CacheArchiveCandidate {
     pub(crate) name: String,
     pub(crate) version: String,
     pub(crate) archive_url: String,
+    pub(crate) archive_size: Option<u64>,
 }
 
 pub(crate) fn build_storage_plan(
@@ -174,6 +177,7 @@ pub(crate) fn build_storage_plan(
                 instructions_target_filename: storage.instructions_target_filename.clone(),
                 vas_storage_name: storage.vas_storage_name.clone(),
                 vas_version_id: storage.vas_version_id.clone(),
+                archive_size: storage.archive_size.filter(|size| *size > 0),
                 action,
             }
         })
@@ -223,6 +227,7 @@ pub(crate) fn build_storage_plan(
                 vas_storage_name: artifact.vas_storage_name.clone(),
                 vas_storage_id: artifact.vas_storage_id.clone(),
                 vas_version_id: artifact.vas_version_id.clone(),
+                archive_size: artifact.archive_size.filter(|size| *size > 0),
                 missing_root_policy: artifact.missing_root_policy,
                 action,
             })
@@ -304,6 +309,7 @@ impl StoragePlan {
                     name: entry.vas_storage_name.clone(),
                     version: entry.vas_version_id.clone(),
                     archive_url: source.remote_url()?.to_string(),
+                    archive_size: entry.archive_size,
                 })
             });
         let artifact_candidates = self
@@ -322,6 +328,7 @@ impl StoragePlan {
                     name: entry.vas_storage_name.clone(),
                     version: entry.vas_version_id.clone(),
                     archive_url: source.remote_url()?.to_string(),
+                    archive_size: entry.archive_size,
                 })
             });
         storage_candidates.chain(artifact_candidates).collect()

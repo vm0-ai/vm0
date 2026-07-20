@@ -1,0 +1,79 @@
+//! Ordinary CLI event delivery must reject an aggregate of individually valid
+//! payloads that exceeds the queued-plus-in-flight byte budget.
+
+mod common;
+
+use guest_agent::masker::SecretMasker;
+use httpmock::prelude::*;
+use serde_json::json;
+use std::time::Duration;
+
+const EVENT_BYTES: usize = 2 * 1024 * 1024;
+const EVENT_COUNT: usize = 8;
+
+#[tokio::test]
+async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mock_cli = common::build_and_locate_mock()?;
+    let tmp = tempfile::tempdir()?;
+    let server = MockServer::start();
+    let mut prompt_lines = vec!["@ECHO-HANG@".to_string()];
+    // One in-flight payload plus seven queued payloads crosses the byte budget;
+    // seven queued payloads alone do not. This distinguishes queued-plus-in-flight
+    // accounting from a queue-only implementation.
+    prompt_lines.extend((0..EVENT_COUNT).map(|index| {
+        json!({
+            "type": "assistant",
+            "index": index,
+            "content": "x".repeat(EVENT_BYTES),
+        })
+        .to_string()
+    }));
+    let prompt = prompt_lines.join("\n");
+
+    unsafe {
+        common::setup_env(&mock_cli, tmp.path(), &prompt, 1, 1)?;
+        std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+        std::env::set_var("VM0_API_TOKEN", "test-token");
+    }
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+
+    let events = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200).delay(Duration::from_secs(30));
+    });
+
+    let masker = SecretMasker::from_raw("");
+    let execution = tokio::time::timeout(
+        Duration::from_secs(10),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+    )
+    .await
+    .expect("aggregate byte overload should terminate promptly");
+
+    let result = execution.expect("the live CLI should use controlled delivery termination");
+    let error = result
+        .control_error
+        .expect("byte overload should be exposed as a control error")
+        .to_string();
+    assert!(
+        error.contains("event delivery byte buffer exhausted") && error.contains("16777216 bytes"),
+        "unexpected byte-overload error: {error}"
+    );
+    assert_eq!(result.last_event_sequence, None);
+    assert_eq!(
+        result
+            .cli_termination
+            .expect("delivery overload should record process-group termination")
+            .reason,
+        guest_contracts::diagnostics::CliTerminationReason::EventDelivery
+    );
+    assert_eq!(
+        events.calls(),
+        1,
+        "the byte limit must include the one stalled request in flight"
+    );
+
+    Ok(())
+}

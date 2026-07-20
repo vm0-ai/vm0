@@ -164,6 +164,20 @@ class UsageEventBuffer:
         """
         return self._flush_usage_events(trigger=trigger)
 
+    def drain_usage_events_after_executor_shutdown(self) -> None:
+        """Synchronously drain work retained by completed executor callbacks.
+
+        The caller must first shut down and join the usage executor so no
+        earlier asynchronous delivery can retain another batch after this
+        method observes an empty schedulable state. New deliveries then use
+        the webhook layer's synchronous fallback.
+        """
+        while True:
+            with self._lock:
+                if not self._state.has_schedulable_work():
+                    return
+            self._flush_usage_events(trigger="shutdown")
+
     def close(self) -> None:
         """Cancel any pending timer for test cleanup or process shutdown."""
         with self._lock:

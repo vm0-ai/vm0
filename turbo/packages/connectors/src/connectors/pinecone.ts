@@ -12,6 +12,7 @@ export const pinecone = {
         helpText:
           "1. Log in to [Pinecone](https://app.pinecone.io)\n2. Go to **API Keys** in the left sidebar\n3. Copy your default API key or create a new one",
         storage: {
+          version: 1,
           secrets: ["PINECONE_TOKEN"],
           variables: [],
         },

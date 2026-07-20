@@ -4,16 +4,19 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
 import { writeDb$ } from "../external/db";
+import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
-  readonly unit_price: string | null;
-  readonly unit_size: string | null;
-}
+const creditCheckRowSchema = z.object({
+  credits: pgInt8ToBigIntSchema.nullable(),
+  unsettled_expired: pgInt8ToBigIntSchema.nullable(),
+  unit_price: pgInt8ToBigIntSchema.nullable(),
+  unit_size: pgInt8ToBigIntSchema.nullable(),
+});
 
 export interface ManagedUsageErrorResponse {
   readonly status: 402 | 503;
@@ -63,22 +66,20 @@ function pricingNotConfigured(label: string): ManagedUsageErrorResponse {
 }
 
 function estimatedCredits(
-  unitPrice: string,
-  unitSize: string,
+  unitPrice: bigint,
+  unitSize: bigint,
   quantity: number,
 ): bigint {
   if (!Number.isSafeInteger(quantity) || quantity <= 0) {
     throw new Error("Managed usage quantity must be a positive safe integer");
   }
-  const price = BigInt(unitPrice);
-  const size = BigInt(unitSize);
-  if (price < 0n || size <= 0n) {
+  if (unitPrice < 0n || unitSize <= 0n) {
     throw new Error(
       "Managed usage pricing must be non-negative with a positive unit size",
     );
   }
-  const total = BigInt(quantity) * price;
-  return (total + size - 1n) / size;
+  const total = BigInt(quantity) * unitPrice;
+  return (total + unitSize - 1n) / unitSize;
 }
 
 export const checkManagedCredits$ = command(
@@ -92,32 +93,36 @@ export const checkManagedCredits$ = command(
     signal: AbortSignal,
   ): Promise<ManagedUsageErrorResponse | null> => {
     const writeDb = set(writeDb$);
-    const { rows } = await writeDb.execute<CreditCheckRow>(sql`
-      WITH pricing AS (
-        SELECT unit_price, unit_size FROM usage_pricing
-        WHERE kind = ${args.resource.kind}
-          AND provider = ${args.resource.provider}
-          AND category = ${args.resource.category}
-        LIMIT 1
-      ),
-      org AS (
-        SELECT credits FROM org_metadata
-        WHERE org_id = ${args.orgId}
-        LIMIT 1
-      ),
-      expired AS (
-        SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-        FROM credit_expires_record
-        WHERE org_id = ${args.orgId}
-          AND expires_at <= now()
-          AND remaining > 0
-      )
-      SELECT
-        (SELECT credits FROM org) AS credits,
-        (SELECT total FROM expired) AS unsettled_expired,
-        (SELECT unit_price FROM pricing) AS unit_price,
-        (SELECT unit_size FROM pricing) AS unit_size
-    `);
+    const rows = await executeRawRows(
+      writeDb,
+      sql`
+        WITH pricing AS (
+          SELECT unit_price, unit_size FROM usage_pricing
+          WHERE kind = ${args.resource.kind}
+            AND provider = ${args.resource.provider}
+            AND category = ${args.resource.category}
+          LIMIT 1
+        ),
+        org AS (
+          SELECT credits FROM org_metadata
+          WHERE org_id = ${args.orgId}
+          LIMIT 1
+        ),
+        expired AS (
+          SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+          FROM credit_expires_record
+          WHERE org_id = ${args.orgId}
+            AND expires_at <= now()
+            AND remaining > 0
+        )
+        SELECT
+          (SELECT credits FROM org) AS credits,
+          (SELECT total FROM expired) AS unsettled_expired,
+          (SELECT unit_price FROM pricing) AS unit_price,
+          (SELECT unit_size FROM pricing) AS unit_size
+      `,
+      creditCheckRowSchema,
+    );
     signal.throwIfAborted();
 
     const row = rows[0];
@@ -129,13 +134,28 @@ export const checkManagedCredits$ = command(
       return insufficientCredits();
     }
 
-    const credits = BigInt(row.credits);
-    const unsettledExpired = BigInt(row.unsettled_expired ?? "0");
+    const credits = row.credits;
+    const unsettledExpired = row.unsettled_expired ?? 0n;
     const quantity = args.resource.quantity ?? 1;
-    return credits - unsettledExpired >=
-      estimatedCredits(row.unit_price, row.unit_size, quantity)
-      ? null
-      : insufficientCredits();
+    const requiredCredits = estimatedCredits(
+      row.unit_price,
+      row.unit_size,
+      quantity,
+    );
+    const spendableCredits = credits - unsettledExpired;
+    if (spendableCredits >= requiredCredits) {
+      return null;
+    }
+
+    const allowance = await resolveUsageAllowanceAvailability(
+      writeDb,
+      args.orgId,
+    );
+    signal.throwIfAborted();
+    const spendableUnits =
+      (spendableCredits > 0n ? spendableCredits : 0n) +
+      BigInt(allowance?.remainingUnits ?? 0);
+    return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );
 

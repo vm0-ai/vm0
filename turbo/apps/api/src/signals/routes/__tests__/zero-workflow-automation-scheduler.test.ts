@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -17,10 +18,7 @@ import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import {
-  readAgentRunCallbacks$,
-  updateAgentRunCallback$,
-} from "./helpers/agent-run-callback";
+import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -146,8 +144,9 @@ interface WorkflowRunMessage {
   readonly runId: string;
   readonly triggerSource: string | undefined;
   readonly automationId: string | undefined;
-  readonly triggerId: string | undefined;
+  readonly hasLegacyTriggerId: boolean;
   readonly triggerBrief: string | null | undefined;
+  readonly workflowSnapshot: PagedChatMessage["workflowSnapshot"];
 }
 
 /**
@@ -171,8 +170,12 @@ async function workflowRunMessages(
         runId: message.runId,
         triggerSource: message.triggerSource,
         automationId: message.workflowSnapshot?.automationId,
-        triggerId: message.workflowSnapshot?.triggerId,
+        hasLegacyTriggerId: Object.hasOwn(
+          message.workflowSnapshot ?? {},
+          "triggerId",
+        ),
         triggerBrief: message.workflowSnapshot?.triggerBrief,
+        workflowSnapshot: message.workflowSnapshot,
       },
     ];
   });
@@ -184,27 +187,6 @@ async function onlyWorkflowRunMessage(
   const messages = await workflowRunMessages(threadId);
   expect(messages).toHaveLength(1);
   return messages[0]!;
-}
-
-async function rewriteAutomationCallback(
-  callbacks: readonly {
-    readonly id: string;
-    readonly internalKind: string | null;
-  }[],
-  internalKind: "workflow-automation:cron" | "workflow-automation:loop",
-  payload: Record<string, unknown>,
-): Promise<void> {
-  const callback = callbacks.find((item) => {
-    return item.internalKind === internalKind;
-  });
-  if (!callback) {
-    throw new Error(`Expected ${internalKind} callback`);
-  }
-  await store.set(
-    updateAgentRunCallback$,
-    { callbackId: callback.id, internalKind, payload },
-    context.signal,
-  );
 }
 
 function friendlyTriggeredAtPattern(timezone: string): string {
@@ -369,6 +351,24 @@ describe("zero workflow automation scheduler", () => {
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
 
+    const emittedCallbacks = await store.set(
+      readAgentRunCallbacks$,
+      {
+        orgId: scenario.orgId,
+        userId: scenario.userId,
+        prompt: `/${WORKFLOW_NAME}`,
+      },
+      context.signal,
+    );
+    const onceCallback = emittedCallbacks.find((callback) => {
+      return callback.internalKind === "workflow-automation:cron";
+    });
+    expect(onceCallback?.payload).toStrictEqual({
+      automationId: created.body.id,
+      timezone: "UTC",
+    });
+    expect(onceCallback?.status).toBe("pending");
+
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.enabled).toBeFalsy();
     expect(automation.nextRunAt).toBeNull();
@@ -395,42 +395,6 @@ describe("zero workflow automation scheduler", () => {
         "u",
       ),
     );
-    await disableAutomation(automation.automationId);
-  });
-
-  it("skips an automation whose previous run is still active", async () => {
-    const scenario = await setup();
-    const automation = await createDueLoopAutomation(scenario, 60);
-
-    // First tick fires a run that stays active (never claimed or completed).
-    await executeDueWorkflowAutomations();
-    await onlyWorkflowRunMessage(automation.threadId);
-
-    // Re-arm the schedule through the public update route, then move time
-    // past the recomputed next run.
-    const updated = await accept(
-      automationsClient().update({
-        headers: authHeaders(),
-        params: { id: automation.automationId },
-        body: { schedule: { type: "loop", intervalSeconds: 60 } },
-      }),
-      [200],
-    );
-    if (!updated.body.nextRunAt) {
-      throw new Error("Expected the loop automation to be rescheduled");
-    }
-    mockNow(Date.parse(updated.body.nextRunAt) + 1000);
-
-    await executeDueWorkflowAutomations();
-
-    // The due automation was skipped: no second run message and the schedule is
-    // left untouched for the next tick.
-    const messages = await workflowRunMessages(automation.threadId);
-    expect(messages).toHaveLength(1);
-    const read = await wf.readAutomation(automation.automationId);
-    expect(read.enabled).toBeTruthy();
-    expect(read.nextRunAt).toBe(updated.body.nextRunAt);
-
     await disableAutomation(automation.automationId);
   });
 
@@ -543,31 +507,28 @@ describe("zero workflow automation scheduler", () => {
       },
       context.signal,
     );
-    expect(emittedCallbacks).toContainEqual(
-      expect.objectContaining({
-        internalKind: "workflow-automation:cron",
-        payload: {
-          automationId: created.body.id,
-          triggerId: created.body.id,
-          timezone: "UTC",
-          cronExpression: "0 9 * * *",
-        },
-        status: "pending",
-      }),
-    );
+    const cronCallback = emittedCallbacks.find((callback) => {
+      return callback.internalKind === "workflow-automation:cron";
+    });
+    expect(cronCallback?.payload).toStrictEqual({
+      automationId: created.body.id,
+      timezone: "UTC",
+      cronExpression: "0 9 * * *",
+    });
+    expect(cronCallback?.status).toBe("pending");
     expect(run).toMatchObject({
       automationId: created.body.id,
-      triggerId: created.body.id,
+      hasLegacyTriggerId: false,
     });
-    await rewriteAutomationCallback(
-      emittedCallbacks,
-      "workflow-automation:cron",
-      {
-        automationId: created.body.id,
-        timezone: "UTC",
-        cronExpression: "0 9 * * *",
-      },
-    );
+    expect(run.workflowSnapshot).toStrictEqual({
+      id: scenario.workflowId,
+      agentId: scenario.agentId,
+      name: WORKFLOW_NAME,
+      displayName: null,
+      description: null,
+      automationId: created.body.id,
+      triggerBrief: expect.any(String),
+    });
     await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
@@ -579,7 +540,7 @@ describe("zero workflow automation scheduler", () => {
     expect(automation.enabled).toBeTruthy();
   });
 
-  it("reschedules a loop automation from a legacy-only callback", async () => {
+  it("reschedules a loop automation from a canonical-only callback", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
@@ -595,25 +556,26 @@ describe("zero workflow automation scheduler", () => {
       },
       context.signal,
     );
-    expect(emittedCallbacks).toContainEqual(
-      expect.objectContaining({
-        internalKind: "workflow-automation:loop",
-        payload: {
-          automationId: automation.automationId,
-          triggerId: automation.automationId,
-        },
-        status: "pending",
-      }),
-    );
+    const loopCallback = emittedCallbacks.find((callback) => {
+      return callback.internalKind === "workflow-automation:loop";
+    });
+    expect(loopCallback?.payload).toStrictEqual({
+      automationId: automation.automationId,
+    });
+    expect(loopCallback?.status).toBe("pending");
     expect(run).toMatchObject({
       automationId: automation.automationId,
-      triggerId: automation.automationId,
+      hasLegacyTriggerId: false,
     });
-    await rewriteAutomationCallback(
-      emittedCallbacks,
-      "workflow-automation:loop",
-      { triggerId: automation.automationId },
-    );
+    expect(run.workflowSnapshot).toStrictEqual({
+      id: scenario.workflowId,
+      agentId: scenario.agentId,
+      name: WORKFLOW_NAME,
+      displayName: null,
+      description: null,
+      automationId: automation.automationId,
+      triggerBrief: expect.any(String),
+    });
     await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
@@ -626,61 +588,6 @@ describe("zero workflow automation scheduler", () => {
       throw new Error("Expected the loop automation to be rescheduled");
     }
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
-    await disableAutomation(automation.automationId);
-  });
-
-  it("fails a mismatched dual-key callback without mutating the automation", async () => {
-    const scenario = await setup();
-    const automation = await createDueLoopAutomation(scenario, 300);
-
-    await executeDueWorkflowAutomations();
-    const run = await onlyWorkflowRunMessage(automation.threadId);
-    const emittedCallbacks = await store.set(
-      readAgentRunCallbacks$,
-      {
-        orgId: scenario.orgId,
-        userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
-      },
-      context.signal,
-    );
-    const callback = emittedCallbacks.find((item) => {
-      return item.internalKind === "workflow-automation:loop";
-    });
-    if (!callback) {
-      throw new Error("Expected workflow automation loop callback");
-    }
-    await rewriteAutomationCallback(
-      emittedCallbacks,
-      "workflow-automation:loop",
-      {
-        automationId: automation.automationId,
-        triggerId: randomUUID(),
-      },
-    );
-    const beforeCallback = await wf.readAutomation(automation.automationId);
-
-    await completeRunThroughSandbox(scenario, run.runId, 0);
-
-    await expect
-      .poll(async () => {
-        const callbacks = await store.set(
-          readAgentRunCallbacks$,
-          {
-            orgId: scenario.orgId,
-            userId: scenario.userId,
-            prompt: `/${WORKFLOW_NAME}`,
-          },
-          context.signal,
-        );
-        return callbacks.find((item) => {
-          return item.id === callback.id;
-        })?.status;
-      })
-      .toBe("failed");
-    await expect(
-      wf.readAutomation(automation.automationId),
-    ).resolves.toStrictEqual(beforeCallback);
     await disableAutomation(automation.automationId);
   });
 

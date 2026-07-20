@@ -15,6 +15,7 @@ export const pexels = {
         helpText:
           "1. Sign in to [Pexels](https://www.pexels.com)\n2. Open the [Pexels API page](https://www.pexels.com/api/) and request or copy your API key\n3. Paste the key here\n\nvm0 stores the key as a secret and automatically attaches it when calling the Pexels API. Pexels asks API users to include a prominent Pexels link and, where possible, photographer credit when displaying content. Responses and artifacts should include photographer attribution and the original Pexels URL.",
         storage: {
+          version: 1,
           secrets: ["PEXELS_API_KEY"],
           variables: [],
         },

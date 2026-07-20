@@ -62,7 +62,7 @@ export interface Vm0ModelProviderConfig {
 }
 
 /**
- * VM0 Model uses the public Responses shape while keeping both credentials in
+ * Auto uses the public Responses shape while keeping both credentials in
  * firewall auth. Codex sees only the canonical OPENAI_API_KEY placeholder; the
  * firewall injects the proxy credential as Authorization and a managed OpenAI
  * credential in the internal upstream header consumed by the proxy.

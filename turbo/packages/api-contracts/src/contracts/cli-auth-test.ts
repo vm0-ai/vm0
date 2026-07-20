@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { connectorAuthMethodIdSchema } from "@vm0/connectors/connectors";
 import { initContract } from "./base";
+import { connectorCatalogAuthMethodIdSchema } from "./connector-identity";
 
 const c = initContract();
 
@@ -40,7 +40,7 @@ export const cliAuthTestConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       connectorName: z.string(),
-      authMethod: connectorAuthMethodIdSchema,
+      authMethod: connectorCatalogAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
       expiresIn: z.number().int().optional(),

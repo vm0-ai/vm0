@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -14,7 +13,6 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -46,9 +44,7 @@ interface Scenario {
   readonly runnerGroup: string;
 }
 
-async function setup(
-  options: { readonly workflowQueue?: boolean } = {},
-): Promise<Scenario> {
+async function setup(): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const { actor } = await wf.setupWorkflowOrg({ tier: "team" });
@@ -62,14 +58,6 @@ async function setup(
     agentId: agent.agentId,
     name: WORKFLOW_NAME,
   });
-  const fixture = { orgId: actor.orgId, userId: actor.userId };
-  await updateFeatureSwitchesForUser(
-    context,
-    fixture,
-    options.workflowQueue === false
-      ? {}
-      : { [FeatureSwitchKey.WorkflowQueue]: true },
-  );
   mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
   return {
@@ -224,6 +212,11 @@ describe("workflow queue API", () => {
     expect(queue.body.pending).toHaveLength(2);
     expect(
       queue.body.pending.map((event) => {
+        return event.automationId;
+      }),
+    ).toStrictEqual([automation.automationId, automation.automationId]);
+    expect(
+      queue.body.pending.map((event) => {
         return event.triggerId;
       }),
     ).toStrictEqual([automation.automationId, automation.automationId]);
@@ -232,19 +225,6 @@ describe("workflow queue API", () => {
     );
     expect(queue.body.pausedAt).toBeNull();
     expect(queue.body.pauseReason).toBeNull();
-  });
-
-  it("rejects queue reads when the feature switch is off", async () => {
-    const scenario = await setup({ workflowQueue: false });
-    const automation = await createWebhookAutomation(scenario);
-
-    await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.threadId },
-      }),
-      [403],
-    );
   });
 
   it("skips a single pending event", async () => {

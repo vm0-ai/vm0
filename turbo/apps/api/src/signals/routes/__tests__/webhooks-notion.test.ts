@@ -1,6 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -82,10 +81,6 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
-}
-
-function memoryClient() {
-  return setupApp({ context })(zeroMemoryContract);
 }
 
 async function enableNotionWorkflowAutomations(
@@ -907,117 +902,6 @@ describe("POST /api/webhooks/notion", () => {
     expect(eventContext).not.toHaveProperty("content");
     expect(page).not.toHaveProperty("body");
     expect(page).not.toHaveProperty("content");
-  });
-
-  it("records executed Notion page events as memory sources", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-      [FeatureSwitchKey.RelationshipMemory]: true,
-    });
-    await connectNotion(scenario);
-    configureNotionChildPageMock(entities);
-
-    const created = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "notion-page-content-updated",
-          eventConfig: {
-            provider: "notion",
-            event: "page_content_updated",
-            pageUrl: entities.childPageUrl,
-          },
-        },
-      }),
-      [201],
-    );
-    if (
-      created.body.kind !== "event" ||
-      created.body.eventType !== "notion-page-content-updated"
-    ) {
-      throw new Error("Expected a Notion page content updated automation");
-    }
-
-    await verifyNotionWebhook();
-
-    const contentEvent = notionPageEvent({
-      entities,
-      type: "page.content_updated",
-      timestamp: "2026-07-06T12:00:00.000Z",
-    });
-    const enqueued = await postNotionWebhook({
-      rawBody: contentEvent.rawBody,
-      signature: notionSignature(contentEvent.rawBody),
-    });
-    expect(enqueued).toStrictEqual({
-      status: 200,
-      body: {
-        success: true,
-        kind: "event",
-        pending: 1,
-        refreshed: 0,
-        duplicates: 0,
-      },
-    });
-
-    configureNotionChildPageMock(entities, undefined, {
-      title: "Launch notes memory",
-      lastEditedTime: "2026-07-06T12:16:00.000Z",
-    });
-    mockNow(new Date("2026-07-06T12:20:00.000Z"));
-
-    const executed = await executeDueWorkflowAutomations();
-    expect(executed.status).toBe(200);
-    expect(record(executed.body, "cron response").success).toBeTruthy();
-
-    const sources = await accept(
-      memoryClient().sources({
-        headers: authHeaders(),
-        query: { provider: "notion", page: 1, limit: 50 },
-      }),
-      [200],
-    );
-    const source = sources.body.sources.find((candidate) => {
-      return candidate.metadata.notionPageId === entities.childPageId;
-    });
-    expect(source).toMatchObject({
-      provider: "notion",
-      sourceType: "notion_page_event",
-      title: "Launch notes memory",
-      metadata: {
-        notionWorkspaceName: "Zero Test Workspace",
-        notionPageId: entities.childPageId,
-        notionEventFamily: "page_content_updated",
-        notionParentTitle: "Launch notes memory",
-      },
-    });
-
-    const sourceDetail = await accept(
-      memoryClient().source({
-        headers: authHeaders(),
-        params: { sourceId: source?.id ?? randomUUID() },
-      }),
-      [200],
-    );
-    expect(sourceDetail.body).toMatchObject({
-      id: source?.id,
-      provider: "notion",
-      sourceType: "notion_page_event",
-      connectorId: expect.any(String),
-      metadata: {
-        notionWorkspaceId: NOTION_WORKSPACE_ID,
-        notionPageUrl: entities.childPageUrl,
-        notionEventType: "page.content_updated",
-        notionScopeType: "page",
-        notionScopeId: entities.childPageId,
-        notionAuthorIds: [NOTION_AUTHOR_ID],
-      },
-    });
   });
 
   it("enqueues page content updated events for a database scope", async () => {

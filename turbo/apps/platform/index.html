@@ -238,7 +238,10 @@
       (function () {
         var hostname = window.location.hostname;
         var isProductionHost =
-          hostname === "vm0.ai" || hostname.endsWith(".vm0.ai");
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
         if (!isProductionHost) return;
 
         var initialized = false;
@@ -313,7 +316,15 @@
       // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
       // the FAPI domain per environment.
       (function () {
-        var k = "%VITE_CLERK_PUBLISHABLE_KEY%";
+        var h = location.hostname.toLowerCase();
+        var production =
+          h === "vm0.ai" ||
+          h.endsWith(".vm0.ai") ||
+          h === "okou.ai" ||
+          h.endsWith(".okou.ai");
+        var k = production
+          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
         var m = /^pk_(?:test|live)_(.+)$/.exec(k);
         if (!m) return;
         var host = atob(m[1]).replace(/\$+$/, "");
@@ -461,7 +472,8 @@
         }
       })();
     </script>
-    <div id="root">
+    <div id="root"></div>
+    <div id="app-bootstrap-skeleton">
       <style>
         :root {
           --zero-viewport-height: 100dvh;
@@ -491,17 +503,298 @@
           right: 0;
           left: 0;
         }
-        .sk {
+        #app-bootstrap-skeleton {
+          position: fixed;
+          inset: 0;
+          z-index: 60;
+          box-sizing: border-box;
+          display: none;
+          align-items: center;
+          justify-content: center;
           height: var(--zero-viewport-height);
           min-height: var(--zero-viewport-height);
           background: #fdfdfe;
+          color: rgba(20, 23, 29, 0.7);
+          font-family:
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+          opacity: 1;
+          transition: opacity 300ms ease;
         }
-        [data-theme="dark"] .sk {
+        [data-browser-supported="true"] #app-bootstrap-skeleton {
+          display: flex;
+        }
+        [data-theme="dark"] #app-bootstrap-skeleton {
           background: #19191b;
+          color: rgba(232, 233, 237, 0.7);
+        }
+        #app-bootstrap-skeleton.app-bootstrap-skeleton--hidden {
+          pointer-events: none;
+          opacity: 0;
+        }
+        .app-bootstrap-skeleton__content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+        }
+        .app-bootstrap-skeleton__avatar {
+          position: relative;
+          width: 64px;
+          height: 64px;
+          overflow: hidden;
+          border-radius: 9999px;
+        }
+        .app-bootstrap-skeleton__avatar-layers {
+          position: absolute;
+          inset: 0;
+          transform: scale(1.25);
+        }
+        .app-bootstrap-skeleton__avatar img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .app-bootstrap-skeleton__message {
+          position: relative;
+          height: 24px;
+          font-size: 16px;
+          font-weight: 500;
+          line-height: 24px;
+        }
+        .app-bootstrap-skeleton__message p {
+          margin: 0;
+          white-space: nowrap;
+        }
+        .app-bootstrap-skeleton__message-spacer {
+          visibility: hidden;
+        }
+        .app-bootstrap-skeleton__message-static {
+          position: absolute;
+          top: 0;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .app-bootstrap-skeleton__message-typewriter {
+          position: absolute;
+          inset: 0;
+          width: 0;
+          overflow: hidden;
+          border-right: 2px solid currentColor;
+          visibility: hidden;
+        }
+        @keyframes app-bootstrap-skeleton-hide-static {
+          0%,
+          99.9% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0;
+          }
+        }
+        @keyframes app-bootstrap-skeleton-show-typewriter {
+          0%,
+          99.9% {
+            visibility: hidden;
+          }
+          100% {
+            visibility: visible;
+          }
+        }
+        @keyframes app-bootstrap-skeleton-type {
+          from {
+            width: 0;
+          }
+          to {
+            width: 100%;
+          }
+        }
+        @keyframes app-bootstrap-skeleton-blink {
+          0%,
+          100% {
+            border-color: transparent;
+          }
+          50% {
+            border-color: currentColor;
+          }
         }
       </style>
-      <div class="sk"></div>
+      <div class="app-bootstrap-skeleton__content">
+        <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
+          <div class="app-bootstrap-skeleton__avatar-layers">
+            <img data-app-bootstrap-avatar-layer="head" alt="" />
+            <img data-app-bootstrap-avatar-layer="face" alt="" />
+            <img data-app-bootstrap-avatar-layer="hair" alt="" />
+          </div>
+        </div>
+        <div class="app-bootstrap-skeleton__message">
+          <p class="app-bootstrap-skeleton__message-spacer" aria-hidden="true">
+            Brewing some ideas...
+          </p>
+          <p class="app-bootstrap-skeleton__message-static">
+            Warming up the neurons...
+          </p>
+          <p class="app-bootstrap-skeleton__message-typewriter">
+            Brewing some ideas...
+          </p>
+        </div>
+      </div>
     </div>
+    <script>
+      (function () {
+        if (window.__vm0BrowserSupported !== true) return;
+
+        var skeleton = document.getElementById("app-bootstrap-skeleton");
+        var messages = [
+          "Warming up the neurons...",
+          "Brewing some ideas...",
+          "Getting things ready...",
+          "Almost there...",
+          "Loading your workspace...",
+          "Tuning the instruments...",
+          "Connecting the dots...",
+          "Spinning up the team...",
+        ];
+        var avatarPresets = [
+          {
+            rotation: 1,
+            skin: 0,
+            hairStyle: 1,
+            hairColor: 5,
+            expression: 1,
+            intensity: "h",
+          },
+          {
+            rotation: 2,
+            skin: 1,
+            hairStyle: 3,
+            hairColor: 3,
+            expression: 1,
+            intensity: "m",
+          },
+          {
+            rotation: 4,
+            skin: 2,
+            hairStyle: 5,
+            hairColor: 4,
+            expression: 3,
+            intensity: "d",
+          },
+          {
+            rotation: 3,
+            skin: 3,
+            hairStyle: 4,
+            hairColor: 1,
+            expression: 4,
+            intensity: "h",
+          },
+          {
+            rotation: 5,
+            skin: 4,
+            hairStyle: 2,
+            hairColor: 2,
+            expression: 5,
+            intensity: "m",
+          },
+        ];
+        var avatarAssetBase =
+          "https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/";
+        var avatar =
+          avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
+        var messageIndex = Math.floor(Math.random() * messages.length);
+        var staticMessage = skeleton.querySelector(
+          ".app-bootstrap-skeleton__message-static",
+        );
+        var spacerMessage = skeleton.querySelector(
+          ".app-bootstrap-skeleton__message-spacer",
+        );
+        var typewriterMessage = skeleton.querySelector(
+          ".app-bootstrap-skeleton__message-typewriter",
+        );
+
+        skeleton.querySelector('[data-app-bootstrap-avatar-layer="head"]').src =
+          avatarAssetBase +
+          "head-r" +
+          avatar.rotation +
+          "-s" +
+          avatar.skin +
+          ".svg";
+        skeleton.querySelector('[data-app-bootstrap-avatar-layer="face"]').src =
+          avatarAssetBase +
+          "face-r" +
+          avatar.rotation +
+          "-f" +
+          avatar.expression +
+          "-" +
+          avatar.intensity +
+          ".svg";
+        skeleton.querySelector('[data-app-bootstrap-avatar-layer="hair"]').src =
+          avatarAssetBase +
+          "hair-r" +
+          avatar.rotation +
+          "-h" +
+          avatar.hairStyle +
+          "-c" +
+          avatar.hairColor +
+          ".svg";
+
+        function typewriterAnimation(message, delay) {
+          return (
+            "app-bootstrap-skeleton-show-typewriter " +
+            delay +
+            "ms forwards, app-bootstrap-skeleton-type 1.5s steps(" +
+            message.length +
+            ") " +
+            delay +
+            "ms forwards, app-bootstrap-skeleton-blink 0.6s step-end " +
+            delay +
+            "ms infinite"
+          );
+        }
+
+        function setMessages(isFirst) {
+          var currentMessage = messages[messageIndex % messages.length];
+          var nextMessage = messages[(messageIndex + 1) % messages.length];
+          var nextTypewriterMessage = typewriterMessage.cloneNode(true);
+
+          staticMessage.textContent = currentMessage;
+          staticMessage.style.display = isFirst ? "block" : "none";
+          staticMessage.style.animation = isFirst
+            ? "app-bootstrap-skeleton-hide-static 800ms forwards"
+            : "none";
+          spacerMessage.textContent = nextMessage;
+          nextTypewriterMessage.textContent = nextMessage;
+          nextTypewriterMessage.style.animation = typewriterAnimation(
+            nextMessage,
+            isFirst ? 800 : 0,
+          );
+          typewriterMessage.replaceWith(nextTypewriterMessage);
+          typewriterMessage = nextTypewriterMessage;
+        }
+
+        setMessages(true);
+
+        var cycles = 0;
+        var interval = window.setInterval(function () {
+          if (!document.getElementById("app-bootstrap-skeleton")) {
+            window.clearInterval(interval);
+            return;
+          }
+
+          messageIndex += 1;
+          setMessages(false);
+          cycles += 1;
+          if (cycles >= 3) {
+            window.clearInterval(interval);
+          }
+        }, 4000);
+      })();
+    </script>
     <script
       src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
       integrity="sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3"

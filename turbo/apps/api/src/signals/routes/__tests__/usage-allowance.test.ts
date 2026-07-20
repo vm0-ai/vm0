@@ -78,7 +78,9 @@ async function vm0AllowanceActor(args: {
   }
   bdd.acceptAgentStorageWrites();
   api.configureRunnerGroup();
-  await bdd.setupOnboarding(actor, { displayName: "Usage allowance agent" });
+  await bdd.bootstrapOnboarding(actor, {
+    displayName: "Usage allowance agent",
+  });
   await seedOrgMetadata({ orgId, tier: "pro", credits: args.credits });
   if (args.allowance) {
     await seedAllowanceEntitlement(actor, orgId, args.allowance);
@@ -526,9 +528,7 @@ describe("Usage Allowance", () => {
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("does not backfill allowance windows during usage settlement", async () => {
-    // A non-vm0 run never activates allowance windows, so settlement must
-    // charge org credits in full even though an active entitlement exists.
+  it("backfills allowance windows during non-vm0 usage settlement", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
@@ -553,7 +553,7 @@ describe("Usage Allowance", () => {
     });
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "non-vm0 run bypasses allowance",
+      prompt: "non-vm0 run uses allowance",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();
@@ -566,11 +566,11 @@ describe("Usage Allowance", () => {
 
     await processUsageEvents();
 
-    await expect(readOrgCredits(actor)).resolves.toBe(20);
+    await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
-  it("does not apply allowance to non-vm0 runs inside active allowance windows", async () => {
+  it("applies allowance to non-vm0 runs inside active allowance windows", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
@@ -596,13 +596,19 @@ describe("Usage Allowance", () => {
 
     await processUsageEvents();
 
-    await expect(readOrgCredits(actor)).resolves.toBe(20);
+    await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
   it("does not apply newly created allowance to older runs", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const runCreatedAt = nowDate();
+    mockNow(runCreatedAt);
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const run = await createVm0Run(actor, agentId, "run before entitlement");
+    mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 100,
       weeklyWindowUnits: 200,
@@ -689,10 +695,16 @@ describe("Usage Allowance", () => {
   });
 
   it("denies billable firewall auth when the run has no allowance window", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const runCreatedAt = nowDate();
+    mockNow(runCreatedAt);
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const api = createRunsApi(context);
     // The run predates the entitlement, so it has no allowance windows.
     const run = await createVm0Run(actor, agentId, "run without windows");
+    mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 2,
       weeklyWindowUnits: 2,

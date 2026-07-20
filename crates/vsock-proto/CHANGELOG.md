@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.23](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.22...vsock-proto-v0.18.23) (2026-07-20)
+
+
+### Documentation
+
+* **rust:** document write_files entry limit ([#22179](https://github.com/vm0-ai/vm0/issues/22179)) ([b5c5338](https://github.com/vm0-ai/vm0/commit/b5c53388fbf9c6addf37d9ace08c60047d5679d0))
+
 ## [0.18.22](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.21...vsock-proto-v0.18.22) (2026-07-16)
 
 

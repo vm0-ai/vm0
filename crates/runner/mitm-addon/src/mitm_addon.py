@@ -48,7 +48,8 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
-import model_usage_receipt
+import mitmproxy_compat
+import model_usage_pricing
 import network_log_sanitization
 import platform_api
 import registry
@@ -125,6 +126,7 @@ class _AuthBaseBodyCheck:
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
+    mitmproxy_compat.install_request_end_stream_bridge()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
         runner_flush_lifecycle.handle_runner_usage_flush_signal,
@@ -157,6 +159,12 @@ def load(loader: Loader) -> None:
         typespec=str,
         default="",
         help="Runner-generated usage-pending state id",
+    )
+    loader.add_option(
+        name="vm0_addon_ready_path",
+        typespec=str,
+        default="",
+        help="Path for the runner's addon initialization marker",
     )
     loader.add_option(
         name="vm0_client_session_id",
@@ -194,6 +202,11 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
+    if {"vm0_addon_ready_path", "vm0_usage_state_id"} & updated:
+        ready_path = ctx.options.vm0_addon_ready_path
+        usage_state_id = ctx.options.vm0_usage_state_id
+        if ready_path and usage_state_id:
+            Path(ready_path).write_text(usage_state_id, encoding="utf-8")
 
 
 def get_api_url() -> str:
@@ -365,7 +378,11 @@ def _builtin_host_policy_error_for_firewall_allow(
     return None
 
 
-def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
+def _auth_base_body_header_check(
+    flow: http.HTTPFlow,
+    *,
+    request_end_stream: bool | None,
+) -> _AuthBaseBodyCheck:
     if flow.request.headers.get_all("Transfer-Encoding"):
         return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
 
@@ -373,6 +390,13 @@ def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
     if not raw_content_lengths:
         if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
             return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
+        if request_end_stream is not True:
+            reason = (
+                "request_stream_open"
+                if request_end_stream is False
+                else "request_end_stream_unavailable"
+            )
+            return _AuthBaseBodyCheck(kind="length_required", reason=reason)
         return _AuthBaseBodyCheck(kind="ok")
 
     parsed_length: int | None = None
@@ -550,8 +574,8 @@ def _endpoint_text(address: tuple[str, int] | None) -> str:
     return f"{host}:{port}"
 
 
-async def server_connect(data: object) -> None:
-    await upstream_admission.handle_server_connect(
+def server_connect(data: object) -> None:
+    upstream_admission.handle_server_connect(
         data,
         registry_path=get_registry_path(),
         api_url=get_api_url(),
@@ -590,9 +614,13 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
+    request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
     connector_intent.capture_and_strip(flow)
 
-    body_check = _auth_base_body_header_check(flow)
+    body_check = _auth_base_body_header_check(
+        flow,
+        request_end_stream=request_end_stream,
+    )
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
     if body_fits_stream_buffer:
         _prebind_bounded_requestheaders_upstream_destination(flow)
@@ -1064,7 +1092,7 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
-    model_usage_receipt.apply_signed_usage_receipt(flow)
+    model_usage_pricing.apply_signed_usage_pricing(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
     response_streaming.configure_response_stream(flow)
@@ -1393,23 +1421,25 @@ def done():
 
     The runner flush lifecycle waits for any active SIGUSR1 worker, drains
     accepted requests, and closes admission before this hook shuts down the
-    usage executor and JSONL writer. Auth.base forwarding does not need to
-    finish running work during shutdown, so its worker shutdown stops new
-    forwards and best-effort closes active upstream sockets without waiting for
-    slow upstream responses. JSONL writer shutdown is also bounded and
-    best-effort; if it times out, process shutdown continues with accepted log
-    entries possibly still pending.
+    usage executor. Any retryable outcome retained by those completed workers
+    is then retried synchronously before the remaining workers and JSONL writer
+    stop. Auth.base forwarding does not need to finish running work
+    during shutdown, so its worker shutdown stops new forwards and best-effort
+    closes active upstream sockets without waiting for slow upstream responses.
+    JSONL writer shutdown is also bounded and best-effort; if it times out,
+    process shutdown continues with accepted log entries possibly still pending.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
     finally:
         try:
-            usage.webhook.usage_executor.shutdown(wait=True)
-        finally:
             try:
-                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.drain_usage_events_after_executor_shutdown()
             finally:
-                shutdown_log_writer()
+                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+        finally:
+            shutdown_log_writer()
 
 
 # ============================================================================
@@ -1423,7 +1453,11 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
 
 
 def tcp_message(flow: tcp.TCPFlow) -> None:
-    """Schedule bounded retention cleanup for registered TCP flows."""
+    """Preserve byte totals while bounding registered TCP message retention.
+
+    The hook coalesces message events into a deferred drain, which records request and response
+    byte totals before clearing retained messages.
+    """
     tcp_logging.message(flow)
 
 

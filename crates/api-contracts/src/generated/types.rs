@@ -36,6 +36,9 @@ pub mod runners {
             /// Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub archive_url: Option<String>,
+            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_size: Option<u64>,
             /// Whether this artifact version is explicitly empty and can be prepared without downloading an archive.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub empty: Option<bool>,
@@ -61,6 +64,9 @@ pub mod runners {
             pub instructions_target_filename: Option<String>,
             /// Presigned URL for downloading the storage archive.
             pub archive_url: String,
+            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_size: Option<u64>,
         }
 
         /// Runner storage manifest containing all volume and artifact mounts.
@@ -79,6 +85,54 @@ pub mod runners {
 pub mod webhooks {
     /// Agent webhook DTOs exchanged between sandboxes and the API.
     pub mod agent {
+        /// DTOs for creating recoverable agent checkpoints.
+        pub mod checkpoints {
+            /// Artifact version captured by an agent checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestArtifactSnapshot {
+                /// User-facing artifact name referenced by the run.
+                pub name: String,
+                /// Artifact version selected for the checkpoint.
+                pub version: String,
+                /// Guest filesystem path where the artifact is mounted.
+                pub mount_path: String,
+                /// Optional policy retained when the artifact mount root is missing.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub missing_root_policy: Option<
+                    crate::generated::types::runners::storage::ArtifactEntryMissingRootPolicy,
+                >,
+            }
+
+            /// Volume versions captured by an agent checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestVolumeVersionsSnapshot {
+                /// Volume names mapped to their captured versions.
+                pub versions: std::collections::BTreeMap<String, String>,
+            }
+
+            /// Request body for creating a recoverable agent checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct Request {
+                /// Agent run identifier bound to the sandbox token.
+                pub run_id: String,
+                /// CLI agent implementation that produced the session.
+                pub cli_agent_type: String,
+                /// CLI agent session identifier being checkpointed.
+                pub cli_agent_session_id: String,
+                /// SHA-256 hash of the uploaded CLI agent session history.
+                pub cli_agent_session_history_hash: String,
+                /// Optional artifact versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,
+                /// Optional volume versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub volume_versions_snapshot: Option<RequestVolumeVersionsSnapshot>,
+            }
+        }
+
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
             /// File metadata entry used to compute and commit content-addressed storage uploads.

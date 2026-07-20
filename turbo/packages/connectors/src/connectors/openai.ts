@@ -14,6 +14,7 @@ export const openai = {
         helpText:
           "1. Log in to [OpenAI Platform](https://platform.openai.com)\n2. Navigate to the [API Keys](https://platform.openai.com/api-keys) page in the dashboard\n3. Create a new API key\n4. Copy and store the key in a safe location",
         storage: {
+          version: 1,
           secrets: ["OPENAI_TOKEN"],
           variables: [],
         },

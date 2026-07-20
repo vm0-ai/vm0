@@ -9,6 +9,7 @@ import {
   CHAT_AUTOMATIONS_QUERY_PARAM,
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
+  clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
 
 export const currentHeaderAutomationThreadId$ = computed((get) => {
@@ -32,6 +33,7 @@ export const openHeaderAutomationSidebar$ = command(
     const params = new URLSearchParams(get(searchParams$));
     params.set(CHAT_AUTOMATIONS_QUERY_PARAM, threadId);
     clearArtifactSidebarParams(params);
+    clearMailDraftSidebarParams(params);
     set(updateSearchParams$, params);
   },
 );

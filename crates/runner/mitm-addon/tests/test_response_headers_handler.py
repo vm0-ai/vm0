@@ -1,49 +1,41 @@
 """Tests for the mitm addon responseheaders hook."""
 
-import base64
-import hashlib
-import hmac
-import json
-import time
+from types import SimpleNamespace
 
+import pytest
+from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_usage_pricing
 from tests.flow_helpers import header_map, response_stream
+from tests.model_provider_flow_helpers import RealFlowFactory, signed_usage_pricing_headers
+
+_FIXED_TIME = 1_750_000_000
 
 
-def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
-    receipt = (
-        base64.urlsafe_b64encode(
-            json.dumps(
-                {
-                    "version": 1,
-                    "billingSku": billing_sku,
-                    "issuedAt": int(time.time()),
-                },
-                separators=(",", ":"),
-            ).encode()
-        )
-        .decode()
-        .rstrip("=")
+def _fix_pricing_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        model_usage_pricing,
+        "time",
+        SimpleNamespace(time=lambda: _FIXED_TIME),
     )
-    signature = (
-        base64.urlsafe_b64encode(
-            hmac.new(
-                b"proxy-secret",
-                b"vm0-model-usage-receipt-v1\0" + receipt.encode(),
-                hashlib.sha256,
-            ).digest()
-        )
-        .decode()
-        .rstrip("=")
+
+
+def _signed_pricing_flow(
+    real_flow: RealFlowFactory,
+    issued_at: object,
+) -> http.HTTPFlow:
+    flow = real_flow(with_response=False, host="model.vm0.ai")
+    flow.request.headers["authorization"] = "Bearer proxy-secret"
+    flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+    flow.response = tutils.tresp(
+        status_code=200,
+        headers=header_map(signed_usage_pricing_headers(issued_at=issued_at)),
     )
-    return {
-        "content-type": "application/json",
-        "x-vm0-usage-receipt": receipt,
-        "x-vm0-usage-signature": signature,
-    }
+    return flow
 
 
 class TestResponseHeadersHandler:
@@ -87,39 +79,94 @@ class TestResponseHeadersHandler:
 
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
 
-    def test_accepts_and_strips_signed_model_usage_receipt(self, real_flow):
-        flow = real_flow(with_response=False, host="model.vm0.ai")
-        flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
-        )
+    @pytest.mark.parametrize(
+        "issued_at",
+        [_FIXED_TIME - 300, _FIXED_TIME + 300],
+        ids=["oldest-accepted", "furthest-future-accepted"],
+    )
+    def test_accepts_and_strips_signed_model_usage_pricing_at_clock_skew_boundary(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: int,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
 
         mitm_addon.responseheaders(flow)
 
-        assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert flow.metadata[metadata_keys.MODEL_USAGE_PRICING] == {
+            "unitSize": 1_000_000,
+            "unitPrices": {
+                "tokens.input": 1000,
+                "tokens.cache_read": 100,
+                "tokens.cache_creation": 1250,
+                "tokens.output": 6000,
+            },
+        }
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_signed_model_usage_receipt_from_other_provider(self, real_flow):
+    @pytest.mark.parametrize(
+        "issued_at",
+        [_FIXED_TIME - 301, _FIXED_TIME + 301],
+        ids=["too-old", "too-far-future"],
+    )
+    def test_rejects_and_strips_signed_model_usage_pricing_outside_clock_skew(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: int,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "issued_at",
+        [True, str(_FIXED_TIME)],
+        ids=["boolean", "string"],
+    )
+    def test_rejects_and_strips_invalid_signed_model_usage_pricing_issued_at(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: object,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    def test_rejects_signed_model_usage_pricing_from_other_provider(self, real_flow):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
+            headers=header_map(signed_usage_pricing_headers()),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_invalid_model_usage_receipt_signature(self, real_flow):
+    def test_rejects_invalid_model_usage_pricing_signature(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
@@ -129,19 +176,19 @@ class TestResponseHeadersHandler:
             headers=header_map(
                 {
                     "content-type": "application/json",
-                    "x-vm0-usage-receipt": "invalid",
-                    "x-vm0-usage-signature": "invalid",
+                    "x-vm0-usage-pricing": "invalid",
+                    "x-vm0-usage-pricing-signature": "invalid",
                 }
             ),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_non_ascii_model_usage_receipt(self, real_flow):
+    def test_rejects_non_ascii_model_usage_pricing(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
@@ -151,14 +198,14 @@ class TestResponseHeadersHandler:
             headers=header_map(
                 {
                     "content-type": "application/json",
-                    "x-vm0-usage-receipt": "réceipt",
-                    "x-vm0-usage-signature": "aW52YWxpZA",
+                    "x-vm0-usage-pricing": "prïcing",
+                    "x-vm0-usage-pricing-signature": "aW52YWxpZA",
                 }
             ),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers

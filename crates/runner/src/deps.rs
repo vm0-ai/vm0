@@ -2,7 +2,7 @@
 
 pub const FIRECRACKER_VERSION: &str = "v1.15.1";
 pub const KERNEL_VERSION: &str = "6.1.155";
-pub const MITMPROXY_VERSION: &str = "12.2.2";
+pub const MITMPROXY_VERSION: &str = "12.2.3";
 
 // Exact identities for installed artifacts, keyed by arch.
 pub const FIRECRACKER_SIZE_X86_64: u64 = 3_417_392;
@@ -17,12 +17,12 @@ pub const KERNEL_SHA256_X86_64: &str =
     "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2";
 pub const KERNEL_SHA256_AARCH64: &str =
     "e3544b10603acbf3db492cb52e000d22ba202cb4b63b9add027565683e11c591";
-pub const MITMDUMP_SIZE_X86_64: u64 = 39_174_744;
-pub const MITMDUMP_SIZE_AARCH64: u64 = 36_913_888;
+pub const MITMDUMP_SIZE_X86_64: u64 = 39_172_624;
+pub const MITMDUMP_SIZE_AARCH64: u64 = 36_908_488;
 pub const MITMDUMP_SHA256_X86_64: &str =
-    "06732d2f9ebb9d86456220267613c6771ed68010a7a8bbe7bc4d55f3a09e2880";
+    "8466d978a58317cd267b91a9dae84b0c4fb630c299515849a52744d34e9e04cf";
 pub const MITMDUMP_SHA256_AARCH64: &str =
-    "0afdc07ff487c26caf737c004d870e0957da4645f6d525a6d7d14ccf20a560fc";
+    "47612c592db3b0b80164aee2dd1be1f3841d5430891f7ebeabf2284a7cc490b9";
 
 // Exact identities for compressed source archives, keyed by arch.
 pub const FIRECRACKER_ARCHIVE_SIZE_X86_64: u64 = 7_622_285;
@@ -31,12 +31,12 @@ pub const FIRECRACKER_ARCHIVE_SHA256_X86_64: &str =
     "d4a32ab2322d887ca1bc4a4e7afa9cc35393e6362dfc2b3becb389d362e4275a";
 pub const FIRECRACKER_ARCHIVE_SHA256_AARCH64: &str =
     "00654ac1e702a22744121ea9f10a4f792ebd7c3a744cba587dfac9fcb79b41a5";
-pub const MITMPROXY_ARCHIVE_SIZE_X86_64: u64 = 119_221_654;
-pub const MITMPROXY_ARCHIVE_SIZE_AARCH64: u64 = 112_710_933;
+pub const MITMPROXY_ARCHIVE_SIZE_X86_64: u64 = 119_209_168;
+pub const MITMPROXY_ARCHIVE_SIZE_AARCH64: u64 = 112_694_307;
 pub const MITMPROXY_ARCHIVE_SHA256_X86_64: &str =
-    "fe6c6996535918bfc62590bc62c4bd5c46b7f243a98fe06730b385ecff40160c";
+    "2e95286b618fa6fd33e5e62a78c2e5112571d85f42ec2bac29b97ee242bdb5c5";
 pub const MITMPROXY_ARCHIVE_SHA256_AARCH64: &str =
-    "09adaf908e92243c4d3b967eb084116c5d2b28ffef02bd1b582e5816df5b64bd";
+    "b358643a6c4f4b39e33d985350f660b724fece95687d7daa899ef0c4e211f681";
 
 /// System CA certificate bundle path. The standalone mitmproxy binary bundles its
 /// own (incomplete) certifi CA store; we override it with the host's system store.

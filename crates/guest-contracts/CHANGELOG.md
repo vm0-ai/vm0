@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.15...guest-contracts-v0.3.16) (2026-07-19)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound ordinary cli stdout ingestion ([#22095](https://github.com/vm0-ai/vm0/issues/22095)) ([4641dd5](https://github.com/vm0-ai/vm0/commit/4641dd5e1340bb204866e0433eb4adbe5eb955f2))
+
+## [0.3.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.14...guest-contracts-v0.3.15) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound cli event delivery buffering ([#22015](https://github.com/vm0-ai/vm0/issues/22015)) ([0bde876](https://github.com/vm0-ai/vm0/commit/0bde876b83ef7781a24deb495f68ebec5e78e1cf))
+
+## [0.3.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.13...guest-contracts-v0.3.14) (2026-07-17)
+
+
+### Documentation
+
+* **rust:** clarify stack-dependent execve budget ([#21974](https://github.com/vm0-ai/vm0/issues/21974)) ([fb75eff](https://github.com/vm0-ai/vm0/commit/fb75eff67f38b2778427efbf9e501708b0ed616e))
+
+## [0.3.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.12...guest-contracts-v0.3.13) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+
+## [0.3.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.11...guest-contracts-v0.3.12) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.3.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.10...guest-contracts-v0.3.11) (2026-07-16)
 
 

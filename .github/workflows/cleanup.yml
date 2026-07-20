@@ -9,6 +9,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cleanup-okou-pages-domain:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Delete Cloudflare Pages custom preview domain
+        env:
+          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          bash .github/scripts/manage-okou-pages-domain.sh \
+            delete \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "pr-${PR_NUMBER}-app.${CF_PAGES_PREVIEW_DOMAIN}"
+
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"

@@ -1,4 +1,5 @@
 import { computed } from "ccstate";
+import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
 import { clerk$ } from "./auth.ts";
 import {
   fetchFreshToken,
@@ -157,6 +158,10 @@ export const fetch$ = computed((get) => {
           finalUrl = rewritten;
         }
       }
+
+      const finalHeaders = new Headers(finalInit.headers);
+      addCapturedPreviewBypassHeader(finalHeaders, finalUrl);
+      finalInit.headers = finalHeaders;
 
       return await fetch(finalUrl, finalInit);
     };

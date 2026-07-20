@@ -20,6 +20,7 @@ fn storage(
         vas_version_id: version.into(),
         instructions_target_filename: instructions_target_filename.map(str::to_string),
         archive_url: format!("https://example.com/{name}/{version}.tar.gz"),
+        archive_size: None,
     }
 }
 
@@ -32,6 +33,7 @@ fn artifact(mount_path: &str, name: &str, version: &str, empty: bool) -> Artifac
         archive_url: (!empty).then(|| format!("https://example.com/{name}/{version}.tar.gz")),
         empty: empty.then_some(true),
         missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+        archive_size: None,
     }
 }
 

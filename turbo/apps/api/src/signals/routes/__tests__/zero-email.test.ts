@@ -101,10 +101,9 @@ async function emailOrg(): Promise<EmailOrgFixture> {
   );
   runs.acceptTelemetryIngest();
 
-  const setup = await bdd.setupOnboarding(actor, {
+  const agentId = await bdd.bootstrapOnboarding(actor, {
     displayName: "BDD Email Agent",
   });
-  const agentId = setup.body.agentId;
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
 

@@ -1,4 +1,3 @@
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -9,10 +8,13 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
-import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroMapsRoutes } from "../../zero-maps";
-import type { ApiTestUser, OnboardingSetupBody } from "./api-bdd";
+import {
+  createBddApi,
+  type ApiTestUser,
+  type OnboardingBootstrapOptions,
+} from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
@@ -51,7 +53,6 @@ interface OsmRenderBody extends OsmAreaBody {
 }
 
 const mapsBillingRoutes: readonly RouteEntry[] = [
-  ...zeroOnboardingSetupRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroMapsRoutes,
 ];
@@ -86,12 +87,15 @@ export function createMapsBillingApi(context: TestContext) {
       mockEnv("ZERO_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
     },
 
-    async setupOnboarding(actor: ApiTestUser, body: OnboardingSetupBody) {
-      const client = mapsBillingApp(context)(onboardingSetupContract);
-      return await accept(
-        client.setup({ headers: authenticate(context, actor), body }),
-        [200, 409],
+    async bootstrapOnboarding(
+      actor: ApiTestUser,
+      body: OnboardingBootstrapOptions,
+    ) {
+      const agentId = await createBddApi(context).bootstrapOnboarding(
+        actor,
+        body,
       );
+      return { status: 200 as const, body: { agentId } };
     },
 
     async readBillingStatus(

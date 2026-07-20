@@ -7,10 +7,8 @@ import {
   findWebsiteTemplateItem,
   findVideoTemplateItem,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -33,62 +31,6 @@ function templateIdFromSearchParam(
     return undefined;
   }
   return id;
-}
-
-function legacyGenerationTemplateFromSearchParam(
-  template: string | null,
-): GenerationTemplateRequest | undefined {
-  const id = templateIdFromSearchParam(template);
-  if (!id) {
-    return undefined;
-  }
-  const videoTemplate = findVideoTemplateItem(id);
-  if (!videoTemplate) {
-    const presentationTemplateId = id.replace(/^presentation-template:/, "");
-    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find(
-      (item) => {
-        return (
-          item.slug === presentationTemplateId ||
-          item.templateId === id ||
-          item.templateId === presentationTemplateId
-        );
-      },
-    );
-    if (!presentationTemplate) {
-      const illustrationTemplateId = id
-        .replace(/^illustration-template:/, "")
-        .replace(/^image-template:/, "");
-      const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
-        return (
-          item.slug === illustrationTemplateId ||
-          item.illustrationStyleId === id ||
-          item.illustrationStyleId === illustrationTemplateId
-        );
-      });
-      if (!illustrationTemplate) {
-        return undefined;
-      }
-      return {
-        type: "illustration",
-        selection: {
-          illustrationStyleId: illustrationTemplate.illustrationStyleId,
-        },
-      };
-    }
-    return {
-      type: "presentation",
-      selection: {
-        templateId: presentationTemplate.templateId,
-        colorSystemId:
-          presentationTemplate.colorSystemId ?? "color-system:warm-sand",
-        previewUrl: presentationTemplate.embedUrl,
-      },
-    };
-  }
-  return {
-    type: "video",
-    selection: { stylePresetId: videoTemplate.id },
-  };
 }
 
 function websiteGenerationTemplateFromId(
@@ -209,11 +151,7 @@ export const setupPromptPage$ = command(
     const prompt = params.get("prompt")?.trim();
     const requestedModel = params.get("model")?.trim();
     const template = params.get("template");
-    const generationTemplate = get(featureSwitch$)[
-      FeatureSwitchKey.WebsiteTemplates
-    ]
-      ? generationTemplateFromSearchParam(template)
-      : legacyGenerationTemplateFromSearchParam(template);
+    const generationTemplate = generationTemplateFromSearchParam(template);
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;

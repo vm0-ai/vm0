@@ -1,4 +1,3 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import {
@@ -6,7 +5,7 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -21,8 +20,6 @@ import {
   type RunFailure,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { workflowQueueEnabledForOwner } from "./chat-message-queue.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
@@ -71,10 +68,6 @@ function isInsufficientCreditsFailure(error: unknown): boolean {
     error.kind === "run_error" &&
     error.response.body.error.code === "INSUFFICIENT_CREDITS"
   );
-}
-
-function isActivePreviousRunStatus(status: string): boolean {
-  return status === "pending" || status === "running";
 }
 
 async function hasOrgMembership(
@@ -277,48 +270,13 @@ async function dueWorkflowAutomationRows(
 /**
  * Time poller over `zero_workflow_automations`, run from the
  * execute-workflow-automations cron route. Mirrors the automation poller: scan
- * enabled automations whose `next_run_at` is due, skip any whose previous run is
- * still active, optimistic-lock claim the due row, then fire a run that injects
+ * enabled automations whose `next_run_at` is due, optimistic-lock claim the due
+ * row, then fire a run that injects
  * the workflow skill (via the agent's attachment) and carries the recurrence
  * completion callback.
  */
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
-/**
- * Legacy skip-if-busy gate. With the workflow queue enabled the tick enqueues
- * behind the active run instead of being skipped, so the lastRunId check only
- * applies when the switch is off.
- */
-async function shouldSkipBusyAutomation(input: {
-  readonly get: ComputedGetter;
-  readonly db: Db;
-  readonly automation: AutomationRow;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const { get, db, automation, signal } = input;
-  const overrides = await get(
-    userFeatureSwitchOverrides(automation.orgId, automation.ownerUserId),
-  );
-  signal.throwIfAborted();
-  const queueEnabled = workflowQueueEnabledForOwner({
-    orgId: automation.orgId,
-    userId: automation.ownerUserId,
-    overrides,
-  });
-  if (queueEnabled || !automation.lastRunId) {
-    return false;
-  }
-  const [lastRun] = await db
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, automation.lastRunId))
-    .limit(1);
-  signal.throwIfAborted();
-  return lastRun !== undefined && isActivePreviousRunStatus(lastRun.status);
-}
-
 export const executeDueWorkflowAutomations$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<ExecuteResult> => {
+  async ({ set }, signal: AbortSignal): Promise<ExecuteResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
 
@@ -364,18 +322,6 @@ export const executeDueWorkflowAutomations$ = command(
           orgId: row.automation.orgId,
           userId: row.automation.ownerUserId,
         });
-        skipped++;
-        continue;
-      }
-
-      if (
-        await shouldSkipBusyAutomation({
-          get,
-          db,
-          automation: row.automation,
-          signal,
-        })
-      ) {
         skipped++;
         continue;
       }

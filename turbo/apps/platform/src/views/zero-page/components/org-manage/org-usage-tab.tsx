@@ -1,21 +1,15 @@
-import { useLoadable, useSet } from "ccstate-react";
+import { useLoadable } from "ccstate-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
-import { IconChevronRight, IconUsers } from "@tabler/icons-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
-import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
-import { orgMembers$ } from "../../../../signals/external/org-members.ts";
-import {
-  billingStatusAsync$,
-  apiTierToBillingTier,
-} from "../../../../signals/zero-page/billing.ts";
-import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
 import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
 
 // ---------------------------------------------------------------------------
@@ -318,7 +312,7 @@ function CreditBalanceChart({
   onComparePlans,
 }: {
   billing: BillingStatusResponse;
-  onComparePlans?: () => void;
+  onComparePlans: () => void;
 }) {
   const segments = billing.creditBreakdown.filter((s) => {
     return s.credits > 0;
@@ -329,9 +323,6 @@ function CreditBalanceChart({
       billing.tier === "limited-free-1" ||
       billing.tier === "pro-suspend") &&
     total <= 0;
-  const openBillingPlans = useSet(openBillingPlans$);
-  const handleComparePlans = onComparePlans ?? openBillingPlans;
-
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
       <p className="text-sm font-medium tabular-nums text-foreground">
@@ -353,7 +344,7 @@ function CreditBalanceChart({
             type="button"
             className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             onClick={() => {
-              handleComparePlans();
+              onComparePlans();
             }}
           >
             Compare plans
@@ -434,13 +425,12 @@ function CreditBalanceChart({
 /**
  * The org credit balance summary card (total, breakdown bar, grants). Lives at
  * the top of the Credit balance section — above the Mine/Team tabs — so it stays
- * visible regardless of the active tab. Also reused standalone in the org-manage
- * dialog's Credit balance page.
+ * visible regardless of the active tab.
  */
 export function CreditBalanceCard({
   onComparePlans,
 }: {
-  onComparePlans?: () => void;
+  onComparePlans: () => void;
 }) {
   const billingLoadable = useLoadable(billingStatusAsync$);
   const billing =
@@ -502,111 +492,6 @@ function MemberAvatar({
   );
 }
 
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col rounded-xl bg-card zero-border">
-      <div className="flex items-center gap-3 px-5 py-4">
-        <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
-        <span className="h-4 w-32 rounded bg-muted/50 animate-pulse" />
-        <span className="ml-auto h-4 w-16 rounded bg-muted/30 animate-pulse" />
-      </div>
-      <div className="h-0 zero-border-t mx-5" />
-      <div className="flex items-center gap-3 px-5 py-4">
-        <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
-        <span className="h-4 w-40 rounded bg-muted/40 animate-pulse" />
-        <span className="ml-auto h-4 w-12 rounded bg-muted/30 animate-pulse" />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Overview section
-// ---------------------------------------------------------------------------
-
-function OverviewSection({
-  onComparePlans,
-  showCreditBalance = true,
-}: {
-  onComparePlans?: () => void;
-  showCreditBalance?: boolean;
-}) {
-  const usageLoadable = useLoadable(usageMembersAsync$);
-  const membersLoadable = useLoadable(orgMembers$);
-  const billingLoadable = useLoadable(billingStatusAsync$);
-
-  const billing =
-    billingLoadable.state === "hasData" ? billingLoadable.data : null;
-  const currentTier = apiTierToBillingTier(billing?.tier);
-
-  const usageLoading = usageLoadable.state === "loading";
-  const usageError = usageLoadable.state === "hasError";
-  const usageData =
-    usageLoadable.state === "hasData" ? usageLoadable.data : null;
-
-  const orgMembersList =
-    membersLoadable.state === "hasData" ? membersLoadable.data : [];
-  const memberMap = new Map(
-    orgMembersList.map((m) => {
-      return [m.userId, m];
-    }),
-  );
-
-  const period = usageData?.period ?? null;
-  const members = (usageData?.members ?? []).slice().sort((a, b) => {
-    return b.creditsCharged - a.creditsCharged;
-  });
-
-  return (
-    <div className="flex flex-col gap-8">
-      {showCreditBalance && (
-        <section className="flex flex-col gap-3">
-          <CreditBalanceCard onComparePlans={onComparePlans} />
-        </section>
-      )}
-
-      {/* Members — only for workspaces with shared usage access */}
-      {(currentTier === "pro" ||
-        currentTier === "team" ||
-        currentTier === "custom") && (
-        <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium text-foreground">Members</h3>
-
-          {usageLoading && !usageData ? (
-            <LoadingSkeleton />
-          ) : usageError ? (
-            <div
-              className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
-              data-testid="usage-tab-error"
-              role="alert"
-            >
-              Failed to load usage. Please try again later.
-            </div>
-          ) : !period ? (
-            <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
-              No active billing period. Credit usage by member is available on
-              paid plans.
-            </div>
-          ) : members.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
-              <IconUsers
-                size={20}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-              <p className="text-sm text-muted-foreground">
-                No usage yet this period
-              </p>
-            </div>
-          ) : (
-            <MemberUsageTable members={members} memberMap={memberMap} />
-          )}
-        </section>
-      )}
-    </div>
-  );
-}
-
 export function MemberUsageTable({
   members,
   memberMap,
@@ -662,24 +547,5 @@ export function MemberUsageTable({
         );
       })}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
-export function OrgUsageTab({
-  onComparePlans,
-  showCreditBalance = true,
-}: {
-  onComparePlans?: () => void;
-  showCreditBalance?: boolean;
-}) {
-  return (
-    <OverviewSection
-      onComparePlans={onComparePlans}
-      showCreditBalance={showCreditBalance}
-    />
   );
 }

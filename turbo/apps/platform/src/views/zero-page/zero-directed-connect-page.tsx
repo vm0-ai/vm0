@@ -60,6 +60,10 @@ import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent } from "react";
 import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
+import {
+  routeChatActionCallback$,
+  runChatActionCallback$,
+} from "../../signals/chat-page/action-callback.ts";
 
 function runDirectedConnect(params: {
   item: ConnectorTypeWithStatus;
@@ -90,6 +94,7 @@ function runDirectedConnect(params: {
   ) => Promise<boolean>;
   openConnectModal: () => void;
   openManualGrantDialog: () => void;
+  onSuccess: () => void | Promise<void>;
 }): void {
   const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
@@ -125,7 +130,7 @@ function runDirectedConnect(params: {
           params.openConnectModal();
           return;
         }
-        await params.connect(
+        const connected = await params.connect(
           params.connectorType,
           authMethod,
           {
@@ -134,13 +139,16 @@ function runDirectedConnect(params: {
           },
           params.signal,
         );
+        if (connected) {
+          await params.onSuccess();
+        }
       } else {
         const authMethod = getOnlyAvailableStatusNoAuthMethod(params.item);
         if (!authMethod) {
           params.openConnectModal();
           return;
         }
-        await params.connectNoAuth(
+        const connected = await params.connectNoAuth(
           {
             type: params.connectorType,
             authMethod,
@@ -151,6 +159,9 @@ function runDirectedConnect(params: {
           },
           params.signal,
         );
+        if (connected) {
+          await params.onSuccess();
+        }
       }
     })(),
     Reason.DomCallback,
@@ -174,7 +185,8 @@ function ManualGrantForm({
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const fieldValues = useGet(manualGrantFormValuesFor$(type));
+  const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
+  const fieldValues = manualGrantFormValuesFor(type);
   const submittingType = useGet(manualGrantFormSubmitting$);
   const setSubmitting = useSet(setManualGrantFormSubmitting$);
   const submitting = submittingType === type;
@@ -267,6 +279,7 @@ function ManualGrantDialog({
   manualGrantMethod,
   open,
   onOpenChange,
+  onSuccess,
 }: {
   type: ConnectorType;
   agentId: string | null;
@@ -275,6 +288,7 @@ function ManualGrantDialog({
   manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   if (!manualGrantMethod) {
     return null;
@@ -293,7 +307,8 @@ function ManualGrantDialog({
           agentId={agentId}
           connectorLabel={connectorLabel}
           manualGrantMethod={manualGrantMethod}
-          onSuccess={() => {
+          onSuccess={async () => {
+            await onSuccess();
             onOpenChange(false);
           }}
         />
@@ -350,11 +365,13 @@ function DirectedConnectModal({
   connectorType,
   agentId,
   onClose,
+  onSuccess,
 }: {
   readonly open: boolean;
   readonly connectorType: ConnectorType;
   readonly agentId: string | null;
   readonly onClose: () => void;
+  readonly onSuccess: () => void | Promise<void>;
 }) {
   if (!open) {
     return null;
@@ -364,6 +381,7 @@ function DirectedConnectModal({
       selectedType={connectorType}
       {...(agentId ? { agentId } : {})}
       onClose={onClose}
+      onSuccess={onSuccess}
     />
   );
 }
@@ -378,6 +396,7 @@ function DirectedConnectDialogs({
   agentId,
   connectModalOpen,
   setConnectModalOpen,
+  onSuccess,
 }: {
   readonly connectorType: ConnectorType;
   readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
@@ -388,6 +407,7 @@ function DirectedConnectDialogs({
   readonly agentId: string | null | undefined;
   readonly connectModalOpen: boolean;
   readonly setConnectModalOpen: (open: boolean) => void;
+  readonly onSuccess: () => void | Promise<void>;
 }) {
   return (
     <>
@@ -399,6 +419,7 @@ function DirectedConnectDialogs({
         manualGrantMethod={manualGrantMethod}
         open={manualGrantDialogOpen}
         onOpenChange={setManualGrantDialogOpen}
+        onSuccess={onSuccess}
       />
       <DirectedConnectModal
         open={connectModalOpen}
@@ -407,6 +428,7 @@ function DirectedConnectDialogs({
         onClose={() => {
           setConnectModalOpen(false);
         }}
+        onSuccess={onSuccess}
       />
     </>
   );
@@ -564,6 +586,8 @@ function DirectedConnectCard() {
   const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
   const connectModalKey = useGet(directedConnectModalKey$);
   const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
+  const actionCallback = useGet(routeChatActionCallback$);
+  const runCallback = useSet(runChatActionCallback$);
   const manualGrantDialogOpen = directedConnectManualGrantDialogOpen(
     manualGrantDialogKey,
     { connectorType, agentId, signal },
@@ -598,6 +622,18 @@ function DirectedConnectCard() {
   const canConnect = authMethods.length > 0;
   const connectorLabel = item?.label ?? connectorType;
   const connectorDescription = item?.helpText ?? "";
+  const handleConnectSuccess = async () => {
+    if (actionCallback.callbackPrompt && actionCallback.threadId && agentId) {
+      await runCallback(
+        {
+          threadId: actionCallback.threadId,
+          agentId,
+          callbackPrompt: actionCallback.callbackPrompt,
+        },
+        signal,
+      );
+    }
+  };
 
   const handleConnect = () => {
     if (!canConnect || !item) {
@@ -616,6 +652,7 @@ function DirectedConnectCard() {
       openConnectModal: () => {
         setDirectedConnectModalKey({ connectorType, agentId, signal });
       },
+      onSuccess: handleConnectSuccess,
     });
   };
 
@@ -650,6 +687,7 @@ function DirectedConnectCard() {
             open ? { connectorType, agentId, signal } : null,
           );
         }}
+        onSuccess={handleConnectSuccess}
       />
     </>
   );

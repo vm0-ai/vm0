@@ -11,6 +11,7 @@ export const helicone = {
         label: "API Key",
         helpText: "Go to helicone.ai → Settings → API Keys → create a new key.",
         storage: {
+          version: 1,
           secrets: ["HELICONE_TOKEN"],
           variables: [],
         },

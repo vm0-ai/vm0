@@ -4,7 +4,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -25,11 +25,7 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import {
-  admitWorkflowAutomationEvent,
-  workflowQueueEnabledForOwner,
-} from "./chat-message-queue.service";
+import { admitWorkflowAutomationEvent } from "./chat-message-queue.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
@@ -106,7 +102,6 @@ interface WorkflowAutomationRunInput {
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
-  readonly memoryEmbeddingWorkflowAutomationId?: string;
 }
 
 function generateCallbackSecret(): string {
@@ -148,7 +143,6 @@ function buildWorkflowAutomationCallbacks(
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-        triggerId: automation.id,
       },
     });
   } else {
@@ -157,7 +151,6 @@ function buildWorkflowAutomationCallbacks(
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-        triggerId: automation.id,
         timezone: automation.timezone,
         ...(automation.cronExpression
           ? { cronExpression: automation.cronExpression }
@@ -179,7 +172,7 @@ function buildAppendSystemPrompt(workflowName: string): string {
     `You are running on a schedule for the "${workflowName}" workflow.`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Connector permissions use the same agent-run permission settings as chat runs. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>` to identify the permission, then tell the user which permission this automation needs. Use the `url` field from the firewall denial response when present; omit query strings or fragments when they may contain secrets because permission matching does not need them.",
+    "Connector permissions use the same agent-run permission settings as chat runs. If a connector request fails, do not retry blindly or assume an HTTP error came from Zero permission policy. Run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`; only when it reports a deny or ask outcome, request access with `zero connector permission-request <connector-ref> --permission <name>` and tell the user which permission this automation needs. The user chooses the grant duration in the confirmation UI. Omit query strings or fragments when they may contain secrets because permission matching does not need them.",
   ].join("\n");
 }
 
@@ -377,45 +370,24 @@ async function buildTimedWorkflowAutomationRunInput(args: {
           args.automation,
           args.command.triggerBrief,
         ),
-        ...(args.automation.kind === "schedule" &&
-        (args.automation.scheduleType === "cron" ||
-          args.automation.scheduleType === "loop")
-          ? { memoryEmbeddingWorkflowAutomationId: args.automation.id }
-          : {}),
       };
     },
   );
 }
 
 /**
- * Workflow-queue admission: with the switch on, an event fired while the
- * workflow is busy (or its queue is paused/non-empty) is persisted as a queue
- * event instead of creating a run. Returns true when the event was enqueued.
+ * Workflow-queue admission: an event fired while the workflow is busy (or its
+ * queue is paused/non-empty) is persisted as a queue event instead of creating
+ * a run. Returns true when the event was enqueued.
  */
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
 async function enqueueWorkflowAutomationEventIfBusy(input: {
-  readonly get: ComputedGetter;
   readonly db: Db;
   readonly args: RunWorkflowAutomationNowArgs;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const { get, db, args, signal } = input;
+  const { db, args, signal } = input;
   const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
-    return false;
-  }
-  const overrides = await get(
-    userFeatureSwitchOverrides(automation.orgId, automation.ownerUserId),
-  );
-  signal.throwIfAborted();
-  if (
-    !workflowQueueEnabledForOwner({
-      orgId: automation.orgId,
-      userId: automation.ownerUserId,
-      overrides,
-    })
-  ) {
     return false;
   }
   const admission = await admitWorkflowAutomationEvent(db, {
@@ -491,7 +463,7 @@ async function recordWorkflowAutomationRunStart(input: {
 
 export const runWorkflowAutomationNow$ = command(
   async (
-    { get, set },
+    { set },
     args: RunWorkflowAutomationNowArgs,
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
@@ -500,7 +472,6 @@ export const runWorkflowAutomationNow$ = command(
     const timing = workflowAutomationTiming(args);
 
     const enqueued = await enqueueWorkflowAutomationEventIfBusy({
-      get,
       db,
       args,
       signal,
@@ -586,8 +557,6 @@ export const runWorkflowAutomationNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
-        memoryEmbeddingWorkflowAutomationId:
-          runInput.memoryEmbeddingWorkflowAutomationId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },

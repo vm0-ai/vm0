@@ -13,8 +13,6 @@ import { IconLoader2 } from "@tabler/icons-react";
 import {
   claudeCodeDeviceAuthDialogState$,
   claudeCodeDeviceAuthDialogStatePersonal$,
-  claudeCodeDeviceAuthAutoStartRef$,
-  claudeCodeDeviceAuthAutoStartRefPersonal$,
   claudeCodeDeviceAuthFlowState$,
   claudeCodeDeviceAuthFlowStatePersonal$,
   closeClaudeCodeDeviceAuthDialog$,
@@ -25,8 +23,6 @@ import {
   runClaudeCodeDeviceAuthPersonal$,
   setClaudeCodeDeviceAuthAuthorizationCode$,
   setClaudeCodeDeviceAuthAuthorizationCodePersonal$,
-  setClaudeCodeDeviceAuthDialogState$,
-  setClaudeCodeDeviceAuthDialogStatePersonal$,
   submitClaudeCodeDeviceAuth$,
   submitClaudeCodeDeviceAuthPersonal$,
   type ClaudeCodeDeviceAuthFlowState,
@@ -40,17 +36,14 @@ type ClaudeCodeDeviceAuthDialogState = {
   mode: "connect" | "reconnect";
 };
 
-type AutoStartRef = (element: HTMLDivElement | null) => void;
-
 interface ClaudeCodeDeviceAuthScopeBundle {
   dialog: ClaudeCodeDeviceAuthDialogState;
   flow: ClaudeCodeDeviceAuthFlowState;
-  autoStartRef: AutoStartRef;
-  setDialog: (next: ClaudeCodeDeviceAuthDialogState) => void;
   close: (signal: AbortSignal) => Promise<void>;
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
   run: (signal: AbortSignal) => Promise<boolean>;
   submit: (signal: AbortSignal) => Promise<boolean>;
+  submitting: boolean;
   setAuthorizationCode: (value: string) => void;
 }
 
@@ -67,24 +60,21 @@ export function PersonalClaudeCodeDeviceAuthDialog() {
 function useOrgClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundle {
   const dialog = useGet(claudeCodeDeviceAuthDialogState$);
   const flow = useGet(claudeCodeDeviceAuthFlowState$);
-  const autoStartRef = useSet(claudeCodeDeviceAuthAutoStartRef$);
-  const setDialog = useSet(setClaudeCodeDeviceAuthDialogState$);
   const close = useSet(closeClaudeCodeDeviceAuthDialog$);
   const openApprovalPage = useSet(openClaudeCodeDeviceAuthApprovalPage$);
   const [, run] = useLoadableSet(runClaudeCodeDeviceAuth$);
-  const [, submit] = useLoadableSet(submitClaudeCodeDeviceAuth$);
+  const [submitLoadable, submit] = useLoadableSet(submitClaudeCodeDeviceAuth$);
   const setAuthorizationCode = useSet(
     setClaudeCodeDeviceAuthAuthorizationCode$,
   );
   return {
     dialog,
     flow,
-    autoStartRef,
-    setDialog,
     close,
     openApprovalPage,
     run,
     submit,
+    submitting: submitLoadable.state === "loading",
     setAuthorizationCode,
   };
 }
@@ -92,26 +82,25 @@ function useOrgClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundle {
 function usePersonalClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundle {
   const dialog = useGet(claudeCodeDeviceAuthDialogStatePersonal$);
   const flow = useGet(claudeCodeDeviceAuthFlowStatePersonal$);
-  const autoStartRef = useSet(claudeCodeDeviceAuthAutoStartRefPersonal$);
-  const setDialog = useSet(setClaudeCodeDeviceAuthDialogStatePersonal$);
   const close = useSet(closeClaudeCodeDeviceAuthDialogPersonal$);
   const openApprovalPage = useSet(
     openClaudeCodeDeviceAuthApprovalPagePersonal$,
   );
   const [, run] = useLoadableSet(runClaudeCodeDeviceAuthPersonal$);
-  const [, submit] = useLoadableSet(submitClaudeCodeDeviceAuthPersonal$);
+  const [submitLoadable, submit] = useLoadableSet(
+    submitClaudeCodeDeviceAuthPersonal$,
+  );
   const setAuthorizationCode = useSet(
     setClaudeCodeDeviceAuthAuthorizationCodePersonal$,
   );
   return {
     dialog,
     flow,
-    autoStartRef,
-    setDialog,
     close,
     openApprovalPage,
     run,
     submit,
+    submitting: submitLoadable.state === "loading",
     setAuthorizationCode,
   };
 }
@@ -125,12 +114,11 @@ function ClaudeCodeDeviceAuthDialogView({
   const {
     dialog,
     flow,
-    autoStartRef,
-    setDialog,
     close,
     openApprovalPage,
     run,
     submit,
+    submitting,
     setAuthorizationCode,
   } = bundle;
   const title =
@@ -140,7 +128,6 @@ function ClaudeCodeDeviceAuthDialogView({
 
   function handleOpenChange(nextOpen: boolean): void {
     if (nextOpen) {
-      setDialog({ ...dialog, open: true });
       return;
     }
     detach(close(pageSignal), Reason.DomCallback);
@@ -157,26 +144,25 @@ function ClaudeCodeDeviceAuthDialogView({
   return (
     <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md" aria-describedby={undefined}>
-        <div ref={autoStartRef} className="contents">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-                <ProviderIcon type="claude-code-oauth-token" size={20} />
-              </div>
-              <DialogTitle>{title}</DialogTitle>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <ProviderIcon type="claude-code-oauth-token" size={20} />
             </div>
-          </DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </div>
+        </DialogHeader>
 
-          <ClaudeCodeDeviceAuthBody
-            flow={flow}
-            mode={dialog.mode}
-            onStart={handleStart}
-            onSubmit={handleSubmit}
-            openApprovalPage={openApprovalPage}
-            pageSignal={pageSignal}
-            setAuthorizationCode={setAuthorizationCode}
-          />
-        </div>
+        <ClaudeCodeDeviceAuthBody
+          flow={flow}
+          mode={dialog.mode}
+          onStart={handleStart}
+          onSubmit={handleSubmit}
+          openApprovalPage={openApprovalPage}
+          pageSignal={pageSignal}
+          setAuthorizationCode={setAuthorizationCode}
+          submitting={submitting}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -190,6 +176,7 @@ function ClaudeCodeDeviceAuthBody({
   openApprovalPage,
   pageSignal,
   setAuthorizationCode,
+  submitting,
 }: {
   flow: ClaudeCodeDeviceAuthFlowState;
   mode: "connect" | "reconnect";
@@ -198,6 +185,7 @@ function ClaudeCodeDeviceAuthBody({
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
   pageSignal: AbortSignal;
   setAuthorizationCode: (value: string) => void;
+  submitting: boolean;
 }) {
   switch (flow.status) {
     case "idle": {
@@ -206,8 +194,7 @@ function ClaudeCodeDeviceAuthBody({
     case "starting": {
       return <ClaudeCodeDeviceAuthLoadingContent />;
     }
-    case "pending":
-    case "submitting": {
+    case "pending": {
       return (
         <form
           className="space-y-3"
@@ -245,7 +232,7 @@ function ClaudeCodeDeviceAuthBody({
               id="claude-code-device-auth-code"
               value={flow.authorizationCode}
               placeholder="Paste code from Claude"
-              readOnly={flow.status === "submitting"}
+              readOnly={submitting}
               onChange={(event) => {
                 setAuthorizationCode(event.target.value);
               }}
@@ -260,13 +247,11 @@ function ClaudeCodeDeviceAuthBody({
           <Button
             type="submit"
             className="w-full gap-2"
-            disabled={flow.status === "submitting"}
+            disabled={submitting}
             data-testid="claude-code-device-auth-submit"
           >
-            {flow.status === "submitting" && (
-              <IconLoader2 size={14} className="animate-spin" />
-            )}
-            {flow.status === "submitting" ? "Connecting..." : "Connect"}
+            {submitting && <IconLoader2 size={14} className="animate-spin" />}
+            {submitting ? "Connecting..." : "Connect"}
           </Button>
         </form>
       );

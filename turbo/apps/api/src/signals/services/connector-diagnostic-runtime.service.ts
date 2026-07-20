@@ -402,47 +402,6 @@ export function buildConnectorDiagnosticBaseCandidates(
   return { candidates, hasUnresolvedDynamicBase };
 }
 
-function sameStrings(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => {
-      return value === right[index];
-    })
-  );
-}
-
-export function mergeConnectorDiagnosticBaseCandidates(
-  candidates: readonly ConnectorDiagnosticBaseCandidate[],
-): ConnectorDiagnosticBaseCandidate[] {
-  const merged = new Map<string, ConnectorDiagnosticBaseCandidate>();
-  for (const candidate of candidates) {
-    const key = baseKey(candidate.decisionBase);
-    const existing = merged.get(key);
-    if (!existing) {
-      merged.set(key, candidate);
-      continue;
-    }
-    if (baseKey(existing.sourceBase) !== baseKey(candidate.sourceBase)) {
-      throw new Error("Conflicting diagnostic base sources");
-    }
-    const environmentNames =
-      existing.environmentNames !== null &&
-      candidate.environmentNames !== null &&
-      sameStrings(existing.environmentNames, candidate.environmentNames)
-        ? existing.environmentNames
-        : null;
-    merged.set(key, {
-      ...existing,
-      routes: [...existing.routes, ...candidate.routes],
-      environmentNames,
-    });
-  }
-  return [...merged.values()];
-}
-
 export function publicConnectorDiagnosticBase(base: string): string {
   const publicNameByPrivateName = new Map<string, string>();
   return base.replace(BASE_URL_VAR_PATTERN, (_match, name: string) => {

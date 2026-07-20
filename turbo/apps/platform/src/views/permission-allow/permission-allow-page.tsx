@@ -15,7 +15,6 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   findPermissionInMetadata,
   permissionAllowAction$,
@@ -26,6 +25,7 @@ import {
   permissionAllowPermission$,
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
+  permissionAllowFirewallPermissionMetadata$,
   resolveUserPermissionGrantPolicy,
   type Permission,
   applyUserPermissionGrant$,
@@ -40,9 +40,13 @@ import { isActiveUserPermissionGrant } from "../../signals/user-permission-grant
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
+import {
+  routeChatActionCallback$,
+  runChatActionCallback$,
+  type ChatActionCallback,
+} from "../../signals/chat-page/action-callback.ts";
 
 function TargetPill({
   avatarUrl,
@@ -305,18 +309,7 @@ function resolveExistingPermissionGrantResult({
   };
 }
 
-function ConfirmGrantCard({
-  target,
-  icon,
-  connectorRef,
-  connectorLabel,
-  permission,
-  action,
-  initialExpiresIn,
-  userName,
-  grantLoadable,
-  applyGrant,
-}: {
+interface ConfirmGrantCardProps {
   target: PermissionGrantTarget;
   icon: PublicConnectorCatalogPermissionDetail["icon"];
   connectorRef: string;
@@ -336,7 +329,22 @@ function ConfirmGrantCard({
     },
     signal: AbortSignal,
   ) => Promise<UserPermissionGrantResponse>;
-}) {
+  actionCallback: ChatActionCallback;
+}
+
+function ConfirmGrantCard({
+  target,
+  icon,
+  connectorRef,
+  connectorLabel,
+  permission,
+  action,
+  initialExpiresIn,
+  userName,
+  grantLoadable,
+  applyGrant,
+  actionCallback,
+}: ConfirmGrantCardProps) {
   const pageSignal = useGet(pageSignal$);
   const durationScope = `agent\u0000${target.id}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
@@ -349,18 +357,31 @@ function ConfirmGrantCard({
   const saving = grantLoadable.state === "loading";
   const saveError = grantLoadable.state === "hasError";
 
+  const runCallback = useSet(runChatActionCallback$);
   const handleSave = () => {
     detach(
-      applyGrant(
-        {
-          agentId: target.id,
-          connectorRef,
-          permission: permission.name,
-          action,
-          ...(expirationAvailable ? { expiresIn } : {}),
-        },
-        pageSignal,
-      ),
+      (async () => {
+        await applyGrant(
+          {
+            agentId: target.id,
+            connectorRef,
+            permission: permission.name,
+            action,
+            ...(expirationAvailable ? { expiresIn } : {}),
+          },
+          pageSignal,
+        );
+        if (actionCallback.callbackPrompt && actionCallback.threadId) {
+          await runCallback(
+            {
+              threadId: actionCallback.threadId,
+              agentId: target.id,
+              callbackPrompt: actionCallback.callbackPrompt,
+            },
+            pageSignal,
+          );
+        }
+      })(),
       Reason.DomCallback,
     );
   };
@@ -433,27 +454,25 @@ function PermissionAllowDoctorPage({
   permission,
   action,
   initialExpiresIn,
+  actionCallback,
 }: {
   agentId: string;
   ref: string;
   permission: string;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
+  actionCallback: ChatActionCallback;
 }) {
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
   const metadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({ connectorRef: ref }),
+    permissionAllowFirewallPermissionMetadata$,
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
-  useUserPermissionGrantExpiryTick(
-    savedGrant ? [...grants, savedGrant] : grants,
-  );
-
   if (
     anyLoadableIsLoading([
       agentLoadable,
@@ -536,6 +555,7 @@ function PermissionAllowDoctorPage({
       userName={resolveUserName(currentUser)}
       grantLoadable={grantLoadable}
       applyGrant={applyGrant}
+      actionCallback={actionCallback}
     />
   );
 }
@@ -547,6 +567,7 @@ export function PermissionAllowPage() {
   const actionParam = useGet(permissionAllowActionParam$);
   const action = useGet(permissionAllowAction$);
   const expiresIn = useGet(permissionAllowExpiresIn$);
+  const actionCallback = useGet(routeChatActionCallback$);
 
   if (!agentId) {
     return <ErrorMessage message="Missing agent ID in URL parameters" />;
@@ -569,6 +590,7 @@ export function PermissionAllowPage() {
       permission={permission}
       action={action ?? "allow"}
       initialExpiresIn={expiresIn}
+      actionCallback={actionCallback}
     />
   );
 }

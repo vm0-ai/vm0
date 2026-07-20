@@ -10,6 +10,7 @@ export const productlane = {
       "api-token": {
         label: "API Key",
         storage: {
+          version: 1,
           secrets: ["PRODUCTLANE_TOKEN"],
           variables: [],
         },

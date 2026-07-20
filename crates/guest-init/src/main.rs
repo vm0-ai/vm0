@@ -1,15 +1,17 @@
 //! Guest init process for Firecracker.
 //!
-//! Runs as PID 1 inside a Firecracker VM. PID 1 signal handling and zombie
-//! reaping follow the same patterns as [tini](https://github.com/krallin/tini).
+//! Runs as PID 1 inside a Firecracker VM. PID 1 synchronously waits for blocked
+//! child and shutdown signals, then reaps every available zombie.
 //!
 //! Like tini, guest-init forks a child process (PID 2) to run vsock-guest.
-//! PID 1 then enters a reap loop, waiting for the child to exit while also
-//! reaping orphaned zombie processes.
+//! PID 1 then enters an event-driven supervision loop, waiting for the child to
+//! exit while also reaping orphaned zombie processes.
 //!
 //! This architecture separates wait domains and supervision phases:
-//! - During normal supervision, PID 1 calls `waitpid(-1, WNOHANG)` to reap PID 2
-//!   and orphaned processes reparented to PID 1.
+//! - PID 1 blocks `SIGCHLD`, `SIGTERM`, and `SIGINT` before `fork()` and waits
+//!   for them synchronously, eliminating polling and lost-wakeup windows.
+//! - On `SIGCHLD`, PID 1 calls `waitpid(-1, WNOHANG)` until every available
+//!   PID 2 or orphaned process has been reaped.
 //! - After escalating shutdown to SIGKILL, PID 1 switches to blocking
 //!   `waitpid(child_pid, 0)` to reap PID 2.
 //! - PID 2 (vsock-guest) calls `waitpid(pid)` for the commands it spawns. While
@@ -20,19 +22,17 @@
 //!
 //! Startup sequence:
 //! 1. Initialize filesystem (mount /proc, /sys, set env vars)
-//! 2. Install PID 1 signal handlers (SIGTERM/SIGINT for shutdown, ignore SIGTTIN/SIGTTOU/SIGPIPE)
+//! 2. Configure PID 1 signals and block supervised signals
 //! 3. Fork child process
-//! 4. Child (PID 2): reset signal handlers to default, run vsock-guest
-//! 5. Parent (PID 1): reap loop until child exits or shutdown signal received
+//! 4. Child (PID 2): restore its inherited signal mask, run vsock-guest
+//! 5. Parent (PID 1): wait for child and shutdown events
 
 mod init;
 mod pid1;
 
-use std::thread;
 use std::time::Duration;
 
-/// Number of 100ms iterations to wait after SIGTERM before escalating to SIGKILL (= 1 second).
-const SHUTDOWN_GRACE_ITERATIONS: u32 = 10;
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(1);
 
 fn main() {
     eprintln!("[guest-init] Starting...");
@@ -43,9 +43,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Step 2: Setup PID 1 signal handlers (before fork — child inherits SIG_IGN)
-    pid1::setup_signal_handlers();
-    eprintln!("[guest-init] PID 1 signal handlers installed");
+    // Step 2: Configure and block PID 1 signals before fork.
+    let signal_context = match pid1::SignalContext::setup() {
+        Ok(context) => context,
+        Err(error) => {
+            eprintln!("[guest-init] FATAL: Signal setup failed: {error}");
+            std::process::exit(1);
+        }
+    };
+    eprintln!("[guest-init] PID 1 signals configured");
 
     // Step 3: Fork child process for vsock-guest
     // SAFETY: fork() is called before any threads are spawned, so it is safe.
@@ -57,13 +63,15 @@ fn main() {
     }
 
     if child_pid == 0 {
-        // Step 4: Child (PID 2) — reset signal handlers and run vsock-guest
-        // Reset SIGTERM/SIGINT to default so vsock-guest can be killed normally.
-        // SIG_IGN for SIGTTIN/SIGTTOU/SIGPIPE survives fork, which is fine.
-        // SAFETY: SIG_DFL is a valid handler constant.
-        unsafe {
-            libc::signal(libc::SIGTERM, libc::SIG_DFL);
-            libc::signal(libc::SIGINT, libc::SIG_DFL);
+        // Step 4: Child (PID 2) — restore the mask from before PID 1 blocked
+        // supervised signals. Ignored SIGTTIN/SIGTTOU/SIGPIPE dispositions
+        // intentionally survive fork.
+        if let Err(error) = signal_context.restore_child_mask() {
+            eprintln!("[guest-init] FATAL: Child signal mask restore failed: {error}");
+            // SAFETY: _exit() is the correct way to terminate a forked child.
+            unsafe {
+                libc::_exit(1);
+            }
         }
 
         let code = match vsock_guest::run(None) {
@@ -85,40 +93,15 @@ fn main() {
     // === Parent process (PID 1) ===
     eprintln!("[guest-init] vsock-guest forked as pid={child_pid}");
 
-    // Step 5: Reap loop — wait for child to exit while reaping orphans
-    loop {
-        if let Some(exit_code) = pid1::reap_zombies(child_pid) {
+    // Step 5: Wait for child and shutdown events while reaping orphans.
+    match pid1::supervise(&signal_context, child_pid, SHUTDOWN_GRACE_PERIOD) {
+        Ok(exit_code) => {
             eprintln!("[guest-init] vsock-guest exited with code {exit_code}");
             std::process::exit(exit_code);
         }
-
-        if pid1::shutdown_requested() {
-            eprintln!("[guest-init] Shutdown requested, sending SIGTERM to vsock-guest");
-            // SAFETY: child_pid is a valid PID from fork().
-            unsafe {
-                libc::kill(child_pid, libc::SIGTERM);
-            }
-            // Wait up to 1s for graceful exit, then escalate to SIGKILL
-            for _ in 0..SHUTDOWN_GRACE_ITERATIONS {
-                thread::sleep(Duration::from_millis(100));
-                if let Some(exit_code) = pid1::reap_zombies(child_pid) {
-                    eprintln!(
-                        "[guest-init] vsock-guest exited with code {exit_code} after SIGTERM"
-                    );
-                    std::process::exit(exit_code);
-                }
-            }
-            eprintln!("[guest-init] vsock-guest did not exit after SIGTERM, sending SIGKILL");
-            // SAFETY: child_pid is a valid PID from fork().
-            unsafe {
-                libc::kill(child_pid, libc::SIGKILL);
-            }
-            // Block until the child is reaped. SIGKILL is unconditional
-            // (except for uninterruptible sleep), so this won't hang.
-            let exit_code = pid1::wait_blocking(child_pid);
-            std::process::exit(exit_code);
+        Err(error) => {
+            eprintln!("[guest-init] FATAL: Child supervision failed: {error}");
+            std::process::exit(1);
         }
-
-        thread::sleep(Duration::from_millis(100));
     }
 }

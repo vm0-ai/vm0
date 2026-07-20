@@ -13,6 +13,7 @@ export const agora = {
         helpText:
           "1. In [Agora Console](https://console.agora.io), open **Developer Toolkit > RESTful API**\n2. Click **Add a secret** to create a Customer ID and Customer Secret, then download and store the secret securely\n3. Copy your project **App ID** from Agora Console\n4. Optionally copy your **App Certificate** if you need to generate RTC or RTM tokens",
         storage: {
+          version: 1,
           secrets: [
             "AGORA_CUSTOMER_ID",
             "AGORA_CUSTOMER_SECRET",

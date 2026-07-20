@@ -12,6 +12,7 @@ export const alchemy = {
         helpText:
           "1. Log in to the [Alchemy Dashboard](https://dashboard.alchemy.com)\n2. Open **Team Overview** and go to the **Apps** tab\n3. Create or open an app and copy its **API Key**\n4. Use this key in the `Authorization: Bearer` header for supported Alchemy API requests",
         storage: {
+          version: 1,
           secrets: ["ALCHEMY_API_KEY"],
           variables: [],
         },

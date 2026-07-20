@@ -23,7 +23,6 @@ import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
-import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -36,13 +35,13 @@ import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-u
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
+import { cronStorageArchiveSizeBackfillRoutes } from "./routes/cron-backfill-storage-archive-sizes";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
-import { legacyWebClientCompatibilityRoutes } from "./routes/legacy-web-client-compatibility";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -96,7 +95,6 @@ import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
-import { zeroConnectorPermissionDenyRoutes } from "./routes/zero-connector-permission-deny";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -111,7 +109,6 @@ import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroMemoryRoutes } from "./routes/zero-memory";
 import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
 import { zeroMemoryDevRefreshRoutes } from "./routes/zero-memory-dev-refresh";
-import { zeroRelationshipsRoutes } from "./routes/zero-relationships";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -123,7 +120,6 @@ import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
-import { zeroOnboardingSetupRoutes } from "./routes/zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
 import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
@@ -212,7 +208,6 @@ export const ROUTES: readonly RouteEntry[] = [
     route: buildInfoContract.get,
     handler: apiBuildInfo$,
   },
-  ...legacyWebClientCompatibilityRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -253,7 +248,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
-  ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -264,6 +258,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronArtifactPreviewRoutes,
+  ...cronStorageArchiveSizeBackfillRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
@@ -297,7 +292,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroCodexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
   ...zeroConnectorCheckRoutes,
-  ...zeroConnectorPermissionDenyRoutes,
   ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
@@ -312,7 +306,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMemoryRoutes,
   ...zeroMemoryActivityRoutes,
   ...zeroMemoryDevRefreshRoutes,
-  ...zeroRelationshipsRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
@@ -341,7 +334,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...zeroOnboardingCompleteRoutes,
-  ...zeroOnboardingSetupRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgDeleteRoutes,

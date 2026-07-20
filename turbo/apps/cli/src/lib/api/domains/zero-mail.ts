@@ -1,27 +1,27 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import {
-  zeroMailContract,
-  type ZeroMailDraft,
-  type ZeroMailProvider,
-} from "@vm0/api-contracts/contracts/zero-mail";
+import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function createZeroMailDraft(args: {
+export async function linkZeroMailDraft(args: {
   readonly threadId: string;
   readonly agentId: string;
-  readonly provider: ZeroMailProvider | undefined;
-  readonly to: readonly string[];
-  readonly subject: string;
-  readonly body: string;
-}): Promise<{ readonly messageId: string; readonly mailDraft: ZeroMailDraft }> {
+  readonly gmailDraftId: string;
+}): Promise<{
+  readonly mailDraftId: string;
+  readonly mailDraftUrl: string;
+}> {
   const config = await getClientConfig();
   const client = initClient(zeroMailContract, config);
-  const result = await client.createDraft({
-    body: { ...args, to: [...args.to] },
+  const result = await client.linkDraft({
+    body: {
+      threadId: args.threadId,
+      agentId: args.agentId,
+      gmailDraftId: args.gmailDraftId,
+    },
   });
-  if (result.status === 201) {
+  if (result.status === 200) {
     return result.body;
   }
-  handleError(result, "Failed to create mail draft");
+  handleError(result, "Failed to link Gmail draft");
 }

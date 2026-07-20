@@ -13,6 +13,7 @@ export const tripo = {
         helpText:
           "1. Sign in at [platform.tripo3d.ai](https://platform.tripo3d.ai)\n2. Open **API Keys**\n3. Click **Create API Key**\n4. Copy the key (it begins with `tsk_`). It is shown only once. Paste it here.",
         storage: {
+          version: 1,
           secrets: ["TRIPO_API_KEY"],
           variables: [],
         },

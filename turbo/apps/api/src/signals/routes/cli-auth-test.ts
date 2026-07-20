@@ -6,28 +6,27 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import {
-  type AuthGrantConnectorType,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-  connectorTypeSchema,
-} from "@vm0/connectors/connectors";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodGrantMetadata,
-  getConnectorAuthMethodRuntimeMetadata,
+  connectorAuthMethodAccessMetadata,
+  connectorAuthMethodGrantMetadata,
+  connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import { writeDb$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -37,11 +36,16 @@ import {
 import {
   DEFAULT_TEST_EMAIL,
   issueCliToken$,
-  testUserId,
+  testUserId$,
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
+import { connectorActionResolverForSnapshot } from "../services/connector-action-resolver.service";
+import {
+  getConnectorRuntimeConnector,
+  loadConnectorRuntimeSnapshot,
+} from "../services/connector-catalog-runtime.service";
 import { upsertOrgMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
 import {
   isCodexAuthJsonFreePlanError,
@@ -68,12 +72,21 @@ function stringError(status: 400 | 404, error: string) {
   return { status, body: { error } };
 }
 
-function connectorTypeHasSelectedAuthGrant(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): type is AuthGrantConnectorType {
-  const grantKind = getConnectorAuthMethod(type, authMethod)?.grant.kind;
-  return grantKind === "auth-code" || grantKind === "device-auth";
+function parseConnectorRefs(connectorTypes: readonly string[]): {
+  readonly connectorRefs: readonly ConnectorCatalogRef[];
+  readonly invalidTypes: readonly string[];
+} {
+  const connectorRefs: ConnectorCatalogRef[] = [];
+  const invalidTypes: string[] = [];
+  for (const type of connectorTypes) {
+    const result = connectorCatalogRefSchema.safeParse(type);
+    if (result.success) {
+      connectorRefs.push(result.data);
+    } else {
+      invalidTypes.push(type);
+    }
+  }
+  return { connectorRefs, invalidTypes };
 }
 
 function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
@@ -81,24 +94,14 @@ function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
 }
 
 function testConnectorTokenOutputs(args: {
-  readonly connectorType: AuthGrantConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly accessToken: string;
   readonly refreshToken: string | undefined;
 }): Readonly<Record<string, string>> {
-  const grantMetadata = getConnectorAuthMethodGrantMetadata(
-    args.connectorType,
-    args.authMethod,
-  );
-  const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
-    args.connectorType,
-    args.authMethod,
-  );
-  if (!grantMetadata || !runtimeMetadata) {
-    throw new Error(
-      `${args.connectorType} connector auth method ${args.authMethod} does not expose token outputs`,
-    );
-  }
+  const grantMetadata = connectorAuthMethodGrantMetadata(args.method);
+  const runtimeMetadata = connectorAuthMethodRuntimeMetadata(args.method);
 
   const outputNameByTargetKey = new Map(
     Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
@@ -116,7 +119,7 @@ function testConnectorTokenOutputs(args: {
     });
   if (!accessOutputName) {
     throw new Error(
-      `${args.connectorType} connector auth method ${args.authMethod} does not expose a runtime token output`,
+      `${args.connectorRef} connector auth method ${args.authMethodId} does not expose a runtime token output`,
     );
   }
 
@@ -129,18 +132,15 @@ function testConnectorTokenOutputs(args: {
       outputs[outputName] === undefined
     ) {
       outputs[outputName] =
-        `${args.connectorType}-${args.authMethod}-${outputName}`;
+        `${args.connectorRef}-${args.authMethodId}-${outputName}`;
     }
   }
   if (!args.refreshToken) {
     return outputs;
   }
 
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(
-    args.connectorType,
-    args.authMethod,
-  );
-  if (accessMetadata?.kind !== "refresh-token") {
+  const accessMetadata = connectorAuthMethodAccessMetadata(args.method);
+  if (accessMetadata.kind !== "refresh-token") {
     return outputs;
   }
 
@@ -184,7 +184,11 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(testTokenQuery$);
-  const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+  const userId = await set(
+    testUserId$,
+    { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: true },
+    signal,
+  );
   signal.throwIfAborted();
   const { orgId } = await set(ensureTestOrg$, userId, signal);
   signal.throwIfAborted();
@@ -207,7 +211,7 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 async function testOrgForUser(
-  get: <T>(value: import("ccstate").Computed<T>) => T,
+  get: <T>(value: Computed<T>) => T,
   userId: string,
 ): Promise<string | null> {
   return await get(testUserOrgId(userId));
@@ -234,7 +238,7 @@ const createTestConnector$ = command(
       );
     }
 
-    const connectorParsed = connectorTypeSchema.safeParse(
+    const connectorParsed = connectorCatalogRefSchema.safeParse(
       bodyResult.data.connectorName,
     );
     if (!connectorParsed.success) {
@@ -243,10 +247,19 @@ const createTestConnector$ = command(
         `Unknown connector type: "${bodyResult.data.connectorName}"`,
       );
     }
-    const connectorType = connectorParsed.data;
+    const connectorRef = connectorParsed.data;
+    const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
+    signal.throwIfAborted();
+    if (getConnectorRuntimeConnector(snapshot, connectorRef) === undefined) {
+      return stringError(400, `Unknown connector type: "${connectorRef}"`);
+    }
 
     const query = get(testConnectorQuery$);
-    const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+    const userId = await set(
+      testUserId$,
+      { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+      signal,
+    );
     signal.throwIfAborted();
     const orgId = await testOrgForUser(get, userId);
     signal.throwIfAborted();
@@ -255,17 +268,47 @@ const createTestConnector$ = command(
     }
 
     const authMethod = bodyResult.data.authMethod;
-    if (!getConnectorAuthMethod(connectorType, authMethod)) {
+    const resolver = await get(connectorActionResolverForSnapshot(snapshot));
+    signal.throwIfAborted();
+    const resolvedRef = await resolver.resolveRef({
+      connectorRef,
+      requireExecutable: true,
+    });
+    signal.throwIfAborted();
+    if (!resolvedRef.ok) {
+      return stringError(400, `Unknown connector type: "${connectorRef}"`);
+    }
+    const catalogMethod =
+      resolvedRef.runtimeConnector.catalogConnector.authMethods.find(
+        (method) => {
+          return method.id === authMethod;
+        },
+      );
+    if (!catalogMethod) {
       return stringError(
         400,
-        `${connectorType} connector does not configure auth method ${authMethod}`,
+        `${connectorRef} connector does not configure auth method ${authMethod}`,
       );
     }
-
-    if (!connectorTypeHasSelectedAuthGrant(connectorType, authMethod)) {
+    if (
+      catalogMethod.grantKind !== "auth-code" &&
+      catalogMethod.grantKind !== "device-auth"
+    ) {
       return stringError(
         400,
-        `${connectorType} connector auth method ${authMethod} does not use an auth-code or device-auth grant`,
+        `${connectorRef} connector auth method ${authMethod} does not use an auth-code or device-auth grant`,
+      );
+    }
+    const resolved = await resolver.resolveMethod({
+      connectorRef,
+      authMethodId: authMethod,
+      expectedGrantKind: catalogMethod.grantKind,
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return stringError(
+        400,
+        `${connectorRef} connector auth method ${authMethod} is not available`,
       );
     }
 
@@ -274,18 +317,19 @@ const createTestConnector$ = command(
       {
         orgId,
         userId,
-        type: connectorType,
-        authMethod,
+        runtimeMethod: resolved.runtimeMethod,
+        snapshot: resolved.snapshot,
         outputs: testConnectorTokenOutputs({
-          connectorType,
-          authMethod,
+          connectorRef,
+          authMethodId: authMethod,
+          method: resolved.method,
           accessToken: bodyResult.data.accessToken,
           refreshToken: bodyResult.data.refreshToken,
         }),
         userInfo: {
-          id: `e2e-test-${connectorType}`,
-          username: `e2e-${connectorType}`,
-          email: `e2e-${connectorType}@test.vm0.ai`,
+          id: `e2e-test-${connectorRef}`,
+          username: `e2e-${connectorRef}`,
+          email: `e2e-${connectorRef}@test.vm0.ai`,
         },
         oauthScopes: [],
         expiresIn: bodyResult.data.expiresIn,
@@ -296,7 +340,7 @@ const createTestConnector$ = command(
 
     return {
       status: 200 as const,
-      body: { ok: true as const, connectorType, orgId },
+      body: { ok: true as const, connectorType: connectorRef, orgId },
     };
   },
 );
@@ -319,9 +363,9 @@ const enableTestConnectors$ = command(
       return stringError(400, "composeId and connectorTypes are required");
     }
 
-    const invalidTypes = bodyResult.data.connectorTypes.filter((type) => {
-      return !connectorTypeSchema.safeParse(type).success;
-    });
+    const { connectorRefs, invalidTypes } = parseConnectorRefs(
+      bodyResult.data.connectorTypes,
+    );
     if (invalidTypes.length > 0) {
       return stringError(
         400,
@@ -329,13 +373,43 @@ const enableTestConnectors$ = command(
       );
     }
 
+    const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
+    signal.throwIfAborted();
+    const unknownConnectorRef = connectorRefs.find((connectorRef) => {
+      return getConnectorRuntimeConnector(snapshot, connectorRef) === undefined;
+    });
+    if (unknownConnectorRef !== undefined) {
+      return stringError(
+        400,
+        `Unknown connector types: ${unknownConnectorRef}`,
+      );
+    }
+
     const query = get(testEnableConnectorQuery$);
-    const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+    const userId = await set(
+      testUserId$,
+      { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+      signal,
+    );
     signal.throwIfAborted();
     const orgId = await testOrgForUser(get, userId);
     signal.throwIfAborted();
     if (!orgId) {
       return stringError(400, "Test user has no org — run test-token first");
+    }
+
+    const resolver = await get(connectorActionResolverForSnapshot(snapshot));
+    signal.throwIfAborted();
+    const resolvedRefs = await resolver.resolveRefs({
+      connectorRefs,
+      requireExecutable: true,
+    });
+    signal.throwIfAborted();
+    if (!resolvedRefs.ok) {
+      return stringError(
+        400,
+        `Unknown connector types: ${resolvedRefs.connectorRef}`,
+      );
     }
 
     const writeDb = set(writeDb$);
@@ -383,7 +457,7 @@ const enableTestConnectors$ = command(
     signal.throwIfAborted();
 
     await writeDb.insert(userConnectors).values(
-      bodyResult.data.connectorTypes.map((connectorType) => {
+      connectorRefs.map((connectorType) => {
         return {
           orgId,
           userId,
@@ -399,7 +473,7 @@ const enableTestConnectors$ = command(
       body: {
         ok: true as const,
         composeId: bodyResult.data.composeId,
-        connectorTypes: bodyResult.data.connectorTypes,
+        connectorTypes: connectorRefs,
       },
     };
   },
@@ -422,7 +496,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(testCodexOauthQuery$);
-  const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+  const userId = await set(
+    testUserId$,
+    { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+    signal,
+  );
   signal.throwIfAborted();
   const orgId = await testOrgForUser(get, userId);
   signal.throwIfAborted();

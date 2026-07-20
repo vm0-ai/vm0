@@ -13,6 +13,7 @@ export const massive = {
         helpText:
           "1. Log in to [Massive](https://massive.com)\n2. Open your dashboard and navigate to API keys\n3. Create or copy an API key for REST API access\n4. Copy the API key",
         storage: {
+          version: 1,
           secrets: ["MASSIVE_TOKEN"],
           variables: [],
         },

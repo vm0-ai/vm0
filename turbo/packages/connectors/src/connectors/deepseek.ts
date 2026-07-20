@@ -13,6 +13,7 @@ export const deepseek = {
         helpText:
           "1. Go to the [DeepSeek Platform](https://platform.deepseek.com/api_keys)\n2. Sign up for an account or log in\n3. Navigate to the **API Keys** page\n4. Create a new API key and copy it",
         storage: {
+          version: 1,
           secrets: ["DEEPSEEK_TOKEN"],
           variables: [],
         },

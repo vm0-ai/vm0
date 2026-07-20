@@ -5,6 +5,8 @@ import {
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
@@ -693,6 +695,46 @@ describe("createApp", () => {
       );
     });
 
+    it("echoes the exact okou.ai production origin", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://okou.ai",
+      );
+    });
+
+    it("allows https origins on okou.ai subdomains", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://console.okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://console.okou.ai",
+      );
+    });
+
+    it("does not allow lookalike okou.ai origins", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://okou.ai.evil.example" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("answers preflight without invoking the route handler", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });
@@ -748,6 +790,32 @@ describe("createApp", () => {
       expect(allowHeaders).toContain("X-Client-Version");
     });
 
+    it("allows okou preview app origins", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://pr-22085-app.omby.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://pr-22085-app.omby.ai",
+      );
+    });
+
+    it("does not allow lookalike okou preview origins", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://pr-22085-app.omby.ai.evil.example" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });
@@ -788,21 +856,6 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("keeps the legacy polling endpoint for already-loaded clients", async () => {
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(
-        "/api/client/compatibility?version=0.599.18",
-        { method: "GET" },
-      );
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toStrictEqual({
-        minimumSupportedVersion: "0.599.19",
-        supported: false,
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
-    });
-
     it("rejects stale app clients before route handlers run", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", {
@@ -831,6 +884,43 @@ describe("createApp", () => {
       });
 
       expect(response.status).toBe(200);
+    });
+
+    it("allows rollout-compatible mail clients and rejects unsupported versions", async () => {
+      const app = createApp({ signal: context.signal });
+      const path = "/api/zero/mail/drafts/c0000000-0000-4000-a000-000000000001";
+      const stale = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+        },
+      });
+
+      expect(stale.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(stale.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
+
+      const previous = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
+        },
+      });
+      expect(previous.status).toBe(401);
+
+      const current = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [ZERO_MAIL_CLIENT_VERSION_HEADER]: ZERO_MAIL_CLIENT_VERSION,
+        },
+      });
+      expect(current.status).toBe(401);
     });
 
     it("does not force upgrade other client types", async () => {

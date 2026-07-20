@@ -12,6 +12,7 @@ export const chert = {
         helpText:
           "1. Sign in to your Chert account\n2. Follow the [Chert API docs](https://docs.trychert.com/introduction) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["CHERT_API_KEY"],
           variables: [],
         },

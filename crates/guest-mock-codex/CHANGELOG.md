@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.9](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.8...guest-mock-codex-v0.6.9) (2026-07-17)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound cli event delivery buffering ([#22015](https://github.com/vm0-ai/vm0/issues/22015)) ([0bde876](https://github.com/vm0-ai/vm0/commit/0bde876b83ef7781a24deb495f68ebec5e78e1cf))
+
 ## [0.6.8](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.7...guest-mock-codex-v0.6.8) (2026-07-16)
 
 

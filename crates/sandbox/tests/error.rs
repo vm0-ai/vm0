@@ -143,3 +143,15 @@ fn display_includes_file_operation_labels() {
         "got: {copy_state_err}"
     );
 }
+
+#[test]
+fn guest_dns_readiness_preserves_start_error_display_contract() {
+    let err = SandboxError::GuestDnsReadiness {
+        message: "guest resolver unavailable".into(),
+    };
+
+    assert_eq!(
+        err.to_string(),
+        "sandbox start failed: guest resolver unavailable"
+    );
+}

@@ -2,14 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  seedOrgMetadata,
+  setOnboardingPaymentPendingFixture,
+} from "../../../test-fixtures/system-config-seeds";
 import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
@@ -23,6 +25,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createBddApi } from "./helpers/api-bdd";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 
 const context = testContext();
@@ -117,6 +120,8 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
+    expect(response.body.supportByok).toBeFalsy();
+    expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
@@ -271,6 +276,8 @@ describe("GET /api/zero/billing/status", () => {
       orgId: STAFF_ORG_ID,
       status: "active",
       baseConcurrencyLimit: 10,
+      supportByok: false,
+      restrictedVm0Models: true,
     });
     mocks.clerk.session(userId, STAFF_ORG_ID);
 
@@ -282,6 +289,8 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.supportByok).toBeFalsy();
+    expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
   });
 
@@ -543,14 +552,20 @@ describe("GET /api/zero/billing/status", () => {
       userId: `user_${randomUUID()}`,
       expiresRecordIds: [],
     };
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await accept(
-      setupApp({ context })(onboardingSetupContract).setup({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { displayName: "Billing Status Test Agent" },
-      }),
-      [200, 409],
+    await createBddApi(context).bootstrapOnboarding(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:admin",
+        email: `${fixture.userId}@example.test`,
+      },
+      { displayName: "Billing Status Test Agent" },
     );
+    await setOnboardingPaymentPendingFixture({
+      orgId: fixture.orgId,
+      onboardingPaymentPending: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroBillingStatusContract);
 

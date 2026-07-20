@@ -16,7 +16,9 @@ use api_contracts::generated::constants::runners::{
     SESSION_HISTORY_ENCODING_IDENTITY, SESSION_HISTORY_ENCODING_ZSTD,
     SESSION_HISTORY_GZIP_MIN_BYTES,
 };
-use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+use api_contracts::generated::types::{
+    runners::storage::ArtifactEntryMissingRootPolicy, webhooks::agent::checkpoints,
+};
 use bytes::Bytes;
 use flate2::{Compression, write::GzEncoder};
 use guest_common::telemetry::record_sandbox_op;
@@ -307,25 +309,20 @@ fn fail(
     AgentError::Checkpoint(msg)
 }
 
-/// Shape one entry of the `artifactSnapshots` payload. Keys are the
-/// camelCase names the web Zod receiver (`artifactSnapshotsSchema`) expects.
+/// Build an artifact snapshot using the type generated from the canonical
+/// checkpoint webhook contract.
 fn build_artifact_snapshot_entry(
     name: &str,
     version: &str,
     mount_path: &str,
     missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
-) -> serde_json::Value {
-    let mut entry = json!({
-        "name": name,
-        "version": version,
-        "mountPath": mount_path,
-    });
-    if let Some(policy) = missing_root_policy
-        && let Some(object) = entry.as_object_mut()
-    {
-        object.insert("missingRootPolicy".to_string(), json!(policy));
+) -> checkpoints::RequestArtifactSnapshot {
+    checkpoints::RequestArtifactSnapshot {
+        name: name.to_string(),
+        version: version.to_string(),
+        mount_path: mount_path.to_string(),
+        missing_root_policy,
     }
-    entry
 }
 
 enum ArtifactSnapshotPlan<'a> {
@@ -524,14 +521,14 @@ async fn build_and_upload_session_history(
 }
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
-/// there is no longer a separate memory arm. Payload shape is
-/// `Array<{name, version, mountPath}>`, matching the webhook
-/// receiver's canonical artifact snapshot schema.
+/// there is no longer a separate memory arm. The generated checkpoint
+/// contract preserves the optional missing-root policy for every snapshot
+/// path.
 async fn snapshot_artifact_entries(
     http: &HttpClient,
     run_id: &str,
     entries: &[env::ArtifactEnv],
-) -> Result<Option<serde_json::Value>, AgentError> {
+) -> Result<Option<Vec<checkpoints::RequestArtifactSnapshot>>, AgentError> {
     if entries.is_empty() {
         log_info!(
             LOG_TAG,
@@ -657,7 +654,7 @@ async fn snapshot_artifact_entries(
             entry.missing_root_policy,
         ));
     }
-    Ok(Some(serde_json::Value::Array(results)))
+    Ok(Some(results))
 }
 
 /// Create a checkpoint after a successful run using the explicit runtime snapshot.
@@ -1060,18 +1057,14 @@ async fn create_checkpoint_impl(
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
     let cli_agent_type = inputs.framework.agent_type();
-    let mut payload = json!({
-        "runId": inputs.run_id,
-        "cliAgentType": cli_agent_type,
-        "cliAgentSessionId": cli_agent_session_id,
-        "cliAgentSessionHistoryHash": history_hash,
-    });
-
-    if let Some(snaps) = artifact_snapshots
-        && let Some(obj) = payload.as_object_mut()
-    {
-        obj.insert("artifactSnapshots".to_string(), snaps);
-    }
+    let payload = checkpoints::Request {
+        run_id: inputs.run_id.to_string(),
+        cli_agent_type: cli_agent_type.to_string(),
+        cli_agent_session_id,
+        cli_agent_session_history_hash: history_hash,
+        artifact_snapshots,
+        volume_versions_snapshot: None,
+    };
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
     let api_start = std::time::Instant::now();
@@ -1096,8 +1089,8 @@ async fn create_checkpoint_impl(
     if let Some(id) = checkpoint_id {
         write_final_session_history_identity(
             mode,
-            &cli_agent_session_id,
-            &history_hash,
+            &payload.cli_agent_session_id,
+            &payload.cli_agent_session_history_hash,
             history_size,
             &history_marker_payload,
             inputs.framework,
@@ -1273,8 +1266,9 @@ mod tests {
     #[test]
     fn artifact_snapshot_entry_shape_matches_receiver_schema() {
         let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace", None);
+        let value = serde_json::to_value(entry).unwrap();
         assert_eq!(
-            entry,
+            value,
             json!({
                 "name": "workspace",
                 "version": "v-abc-123",
@@ -1291,7 +1285,8 @@ mod tests {
             "/m",
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         );
-        let obj = entry.as_object().expect("entry must be a JSON object");
+        let value = serde_json::to_value(entry).unwrap();
+        let obj = value.as_object().expect("entry must be a JSON object");
         // Contract-boundary invariant: the web Zod receiver requires camelCase
         // `mountPath` and `missingRootPolicy`; a snake_case slip would
         // silently cause a 400 on the webhook side.
@@ -1481,7 +1476,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            snapshots,
+            serde_json::to_value(snapshots).unwrap(),
             json!([
                 {
                     "name": "memory",

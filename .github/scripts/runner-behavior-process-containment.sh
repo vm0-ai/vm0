@@ -111,17 +111,23 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 VERIFY_PROMPT=$(cat <<'PROMPT'
 set -eu
 marker=/tmp/vm0-process-containment
-base=/sys/fs/cgroup/vm0-supervised
+base=/sys/fs/cgroup/vm0-exec
 test -f "$marker/vm-reuse-marker"
 
 for identity in "$marker/user.identity" "$marker/root.identity"; do
   read -r pid start_time < "$identity"
-  if [ -r "/proc/$pid/stat" ]; then
-    current_start=$(awk '{print $22}' "/proc/$pid/stat")
-    [ "$current_start" != "$start_time" ] || {
-      echo "recorded descendant is still alive: $identity pid=$pid" >&2
-      exit 1
-    }
+  if current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat" 2>/dev/null); then
+    current_state=${current_identity%% *}
+    current_start=${current_identity#* }
+    case "$current_state" in
+      Z|X|x) ;;
+      *)
+        [ "$current_start" != "$start_time" ] || {
+          echo "recorded descendant is still running: $identity pid=$pid" >&2
+          exit 1
+        }
+        ;;
+    esac
   fi
 done
 
@@ -153,31 +159,19 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"
 LEAK_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'supervised process containment cleaned' \
+  | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=true' \
   | grep -F 'cgroup_kill_used=true' \
   | head -1) \
   || fail "missing populated cleanup that used cgroup.kill"
-HEALTHY_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'supervised process containment cleaned' \
-  | grep -F 'descendants_observed=false' \
-  | grep -F 'cgroup_kill_used=false' \
-  | head -1) \
-  || fail "missing healthy cleanup that skipped grace and kill"
 
 LEAK_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$LEAK_LINE")
-HEALTHY_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$HEALTHY_LINE")
-HEALTHY_CREATE_US=$(sed -n 's/.*create_us=\([0-9][0-9]*\).*/\1/p' <<<"$HEALTHY_LINE")
 [ -n "$LEAK_CLEANUP_MS" ] || fail "missing leaked cleanup latency"
-[ -n "$HEALTHY_CLEANUP_MS" ] || fail "missing healthy cleanup latency"
-[ -n "$HEALTHY_CREATE_US" ] || fail "missing healthy creation latency"
 [ "$LEAK_CLEANUP_MS" -le 2000 ] \
   || fail "leaked cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
-[ "$HEALTHY_CLEANUP_MS" -lt 500 ] \
-  || fail "healthy cleanup unexpectedly entered a wait: ${HEALTHY_CLEANUP_MS}ms"
 
 echo "PASS: detached user/root descendants were reclaimed"
-echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy create ${HEALTHY_CREATE_US}us; healthy cleanup ${HEALTHY_CLEANUP_MS}ms"
+echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
 
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 wait_for_unit_inactive

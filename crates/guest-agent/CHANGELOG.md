@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.53.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.13...guest-agent-v0.53.14) (2026-07-20)
+
+
+### Documentation
+
+* **guest-agent:** make mock scenario docs authoritative ([#22210](https://github.com/vm0-ai/vm0/issues/22210)) ([a584642](https://github.com/vm0-ai/vm0/commit/a58464252a205b643ae48a9a32eb7d3985e0877a))
+
+
+### Refactoring
+
+* **rust:** extract guest-agent failure diagnostics from main ([#22203](https://github.com/vm0-ai/vm0/issues/22203)) ([88fd828](https://github.com/vm0-ai/vm0/commit/88fd828d9480fc7564b7d40d1901f0a47bae7bea))
+
+## [0.53.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.12...guest-agent-v0.53.13) (2026-07-19)
+
+## [0.53.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.11...guest-agent-v0.53.12) (2026-07-19)
+
+## [0.53.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.10...guest-agent-v0.53.11) (2026-07-19)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound ordinary cli stdout ingestion ([#22095](https://github.com/vm0-ai/vm0/issues/22095)) ([4641dd5](https://github.com/vm0-ai/vm0/commit/4641dd5e1340bb204866e0433eb4adbe5eb955f2))
+
+## [0.53.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.9...guest-agent-v0.53.10) (2026-07-18)
+
+## [0.53.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.8...guest-agent-v0.53.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound cli event delivery buffering ([#22015](https://github.com/vm0-ai/vm0/issues/22015)) ([0bde876](https://github.com/vm0-ai/vm0/commit/0bde876b83ef7781a24deb495f68ebec5e78e1cf))
+
+## [0.53.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.7...guest-agent-v0.53.8) (2026-07-17)
+
+## [0.53.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.6...guest-agent-v0.53.7) (2026-07-17)
+
+## [0.53.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.5...guest-agent-v0.53.6) (2026-07-17)
+
+## [0.53.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.4...guest-agent-v0.53.5) (2026-07-17)
+
+
+### Refactoring
+
+* **guest-agent:** drop masker build patterns ([#21936](https://github.com/vm0-ai/vm0/issues/21936)) ([97501a7](https://github.com/vm0-ai/vm0/commit/97501a75824a060fd3bc20b20b5f068746899b6f))
+
+## [0.53.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.3...guest-agent-v0.53.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+
+## [0.53.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.2...guest-agent-v0.53.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.53.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.1...guest-agent-v0.53.2) (2026-07-16)
 
 

@@ -28,20 +28,12 @@ import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrum
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import {
-  orgManageDialogOpen$,
-  setOrgManageDialogOpen$,
-} from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import {
+  closeSettingsModal$,
+  openSettingsDialogAt$,
   settingsDialogOpen$,
-  setSettingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import {
   InstallBanner,
@@ -74,9 +66,7 @@ function AgentAvatarInTopBar() {
 function InviteButtonLeaf() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openManage = useSet(setOrgManageDialogOpen$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
   if (!isAdmin) {
     return null;
@@ -85,9 +75,7 @@ function InviteButtonLeaf() {
     <button
       type="button"
       onClick={() => {
-        setTab("members");
-        setSubPage(false);
-        detach(openManage(true, pageSignal), Reason.DomCallback);
+        detach(openSettings("people", pageSignal), Reason.DomCallback);
       }}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
     >
@@ -146,10 +134,7 @@ function MobileAutomationButtonLeaf() {
   }
 
   return (
-    <AutomationMenuButton
-      threadId={thread.threadId}
-      ariaLabel="Open mobile automations"
-    />
+    <AutomationMenuButton thread={thread} ariaLabel="Open mobile automations" />
   );
 }
 
@@ -216,31 +201,17 @@ function MobileTopBar() {
   );
 }
 
-function OrgManageDialogMount() {
-  const dialogOpen = useGet(orgManageDialogOpen$);
-  const setDialogOpen = useSet(setOrgManageDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <OrgManageDialog
-      open={dialogOpen}
-      onOpenChange={(open) => {
-        detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
-      }}
-    />
-  );
-}
-
 function SettingsDialogMount() {
   const dialogOpen = useGet(settingsDialogOpen$);
-  const setDialogOpen = useSet(setSettingsDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
+  const closeSettingsModal = useSet(closeSettingsModal$);
 
   return (
     <SettingsDialog
       open={dialogOpen}
       onOpenChange={(open) => {
-        detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
+        if (!open) {
+          closeSettingsModal();
+        }
       }}
     />
   );
@@ -256,7 +227,6 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-zero-artifact-fullscreen={artifactFullscreen || undefined}
     >
-      <OrgManageDialogMount />
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <QueueDrawer />

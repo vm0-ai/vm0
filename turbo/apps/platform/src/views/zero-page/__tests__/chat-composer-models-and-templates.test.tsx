@@ -323,9 +323,16 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
   ]);
 }
 
-function billingStatus(tier: string): BillingStatusResponse {
+function billingStatus(
+  tier: string,
+  modelCapabilities?: {
+    readonly supportByok?: boolean;
+    readonly restrictedVm0Models?: boolean;
+  },
+): BillingStatusResponse {
   return {
     tier,
+    ...modelCapabilities,
     credits: 20_000,
     onboardingPaymentPending: false,
     subscriptionStatus: null,
@@ -345,9 +352,15 @@ function billingStatus(tier: string): BillingStatusResponse {
   };
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingCapabilities(
+  modelCapabilities: {
+    readonly supportByok: boolean;
+    readonly restrictedVm0Models: boolean;
+  },
+  tier = "pro",
+): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, billingStatus(tier));
+    return respond(200, billingStatus(tier, modelCapabilities));
   });
 }
 
@@ -536,26 +549,6 @@ function mockAgentConnectorAuthorizations(
     enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
     return respond(200, { enabledTypes });
   });
-}
-
-function resetPresentationTemplateHtmlPreviewCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
-}
-
-function resetPresentationCardPreviewImageDecodeCache(): void {
-  Reflect.deleteProperty(
-    globalThis,
-    "vm0PresentationCardPreviewImageDecodeCache",
-  );
-}
-
-function resetPresentationTemplateThumbnailCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateThumbnailCache");
-}
-
-function resetTemplatePreviewPrewarmCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewIdlePrewarmKeys");
 }
 
 function trackTemplatePreviewImagePreloads(): {
@@ -796,6 +789,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function expectTemplateAttachedToComposer(
+  removeAriaLabel: string,
+): Promise<void> {
+  const editor = await findComposerEditor();
+  const removeButton = screen.getByLabelText(removeAriaLabel);
+  const attachment = removeButton.closest(
+    "[data-composer-template-attachment]",
+  );
+  expect(attachment).toBeInTheDocument();
+  expect(editor).toContainElement(attachment as HTMLElement);
+}
+
 function placeCaretAfterText(root: HTMLElement, text: string): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -851,10 +856,6 @@ function workflowSummary({
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-  resetPresentationTemplateHtmlPreviewCache();
-  resetPresentationCardPreviewImageDecodeCache();
-  resetPresentationTemplateThumbnailCache();
-  resetTemplatePreviewPrewarmCache();
 });
 
 describe("chat composer models", () => {
@@ -1108,7 +1109,7 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
-  it("inserts a current-agent chat thread URL from @ suggestions", async () => {
+  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -1148,10 +1149,12 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}next");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent(
-        `Review /chats/${SUGGESTED_THREAD_ID} next`,
-      );
+      expect(editor).toHaveTextContent("Review Project Alpha next");
     });
+    const chip = editor.querySelector(
+      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
+    );
+    expect(chip).toHaveTextContent("Project Alpha");
   });
 
   it("hides @ suggestions when no titled thread matches", async () => {
@@ -2422,7 +2425,7 @@ describe("chat composer models", () => {
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
     const user = userEvent.setup({ delay: null });
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
@@ -2453,6 +2456,40 @@ describe("chat composer models", () => {
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("keeps Auto available when VM0 models and BYOK are restricted", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000704",
+        model: "vm0-model",
+        modelLabel: "Auto",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
+    await user.click(await screen.findByRole("option", { name: /Auto/u }));
+
+    await expectComposerModel("Auto");
+    expect(
+      screen.queryByRole("heading", { name: "Compare plans" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the model picker directly to options and labels BYOK routes", async () => {
@@ -2500,6 +2537,67 @@ describe("chat composer models", () => {
     await user.keyboard("{Escape}");
     expect(modelPicker).toHaveFocus();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("restores personal models when billing refreshes after realtime subscribes", async () => {
+    const user = userEvent.setup({ delay: null });
+    let billingRequestCount = 0;
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequestCount += 1;
+      return respond(
+        200,
+        billingRequestCount === 1
+          ? billingStatus("limited-free-1", {
+              supportByok: false,
+              restrictedVm0Models: true,
+            })
+          : billingStatus("pro", {
+              supportByok: true,
+              restrictedVm0Models: false,
+            }),
+      );
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000305",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000306",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000307",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+      }),
+    ]);
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(billingRequestCount).toBeGreaterThanOrEqual(2);
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await expect(
+      screen.findByRole("option", { name: /GPT 5\.5/ }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("keeps loaded thread model options visible when billing refresh fails", async () => {
@@ -2567,7 +2665,7 @@ describe("chat composer models", () => {
   it("blocks a hydrated restricted model for limited-free-1 before sending", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000307",
@@ -2602,7 +2700,7 @@ describe("chat composer models", () => {
   it("blocks a hydrated BYOK model for limited-free-1 before sending", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000309",
@@ -2918,6 +3016,10 @@ describe("chat composer models", () => {
 
   it("opens reconnect login for a stale personal Codex routed model", async () => {
     const user = userEvent.setup({ delay: null });
+    mockBillingCapabilities(
+      { supportByok: true, restrictedVm0Models: false },
+      "limited-free-1",
+    );
     context.mocks.browser.open(null);
     context.mocks.browser.clipboardWriteText();
     context.mocks.data.orgModelPolicies([
@@ -3342,7 +3444,6 @@ describe("chat composer templates", () => {
     } finally {
       restoreIdleCallback();
       imagePreloads.restore();
-      resetTemplatePreviewPrewarmCache();
     }
   });
 
@@ -3472,12 +3573,14 @@ describe("chat composer templates", () => {
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
-    expect(screen.queryByText("Website")).not.toBeInTheDocument();
+    expect(tabByText("Website")).toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-card");
-    expect(tabByText("Presentation")).toHaveClass("text-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-muted-foreground");
+    expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
+    expect(tabByText("Presentation")).toHaveClass("font-medium");
+    expect(tabByText("Presentation")).toHaveClass("text-sidebar-foreground");
+    expect(tabByText("Illustration")).toHaveClass("text-sidebar-foreground");
+    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-200");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -3559,6 +3662,7 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
 
     click(screen.getByLabelText(`Remove template ${template.title}`));
 
@@ -3567,6 +3671,262 @@ describe("chat composer templates", () => {
         "aria-pressed",
         "false",
       );
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("serializes multiple inline templates into the user prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    const presentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const illustration = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: unknown;
+          generationTemplate?: GenerationTemplateRequest;
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Build ");
+
+    click(screen.getByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(`Select template ${presentation.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-inline-template]"),
+      ).toHaveLength(1);
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+
+    click(screen.getByLabelText("Template"));
+    await user.click(tabByText("Illustration"));
+    await user.click(
+      screen.getByLabelText(`Select template ${illustration.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-inline-template]"),
+      ).toHaveLength(2);
+    });
+
+    await user.keyboard("a launch image{Enter}");
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.attachFiles).toBeUndefined();
+    expect(submitted?.generationTemplate).toBeUndefined();
+    expect(submitted?.prompt).toContain(
+      `${presentation.title}<!-- zero-template:v1 type="presentation"`,
+    );
+    expect(submitted?.prompt).toContain(
+      `${illustration.title}<!-- zero-template:v1 type="illustration"`,
+    );
+    expect(submitted?.prompt?.match(/<!-- zero-template:v1/g)).toHaveLength(2);
+    expect(submitted?.prompt?.indexOf(presentation.title)).toBeLessThan(
+      submitted?.prompt?.indexOf(illustration.title) ?? -1,
+    );
+
+    await waitFor(() => {
+      expect(editor).not.toHaveTextContent(presentation.title);
+      expect(document.body).not.toHaveTextContent("zero-template:v1");
+    });
+  });
+
+  it("serializes uploaded inline files into the user prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fileUrl =
+      "https://cdn.vm0.io/artifacts/user_1/upload_1/launch-notes.txt";
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: unknown;
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload_1",
+      filename: "launch-notes.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: fileUrl,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    const fileInput = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    ).find((candidate) => {
+      return candidate.parentElement?.contains(editor) ?? false;
+    });
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["launch notes"], "launch-notes.txt", {
+        type: "text/plain",
+      }),
+    );
+
+    await waitFor(() => {
+      const item = editor.querySelector("[data-composer-inline-file]");
+      expect(item).toHaveTextContent("launch-notes.txt");
+      expect(item?.querySelector("svg")).not.toHaveClass("animate-pulse");
+      expect(screen.queryByLabelText("Remove launch-notes.txt")).toBeNull();
+    });
+
+    await user.click(editor);
+    await user.keyboard("Summarize this file{Enter}");
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.attachFiles).toBeUndefined();
+    expect(submitted?.prompt).toContain(`[launch-notes.txt](${fileUrl})`);
+    expect(submitted?.prompt).toContain("Summarize this file");
+  });
+
+  it("cancels a pending inline file when its atom is removed", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+      },
+    });
+    context.mocks.upload.pending({
+      id: "upload-inline-pending",
+      filename: "pending-notes.txt",
+      contentType: "text/plain",
+      size: 13,
+      url: "https://cdn.vm0.io/artifacts/user_1/upload_1/pending-notes.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    const fileInput = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    ).find((candidate) => {
+      return candidate.parentElement?.contains(editor) ?? false;
+    });
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["pending notes"], "pending-notes.txt", {
+        type: "text/plain",
+      }),
+    );
+
+    await user.click(
+      await screen.findByLabelText("Remove file pending-notes.txt"),
+    );
+    await waitFor(() => {
+      expect(
+        editor.querySelector("[data-composer-inline-file]"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(editor);
+    await user.keyboard("Continue without the file");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Continue without the file");
+    });
+  });
+
+  it("keeps a selected template attached when replacing all prompt text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    let submittedPrompt: string | undefined;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Initial prompt");
+    await fill(editor, "Replacement prompt");
+
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(1);
+      expect(editor).toHaveTextContent("Replacement prompt");
+      expect(editor).not.toHaveTextContent("Initial prompt");
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Replacement prompt");
+      expect(submittedTemplate).toMatchObject({
+        type: "presentation",
+        selection: { templateId: template.templateId },
+      });
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(0);
       expect(
         screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
@@ -4384,33 +4744,16 @@ describe("chat composer templates", () => {
 
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {
-      activeIndexes: new Map<string, number>(),
-      activeTokens: new Map<string, symbol>(),
-      defaultLoads: new Set<string>(),
-      detailTokens: new Map<string, symbol>(),
-      drafts: new Map([
-        [
-          template.embedUrl,
-          {
-            blocks: [],
-            html: `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
-              .map((_, index) => {
-                return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
-              })
-              .join("")}</body></html>`,
-            slides: template.previewImages.map((_, index) => {
-              return {
-                id: `slide-${index + 1}`,
-                notes: "",
-                title: `Slide ${index + 1}`,
-              };
-            }),
-          },
-        ],
-      ]),
-      failed: new Set<string>(),
-      pendingLoads: new Map<string, Promise<null>>(),
+    vi.stubGlobal("vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+          .map((_, index) => {
+            return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+          })
+          .join("")}</body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -4703,6 +5046,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove template ${illustrationTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
@@ -5247,6 +5593,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove video template ${videoStyle.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove video template ${videoStyle.title}`,
+    );
 
     click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
 
@@ -5322,6 +5671,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove workflow template ${workflowTemplate.title}`,
+    );
 
     const editor = await findComposerEditor();
     await sendMessageInUI(user, editor, "Create this inbox workflow");
@@ -5343,7 +5695,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("selects and sends a website template behind the feature switch", async () => {
+  it("selects and sends a website template", async () => {
     const user = userEvent.setup({ delay: null });
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
     const websiteTemplatePreviewImageUrl = r2ImageTransformUrl(
@@ -5360,7 +5712,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -5408,6 +5759,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove website template ${websiteTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(

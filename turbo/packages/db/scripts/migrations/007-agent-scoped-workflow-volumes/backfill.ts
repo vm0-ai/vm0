@@ -148,6 +148,11 @@ interface S3Manifest {
   readonly files: readonly S3ManifestFile[];
 }
 
+interface ListedS3Object {
+  readonly key: string;
+  readonly size: number | undefined;
+}
+
 interface Stats {
   workflows: number;
   volumesCopied: number;
@@ -197,9 +202,9 @@ async function listObjectsUnderPrefix(
   client: S3Client,
   bucket: string,
   prefix: string,
-): Promise<readonly string[]> {
+): Promise<readonly ListedS3Object[]> {
   const boundedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
-  const keys: string[] = [];
+  const objects: ListedS3Object[] = [];
   let continuationToken: string | undefined;
   do {
     const response = await client.send(
@@ -211,12 +216,12 @@ async function listObjectsUnderPrefix(
     );
     for (const item of response.Contents ?? []) {
       if (item.Key) {
-        keys.push(item.Key);
+        objects.push({ key: item.Key, size: item.Size });
       }
     }
     continuationToken = response.NextContinuationToken;
   } while (continuationToken);
-  return keys;
+  return objects;
 }
 
 async function copyObject(
@@ -487,9 +492,40 @@ async function copyLegacyVersionsToStorage(
       bucket,
       version.s3Key,
     );
-    for (const sourceKey of sourceObjects) {
-      const suffix = sourceKey.slice(version.s3Key.length);
-      await copyObject(client, bucket, sourceKey, `${newS3Key}${suffix}`);
+    const archiveKey = `${version.s3Key}/archive.tar.gz`;
+    const archiveObject = sourceObjects.find((object) => {
+      return object.key === archiveKey;
+    });
+    let archiveSize: number;
+    if (archiveObject === undefined) {
+      if (version.fileCount > 0) {
+        throw new Error(
+          `Missing archive object for storage version ${version.id}`,
+        );
+      }
+      archiveSize = 0;
+    } else {
+      const listedArchiveSize = archiveObject.size;
+      if (
+        listedArchiveSize === undefined ||
+        !Number.isSafeInteger(listedArchiveSize) ||
+        listedArchiveSize <= 0
+      ) {
+        throw new Error(
+          `Invalid archive size for storage version ${version.id}: ${String(listedArchiveSize)}`,
+        );
+      }
+      archiveSize = listedArchiveSize;
+    }
+
+    for (const sourceObject of sourceObjects) {
+      const suffix = sourceObject.key.slice(version.s3Key.length);
+      await copyObject(
+        client,
+        bucket,
+        sourceObject.key,
+        `${newS3Key}${suffix}`,
+      );
     }
 
     await db
@@ -499,11 +535,15 @@ async function copyLegacyVersionsToStorage(
         storageId: target.id,
         s3Key: newS3Key,
         size: version.size,
+        archiveSize,
         fileCount: version.fileCount,
         message: version.message,
         createdBy: version.createdBy,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: storageVersions.id,
+        set: { archiveSize },
+      });
     changed = true;
   }
 
@@ -770,7 +810,13 @@ async function deleteLegacyVolumes(
       continue;
     }
 
-    await deleteObjects(client, bucket, objects);
+    await deleteObjects(
+      client,
+      bucket,
+      objects.map((object) => {
+        return object.key;
+      }),
+    );
     // storage_versions cascade-delete on storages deletion (FK onDelete).
     await db.delete(storages).where(eq(storages.id, volume.id));
     console.log(

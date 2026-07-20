@@ -366,6 +366,10 @@ export {
   type TestModelProviderStateContract,
 } from "./test-model-provider-state";
 export {
+  testMailDraftStateContract,
+  type TestMailDraftStateContract,
+} from "./test-mail-draft-state";
+export {
   testUsageInsightStateActionBodySchema,
   testUsageInsightStateActionResponseSchema,
   testUsageInsightStateContract,
@@ -955,11 +959,9 @@ export {
 } from "./org-members";
 export {
   onboardingStatusContract,
-  onboardingSetupContract,
   onboardingCompleteContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
-  type OnboardingSetupContract,
   type OnboardingCompleteContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
@@ -1111,12 +1113,6 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
-  connectorPermissionDenyDiagnosticResultSchema,
-  zeroConnectorPermissionDenyContract,
-  type ConnectorPermissionDenyDiagnosticResult,
-  type ZeroConnectorPermissionDenyContract,
-} from "./zero-connector-permission-deny";
-export {
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
@@ -1216,24 +1212,7 @@ export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
-export {
-  zeroMemoryContract,
-  type MemorySourceListResponse,
-  type MemorySourceProvider,
-  type SlackMemoryBackfillRequest,
-  type SlackMemoryStatusResponse,
-  type ZeroMemoryContract,
-} from "./zero-memory";
-export {
-  zeroRelationshipsContract,
-  relationshipRecordSchema,
-  relationshipResolveResponseSchema,
-  relationshipSearchResponseSchema,
-  type RelationshipRecord,
-  type RelationshipResolveResponse,
-  type RelationshipSearchResponse,
-  type ZeroRelationshipsContract,
-} from "./zero-relationships";
+export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
 export {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,

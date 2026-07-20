@@ -5,21 +5,25 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mitm-addon"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
 dev = [
+    "Brotli>=1.2.0",
     "basedpyright>=1.39",
-    "mitmproxy>=10.0",
+    # Private mitmproxy API use is guarded in src/mitmproxy_compat.py.
+    "mitmproxy==12.2.3",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.8",
     "wsproto>=1.2",
 ]
 test = [
+    "Brotli>=1.2.0",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
-    "mitmproxy>=10.0",
+    # Keep tests on the exact runtime version from crates/runner/src/deps.rs.
+    "mitmproxy==12.2.3",
     "wsproto>=1.2",
 ]
 

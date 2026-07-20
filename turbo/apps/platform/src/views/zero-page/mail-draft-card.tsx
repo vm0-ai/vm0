@@ -1,381 +1,133 @@
-import type { ChangeEvent, FocusEvent, FormEvent, MouseEvent } from "react";
-import { useGet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconAlertTriangle,
-  IconCheck,
-  IconLoader2,
-  IconMail,
-  IconSend,
-  IconX,
-} from "@tabler/icons-react";
-import type {
-  ZeroMailDraft,
-  ZeroMailDraftStatus,
-} from "@vm0/api-contracts/contracts/zero-mail";
+import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { Button, Input, cn } from "@vm0/ui";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
+import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
+import { cn } from "@vm0/ui";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import {
-  cancelMailDraft$,
-  mailDraftOverrides$,
-  sendMailDraft$,
-  updateMailDraft$,
-  type MailDraftFields,
-} from "../../signals/chat-page/mail-draft.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+  currentMailDraftId$,
+  openMailDraftSidebar$,
+} from "../../signals/zero-page/mail-draft-sidebar.ts";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 
 interface MailDraftCardProps {
-  readonly threadId: string;
-  readonly messageId: string;
-  readonly mailDraft: ZeroMailDraft;
+  readonly signals: MailDraftSignals;
 }
 
-interface DraftStatusCopy {
-  readonly label: string;
-  readonly className: string;
-}
+const GMAIL_ICON = getStaticConnectorIconMetadata("gmail");
 
-function parseRecipients(value: string): string[] {
-  return value
-    .split(/[;,\n]/)
-    .map((recipient) => {
-      return recipient.trim();
-    })
-    .filter(Boolean);
-}
-
-function statusCopy(status: ZeroMailDraftStatus): DraftStatusCopy {
+function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
     case "draft": {
-      return { label: "Draft", className: "bg-muted text-muted-foreground" };
-    }
-    case "sending": {
-      return {
-        label: "Sending",
-        className: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-      };
+      return "Draft";
     }
     case "sent": {
-      return {
-        label: "Sent",
-        className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-      };
+      return "Sent";
     }
-    case "cancelled": {
-      return {
-        label: "Cancelled",
-        className: "bg-muted text-muted-foreground",
-      };
-    }
-    case "failed": {
-      return {
-        label: "Failed",
-        className: "bg-destructive/10 text-destructive",
-      };
-    }
-    case "delivery_unknown": {
-      return {
-        label: "Delivery unknown",
-        className: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-      };
+    case "deleted": {
+      return "Deleted";
     }
   }
 }
 
-function newestDraft(
-  serverDraft: ZeroMailDraft,
-  localDraft: ZeroMailDraft | undefined,
-): ZeroMailDraft {
-  if (!localDraft) {
-    return serverDraft;
-  }
-  return Date.parse(localDraft.updatedAt) >= Date.parse(serverDraft.updatedAt)
-    ? localDraft
-    : serverDraft;
-}
-
-function fieldsFromForm(form: HTMLFormElement): MailDraftFields {
-  const data = new FormData(form);
-  return {
-    to: parseRecipients(String(data.get("to") ?? "")),
-    subject: String(data.get("subject") ?? ""),
-    body: String(data.get("body") ?? ""),
-  };
-}
-
-function MailDraftStatus({ status }: { status: ZeroMailDraftStatus }) {
-  const copy = statusCopy(status);
+function MailDraftCardSkeleton() {
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
-        copy.className,
-      )}
-    >
-      {status === "sending" ? (
-        <IconLoader2 size={12} className="animate-spin" aria-hidden />
-      ) : status === "sent" ? (
-        <IconCheck size={12} aria-hidden />
-      ) : null}
-      {copy.label}
-    </span>
-  );
-}
-
-function MailDraftHeader({ mailDraft }: { mailDraft: ZeroMailDraft }) {
-  return (
-    <header className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted">
-          <IconMail size={17} aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-medium">Review email</h3>
-          <p className="truncate text-xs text-muted-foreground">
-            {mailDraft.provider === "gmail" ? "Gmail" : "Outlook"}
-          </p>
-        </div>
+    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
+      </span>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-4 w-2/3 rounded bg-muted/70" />
+        <div className="h-3 w-1/3 rounded bg-muted/60" />
       </div>
-      <MailDraftStatus status={mailDraft.status} />
-    </header>
-  );
-}
-
-function MailDraftFields({
-  mailDraft,
-  editable,
-  actionPending,
-  onBlur,
-}: {
-  readonly mailDraft: ZeroMailDraft;
-  readonly editable: boolean;
-  readonly actionPending: boolean;
-  readonly onBlur: (
-    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-}) {
-  const disabled = !editable || actionPending;
-  return (
-    <div className="space-y-3 px-4 py-4">
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        From
-        <Input
-          aria-label="From"
-          value={mailDraft.from}
-          readOnly
-          className="bg-muted/40 text-foreground"
-        />
-      </label>
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        To
-        <Input
-          aria-label="To"
-          name="to"
-          type="email"
-          multiple
-          required
-          defaultValue={mailDraft.to.join(", ")}
-          disabled={disabled}
-          onBlur={onBlur}
-          className="text-foreground"
-        />
-      </label>
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        Subject
-        <Input
-          aria-label="Subject"
-          name="subject"
-          required
-          defaultValue={mailDraft.subject}
-          disabled={disabled}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            event.currentTarget.value = event.currentTarget.value.replace(
-              /[\r\n]/g,
-              " ",
-            );
-          }}
-          onBlur={onBlur}
-          className="text-foreground"
-        />
-      </label>
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        Message
-        <textarea
-          aria-label="Message"
-          name="body"
-          required
-          defaultValue={mailDraft.body}
-          disabled={disabled}
-          onBlur={onBlur}
-          rows={8}
-          className="min-h-36 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      </label>
     </div>
   );
 }
 
-function MailDraftFeedback({
-  mailDraft,
-  actionFailed,
-}: {
-  readonly mailDraft: ZeroMailDraft;
-  readonly actionFailed: boolean;
-}) {
-  if (
-    mailDraft.status !== "delivery_unknown" &&
-    !mailDraft.error &&
-    !actionFailed
-  ) {
+function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
+  const draftLoadable = useLoadable(signals.draft$);
+  const selectedMailDraftId = useGet(currentMailDraftId$);
+  const openSidebar = useSet(openMailDraftSidebar$);
+  const reload = useSet(signals.reload$);
+
+  if (draftLoadable.state === "loading") {
+    return <MailDraftCardSkeleton />;
+  }
+  if (draftLoadable.state === "hasError" || draftLoadable.data === null) {
     return null;
   }
-  return (
-    <div className="space-y-2 px-4 pb-4">
-      {mailDraft.status === "delivery_unknown" ? (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-          <IconAlertTriangle size={15} className="mt-0.5 shrink-0" />
-          Delivery could not be confirmed. Check the Sent folder before trying
-          another message.
-        </div>
-      ) : null}
-      {mailDraft.error ? (
-        <p className="text-xs text-destructive">{mailDraft.error}</p>
-      ) : null}
-      {actionFailed ? (
-        <p className="text-xs text-destructive">
-          The card could not be updated. Try again.
-        </p>
-      ) : null}
-    </div>
-  );
-}
 
-function MailDraftActions({
-  busy,
-  sending,
-  onCancel,
-}: {
-  readonly busy: boolean;
-  readonly sending: boolean;
-  readonly onCancel: (event: MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <footer className="flex items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
-      <Button
-        data-mail-draft-action
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={busy}
-        onClick={onCancel}
-      >
-        <IconX size={15} aria-hidden />
-        Cancel
-      </Button>
-      <Button data-mail-draft-action type="submit" size="sm" disabled={busy}>
-        {sending ? (
-          <IconLoader2 size={15} className="animate-spin" aria-hidden />
-        ) : (
-          <IconSend size={15} aria-hidden />
-        )}
-        Send
-      </Button>
-    </footer>
-  );
-}
-
-function EnabledMailDraftCard({
-  threadId,
-  messageId,
-  mailDraft: serverMailDraft,
-}: MailDraftCardProps) {
-  const pageSignal = useGet(pageSignal$);
-  const localDraft = useGet(mailDraftOverrides$)[messageId];
-  const mailDraft = newestDraft(serverMailDraft, localDraft);
-  const [updateLoadable, updateDraft] = useLoadableSet(updateMailDraft$);
-  const [cancelLoadable, cancelDraft] = useLoadableSet(cancelMailDraft$);
-  const [sendLoadable, sendDraft] = useLoadableSet(sendMailDraft$);
-  const editable =
-    mailDraft.status === "draft" || mailDraft.status === "failed";
-  const updatePending = updateLoadable.state === "loading";
-  const actionPending =
-    cancelLoadable.state === "loading" || sendLoadable.state === "loading";
-  const actionFailed =
-    updateLoadable.state === "hasError" ||
-    cancelLoadable.state === "hasError" ||
-    sendLoadable.state === "hasError";
-
-  const saveOnBlur = (
-    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const form = event.currentTarget.form;
-    if (
-      !form ||
-      !editable ||
-      updatePending ||
-      actionPending ||
-      !form.checkValidity() ||
-      (event.relatedTarget instanceof Element &&
-        event.relatedTarget.closest("[data-mail-draft-action]"))
-    ) {
-      return;
-    }
-    detach(
-      updateDraft(
-        { threadId, messageId, fields: fieldsFromForm(form) },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    detach(
-      sendDraft(
-        { threadId, messageId, fields: fieldsFromForm(event.currentTarget) },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  const onCancel = () => {
-    detach(
-      cancelDraft({ threadId, messageId }, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <form onSubmit={onSubmit}>
-      <section
-        aria-label="Review email"
-        data-mail-draft-card
-        data-mail-draft-status={mailDraft.status}
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
-      >
-        <MailDraftHeader mailDraft={mailDraft} />
-        <MailDraftFields
-          key={mailDraft.updatedAt}
-          mailDraft={mailDraft}
-          editable={editable}
-          actionPending={actionPending}
-          onBlur={saveOnBlur}
-        />
-        <MailDraftFeedback mailDraft={mailDraft} actionFailed={actionFailed} />
-        {editable ? (
-          <MailDraftActions
-            busy={updatePending || actionPending}
-            sending={sendLoadable.state === "loading"}
-            onCancel={onCancel}
-          />
+  const draft = draftLoadable.data;
+  const deleted = draft.status === "deleted";
+  const selected = selectedMailDraftId === signals.mailDraftId;
+  const recipients = draft.to.join(", ") || "(No recipient)";
+  const content = (
+    <>
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
+        <ConnectorIcon icon={GMAIL_ICON} size={23} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-5 text-foreground">
+          {draft.subject || "(No subject)"}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          To: {recipients}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5 self-center">
+        <span
+          className={cn(
+            "rounded-full px-2 py-1 text-[11px] font-medium",
+            draft.status === "sent" &&
+              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+            draft.status === "draft" &&
+              "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+            deleted && "bg-muted text-muted-foreground",
+          )}
+        >
+          {statusLabel(draft.status)}
+        </span>
+        {!deleted ? (
+          <IconChevronRight size={16} className="text-muted-foreground" />
         ) : null}
-      </section>
-    </form>
+      </span>
+    </>
+  );
+
+  if (deleted) {
+    return (
+      <div
+        aria-disabled="true"
+        aria-label={`Deleted email: ${draft.subject || "No subject"}`}
+        data-mail-draft-card
+        data-mail-draft-status="deleted"
+        className="flex min-h-[76px] w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Open ${draft.status} email: ${draft.subject || "No subject"}`}
+      data-mail-draft-card
+      data-mail-draft-status={draft.status}
+      onClick={() => {
+        reload();
+        openSidebar(signals.mailDraftId);
+      }}
+      className={cn(
+        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
+      )}
+    >
+      {content}
+    </button>
   );
 }
 

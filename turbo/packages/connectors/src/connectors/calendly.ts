@@ -12,6 +12,7 @@ export const calendly = {
         helpText:
           "1. Log in to [Calendly](https://calendly.com)\n2. Go to **Integrations > API & Webhooks**\n3. Generate a Personal Access Token\n4. Copy the token",
         storage: {
+          version: 1,
           secrets: ["CALENDLY_TOKEN"],
           variables: [],
         },

@@ -13,6 +13,7 @@ export const htmlcsstoimage = {
         helpText:
           "1. Log in to [HTML/CSS to Image](https://htmlcsstoimage.com/dashboard)\n2. Go to your **Dashboard**\n3. Locate your **User ID** and **API Key** displayed on the dashboard\n4. Copy the **API Key** (used as the password in HTTP Basic authentication)",
         storage: {
+          version: 1,
           secrets: ["HCTI_API_KEY"],
           variables: ["HCTI_USER_ID"],
         },

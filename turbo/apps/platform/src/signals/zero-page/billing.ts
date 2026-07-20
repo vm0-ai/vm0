@@ -266,11 +266,6 @@ export const billingStatusAsync$ = computed(async (get) => {
   return result.body;
 });
 
-export const limitedFree1$ = computed(async (get) => {
-  const billing = await get(billingStatusAsync$);
-  return billing.tier === "limited-free-1";
-});
-
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -295,6 +290,7 @@ export const setupBillingRealtime$ = command(
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
+        options: { runOnSubscribe: true },
       },
       signal,
     );

@@ -8,10 +8,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { onRef, resetSignal, settle, tapError, withCleanup } from "../utils.ts";
+import { pageSignal$ } from "../page-signal.ts";
+import { onRef, resetSignal, tapError, withCleanup } from "../utils.ts";
 import {
   createHtmlDomEditPayload,
   HTML_DOM_EDIT_HOVER_ATTR,
@@ -30,16 +31,14 @@ import {
   publicAttachmentUrl,
   readableAttachmentResourceUrl,
 } from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  artifactHtmlEditMode$,
+  currentArtifactRef$,
+} from "./zero-artifact-sidebar.ts";
 
-export type EditorLoadState =
-  | { readonly status: "loading" }
-  | {
-      readonly html: string;
-      readonly nodeIds: readonly string[];
-      readonly sourceUrl: string;
-      readonly status: "ready";
-    }
-  | { readonly message: string; readonly status: "error" };
+export interface HtmlDomEditDocument {
+  readonly html: string;
+}
 
 interface CommentPopoverAnchor {
   readonly left: number;
@@ -104,7 +103,6 @@ export interface HtmlDomCommentEditorModel {
   readonly imageLinkOpen: boolean;
   readonly imageLinkValue: string;
   readonly imagePendingAction: HtmlDomImagePendingAction | null;
-  readonly loadState: EditorLoadState;
   readonly pendingFrameKey: number | null;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
@@ -205,7 +203,6 @@ const SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES = [
   "image/png",
   "image/webp",
 ] as const;
-const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalActiveFrameKey$ = state(0);
 const internalPendingFrameKey$ = state<number | null>(null);
 const internalStageElement$ = state<HTMLDivElement | null>(null);
@@ -386,7 +383,6 @@ async function requestHtmlEditDraft(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   params.signal.throwIfAborted();
 
@@ -399,7 +395,7 @@ function htmlDomEditErrorMessage(error: unknown, fallback: string): string {
 
 async function fetchHtmlDomEditDocument(
   params: LoadHtmlDocumentParams,
-): Promise<EditorLoadState> {
+): Promise<HtmlDomEditDocument> {
   const response = await fetch(
     readableAttachmentResourceUrl(params.sourceUrl),
     {
@@ -419,24 +415,30 @@ async function fetchHtmlDomEditDocument(
   });
   return {
     html: instrumented.html,
-    nodeIds: instrumented.nodeIds,
-    sourceUrl: params.sourceUrl,
-    status: "ready",
   };
 }
 
-async function loadHtmlDomEditDocument(
-  params: LoadHtmlDocumentParams,
-): Promise<EditorLoadState> {
-  const loaded = await settle(fetchHtmlDomEditDocument(params), params.signal);
-  if (loaded.ok) {
-    return loaded.value;
+const currentHtmlDomEditSourceUrl$ = computed((get) => {
+  if (!get(artifactHtmlEditMode$)) {
+    return null;
   }
-  return {
-    message: htmlDomEditErrorMessage(loaded.error, "Failed to load HTML"),
-    status: "error",
-  };
-}
+  const artifact = get(currentArtifactRef$);
+  if (!artifact || artifact.source !== "url" || artifact.kind !== "html") {
+    return null;
+  }
+  return publicAttachmentUrl(artifact.url);
+});
+
+export const currentHtmlDomEditDocument$ = computed(async (get) => {
+  const sourceUrl = get(currentHtmlDomEditSourceUrl$);
+  if (!sourceUrl) {
+    throw new Error("HTML editor URL is unavailable");
+  }
+  return await fetchHtmlDomEditDocument({
+    signal: get(pageSignal$),
+    sourceUrl,
+  });
+});
 
 function nodeSelector(nodeId: string): string {
   return `[${HTML_DOM_NODE_ID_ATTR}="${nodeId}"]`;
@@ -1284,14 +1286,9 @@ function canDiscardHtmlDomEditorDraft(params: {
   readonly hasPendingImageEdits: boolean;
   readonly hasPendingStyleEdits: boolean;
   readonly imageBusy: boolean;
-  readonly loadState: EditorLoadState;
   readonly submitting: boolean;
 }): boolean {
-  if (
-    params.loadState.status !== "ready" ||
-    params.submitting ||
-    params.imageBusy
-  ) {
+  if (params.submitting || params.imageBusy) {
     return false;
   }
   return (
@@ -2177,7 +2174,6 @@ const cleanupCurrentFrameBinding$ = command(({ get, set }) => {
 const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(cleanupCurrentFrameBinding$);
   set(resetHtmlDomImageEditSignal$);
-  set(internalLoadState$, { status: "loading" });
   set(internalActiveFrameKey$, 0);
   set(internalPendingFrameKey$, null);
   set(internalStageElement$, null);
@@ -2203,12 +2199,7 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
 });
 
 export const setHtmlDomCommentStageRef$ = onRef(
-  command(async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
-    const url = el.dataset.htmlDomCommentUrl;
-    if (!url) {
-      return;
-    }
-
+  command(({ set }, el: HTMLDivElement, signal: AbortSignal) => {
     set(resetHtmlDomCommentEditor$);
     set(internalStageElement$, el);
     signal.addEventListener(
@@ -2219,14 +2210,6 @@ export const setHtmlDomCommentStageRef$ = onRef(
       },
       { once: true },
     );
-
-    const sourceUrl = publicAttachmentUrl(url);
-    const nextState = await loadHtmlDomEditDocument({
-      signal,
-      sourceUrl,
-    });
-    signal.throwIfAborted();
-    set(internalLoadState$, nextState);
   }),
 );
 
@@ -3172,9 +3155,6 @@ export const setHtmlDomImagePendingAction$ = command(
 );
 
 export const discardHtmlDomComments$ = command(({ get, set }) => {
-  const readyLoadState = get(internalLoadState$);
-  const doc = currentFrameDocument(get(internalIframeElement$));
-
   set(resetHtmlDomImageEditSignal$);
   set(internalComments$, []);
   set(internalCommentsOpen$, false);
@@ -3187,17 +3167,11 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   set(internalImageLinkOpen$, false);
   set(internalImageLinkValue$, "");
   set(internalImagePendingAction$, null);
-  if (readyLoadState.status === "ready") {
-    set(
-      internalPendingFrameKey$,
-      Math.max(
-        get(internalActiveFrameKey$),
-        get(internalPendingFrameKey$) ?? 0,
-      ) + 1,
-    );
-  } else {
-    syncFrameCommentMarkers(doc, []);
-  }
+  set(
+    internalPendingFrameKey$,
+    Math.max(get(internalActiveFrameKey$), get(internalPendingFrameKey$) ?? 0) +
+      1,
+  );
   set(resetHtmlDomCommentDraft$);
 });
 
@@ -3231,15 +3205,12 @@ export const sendHtmlDomEditRequest$ = command(
   async (
     { get, set },
     params: SendHtmlDomEditRequestParams,
-    _parentSignal: AbortSignal,
+    parentSignal: AbortSignal,
   ) => {
-    const readyLoadState = get(internalLoadState$);
+    const editDocument = await get(currentHtmlDomEditDocument$);
+    parentSignal.throwIfAborted();
     const comments = get(internalComments$);
-    if (
-      readyLoadState.status !== "ready" ||
-      comments.length === 0 ||
-      get(internalSubmitting$)
-    ) {
+    if (comments.length === 0 || get(internalSubmitting$)) {
       return;
     }
 
@@ -3249,7 +3220,7 @@ export const sendHtmlDomEditRequest$ = command(
 
     const submit = async () => {
       const html = htmlWithEditOverlaysRemoved({
-        fallbackHtml: readyLoadState.html,
+        fallbackHtml: editDocument.html,
         frameDocument: currentFrameDocument(get(internalIframeElement$)),
       });
       params.onStarted?.();
@@ -3263,9 +3234,11 @@ export const sendHtmlDomEditRequest$ = command(
             signal,
           }),
           (error) => {
-            toast.error(
-              htmlDomEditErrorMessage(error, "Failed to generate edit"),
-            );
+            if (!(error instanceof ApiError)) {
+              toast.error(
+                htmlDomEditErrorMessage(error, "Failed to generate edit"),
+              );
+            }
           },
         );
         signal.throwIfAborted();
@@ -3327,14 +3300,14 @@ export const applyHtmlDomStyleEdits$ = command(
   async (
     { get, set },
     params: ApplyHtmlDomStyleEditsParams,
-    _parentSignal: AbortSignal,
+    parentSignal: AbortSignal,
   ) => {
-    const readyLoadState = get(internalLoadState$);
+    const editDocument = await get(currentHtmlDomEditDocument$);
+    parentSignal.throwIfAborted();
     const hasPendingDomEdits =
       hasStyleEdits(get(internalStyleEditsByNodeId$)) ||
       hasImageEdits(get(internalImageEditsByNodeId$));
     if (
-      readyLoadState.status !== "ready" ||
       get(internalComments$).length > 0 ||
       !hasPendingDomEdits ||
       get(internalSubmitting$)
@@ -3348,7 +3321,7 @@ export const applyHtmlDomStyleEdits$ = command(
 
     const apply = async () => {
       const html = htmlWithEditOverlaysRemoved({
-        fallbackHtml: readyLoadState.html,
+        fallbackHtml: editDocument.html,
         frameDocument: currentFrameDocument(get(internalIframeElement$)),
       });
       params.onStarted?.();
@@ -3385,7 +3358,6 @@ export const htmlDomCommentEditorModel$ = computed(
     const commentText = get(internalCommentText$);
     const editingCommentId = get(internalEditingCommentId$);
     const selectedNodeIds = get(internalSelectedNodeIds$);
-    const loadState = get(internalLoadState$);
     const submitting = get(internalSubmitting$);
     const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
     const imageEditsByNodeId = get(internalImageEditsByNodeId$);
@@ -3406,7 +3378,6 @@ export const htmlDomCommentEditorModel$ = computed(
       activeColorPanelProperty: get(internalActiveColorPanelProperty$),
       activeFrameKey: get(internalActiveFrameKey$),
       canApplyStyleEdits:
-        loadState.status === "ready" &&
         comments.length === 0 &&
         (hasPendingStyleEdits || hasPendingImageEdits) &&
         !submitting &&
@@ -3424,15 +3395,10 @@ export const htmlDomCommentEditorModel$ = computed(
         hasPendingImageEdits,
         hasPendingStyleEdits,
         imageBusy,
-        loadState,
         submitting,
       }),
       canEditSelectedStyle: editableStyleProperties.length > 0,
-      canSend:
-        loadState.status === "ready" &&
-        comments.length > 0 &&
-        !submitting &&
-        !imageBusy,
+      canSend: comments.length > 0 && !submitting && !imageBusy,
       colorPopoverOffset: get(internalColorPopoverOffset$),
       commentsOpen: get(internalCommentsOpen$),
       commentText,
@@ -3445,7 +3411,6 @@ export const htmlDomCommentEditorModel$ = computed(
       imageLinkOpen: get(internalImageLinkOpen$),
       imageLinkValue: get(internalImageLinkValue$),
       imagePendingAction: get(internalImagePendingAction$),
-      loadState,
       pendingFrameKey: get(internalPendingFrameKey$),
       popoverTextAreaKey: [
         selectedNodeIds.join(":"),

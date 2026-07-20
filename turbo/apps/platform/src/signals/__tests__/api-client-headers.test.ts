@@ -22,6 +22,7 @@ interface ObservedClientHeaders {
   readonly sessionId: string | null;
   readonly type: string | null;
   readonly version: string | null;
+  readonly zeroMailVersion: string | null;
 }
 
 function observedClientHeaders(request: Request): ObservedClientHeaders {
@@ -30,6 +31,7 @@ function observedClientHeaders(request: Request): ObservedClientHeaders {
     sessionId: request.headers.get("x-client-session-id"),
     type: request.headers.get("x-client-type"),
     version: request.headers.get("x-client-version"),
+    zeroMailVersion: request.headers.get("x-zero-mail-client-version"),
   };
 }
 
@@ -45,6 +47,10 @@ function mockSignedInUser(): void {
   context.signal.addEventListener("abort", () => {
     clearMockedAuth();
   });
+}
+
+function setBrowserUrl(url: string): void {
+  window.location.href = url;
 }
 
 function getFetchForTest() {
@@ -88,6 +94,8 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe("0.540.0");
     expect(second.version).toBe("0.540.0");
+    expect(first.zeroMailVersion).toBe("3");
+    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
@@ -123,11 +131,62 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe("0.540.0");
     expect(second.version).toBe("0.540.0");
+    expect(first.zeroMailVersion).toBe("3");
+    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).not.toBe(first.requestId);
+  });
+
+  it("forwards the captured omby preview bypass to vm6 API requests", async () => {
+    setBrowserUrl(
+      "https://pr-22085-app.omby.ai/?x-vercel-protection-bypass=preview-secret",
+    );
+    mockSignedInUser();
+    const observedBypassHeaders: (string | null)[] = [];
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      ({ request, respond }) => {
+        observedBypassHeaders.push(
+          request.headers.get("x-vercel-protection-bypass"),
+        );
+        return respond(200, { enabledTypes: [] });
+      },
+    );
+    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+      observedBypassHeaders.push(
+        request.headers.get("x-vercel-protection-bypass"),
+      );
+      return new Response(null, { status: 204 });
+    });
+
+    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    await accept(client.get({ params: { id: agentId } }), [200]);
+    await getFetchForTest()("/api/zero/preview-bypass-test");
+
+    expect(observedBypassHeaders).toStrictEqual([
+      "preview-secret",
+      "preview-secret",
+    ]);
+  });
+
+  it("does not forward an omby lookalike preview bypass", async () => {
+    setBrowserUrl(
+      "https://pr-22085-app.omby.ai.evil.example/?x-vercel-protection-bypass=preview-secret",
+    );
+    mockSignedInUser();
+    let observedBypassHeader: string | null = "not-called";
+    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+      observedBypassHeader = request.headers.get("x-vercel-protection-bypass");
+      return new Response(null, { status: 204 });
+    });
+
+    await getFetchForTest()("/api/zero/preview-bypass-test");
+
+    expect(observedBypassHeader).toBeNull();
   });
 
   it("opens the force upgrade dialog for contract client responses", async () => {

@@ -188,7 +188,7 @@ pub(super) async fn destroy_idle_payload_and_wait(
     payload: IdleDestroyPayload,
     context: &'static str,
 ) -> IdleDestroyResult {
-    let handle = tokio::spawn(payload.promote_then_stop_and_destroy(context));
+    let handle = tokio::spawn(payload.finalize_workspace_and_destroy(context));
     match handle.await {
         Ok(outcome) => outcome,
         Err(e) => {
@@ -261,7 +261,9 @@ mod tests {
             workspace_promotion: Some(fixture.promotion),
         });
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate.with_last_completed_at(TEST_COMPLETED_AT.into()),
+            Ok(outcome) => outcome
+                .expect_reusable()
+                .with_last_completed_at(TEST_COMPLETED_AT.into()),
             Err(_) => panic!("park should succeed"),
         };
         let mut pool = IdlePool::new(IdlePoolConfig {

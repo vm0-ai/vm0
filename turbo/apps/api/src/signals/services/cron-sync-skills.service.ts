@@ -38,6 +38,7 @@ import {
 } from "../external/s3";
 import { createDeferredPromise, safeSync, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 interface SyncSkillsResult {
   readonly commitSha: string;
@@ -74,7 +75,6 @@ interface SkillSyncContext {
 interface SkillArchiveUpload {
   readonly archiveBuffer: Buffer;
   readonly manifestBuffer: Buffer;
-  readonly s3Prefix: string;
   readonly s3Key: string;
 }
 
@@ -339,6 +339,7 @@ async function hasCurrentSkillVersion(args: {
 
 function uploadSkillArchive(
   context: SkillSyncContext,
+  s3Prefix: string,
   signal: AbortSignal,
 ): Computed<Promise<SkillArchiveUpload>> {
   return computed(async (get): Promise<SkillArchiveUpload> => {
@@ -348,7 +349,6 @@ function uploadSkillArchive(
     signal.throwIfAborted();
 
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-    const s3Prefix = `${SYSTEM_ORG_ID}/volume/${context.storageName}`;
     const s3Key = `${s3Prefix}/${context.versionHash}`;
 
     await Promise.all([
@@ -371,37 +371,38 @@ function uploadSkillArchive(
     ]);
     signal.throwIfAborted();
 
-    return { archiveBuffer, manifestBuffer, s3Prefix, s3Key };
+    return { archiveBuffer, manifestBuffer, s3Key };
   });
 }
 
 async function upsertSkillStorage(args: {
   readonly db: Db;
   readonly context: SkillSyncContext;
-  readonly upload: SkillArchiveUpload;
   readonly timestamp: Date;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<{ readonly id: string; readonly s3Prefix: string }> {
+  const location = newStorageS3Location(SYSTEM_ORG_ID);
   const [storage] = await args.db
     .insert(storages)
     .values({
+      id: location.storageId,
       orgId: SYSTEM_ORG_ID,
       userId: VOLUME_ORG_USER_ID,
       name: args.context.storageName,
       type: "volume",
-      s3Prefix: args.upload.s3Prefix,
-      size: args.upload.archiveBuffer.length,
+      s3Prefix: location.s3Prefix,
+      size: args.context.totalSize,
       fileCount: args.context.files.length,
     })
     .onConflictDoUpdate({
       target: [storages.orgId, storages.userId, storages.name, storages.type],
       set: {
-        size: args.upload.archiveBuffer.length,
+        size: args.context.totalSize,
         fileCount: args.context.files.length,
         updatedAt: args.timestamp,
       },
     })
-    .returning({ id: storages.id });
+    .returning({ id: storages.id, s3Prefix: storages.s3Prefix });
   args.signal.throwIfAborted();
 
   if (!storage) {
@@ -410,7 +411,7 @@ async function upsertSkillStorage(args: {
     );
   }
 
-  return storage.id;
+  return storage;
 }
 
 async function insertSkillStorageVersion(args: {
@@ -427,12 +428,16 @@ async function insertSkillStorageVersion(args: {
       id: args.context.versionHash,
       storageId: args.storageId,
       s3Key: args.upload.s3Key,
-      size: args.upload.archiveBuffer.length,
+      size: args.context.totalSize,
+      archiveSize: args.upload.archiveBuffer.length,
       fileCount: args.context.files.length,
       message: `Synced from ${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}@${args.commitSha.slice(0, 7)}`,
       createdBy: "system",
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: storageVersions.id,
+      set: { archiveSize: args.upload.archiveBuffer.length },
+    });
   args.signal.throwIfAborted();
 }
 
@@ -448,7 +453,7 @@ async function updateSkillStorageHead(args: {
     .update(storages)
     .set({
       headVersionId: args.context.versionHash,
-      size: args.upload.archiveBuffer.length,
+      size: args.context.totalSize,
       fileCount: args.context.files.length,
       updatedAt: args.timestamp,
     })
@@ -523,14 +528,18 @@ function syncSingleSkill(
     }
 
     const timestamp = nowDate();
-    const upload = await get(uploadSkillArchive(context, signal));
-    const storageId = await upsertSkillStorage({
+    // Upsert the storage row first: objects must land under the row's stored
+    // prefix, which an existing row keeps from its creation time.
+    const storage = await upsertSkillStorage({
       db,
       context,
-      upload,
       timestamp,
       signal,
     });
+    const storageId = storage.id;
+    const upload = await get(
+      uploadSkillArchive(context, storage.s3Prefix, signal),
+    );
     await insertSkillStorageVersion({
       db,
       storageId,

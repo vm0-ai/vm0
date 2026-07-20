@@ -31,6 +31,8 @@ import { z } from "zod";
 
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import { executeRawRows } from "../../lib/db-raw-rows";
+import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -38,7 +40,6 @@ import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
-  publishChatThreadMessageUpdated,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -62,11 +63,12 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { insertChatMessage } from "./zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
-  deleteUserMessageQueueItem,
+  appendClaimedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -89,6 +91,7 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
+const idRowSchema = z.object({ id: z.string() });
 
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
@@ -347,15 +350,6 @@ type CreatedQueuedRun = {
   readonly runId: string;
   readonly status: "queued" | "pending" | "running";
 };
-
-interface QueuedUserMessageClaim {
-  readonly messageId: string;
-}
-
-interface CreatedAutoSentQueuedRun {
-  readonly run: CreatedQueuedRun;
-  readonly claim: QueuedUserMessageClaim;
-}
 
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
@@ -780,7 +774,9 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+        nullableDriverValueDecoder(chatMessages.createdAt),
+      ),
     })
     .from(chatMessages)
     .where(
@@ -794,14 +790,13 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     return;
   }
 
-  const lastEventMs =
-    message.lastEventAt instanceof Date
-      ? message.lastEventAt.getTime()
-      : new Date(message.lastEventAt).getTime();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "last_event_to_complete",
-    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
+    durationMs: Math.max(
+      0,
+      run.completedAt.getTime() - message.lastEventAt.getTime(),
+    ),
     success: true,
     runId,
   });
@@ -818,9 +813,9 @@ async function insertAssistantErrorMessage(args: {
   const displayErrorMessage = await args.getFormattedError();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const message = await tx
-      .insert(chatMessages)
-      .values({
+    const message = await insertChatMessage(
+      tx,
+      {
         chatThreadId: args.threadId,
         role: "assistant",
         content: displayErrorMessage,
@@ -828,20 +823,13 @@ async function insertAssistantErrorMessage(args: {
         runGroupId,
         error: displayErrorMessage,
         runLifecycleEvent: args.lifecycleEvent,
-      })
-      .onConflictDoNothing({
-        target: chatMessages.runId,
-        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    if (message.length === 0) {
+      },
+      "run-lifecycle",
+    );
+    if (!message) {
       return false;
     }
-    await touchChatThreadLastMessageAt(
-      tx,
-      args.threadId,
-      message[0]!.createdAt,
-    );
+    await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
     return true;
   });
   if (!inserted) {
@@ -866,9 +854,9 @@ async function insertRunLifecycleMarker(args: {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const marker = await tx
-      .insert(chatMessages)
-      .values({
+    const marker = await insertChatMessage(
+      tx,
+      {
         chatThreadId: args.threadId,
         role: "assistant",
         content: null,
@@ -876,13 +864,10 @@ async function insertRunLifecycleMarker(args: {
         runGroupId,
         runLifecycleEvent: args.event,
         createdAt: markerCreatedAt,
-      })
-      .onConflictDoNothing({
-        target: chatMessages.runId,
-        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-      })
-      .returning({ id: chatMessages.id });
-    if (marker.length === 0) {
+      },
+      "run-lifecycle",
+    );
+    if (!marker) {
       return false;
     }
     await touchChatThreadLastMessageAt(tx, args.threadId, markerCreatedAt);
@@ -907,9 +892,9 @@ async function insertRecommendedFollowupsMessage(args: {
   readonly recommendedFollowups: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
-  const inserted = await args.db
-    .insert(chatMessages)
-    .values({
+  const inserted = await insertChatMessage(
+    args.db,
+    {
       id: recommendedFollowupsMessageIdForRun(args.runId),
       chatThreadId: args.threadId,
       role: "assistant",
@@ -917,11 +902,11 @@ async function insertRecommendedFollowupsMessage(args: {
       runId: args.runId,
       runGroupId,
       recommendedFollowups: args.recommendedFollowups,
-    })
-    .onConflictDoNothing({ target: chatMessages.id })
-    .returning({ id: chatMessages.id });
+    },
+    "id",
+  );
 
-  if (inserted.length === 0) {
+  if (!inserted) {
     return false;
   }
 
@@ -1594,30 +1579,34 @@ async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const runs = await db.execute<{ readonly id: string }>(sql`
-    SELECT ${zeroRuns.id} AS "id"
-    FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-    WHERE ${zeroRuns.chatThreadId} = ${threadId}
-      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      AND (
-        NOT EXISTS (
-          SELECT 1
-          FROM ${agentRunCallbacks}
-          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-            AND ${agentRunCallbacks.internalKind} = 'chat'
-            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+  const runs = await executeRawRows(
+    db,
+    sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
         )
-        OR EXISTS (
-          SELECT 1
-          FROM ${chatMessages}
-          WHERE ${chatMessages.runId} = ${zeroRuns.id}
-            AND ${chatMessages.role} = 'user'
-        )
-      )
-    LIMIT 1
-  `);
-  return runs.rows[0] !== undefined;
+      LIMIT 1
+    `,
+    idRowSchema,
+  );
+  return runs[0] !== undefined;
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1823,34 +1812,29 @@ async function claimQueuedUserMessageForDispatch(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly runId: string;
   readonly threadId: string;
-}): Promise<QueuedUserMessageClaim | null> {
+}): Promise<boolean> {
   const claimed = await args.db.transaction(async (tx) => {
     // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
     // callbacks can insert candidate runs, each see the other as active, and
     // both cancel before either claims the queued message.
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR UPDATE
-    `);
-    if (!threadRows.rows[0]) {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("update");
+    if (!thread) {
       return null;
     }
 
-    const rows = await tx.execute<{
-      readonly status: string;
-      readonly chatThreadId: string | null;
-    }>(sql`
-      SELECT
-        ${agentRuns.status} AS "status",
-        ${zeroRuns.chatThreadId} AS "chatThreadId"
-      FROM ${agentRuns}
-      INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
-      WHERE ${agentRuns.id} = ${args.runId}
-      FOR UPDATE OF ${agentRuns}
-    `);
-    const run = rows.rows[0];
+    const [run] = await tx
+      .select({
+        status: agentRuns.status,
+        chatThreadId: zeroRuns.chatThreadId,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.id, args.runId))
+      .for("update", { of: agentRuns });
     if (
       !run ||
       run.chatThreadId !== args.threadId ||
@@ -1863,54 +1847,46 @@ async function claimQueuedUserMessageForDispatch(args: {
     // message. Concurrent drains may insert more than one candidate before
     // reaching this serialized gate; ignoring those unclaimed candidates lets
     // one claim win while the others cancel before dispatch.
-    const competingRuns = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${zeroRuns.id} AS "id"
-      FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
-        AND ${zeroRuns.id} <> ${args.runId}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-              AND ${agentRunCallbacks.internalKind} = 'chat'
-              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+    const competingRuns = await executeRawRows(
+      tx,
+      sql`
+        SELECT ${zeroRuns.id} AS "id"
+        FROM ${zeroRuns}
+        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+        WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
+          AND ${zeroRuns.id} <> ${args.runId}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM ${agentRunCallbacks}
+              WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+                AND ${agentRunCallbacks.internalKind} = 'chat'
+                AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+                AND ${chatMessages.role} = 'user'
+            )
           )
-          OR EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
-              AND ${chatMessages.role} = 'user'
-          )
-        )
-      LIMIT 1
-    `);
-    if (competingRuns.rows[0]) {
+        LIMIT 1
+      `,
+      idRowSchema,
+    );
+    if (competingRuns[0]) {
       return null;
     }
 
-    // Claim both current queue items and persisted pre-convergence rows in
-    // place. Deleting a missing queue pointer is a safe no-op for legacy rows.
-    const [updated] = await tx
-      .update(chatMessages)
-      .set({ runId: args.runId })
-      .where(
-        and(
-          eq(chatMessages.id, args.queuedMessage.id),
-          eq(chatMessages.chatThreadId, args.threadId),
-          isNull(chatMessages.runId),
-        ),
-      )
-      .returning({ id: chatMessages.id });
-    if (updated) {
-      await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
-    }
-    return updated ? { messageId: updated.id } : null;
+    return await appendClaimedUserMessage(tx, {
+      threadId: args.threadId,
+      messageId: args.queuedMessage.id,
+      runId: args.runId,
+    });
   });
 
-  return claimed;
+  return claimed !== null;
 }
 
 async function appendAutoSentQueuedRunMarker(args: {
@@ -1920,13 +1896,12 @@ async function appendAutoSentQueuedRunMarker(args: {
   readonly threadId: string;
 }): Promise<void> {
   await args.db.transaction(async (tx) => {
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR KEY SHARE
-    `);
-    if (!threadRows.rows[0]) {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("key share");
+    if (!thread) {
       return;
     }
 
@@ -1938,7 +1913,7 @@ async function appendAutoSentQueuedRunMarker(args: {
           eq(chatMessages.chatThreadId, args.threadId),
           eq(chatMessages.runId, args.runId),
           eq(chatMessages.role, "user"),
-          eq(chatMessages.id, args.queuedMessageId),
+          eq(chatMessages.revokesMessageId, args.queuedMessageId),
         ),
       )
       .limit(1);
@@ -1963,9 +1938,8 @@ async function createAutoSentQueuedRun(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreatedAutoSentQueuedRun | null> {
-  let claim: QueuedUserMessageClaim | null = null;
-  const run = await measureChatCallbackPreCreateTiming(
+}): Promise<CreatedQueuedRun | null> {
+  return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
     "top_level",
@@ -1973,7 +1947,7 @@ async function createAutoSentQueuedRun(args: {
       return args.createRun({
         ...args.runInput,
         beforeDispatch: async ({ runId }) => {
-          claim = await measureChatCallbackPreCreateTiming(
+          const claimed = await measureChatCallbackPreCreateTiming(
             args.timing,
             "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
             "nested",
@@ -1986,7 +1960,7 @@ async function createAutoSentQueuedRun(args: {
               });
             },
           );
-          if (!claim) {
+          if (!claimed) {
             log.warn(
               "Auto-send could not claim queued message before dispatch",
               {
@@ -1996,12 +1970,11 @@ async function createAutoSentQueuedRun(args: {
               },
             );
           }
-          return claim !== null;
+          return claimed;
         },
       });
     },
   );
-  return run && claim ? { run, claim } : null;
 }
 
 async function appendAutoSentQueuedRunMarkerIfQueued(args: {
@@ -2032,8 +2005,6 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
 async function publishAutoSentQueuedRunSignals(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly claim: QueuedUserMessageClaim;
-  readonly runStatus: CreatedQueuedRun["status"];
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<void> {
   await measureChatCallbackPreCreateTiming(
@@ -2041,17 +2012,10 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishChatThreadMessageUpdated(
-        args.userId,
-        args.threadId,
-        args.claim.messageId,
+      await publishUserSignal(
+        [args.userId],
+        `chatThreadMessageCreated:${args.threadId}`,
       );
-      if (args.runStatus === "queued") {
-        await publishUserSignal(
-          [args.userId],
-          `chatThreadMessageCreated:${args.threadId}`,
-        );
-      }
       await publishUserSignal(
         [args.userId],
         `chatThreadRunCreated:${args.threadId}`,
@@ -2139,7 +2103,7 @@ async function autoSendQueuedMessageForThread(args: {
   let createdRunId: string | null = null;
   const run = await onRejection(
     (async () => {
-      const created = await createAutoSentQueuedRun({
+      const createdRun = await createAutoSentQueuedRun({
         createRun: args.createRun,
         db: args.db,
         runInput,
@@ -2147,10 +2111,9 @@ async function autoSendQueuedMessageForThread(args: {
         threadId,
         timing: args.timing,
       });
-      if (!created) {
+      if (!createdRun) {
         return null;
       }
-      const { run: createdRun, claim } = created;
       createdRunId = createdRun.runId;
       await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
@@ -2162,8 +2125,6 @@ async function autoSendQueuedMessageForThread(args: {
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,
-        claim,
-        runStatus: createdRun.status,
         timing: args.timing,
       });
       return createdRun;

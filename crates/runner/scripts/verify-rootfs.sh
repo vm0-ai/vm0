@@ -286,21 +286,12 @@ check_required_executable "/usr/bin/xargs" "xargs"
 check_required_executable "/usr/bin/mktemp" "mktemp"
 check_required_executable "/usr/bin/tr" "tr"
 
-# Workspace mount/unmount helpers.
+# Workspace mount and terminal freeze helpers.
 check_required_executable "/usr/bin/mountpoint" "mountpoint"
 check_required_executable "/usr/bin/mount" "mount"
-check_required_executable "/usr/bin/umount" "umount"
-check_required_executable "/usr/bin/sync" "sync"
+check_required_executable "/usr/sbin/fsfreeze" "fsfreeze"
 check_required_executable "/usr/bin/chown" "chown"
 check_required_executable "/usr/bin/mkdir" "mkdir"
-check_required_executable "/usr/bin/stat" "stat"
-check_required_executable "/usr/bin/cat" "cat"
-check_required_executable "/usr/bin/readlink" "readlink"
-check_required_executable "/usr/bin/cut" "cut"
-check_required_executable "/usr/bin/sort" "sort"
-check_required_executable "/usr/bin/wc" "wc"
-check_required_executable "/usr/bin/kill" "kill"
-check_required_executable "/usr/bin/sleep" "sleep"
 
 # Media workflows rely on ffmpeg being available in fresh agent runtimes.
 check_required_executable "/usr/bin/ffmpeg" "ffmpeg"
@@ -346,6 +337,7 @@ fi
 check_bin "/usr/lib/postgresql/*/bin/postgres" "PostgreSQL server"
 check_bin "/usr/lib/postgresql/*/bin/initdb"   "PostgreSQL initdb"
 check_bin "/usr/lib/postgresql/*/bin/pg_ctl"   "PostgreSQL pg_ctl"
+check_bin "/usr/share/postgresql/*/extension/vector.control" "pgvector extension"
 
 if [[ -f "${MOUNT_DIR}/usr/bin/redis-server" ]]; then
   echo "  redis-server: found"

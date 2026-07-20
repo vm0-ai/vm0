@@ -9,6 +9,8 @@ import {
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
@@ -63,6 +65,14 @@ interface ClientHeaderLogFields {
   readonly x_client_type?: string;
   readonly x_client_session_id?: string;
   readonly x_client_request_id?: string;
+}
+
+function isSupportedZeroMailClientVersion(
+  clientVersion: string | undefined,
+): boolean {
+  // Keep already-open v2 browser tabs working while the v3 mail UI rolls out.
+  // Remove v2 only after the v3 frontend rollout window has fully drained.
+  return clientVersion === "2" || clientVersion === ZERO_MAIL_CLIENT_VERSION;
 }
 
 interface AxiomRequestLogEvent
@@ -451,10 +461,19 @@ async function webClientCompatibilityMiddleware(
 ): Promise<Response | void> {
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
-  if (
+  const zeroMailClientVersion = requestHeader(
+    context,
+    ZERO_MAIL_CLIENT_VERSION_HEADER,
+  );
+  const staleZeroMailClient =
     clientType === CLIENT_TYPE_APP &&
-    clientVersion &&
-    !isSupportedWebClientVersion(clientVersion)
+    requestPathname(context).startsWith("/api/zero/mail/") &&
+    !isSupportedZeroMailClientVersion(zeroMailClientVersion);
+  if (
+    staleZeroMailClient ||
+    (clientType === CLIENT_TYPE_APP &&
+      clientVersion &&
+      !isSupportedWebClientVersion(clientVersion))
   ) {
     return context.json(
       { error: "Client update required" },

@@ -12,6 +12,7 @@ export const runtime = {
         helpText:
           "1. Sign in to your Runtime account\n2. Follow the [Runtime API docs](https://docs.runtm.com/introduction) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["RUNTIME_API_KEY"],
           variables: [],
         },

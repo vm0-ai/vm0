@@ -9,19 +9,25 @@ import { db } from "../lib/db";
 export async function seedInvalidLegacyGoalMessages(
   threadId: string,
 ): Promise<void> {
-  const updated = await db().execute(sql`
-    UPDATE chat_messages
-    SET
-      goal_event = '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
-      goal_snapshot = '{"objectiveBrief":{"bad":true}}'::jsonb
-    WHERE chat_thread_id = ${threadId}
-      AND goal_event IS NOT NULL
+  const { rowCount: insertedInvalidActiveMarkerCount } = await db().execute(sql`
+    INSERT INTO chat_messages (
+      chat_thread_id,
+      role,
+      goal_event,
+      goal_snapshot
+    )
+    VALUES (
+      ${threadId},
+      'assistant',
+      '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
+      '{"objectiveBrief":{"bad":true}}'::jsonb
+    )
   `);
-  if (updated.rowCount !== 1) {
-    throw new Error("Expected one current goal marker fixture");
+  if (insertedInvalidActiveMarkerCount !== 1) {
+    throw new Error("Expected one invalid active goal marker fixture");
   }
 
-  const inserted = await db().execute(sql`
+  const { rowCount: insertedCount } = await db().execute(sql`
     INSERT INTO chat_messages (
       chat_thread_id,
       role,
@@ -35,11 +41,12 @@ export async function seedInvalidLegacyGoalMessages(
       '{"objectiveBrief":{"bad":true}}'::jsonb
     )
   `);
-  if (inserted.rowCount !== 1) {
+  if (insertedCount !== 1) {
     throw new Error("Expected one legacy goal marker fixture");
   }
 
-  const insertedMissingSnapshotBrief = await db().execute(sql`
+  const { rowCount: insertedMissingSnapshotBriefCount } = await db().execute(
+    sql`
     INSERT INTO chat_messages (
       chat_thread_id,
       role,
@@ -52,8 +59,9 @@ export async function seedInvalidLegacyGoalMessages(
       'legacy snapshot without objective brief',
       '{"bad":true}'::jsonb
     )
-  `);
-  if (insertedMissingSnapshotBrief.rowCount !== 1) {
+    `,
+  );
+  if (insertedMissingSnapshotBriefCount !== 1) {
     throw new Error("Expected one legacy goal snapshot fixture");
   }
 }

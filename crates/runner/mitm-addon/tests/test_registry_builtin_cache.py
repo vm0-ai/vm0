@@ -12,6 +12,7 @@ import matching
 import registry
 import registry_firewalls
 from tests.registry_helpers import (
+    assert_invalid_builtin_vm,
     builtin_vm,
     inline_vm,
     write_multi_vm_registry,
@@ -119,18 +120,30 @@ def _catalog_snapshot(
     version: str,
     firewalls: dict[str, dict],
 ) -> builtin_firewall_cache.BuiltinFirewallCatalogSnapshot:
-    key = (f"catalog-cache/{version}.json", 1, 1, len(version), len(firewalls))
+    key = builtin_firewall_cache.CatalogFileKey(
+        absolute_path=f"catalog-cache/{version}.json",
+        st_dev=1,
+        st_ino=1,
+        st_mtime_ns=len(version),
+        st_size=len(firewalls),
+    )
     digest = f"sha256:{digest_char * 64}"
     return builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
         dependency_file_key=key,
         catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
-            identity=("cache", digest, version, key),
+            identity=builtin_firewall_cache.CatalogIdentity(
+                source="cache",
+                catalog_digest=digest,
+                catalog_version=version,
+                file_key=key,
+            ),
             firewalls=firewalls,
         ),
+        cache_path=key.absolute_path,
     )
 
 
-def _assert_invalid_builtin_vm(
+def _assert_invalid_builtin_vm_with_cache(
     *,
     registry_path,
     cache_path,
@@ -141,13 +154,8 @@ def _assert_invalid_builtin_vm(
         registry_path=str(registry_path),
         builtin_firewall_catalog_cache_path=str(cache_path),
     ):
-        context = registry.get_vm_context("10.200.0.1", str(registry_path))
-        state = registry.load_registry_state(str(registry_path))
+        invalid_vm = assert_invalid_builtin_vm(registry_path)
 
-    assert context is None
-    assert not isinstance(state, registry.RegistryUnavailable)
-    invalid_vm = state.invalid_vms["10.200.0.1"]
-    assert invalid_vm.reason == "invalid_firewalls"
     assert expected_message in invalid_vm.message
 
 
@@ -174,7 +182,7 @@ def _assert_cache_firewall_is_invalid(
         {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
     )
 
-    _assert_invalid_builtin_vm(
+    _assert_invalid_builtin_vm_with_cache(
         registry_path=registry_path,
         cache_path=cache_path,
         mitm_ctx=mitm_ctx,
@@ -553,9 +561,26 @@ class TestRegistryBuiltinCache:
                 )
             },
         )
+        assert snapshot.catalog is not None
+        rewritten_key = builtin_firewall_cache.CatalogFileKey(
+            absolute_path="catalog-cache/catalog-a.json",
+            st_dev=1,
+            st_ino=2,
+            st_mtime_ns=3,
+            st_size=4,
+        )
         rewritten_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
-            dependency_file_key=("catalog-cache/catalog-a.json", 1, 2, 3, 4),
-            catalog=snapshot.catalog,
+            dependency_file_key=rewritten_key,
+            catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
+                identity=builtin_firewall_cache.CatalogIdentity(
+                    source=snapshot.catalog.identity.source,
+                    catalog_digest=snapshot.catalog.identity.catalog_digest,
+                    catalog_version=snapshot.catalog.identity.catalog_version,
+                    file_key=rewritten_key,
+                ),
+                firewalls=snapshot.catalog.firewalls,
+            ),
+            cache_path=rewritten_key.absolute_path,
         )
         expected_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -683,7 +708,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -704,7 +729,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -792,7 +817,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -1338,6 +1363,11 @@ class TestRegistryBuiltinCache:
 
             snapshot = registry_firewalls.load_catalog_snapshot(str(cache_path))
             assert snapshot.catalog is not None
+            assert snapshot.dependency_file_key is not None
+            assert snapshot.dependency_file_key.absolute_path == str(cache_path.absolute())
+            assert snapshot.catalog.identity.source == "cache"
+            assert snapshot.catalog.identity.catalog_version == "catalog-a"
+            assert snapshot.catalog.identity.file_key == snapshot.dependency_file_key
             retained_catalog = builtin_firewall_cache._cache_state.catalog
             assert retained_catalog is snapshot.catalog
 
@@ -1422,10 +1452,20 @@ class TestRegistryBuiltinCache:
         assert second_compiled is not None
         assert _first_firewall_core(first_compiled) is _first_firewall_core(second_compiled)
 
-    def test_inline_firewall_api_ids_are_preserved(self, tmp_path):
+    def test_inline_firewall_api_ids_preserve_custom_ids_and_global_positions(self, tmp_path):
         path = tmp_path / "registry.json"
         vm = inline_vm("run-inline")
-        vm["firewalls"][0]["firewall"]["apis"][0]["id"] = "custom-api-id"
+        first_api = vm["firewalls"][0]["firewall"]["apis"][0]
+        first_api["id"] = "custom-api-id"
+        vm["firewalls"].append(
+            {
+                "kind": "inline",
+                "firewall": {
+                    "name": "upload",
+                    "apis": [{**first_api, "id": "", "base": "https://upload.example.com"}],
+                },
+            }
+        )
         write_multi_vm_registry(path, {"10.200.0.1": vm})
 
         context = registry.get_vm_context("10.200.0.1", str(path))
@@ -1433,4 +1473,7 @@ class TestRegistryBuiltinCache:
         assert context is not None
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["id"] == "custom-api-id"
+        assert [firewall["apis"][0]["id"] for firewall in vm_info["firewalls"]] == [
+            "custom-api-id",
+            "run-inline:1",
+        ]

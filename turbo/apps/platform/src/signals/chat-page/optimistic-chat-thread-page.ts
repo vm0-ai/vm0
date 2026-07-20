@@ -21,6 +21,7 @@ import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
+  clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
@@ -30,7 +31,8 @@ import {
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
-  type OptimisticChatMessageEntry,
+  createOptimisticChatMessageEntry,
+  type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
 import {
   applyCodexFastModeDefault,
@@ -90,7 +92,7 @@ function createNewThreadOptimisticMessageEntry({
   clientMessageId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
-}): OptimisticChatMessageEntry {
+}): OptimisticChatMessageInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
@@ -223,6 +225,7 @@ const routeMainChatThread$ = command(
     }
     clearArtifactSidebarParams(next);
     clearChatAutomationSidebarParams(next);
+    clearMailDraftSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: args.threadId },
       searchParams: next,
@@ -445,6 +448,10 @@ const sendNewThreadMessage$ = command(
       draft,
       prompt,
       {
+        includeAttachments: !(
+          get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ??
+          false
+        ),
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
         ),
@@ -459,12 +466,14 @@ const sendNewThreadMessage$ = command(
     const chatThreadEventId = crypto.randomUUID();
     set(
       appendOptimisticChatMessage$,
-      createNewThreadOptimisticMessageEntry({
-        threadId,
-        clientMessageId,
-        prepared,
-        generationTemplate,
-      }),
+      createOptimisticChatMessageEntry(
+        createNewThreadOptimisticMessageEntry({
+          threadId,
+          clientMessageId,
+          prepared,
+          generationTemplate,
+        }),
+      ),
     );
     await set(
       mintOptimisticThreadWithEvent$,

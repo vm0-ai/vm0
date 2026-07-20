@@ -15,6 +15,7 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::types::{
     ResumeSessionHistoryDownloadSource, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+    SessionHistorySizeBucket,
 };
 
 /// How long before we auto-flush pending ops (matching TS: 30s).
@@ -22,13 +23,6 @@ const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 
 /// Timeout for telemetry HTTP requests (shorter than default API timeout).
 const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
-
-const SIZE_64_KIB: u64 = 64 * 1024;
-const SIZE_256_KIB: u64 = 256 * 1024;
-const SIZE_1_MIB: u64 = 1024 * 1024;
-const SIZE_4_MIB: u64 = 4 * SIZE_1_MIB;
-const SIZE_16_MIB: u64 = 16 * SIZE_1_MIB;
-const SIZE_64_MIB: u64 = 64 * SIZE_1_MIB;
 
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
@@ -603,72 +597,36 @@ const fn session_history_download_source_value(
     }
 }
 
-#[derive(Clone, Copy)]
-enum SessionHistorySizeBucket {
-    LessThan64Kib,
-    From64To256Kib,
-    From256KibTo1Mib,
-    From1To4Mib,
-    From4To16Mib,
-    From16To64Mib,
-    From64To128Mib,
-}
-
-impl SessionHistorySizeBucket {
-    const fn from_size(size: u64) -> Self {
-        if size < SIZE_64_KIB {
-            Self::LessThan64Kib
-        } else if size < SIZE_256_KIB {
-            Self::From64To256Kib
-        } else if size < SIZE_1_MIB {
-            Self::From256KibTo1Mib
-        } else if size < SIZE_4_MIB {
-            Self::From1To4Mib
-        } else if size < SIZE_16_MIB {
-            Self::From4To16Mib
-        } else if size < SIZE_64_MIB {
-            Self::From16To64Mib
-        } else {
-            Self::From64To128Mib
-        }
-    }
-
-    const fn value(self) -> &'static str {
-        match self {
-            Self::LessThan64Kib => "lt_64_kib",
-            Self::From64To256Kib => "64_256_kib",
-            Self::From256KibTo1Mib => "256_kib_1_mib",
-            Self::From1To4Mib => "1_4_mib",
-            Self::From4To16Mib => "4_16_mib",
-            Self::From16To64Mib => "16_64_mib",
-            Self::From64To128Mib => "64_128_mib",
-        }
-    }
-
-    const fn requested_larger_prefix_extension_action_type(self) -> &'static str {
-        match self {
-            Self::LessThan64Kib => "session_history_requested_larger_prefix_extension_lt_64_kib",
-            Self::From64To256Kib => "session_history_requested_larger_prefix_extension_64_256_kib",
-            Self::From256KibTo1Mib => {
-                "session_history_requested_larger_prefix_extension_256_kib_1_mib"
-            }
-            Self::From1To4Mib => "session_history_requested_larger_prefix_extension_1_4_mib",
-            Self::From4To16Mib => "session_history_requested_larger_prefix_extension_4_16_mib",
-            Self::From16To64Mib => "session_history_requested_larger_prefix_extension_16_64_mib",
-            Self::From64To128Mib => "session_history_requested_larger_prefix_extension_64_128_mib",
-        }
-    }
-}
-
 const fn size_bucket(size: u64) -> &'static str {
-    SessionHistorySizeBucket::from_size(size).value()
+    SessionHistorySizeBucket::from_size(size).as_str()
 }
 
 pub(crate) const fn session_history_prefix_extension_action_type(
     raw_extension_size: u64,
 ) -> &'static str {
-    SessionHistorySizeBucket::from_size(raw_extension_size)
-        .requested_larger_prefix_extension_action_type()
+    match SessionHistorySizeBucket::from_size(raw_extension_size) {
+        SessionHistorySizeBucket::LessThan64Kib => {
+            "session_history_requested_larger_prefix_extension_lt_64_kib"
+        }
+        SessionHistorySizeBucket::From64To256Kib => {
+            "session_history_requested_larger_prefix_extension_64_256_kib"
+        }
+        SessionHistorySizeBucket::From256KibTo1Mib => {
+            "session_history_requested_larger_prefix_extension_256_kib_1_mib"
+        }
+        SessionHistorySizeBucket::From1To4Mib => {
+            "session_history_requested_larger_prefix_extension_1_4_mib"
+        }
+        SessionHistorySizeBucket::From4To16Mib => {
+            "session_history_requested_larger_prefix_extension_4_16_mib"
+        }
+        SessionHistorySizeBucket::From16To64Mib => {
+            "session_history_requested_larger_prefix_extension_16_64_mib"
+        }
+        SessionHistorySizeBucket::From64To128Mib => {
+            "session_history_requested_larger_prefix_extension_64_128_mib"
+        }
+    }
 }
 
 fn compression_ratio_bucket(
@@ -831,6 +789,12 @@ mod tests {
 
     #[test]
     fn session_history_size_bucket_boundaries_keep_stable_labels_and_actions() {
+        const SIZE_64_KIB: u64 = 64 * 1024;
+        const SIZE_256_KIB: u64 = 256 * 1024;
+        const SIZE_1_MIB: u64 = 1024 * 1024;
+        const SIZE_4_MIB: u64 = 4 * SIZE_1_MIB;
+        const SIZE_16_MIB: u64 = 16 * SIZE_1_MIB;
+        const SIZE_64_MIB: u64 = 64 * SIZE_1_MIB;
         let cases = [
             (
                 0,

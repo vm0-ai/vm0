@@ -205,8 +205,8 @@ describe("AUTH-02: approval transitions and timezone", () => {
   });
 });
 
-describe("AUTH-02: no-org approval issues an org-less PAT", () => {
-  it("approves and exchanges for a session without an active organization", async () => {
+describe("AUTH-02: no-org approval cannot issue a PAT", () => {
+  it("reports missing authenticated identity instead of issuing an unusable token", async () => {
     const noOrgActor = bdd.user({ orgId: null });
 
     const started = await authDevice.startCliDevice();
@@ -217,20 +217,13 @@ describe("AUTH-02: no-org approval issues an org-less PAT", () => {
     );
     expect(approved.body).toStrictEqual({ success: true });
 
-    const token = await authDevice.requestCliToken(started.device_code, [200]);
-    if (token.status !== 200) {
-      throw new Error(`Expected CLI token exchange, got ${token.status}`);
-    }
-    expect(token.body.access_token).toMatch(/^vm0_pat_/);
-    expect(token.body.token_type).toBe("Bearer");
-    expect(token.body.expires_in).toBe(90 * 24 * 60 * 60);
-
-    // An org-less exchange issues a PAT with an empty org claim, which the
-    // CLI token verifier rejects (`orgId: z.string().min(1)`), so the only
-    // visible contract is the token-issuance response itself.
-    const reused = await authDevice.requestCliToken(started.device_code, [400]);
-    expectOAuthError(reused.body);
-    expect(reused.body.error).toBe("invalid_request");
+    const token = await authDevice.requestCliToken(started.device_code, [500]);
+    expectOAuthError(token.body);
+    expect(token.body).toStrictEqual({
+      error: "server_error",
+      error_description:
+        "Authenticated device code is missing user or organization identity",
+    });
   });
 });
 
@@ -500,6 +493,50 @@ describe("CLI-TEST: test-token provisioning", () => {
     context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
     const unresolved = await authDevice.requestTestTokenRaw();
     expect(unresolved.status).toBe(500);
+  });
+
+  it("refreshes recreated users and serves downstream setup from cache", async () => {
+    const firstActor = bdd.user();
+    authDevice.seedClerkDirectory(firstActor);
+    const first = await authDevice.requestTestToken(
+      { email: firstActor.email },
+      [200],
+    );
+    if (first.status !== 200) {
+      throw new Error(`Expected first test token, got ${first.status}`);
+    }
+    expect(first.body.user_id).toBe(firstActor.userId);
+
+    const recreatedActor = bdd.user({ email: firstActor.email });
+    authDevice.seedClerkDirectory(recreatedActor);
+    const refreshed = await authDevice.requestTestToken(
+      { email: firstActor.email },
+      [200],
+    );
+    if (refreshed.status !== 200) {
+      throw new Error(`Expected refreshed test token, got ${refreshed.status}`);
+    }
+    expect(refreshed.body.user_id).toBe(recreatedActor.userId);
+
+    context.mocks.clerk.users.getUserList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
+    const seeded = await authDevice.requestTestConnector(
+      { email: firstActor.email },
+      {
+        connectorName: "github",
+        authMethod: "oauth",
+        accessToken: "cached-identity-access-token",
+      },
+      [200],
+    );
+    if (seeded.status !== 200) {
+      throw new Error(`Expected cached identity seed, got ${seeded.status}`);
+    }
+    expect(seeded.body.orgId).toBe(recreatedActor.orgId);
   });
 });
 

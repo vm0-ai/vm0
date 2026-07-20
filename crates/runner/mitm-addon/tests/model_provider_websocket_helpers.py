@@ -2,7 +2,6 @@
 
 import json
 from collections.abc import Callable
-from pathlib import Path
 
 import pytest
 from mitmproxy import http, websocket
@@ -11,25 +10,15 @@ from wsproto.frame_protocol import Opcode
 import deferred_callbacks
 import mitm_addon
 import response_streaming
-from tests.model_provider_flow_helpers import (
-    make_openai_responses_websocket_flow,
-    model_provider_usage_sources,
-)
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
-_ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
+ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
 
 
-def _openai_model_websocket_flow(
-    tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
-) -> http.HTTPFlow:
-    return make_openai_responses_websocket_flow(real_flow, tmp_path)
-
-
-def _capture_deferred_websocket_trims(
+def capture_deferred_websocket_trims(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[_ScheduledWebSocketTrim]:
-    scheduled: list[_ScheduledWebSocketTrim] = []
+) -> list[ScheduledWebSocketTrim]:
+    scheduled: list[ScheduledWebSocketTrim] = []
 
     def call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
         scheduled.append((callback, flow))
@@ -38,7 +27,7 @@ def _capture_deferred_websocket_trims(
     return scheduled
 
 
-def _run_deferred_websocket_trims(scheduled: list[_ScheduledWebSocketTrim]) -> None:
+def run_deferred_websocket_trims(scheduled: list[ScheduledWebSocketTrim]) -> None:
     pending = list(scheduled)
     scheduled.clear()
     for callback, flow in pending:
@@ -57,7 +46,7 @@ def _make_websocket_message(
     )
 
 
-def _append_websocket_message(
+def append_websocket_message(
     flow: http.HTTPFlow,
     *,
     from_client: bool,
@@ -72,7 +61,7 @@ def _append_websocket_message(
     return message
 
 
-def _openai_websocket_usage_frame(
+def openai_websocket_usage_frame(
     response_id: str,
     *,
     input_tokens: int = 10,
@@ -91,33 +80,29 @@ def _openai_websocket_usage_frame(
     ).encode()
 
 
-def _set_websocket_message(
+def set_websocket_message(
     flow: http.HTTPFlow,
     *,
     from_client: bool,
     content: bytes,
 ) -> None:
     flow.websocket = websocket.WebSocketData(messages=[])
-    _append_websocket_message(flow, from_client=from_client, content=content)
+    append_websocket_message(flow, from_client=from_client, content=content)
 
 
 def _assert_model_websocket_usage_started(flow: http.HTTPFlow) -> None:
     assert response_streaming.is_model_websocket_usage_enabled(flow)
 
 
-def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
+def feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
     _assert_model_websocket_usage_started(flow)
-    _set_websocket_message(flow, from_client=False, content=content)
+    set_websocket_message(flow, from_client=False, content=content)
     mitm_addon.websocket_message(flow)
 
 
-def _feed_websocket_server_text_message(flow: http.HTTPFlow, content: str) -> None:
+def feed_websocket_server_text_message(flow: http.HTTPFlow, content: str) -> None:
     _assert_model_websocket_usage_started(flow)
-    _set_websocket_message(flow, from_client=False, content=content.encode())
+    set_websocket_message(flow, from_client=False, content=content.encode())
     assert flow.websocket is not None
     object.__setattr__(flow.websocket.messages[-1], "content", content)
     mitm_addon.websocket_message(flow)
-
-
-def _model_websocket_usage_sources(flow: http.HTTPFlow) -> dict:
-    return model_provider_usage_sources(flow)

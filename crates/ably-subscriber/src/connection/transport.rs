@@ -10,7 +10,7 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use super::state::idle_deadline;
 use crate::Error;
 use crate::protocol::error_code;
-use crate::types::redact_access_token;
+use crate::types::redact_auth_query_params;
 
 type WsStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -162,13 +162,13 @@ pub(super) fn websocket_close_reason(frame: Option<&CloseFrame>) -> String {
 }
 
 pub(super) fn websocket_close_frame_reason(frame: &CloseFrame) -> String {
-    redact_access_token(frame.reason.as_ref())
+    redact_auth_query_params(frame.reason.as_ref())
 }
 
 pub(super) fn websocket_error_reason(error: &tungstenite::Error) -> String {
     format!(
         "websocket error: {}",
-        redact_access_token(&error.to_string())
+        redact_auth_query_params(&error.to_string())
     )
 }
 
@@ -177,10 +177,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn websocket_close_reason_redacts_access_token_from_reason() {
+    fn websocket_close_reason_redacts_auth_query_params_from_reason() {
         let frame = CloseFrame {
             code: tungstenite::protocol::frame::coding::CloseCode::Normal,
-            reason: "url=wss://example/?access_token=close-secret&format=msgpack".into(),
+            reason: "url=wss://example/?access_token=close-token&resume=close-key&format=msgpack"
+                .into(),
         };
 
         let reason = websocket_close_reason(Some(&frame));
@@ -188,28 +189,31 @@ mod tests {
 
         assert_eq!(
             reason,
-            "websocket closed code=1000 reason=url=wss://example/?access_token=<redacted>&format=msgpack"
+            "websocket closed code=1000 reason=url=wss://example/?access_token=<redacted>&resume=<redacted>&format=msgpack"
         );
         assert_eq!(
             log_reason,
-            "url=wss://example/?access_token=<redacted>&format=msgpack"
+            "url=wss://example/?access_token=<redacted>&resume=<redacted>&format=msgpack"
         );
-        assert!(!reason.contains("close-secret"));
-        assert!(!log_reason.contains("close-secret"));
+        assert!(!reason.contains("close-token"));
+        assert!(!reason.contains("close-key"));
+        assert!(!log_reason.contains("close-token"));
+        assert!(!log_reason.contains("close-key"));
     }
 
     #[test]
-    fn websocket_error_reason_redacts_access_token() {
+    fn websocket_error_reason_redacts_auth_query_params() {
         let err = tungstenite::Error::Url(tungstenite::error::UrlError::UnableToConnect(
-            "wss://example/?access_token=error-secret&format=msgpack".to_string(),
+            "wss://example/?access_token=error-token&resume=error-key&format=msgpack".to_string(),
         ));
 
         let reason = websocket_error_reason(&err);
 
         assert_eq!(
             reason,
-            "websocket error: URL error: Unable to connect to wss://example/?access_token=<redacted>&format=msgpack"
+            "websocket error: URL error: Unable to connect to wss://example/?access_token=<redacted>&resume=<redacted>&format=msgpack"
         );
-        assert!(!reason.contains("error-secret"));
+        assert!(!reason.contains("error-token"));
+        assert!(!reason.contains("error-key"));
     }
 }

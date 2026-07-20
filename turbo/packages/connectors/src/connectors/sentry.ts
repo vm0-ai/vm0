@@ -17,6 +17,7 @@ export const sentry = {
           clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["SENTRY_ACCESS_TOKEN", "SENTRY_REFRESH_TOKEN"],
           variables: [],
         },

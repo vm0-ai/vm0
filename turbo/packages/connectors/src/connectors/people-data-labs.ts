@@ -12,6 +12,7 @@ export const peopleDataLabs = {
         helpText:
           "1. Log in to your [People Data Labs dashboard](https://dashboard.peopledatalabs.com)\n2. Open your API dashboard\n3. Copy your API key\n4. People Data Labs accepts it in the `X-Api-Key` header",
         storage: {
+          version: 1,
           secrets: ["PEOPLE_DATA_LABS_API_KEY"],
           variables: [],
         },

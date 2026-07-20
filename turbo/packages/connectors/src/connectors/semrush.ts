@@ -19,6 +19,7 @@ export const semrush = {
         helpText:
           "1. Log in to [Semrush](https://www.semrush.com)\n2. Click your profile icon in the top-right corner\n3. Select **Subscription info**, then open the **API Units** tab\n4. Copy your API key",
         storage: {
+          version: 1,
           secrets: ["SEMRUSH_TOKEN"],
           variables: [],
         },

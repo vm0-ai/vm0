@@ -2259,12 +2259,13 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation", async () => {
+  it("orders artifacts after connectors in the manage navigation", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.Artifacts]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2274,10 +2275,60 @@ describe("zero sidebar", () => {
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
     const workflows = within(nav).getByText("Workflows");
     const connectors = within(nav).getByText("Connectors");
+    const artifacts = within(nav).getByText("Artifacts");
     expect(
       workflows.compareDocumentPosition(connectors) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      connectors.compareDocumentPosition(artifacts) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
+  });
+
+  it("renders the three-column navigation when the flag is on", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await waitFor(() => {
+      return screen.getByTestId("labeled-nav-rail");
+    });
+
+    // Labeled icon rail carries text captions for its nav destinations.
+    expect(within(rail).getByText("Agents")).toBeInTheDocument();
+    expect(within(rail).getByText("Connectors")).toBeInTheDocument();
+    expect(within(rail).getByLabelText("Insights")).toBeInTheDocument();
+
+    // The middle list column owns the chat header and pinned agents.
+    const list = screen.getByTestId("chat-list-column");
+    expect(within(list).getByText("Chat")).toBeInTheDocument();
+    expect(within(list).getByLabelText("New chat")).toBeInTheDocument();
+    expect(
+      within(list).getByTestId("pinned-agents-horizontal"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the single-column sidebar when the three-column flag is off", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await waitFor(() => {
+      return sidebar();
+    });
+
+    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
   });
 });

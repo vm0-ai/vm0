@@ -10,11 +10,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
-const ORG_SENTINEL_USER_ID = "__org__";
+export const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
-  FeatureSwitchKey.RelationshipMemory,
-  FeatureSwitchKey.RelationshipMemoryRuntimeInjection,
   FeatureSwitchKey.AgentUnreadIndicators,
   FeatureSwitchKey.ChatThreadUnifiedSearch,
 ];
@@ -68,6 +66,31 @@ function mergeScopedFeatureSwitches(
   return merged;
 }
 
+export interface UserFeatureSwitchOverrideRow {
+  readonly userId: string;
+  readonly switches: Record<string, boolean>;
+}
+
+export function userFeatureSwitchOverridesFromRows(
+  rows: readonly UserFeatureSwitchOverrideRow[],
+  userId: string,
+): Record<string, boolean> {
+  let userSwitches: Record<string, boolean> = {};
+  let orgSwitches: Record<string, boolean> = {};
+
+  for (const row of rows) {
+    const switches = filterUserOverridableFeatureSwitchOverrides(row.switches);
+    if (row.userId === userId) {
+      userSwitches = switches;
+    }
+    if (row.userId === ORG_SENTINEL_USER_ID) {
+      orgSwitches = switches;
+    }
+  }
+
+  return mergeScopedFeatureSwitches(userSwitches, orgSwitches);
+}
+
 async function loadUserFeatureSwitchOverrides(
   db: ReadonlyDb,
   orgId: string,
@@ -86,20 +109,7 @@ async function loadUserFeatureSwitchOverrides(
       ),
     );
 
-  let userSwitches: Record<string, boolean> = {};
-  let orgSwitches: Record<string, boolean> = {};
-
-  for (const row of rows) {
-    const switches = filterUserOverridableFeatureSwitchOverrides(row.switches);
-    if (row.userId === userId) {
-      userSwitches = switches;
-    }
-    if (row.userId === ORG_SENTINEL_USER_ID) {
-      orgSwitches = switches;
-    }
-  }
-
-  return mergeScopedFeatureSwitches(userSwitches, orgSwitches);
+  return userFeatureSwitchOverridesFromRows(rows, userId);
 }
 
 export function userFeatureSwitchOverrides(

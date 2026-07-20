@@ -11,6 +11,7 @@ export const wandb = {
         label: "API Key",
         helpText: "Go to wandb.ai → Settings → API Keys → copy your key.",
         storage: {
+          version: 1,
           secrets: ["WANDB_TOKEN"],
           variables: [],
         },

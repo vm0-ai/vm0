@@ -1,8 +1,76 @@
 use api_contracts::generated::types::{
     runners::storage as runner_storage,
-    webhooks::agent::storages::{FileEntryWithHash, commit, prepare},
+    webhooks::agent::{
+        checkpoints,
+        storages::{FileEntryWithHash, commit, prepare},
+    },
 };
 use serde_json::json;
+
+#[test]
+fn generated_checkpoint_request_omits_absent_snapshots() {
+    let history_hash = "a".repeat(64);
+    let request = checkpoints::Request {
+        run_id: "run-1".to_string(),
+        cli_agent_type: "claude-code".to_string(),
+        cli_agent_session_id: "session-1".to_string(),
+        cli_agent_session_history_hash: history_hash.clone(),
+        artifact_snapshots: None,
+        volume_versions_snapshot: None,
+    };
+
+    let value = serde_json::to_value(request).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "runId": "run-1",
+            "cliAgentType": "claude-code",
+            "cliAgentSessionId": "session-1",
+            "cliAgentSessionHistoryHash": history_hash,
+        })
+    );
+    assert!(value.get("artifactSnapshots").is_none());
+    assert!(value.get("volumeVersionsSnapshot").is_none());
+}
+
+#[test]
+fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
+    let request = checkpoints::Request {
+        run_id: "run-1".to_string(),
+        cli_agent_type: "codex".to_string(),
+        cli_agent_session_id: "session-1".to_string(),
+        cli_agent_session_history_hash: "b".repeat(64),
+        artifact_snapshots: Some(vec![checkpoints::RequestArtifactSnapshot {
+            name: "memory".to_string(),
+            version: "version-1".to_string(),
+            mount_path: "/memory".to_string(),
+            missing_root_policy: Some(
+                runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion,
+            ),
+        }]),
+        volume_versions_snapshot: None,
+    };
+
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "runId": "run-1",
+            "cliAgentType": "codex",
+            "cliAgentSessionId": "session-1",
+            "cliAgentSessionHistoryHash": "b".repeat(64),
+            "artifactSnapshots": [{
+                "name": "memory",
+                "version": "version-1",
+                "mountPath": "/memory",
+                "missingRootPolicy": "preserveParentVersion",
+            }],
+        })
+    );
+
+    let round_trip: checkpoints::Request = serde_json::from_value(value).unwrap();
+    assert_eq!(round_trip, request);
+}
 
 #[test]
 fn generated_prepare_request_serializes_wire_shape() {
@@ -229,6 +297,7 @@ fn generated_storage_manifest_serializes_claim_shape() {
             vas_version_id: "version-1".to_string(),
             instructions_target_filename: None,
             archive_url: "https://storage.example/workspace.tar.gz".to_string(),
+            archive_size: None,
         }],
         artifacts: vec![runner_storage::ArtifactEntry {
             mount_path: "/home/user/.claude/projects/project".to_string(),
@@ -238,6 +307,7 @@ fn generated_storage_manifest_serializes_claim_shape() {
             archive_url: Some("https://storage.example/artifact.tar.gz".to_string()),
             empty: None,
             missing_root_policy: None,
+            archive_size: None,
         }],
     };
 

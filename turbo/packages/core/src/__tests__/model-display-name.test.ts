@@ -10,6 +10,10 @@ describe("getModelDisplayName", () => {
     expect(getModelDisplayName("gpt-5.5")).toBe("GPT 5.5");
   });
 
+  it("uses a friendly label for Kimi K3", () => {
+    expect(getModelDisplayName("kimi-k3")).toBe("Kimi K3");
+  });
+
   it("falls back to the raw model ID when no display name is defined", () => {
     expect(getModelDisplayName("custom/model")).toBe("custom/model");
   });

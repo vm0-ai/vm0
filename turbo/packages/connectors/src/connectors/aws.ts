@@ -21,6 +21,7 @@ export const aws = {
           clientId: "arn:aws:signin:::devtools/cross-device",
         },
         storage: {
+          version: 1,
           secrets: [
             "AWS_LOGIN_REFRESH_TOKEN",
             "AWS_LOGIN_DPOP_KEY",

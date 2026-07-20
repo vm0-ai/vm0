@@ -13,6 +13,7 @@ export const pdforge = {
         helpText:
           "1. Create an account on [pdforge](https://pdforge.com)\n2. Two API keys are automatically generated when you create your account\n3. Go to the **API Keys** menu in the sidebar to view your keys\n4. Copy your API key and use it in the `Authorization: Bearer pdfnoodle_api_[your_key]` header",
         storage: {
+          version: 1,
           secrets: ["PDFORGE_API_KEY"],
           variables: [],
         },

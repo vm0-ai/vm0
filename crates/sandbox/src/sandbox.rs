@@ -10,6 +10,31 @@ use crate::types::{
     StartProcessRequest, WriteFileEntry,
 };
 
+/// Eligibility result after a sandbox successfully reaches the parked state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxParkOutcome {
+    /// The parked sandbox may be admitted to an idle pool for later reuse.
+    Reusable,
+    /// The sandbox is validly parked but must be destroyed instead of reused.
+    NonReusable(SandboxParkNonReusableReason),
+}
+
+/// Stable reason why a validly parked sandbox cannot be reused.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxParkNonReusableReason {
+    /// The guest retained too much memory after the bounded park-time reclaim.
+    SevereMemoryRetention,
+}
+
+impl SandboxParkNonReusableReason {
+    /// Stable low-cardinality value for lifecycle logs and cleanup context.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SevereMemoryRetention => "severe_memory_retention",
+        }
+    }
+}
+
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
 /// Implementations are created by a [`SandboxFactory`](crate::SandboxFactory)
@@ -116,17 +141,23 @@ pub trait Sandbox: Send + Sync + Any {
     /// implementations must tolerate this — skipping graceful shutdown is
     /// still correct because the sandbox was idle with no user workload.
     ///
+    /// On success, the returned [`SandboxParkOutcome`] states whether the
+    /// validly parked sandbox may enter an idle pool. A non-reusable outcome is
+    /// not an operational failure; the lifecycle owner must destroy the parked
+    /// sandbox through its parked cleanup path.
+    ///
     /// Must be idempotent for a healthy already-parked sandbox: calling
-    /// `park()` again returns `Ok(())` without side effects. Implementations
-    /// may still return `Err` if lifecycle guards detect that the sandbox is
-    /// internally dirty or otherwise not safe to reuse.
+    /// `park()` again returns the same successful eligibility outcome without
+    /// side effects. Implementations may still return `Err` if lifecycle guards
+    /// detect that the sandbox is internally dirty or otherwise not safe to
+    /// reuse.
     ///
     /// On `Err`, the caller must not dispatch further work to the sandbox.
     /// The sandbox may be partially parked or marked internally dirty; the
     /// lifecycle owner should destroy it, or perform an explicit retry only
     /// when the implementation documents that retry as safe.
-    async fn park(&mut self) -> Result<()> {
-        Ok(())
+    async fn park(&mut self) -> Result<SandboxParkOutcome> {
+        Ok(SandboxParkOutcome::Reusable)
     }
 
     /// Transition the sandbox back to the active state.
@@ -196,13 +227,23 @@ pub trait Sandbox: Send + Sync + Any {
 
     /// Stream a guest file to a host path and publish copied contents.
     ///
+    /// A successful copy creates missing host parent directories as needed and
+    /// atomically replaces an existing non-directory destination with a newly
+    /// created private regular file. On Unix hosts, the published file has mode
+    /// `0o600`. Metadata from an existing destination is not preserved.
+    ///
     /// The guest path must be non-empty and must not contain NUL bytes.
     ///
     /// If [`CopyFileOptions::missing_ok`] is enabled, a backend result that
     /// reports the path does not resolve to a regular file is treated as
     /// success with `bytes_copied == 0` without publishing a host file or
     /// replacing an existing host file. Host-side setup and validation errors
-    /// can still fail the operation.
+    /// can still fail the operation, and setup may leave newly created parent
+    /// directories behind.
+    ///
+    /// Failures before host publication leave an existing destination
+    /// unchanged. An error reported after publication does not imply that the
+    /// destination was rolled back.
     async fn copy_file(
         &self,
         path: &str,

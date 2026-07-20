@@ -50,19 +50,16 @@ async function onboardAdmin(
     orgState.slug = options.slug;
   }
   api.mockClerkOrg(admin, orgState);
-  const setup = await api.setupOnboarding(admin, {
+  const bootstrap = await api.bootstrapOnboarding(admin, {
     displayName: "BDD User Config Agent",
-    workspaceName: "BDD User Config Workspace",
     sound: "calm",
-    timezone: "UTC",
-    role: "engineering",
   });
-  if (setup.status !== 200 && setup.status !== 409) {
+  if (bootstrap.status !== 200) {
     throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
+      `Expected onboarding bootstrap to succeed, got ${bootstrap.status}`,
     );
   }
-  return setup.body.agentId;
+  return bootstrap.body.agentId;
 }
 
 describe("AUTH-03 user config CRUD error boundaries", () => {
@@ -297,19 +294,14 @@ describe("AUTH-03 agent user connectors", () => {
       code: "VALIDATION_ERROR",
     });
 
-    const gated = await cfg.requestUpdateUserConnectors(
+    const discoveryHidden = await cfg.updateUserConnectors(
       admin,
       agent.agentId,
       ["bentoml"],
-      [400],
     );
-    expectApiError(gated.body);
-    expect(gated.body.error).toStrictEqual({
-      message: "Connector types are not available: bentoml",
-      code: "VALIDATION_ERROR",
-    });
-    const readAfterGated = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readAfterGated.enabledTypes).toStrictEqual([]);
+    expect(discoveryHidden.enabledTypes).toStrictEqual(["bentoml"]);
+    const readAfterHidden = await cfg.readUserConnectors(admin, agent.agentId);
+    expect(readAfterHidden.enabledTypes).toStrictEqual(["bentoml"]);
 
     const missingAgentId = randomUUID();
     const missingRead = await cfg.requestReadUserConnectors(

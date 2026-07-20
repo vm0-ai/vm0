@@ -15,6 +15,7 @@ export const netsuite = {
         helpText:
           "Create an OAuth 2.0 integration record in NetSuite, authorize it once, then provide the account ID, client credentials, and refresh token.",
         storage: {
+          version: 1,
           secrets: [
             "NETSUITE_CLIENT_SECRET",
             "NETSUITE_REFRESH_TOKEN",

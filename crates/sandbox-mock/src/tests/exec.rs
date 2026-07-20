@@ -10,6 +10,7 @@ async fn sandbox_default_exec_succeeds() {
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         })
@@ -28,6 +29,7 @@ async fn sandbox_exec_rejects_invalid_env_key_without_recording_call() {
             timeout: Duration::from_secs(5),
             env: &[("BAD-NAME", "x")],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         })
@@ -76,6 +78,7 @@ async fn sandbox_queued_exec_results() {
         timeout: Duration::from_secs(5),
         env: &[],
         sudo: false,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
     };
@@ -121,6 +124,7 @@ async fn sandbox_persistent_exec_matcher_serves_repeated_calls_after_one_shot_ov
         timeout: Duration::from_secs(5),
         env: &[],
         sudo: false,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
     };
@@ -148,6 +152,7 @@ async fn sandbox_exec_applies_mock_capture_budget() {
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: ExecOutputLimits::separate(3, 4),
         })
@@ -177,6 +182,7 @@ async fn sandbox_exec_matcher_applies_capture_limits_and_is_one_shot() {
         timeout: Duration::from_secs(5),
         env: &[],
         sudo: false,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: ExecOutputLimits::separate(3, 4),
     };

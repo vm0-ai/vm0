@@ -81,13 +81,15 @@ impl FirecrackerFactory {
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         let mode = match config.snapshot.as_ref() {
-            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore { snapshot },
+            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore {
+                snapshot: snapshot.clone(),
+            },
             None => prerequisites::PrerequisiteMode::FactoryFresh,
         };
-        prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
-            binary_path: &config.binary_path,
-            kernel_path: &config.kernel_path,
-            rootfs_path: &config.rootfs_path,
+        prerequisites::check_prerequisites(prerequisites::PrerequisiteConfig {
+            binary_path: config.binary_path.clone(),
+            kernel_path: config.kernel_path.clone(),
+            rootfs_path: config.rootfs_path.clone(),
             mode,
         })
         .await?;
@@ -106,7 +108,8 @@ impl FirecrackerFactory {
                     proxy_port: config.proxy_port,
                     dns_port: config.dns_port,
                 }
-                .into_checked()?;
+                .into_checked()
+                .await?;
                 let netns_pool = NetnsPoolHandle::create_checked(netns_config)
                     .await
                     .map_err(|e| SandboxError::Initialization {
@@ -598,7 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_cleans_owned_netns_pool_with_extra_arc_refs() {
-        let (pool, mut lease) = test_pool_with_lease("owned-test-ns");
+        let pool = NetnsPoolHandle::new_for_test(NetnsPool::active_for_test());
         let _destroy_task_clone = pool.clone();
         let mut factory = test_factory_with_resources(
             pool.clone(),
@@ -606,32 +609,31 @@ mod tests {
             test_leak_cleaner(),
         );
 
+        assert!(pool.is_active_for_test().await);
         factory.shutdown().await;
 
         assert!(factory.resources.is_none());
-        let retained = factory
-            .shutdown_netns_pool
-            .as_ref()
-            .expect("shutdown factory should retain netns release authority");
-        let _ = retained.release(&mut lease).await;
-        assert!(lease.is_none());
+        assert!(!pool.is_active_for_test().await);
     }
 
     #[tokio::test]
     async fn shutdown_keeps_shared_netns_pool_for_runtime_shutdown() {
-        let (pool, mut lease) = test_pool_with_lease("shared-test-ns");
+        let pool = NetnsPoolHandle::new_for_test(NetnsPool::active_for_test());
         let mut factory = test_factory_with_resources(
             pool.clone(),
             NetnsPoolOwnership::Shared,
             test_leak_cleaner(),
         );
 
+        assert!(pool.is_active_for_test().await);
         factory.shutdown().await;
 
         assert!(factory.resources.is_none());
         assert!(factory.shutdown_netns_pool.is_some());
-        let _ = pool.release(&mut lease).await;
-        assert!(lease.is_none());
+        assert!(pool.is_active_for_test().await);
+
+        pool.cleanup().await.unwrap();
+        assert!(!pool.is_active_for_test().await);
     }
 
     fn test_config(base_dir: PathBuf) -> FirecrackerConfig {

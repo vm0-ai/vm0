@@ -14,6 +14,12 @@
 //!                               with code 1
 //!   @fail-invalid-utf8-long   - Output many invalid UTF-8 bytes to stderr and exit
 //!                               with code 1
+//!   @stdout-over-limit-no-newline
+//!                             - Stream an oversized stdout record, then hang
+//!   @stdout-over-limit-newline
+//!                             - Stream an oversized LF record, then hang
+//!   @stdout-invalid-utf8      - Emit invalid stdout UTF-8, then hang
+//!   @stdout-record-boundaries - Emit exact-limit, CRLF, and EOF stdout records
 //!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
 //!   @stuck-tool-deaf          - Same, but ignores SIGTERM so only SIGKILL
 //!                               can terminate it
@@ -40,6 +46,7 @@
 //!                               emit result, and exit(0)
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
 //!                               lines as JSONL and emit them unchanged.
+//!   @ECHO-HANG@               - Same as @ECHO@, then remain alive until reaped.
 //!   @active-input-smoke:<n>   - Stream-json stdin marker. Emit a first result,
 //!                               then read n later user frames from the same
 //!                               stdin stream and emit a deterministic final result.

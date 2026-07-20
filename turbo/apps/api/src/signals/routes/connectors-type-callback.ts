@@ -1,31 +1,22 @@
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
-  connectorAuthMethodHasGrantKind,
-  getConnectorAuthMethod,
-  resolveConnectorAuthClientForMethod,
-  getConnectorAuthMethodGrantScopes,
-  hasConnectorAuthCodeGrant,
-  hasConnectorOpenIdAuthGrant,
+  connectorCatalogAuthMethodIdSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  connectorGrantScopes,
+  resolveConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-  type AuthGrantConnectorType,
-  type AuthCodeGrantConnectorType,
-  type ConnectorAuthCodeGrantAuthMethodId,
-  type ConnectorOpenIdAuthGrantAuthMethodId,
-  type OpenIdAuthGrantConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  exchangeConnectorAuthCode,
-  verifyConnectorOpenIdAuthCallback,
+  exchangeConnectorAuthCodeWithMethod,
+  verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
-import { writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { optionalEnv } from "../../lib/env";
 import {
@@ -34,6 +25,17 @@ import {
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
 import { authorizeConnectedConnector$ } from "../services/connected-connector-authorization.service";
+import {
+  connectorActionResolverForSnapshot,
+  type ConnectorActionResolver,
+  type ResolvedConnectorActionMethod,
+} from "../services/connector-action-resolver.service";
+import {
+  getConnectorRuntimeConnector,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeConnector,
+  type ConnectorRuntimeSnapshot,
+} from "../services/connector-catalog-runtime.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import {
   linkGithubVm0User,
@@ -42,7 +44,7 @@ import {
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
-  getConnectorOAuthCanonicalRedirectUrl,
+  getConnectorOAuthCanonicalRedirectUrlForMethods,
   getConnectorOAuthOrigin,
 } from "./connector-oauth-origin";
 import {
@@ -56,29 +58,8 @@ type CallbackIdentity = {
   readonly orgId: string;
 };
 
-type ConnectorAuthCodeExchangeResult = Awaited<
-  ReturnType<typeof exchangeConnectorAuthCode>
->;
-
-type AuthCodeCallbackMethodRef<
-  Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<Type> =
-    ConnectorAuthCodeGrantAuthMethodId<Type>,
-> = {
-  readonly connectorType: Type;
-  readonly authMethod: Method;
-};
-
-type OpenIdCallbackMethodRef<
-  Type extends OpenIdAuthGrantConnectorType = OpenIdAuthGrantConnectorType,
-  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type> =
-    ConnectorOpenIdAuthGrantAuthMethodId<Type>,
-> = {
-  readonly connectorType: Type;
-  readonly authMethod: Method;
-};
-
-type CompleteOAuthCallbackInput = AuthCodeCallbackMethodRef & {
+type CompleteOAuthCallbackInput = {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -91,7 +72,8 @@ type CompleteOAuthCallbackInput = AuthCodeCallbackMethodRef & {
   readonly type: string;
 };
 
-type CompleteOpenIdCallbackInput = OpenIdCallbackMethodRef & {
+type CompleteOpenIdCallbackInput = {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly callbackParams: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
@@ -105,19 +87,21 @@ type CompleteOpenIdCallbackInput = OpenIdCallbackMethodRef & {
 type ResolveCallbackStateInput = {
   readonly origin: string;
   readonly type: string;
-  readonly connectorType: AuthCodeGrantConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly storedState: StoredOAuthState;
+  readonly resolver: ConnectorActionResolver;
 };
 
 type ResolveOpenIdCallbackStateInput = {
   readonly origin: string;
   readonly type: string;
-  readonly connectorType: OpenIdAuthGrantConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly storedState: StoredOAuthState;
+  readonly resolver: ConnectorActionResolver;
 };
 
 type ResolvedCallbackState =
-  | ({
+  | {
       readonly ok: true;
       readonly identity: CallbackIdentity;
       readonly agentId: string | null;
@@ -125,21 +109,23 @@ type ResolvedCallbackState =
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
-    } & AuthCodeCallbackMethodRef)
+      readonly resolvedMethod: ResolvedConnectorActionMethod;
+    }
   | {
       readonly ok: false;
       readonly response: Response;
     };
 
 type ResolvedOpenIdCallbackState =
-  | ({
+  | {
       readonly ok: true;
       readonly identity: CallbackIdentity;
       readonly agentId: string | null;
       readonly authorizeAgent: boolean;
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
-    } & OpenIdCallbackMethodRef)
+      readonly resolvedMethod: ResolvedConnectorActionMethod;
+    }
   | {
       readonly ok: false;
       readonly response: Response;
@@ -156,26 +142,6 @@ type ClaimedCallbackState =
     };
 
 type ConnectorCallbackQuery = Readonly<Record<string, string | undefined>>;
-
-type ResolvedAuthCodeConnectorType =
-  | {
-      readonly ok: true;
-      readonly connectorType: AuthCodeGrantConnectorType;
-    }
-  | {
-      readonly ok: false;
-      readonly response: Response;
-    };
-
-type ResolvedOpenIdConnectorType =
-  | {
-      readonly ok: true;
-      readonly connectorType: OpenIdAuthGrantConnectorType;
-    }
-  | {
-      readonly ok: false;
-      readonly response: Response;
-    };
 
 function redirectWithError(
   origin: string,
@@ -214,30 +180,34 @@ function missingStateRedirectResponse(origin: string, type: string): Response {
   return redirectWithError(origin, type, "Missing state parameter", true);
 }
 
-async function exchangeTokenForConnector<
-  Type extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
->(
-  args: AuthCodeCallbackMethodRef<Type, Method> & {
-    readonly code: string;
-    readonly redirectUri: string;
-    readonly state: string | undefined;
-    readonly codeVerifier: string | undefined;
-    readonly oauthContext: string | undefined;
-  },
-): Promise<ConnectorAuthCodeExchangeResult> {
-  const authClient = resolveConnectorAuthClientForMethod(
-    args.connectorType,
-    args.authMethod,
+async function exchangeTokenForConnector(args: {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly state: string | undefined;
+  readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
+}): Promise<ConnectorAuthProviderGrantResult> {
+  if (
+    args.resolvedMethod.method.grant.kind !== "auth-code" ||
+    args.resolvedMethod.method.client === undefined
+  ) {
+    throw new Error("Connector execution is not configured");
+  }
+  const authClient = resolveConnectorAuthClient(
+    args.resolvedMethod.method.client,
     optionalEnv,
   );
   if (!authClient) {
-    throw new Error(`${args.connectorType} auth client not configured`);
+    throw new Error(
+      `${args.resolvedMethod.connectorRef} auth client not configured`,
+    );
   }
 
-  return await exchangeConnectorAuthCode({
-    type: args.connectorType,
-    authMethod: args.authMethod,
+  return await exchangeConnectorAuthCodeWithMethod({
+    connectorRef: args.resolvedMethod.connectorRef,
+    authMethodId: args.resolvedMethod.authMethodId,
+    method: args.resolvedMethod.method,
     authClient,
     code: args.code,
     redirectUri: args.redirectUri,
@@ -247,27 +217,17 @@ async function exchangeTokenForConnector<
   });
 }
 
-function getRequestedScopes<
-  Type extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
->(args: AuthCodeCallbackMethodRef<Type, Method>): readonly string[] {
-  return getConnectorAuthMethodGrantScopes(args.connectorType, args.authMethod);
-}
-
-async function verifyOpenIdForConnector<
-  Type extends OpenIdAuthGrantConnectorType,
-  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type>,
->(
-  args: OpenIdCallbackMethodRef<Type, Method> & {
-    readonly callbackParams: Readonly<Record<string, string>>;
-    readonly expectedReturnTo: string;
-    readonly expectedRealm: string;
-    readonly signal: AbortSignal;
-  },
-): Promise<ConnectorAuthProviderGrantResult> {
-  return await verifyConnectorOpenIdAuthCallback({
-    type: args.connectorType,
-    authMethod: args.authMethod,
+async function verifyOpenIdForConnector(args: {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly callbackParams: Readonly<Record<string, string>>;
+  readonly expectedReturnTo: string;
+  readonly expectedRealm: string;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorAuthProviderGrantResult> {
+  return await verifyConnectorOpenIdAuthCallbackWithMethod({
+    connectorRef: args.resolvedMethod.connectorRef,
+    authMethodId: args.resolvedMethod.authMethodId,
+    method: args.resolvedMethod.method,
     callbackParams: args.callbackParams,
     expectedReturnTo: args.expectedReturnTo,
     expectedRealm: args.expectedRealm,
@@ -275,74 +235,58 @@ async function verifyOpenIdForConnector<
   });
 }
 
-function resolveAuthCodeConnectorType(
-  origin: string,
-  type: string,
-): ResolvedAuthCodeConnectorType {
-  const typeResult = connectorTypeSchema.safeParse(type);
-  if (!typeResult.success) {
-    return {
-      ok: false,
-      response: redirectWithError(origin, type, "Unknown connector type"),
-    };
-  }
-
-  const connectorType = typeResult.data;
-  if (!hasConnectorAuthCodeGrant(connectorType)) {
-    return {
-      ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        `${type} connector does not use an auth-code grant`,
-      ),
-    };
-  }
-
-  return { ok: true, connectorType };
-}
-
-function resolveOpenIdConnectorType(
-  origin: string,
-  type: string,
-): ResolvedOpenIdConnectorType {
-  const typeResult = connectorTypeSchema.safeParse(type);
-  if (!typeResult.success) {
-    return {
-      ok: false,
-      response: redirectWithError(origin, type, "Unknown connector type"),
-    };
-  }
-
-  const connectorType = typeResult.data;
-  if (!hasConnectorOpenIdAuthGrant(connectorType)) {
+function resolveConnectorWithGrant(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly grantKind: "auth-code" | "openid-auth";
+  readonly origin: string;
+  readonly type: string;
+}):
+  | { readonly ok: true; readonly connector: ConnectorRuntimeConnector }
+  | { readonly ok: false; readonly response: Response } {
+  const connector = getConnectorRuntimeConnector(
+    args.snapshot,
+    args.connectorRef,
+  );
+  if (!connector) {
     return {
       ok: false,
       response: redirectWithError(
-        origin,
-        type,
-        `${type} connector does not use an OpenID auth grant`,
+        args.origin,
+        args.type,
+        "Unknown connector type",
       ),
     };
   }
-
-  return {
-    ok: true,
-    connectorType,
-  };
+  if (
+    ![...connector.methods.values()].some((runtimeMethod) => {
+      return runtimeMethod.method.grant.kind === args.grantKind;
+    })
+  ) {
+    const label = args.grantKind === "auth-code" ? "auth-code" : "OpenID auth";
+    return {
+      ok: false,
+      response: redirectWithError(
+        args.origin,
+        args.type,
+        `${args.type} connector does not use an ${label} grant`,
+      ),
+    };
+  }
+  return { ok: true, connector };
 }
 
 async function claimStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: AuthGrantConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
 }): Promise<ClaimedCallbackState> {
   const storedStateResolution = await claimConnectorOAuthState(
     args.db,
-    { state: args.state, connectorType: args.connectorType },
+    { state: args.state, connectorType: args.connectorRef },
     args.signal,
   );
   if (storedStateResolution.kind === "invalid") {
@@ -367,14 +311,14 @@ async function claimStoredOAuthStateForCallback(args: {
 async function rejectInvalidStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: AuthGrantConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
 }): Promise<Response | undefined> {
   const status = await getConnectorOAuthStateStatus(
     args.db,
-    { state: args.state, connectorType: args.connectorType },
+    { state: args.state, connectorType: args.connectorRef },
     args.signal,
   );
   if (status.kind === "usable") {
@@ -396,17 +340,21 @@ function invalidStoredAuthMethodResponse(
   );
 }
 
-function validateStoredAuthCodeMethod<
-  Type extends AuthCodeGrantConnectorType,
->(args: {
-  readonly connectorType: Type;
+async function resolveStoredCallbackMethod(args: {
+  readonly resolver: ConnectorActionResolver;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly authMethod: string;
+  readonly expectedGrantKind: "auth-code" | "openid-auth";
   readonly origin: string;
   readonly type: string;
-}):
-  | ({ readonly ok: true } & AuthCodeCallbackMethodRef<Type>)
-  | { readonly ok: false; readonly response: Response } {
-  const authMethodResult = connectorAuthMethodIdSchema.safeParse(
+}): Promise<
+  | {
+      readonly ok: true;
+      readonly resolvedMethod: ResolvedConnectorActionMethod;
+    }
+  | { readonly ok: false; readonly response: Response }
+> {
+  const authMethodResult = connectorCatalogAuthMethodIdSchema.safeParse(
     args.authMethod,
   );
   if (!authMethodResult.success) {
@@ -416,23 +364,12 @@ function validateStoredAuthCodeMethod<
     };
   }
 
-  const method = getConnectorAuthMethod(
-    args.connectorType,
-    authMethodResult.data,
-  );
-  if (!method) {
-    return {
-      ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
-    };
-  }
-  if (
-    !connectorAuthMethodHasGrantKind(
-      args.connectorType,
-      authMethodResult.data,
-      "auth-code",
-    )
-  ) {
+  const resolvedMethod = await args.resolver.resolveMethod({
+    connectorRef: args.connectorRef,
+    authMethodId: authMethodResult.data,
+    expectedGrantKind: args.expectedGrantKind,
+  });
+  if (!resolvedMethod.ok) {
     return {
       ok: false,
       response: invalidStoredAuthMethodResponse(args.origin, args.type),
@@ -441,69 +378,18 @@ function validateStoredAuthCodeMethod<
 
   return {
     ok: true,
-    connectorType: args.connectorType,
-    authMethod: authMethodResult.data,
-  };
-}
-
-function validateStoredOpenIdMethod<
-  Type extends OpenIdAuthGrantConnectorType,
->(args: {
-  readonly connectorType: Type;
-  readonly authMethod: string;
-  readonly origin: string;
-  readonly type: string;
-}):
-  | ({ readonly ok: true } & OpenIdCallbackMethodRef<Type>)
-  | { readonly ok: false; readonly response: Response } {
-  const authMethodResult = connectorAuthMethodIdSchema.safeParse(
-    args.authMethod,
-  );
-  if (!authMethodResult.success) {
-    return {
-      ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
-    };
-  }
-
-  const method = getConnectorAuthMethod(
-    args.connectorType,
-    authMethodResult.data,
-  );
-  if (!method) {
-    return {
-      ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
-    };
-  }
-  if (
-    !connectorAuthMethodHasGrantKind(
-      args.connectorType,
-      authMethodResult.data,
-      "openid-auth",
-    )
-  ) {
-    return {
-      ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
-    };
-  }
-
-  return {
-    ok: true,
-    connectorType: args.connectorType,
-    authMethod: authMethodResult.data,
+    resolvedMethod,
   };
 }
 
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
-  readonly connectorType: AuthCodeGrantConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly identity: CallbackIdentity;
-  readonly token: ConnectorAuthCodeExchangeResult;
+  readonly token: ConnectorAuthProviderGrantResult;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.connectorType !== "github") {
+  if (args.connectorRef !== "github") {
     return;
   }
 
@@ -566,8 +452,7 @@ const completeOAuthCallback$ = command(
     signal: AbortSignal,
   ): Promise<Response> => {
     const token = await exchangeTokenForConnector({
-      connectorType: args.connectorType,
-      authMethod: args.authMethod,
+      resolvedMethod: args.resolvedMethod,
       code: args.code,
       redirectUri: args.redirectUri,
       state: args.state,
@@ -581,14 +466,11 @@ const completeOAuthCallback$ = command(
       {
         orgId: args.identity.orgId,
         userId: args.identity.userId,
-        type: args.connectorType,
-        authMethod: args.authMethod,
+        runtimeMethod: args.resolvedMethod.runtimeMethod,
+        snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: getRequestedScopes({
-          connectorType: args.connectorType,
-          authMethod: args.authMethod,
-        }),
+        oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
       },
@@ -603,7 +485,7 @@ const completeOAuthCallback$ = command(
           orgId: args.identity.orgId,
           userId: args.identity.userId,
           agentId: args.agentId,
-          connectorType: args.connectorType,
+          connectorType: args.resolvedMethod.connectorRef,
         },
         signal,
       );
@@ -619,7 +501,7 @@ const completeOAuthCallback$ = command(
 
     await linkGithubIntegrationAfterConnectorConnect({
       db: set(writeDb$),
-      connectorType: args.connectorType,
+      connectorRef: args.resolvedMethod.connectorRef,
       identity: args.identity,
       token,
       signal,
@@ -641,8 +523,7 @@ const completeOpenIdCallback$ = command(
     signal: AbortSignal,
   ): Promise<Response> => {
     const token = await verifyOpenIdForConnector({
-      connectorType: args.connectorType,
-      authMethod: args.authMethod,
+      resolvedMethod: args.resolvedMethod,
       callbackParams: args.callbackParams,
       expectedReturnTo: args.expectedReturnTo,
       expectedRealm: args.expectedRealm,
@@ -655,8 +536,8 @@ const completeOpenIdCallback$ = command(
       {
         orgId: args.identity.orgId,
         userId: args.identity.userId,
-        type: args.connectorType,
-        authMethod: args.authMethod,
+        runtimeMethod: args.resolvedMethod.runtimeMethod,
+        snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
         oauthScopes: token.scopes,
@@ -674,7 +555,7 @@ const completeOpenIdCallback$ = command(
           orgId: args.identity.orgId,
           userId: args.identity.userId,
           agentId: args.agentId,
-          connectorType: args.connectorType,
+          connectorType: args.resolvedMethod.connectorRef,
         },
         signal,
       );
@@ -696,13 +577,15 @@ const completeOpenIdCallback$ = command(
   },
 );
 
-function resolveCallbackState(
+async function resolveCallbackState(
   args: ResolveCallbackStateInput,
   signal: AbortSignal,
-): ResolvedCallbackState {
-  const authMethodResult = validateStoredAuthCodeMethod({
-    connectorType: args.connectorType,
+): Promise<ResolvedCallbackState> {
+  const authMethodResult = await resolveStoredCallbackMethod({
+    resolver: args.resolver,
+    connectorRef: args.connectorRef,
     authMethod: args.storedState.authMethod,
+    expectedGrantKind: "auth-code",
     origin: args.origin,
     type: args.type,
   });
@@ -719,8 +602,7 @@ function resolveCallbackState(
     },
     agentId: args.storedState.agentId,
     authorizeAgent: args.storedState.authorizeAgent,
-    connectorType: authMethodResult.connectorType,
-    authMethod: authMethodResult.authMethod,
+    resolvedMethod: authMethodResult.resolvedMethod,
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
     redirectUri: args.storedState.redirectUri,
@@ -745,13 +627,15 @@ function storedOpenIdRealm(
   return openIdRealmForOrigin(new URL(expectedReturnTo).origin);
 }
 
-function resolveOpenIdCallbackState(
+async function resolveOpenIdCallbackState(
   args: ResolveOpenIdCallbackStateInput,
   signal: AbortSignal,
-): ResolvedOpenIdCallbackState {
-  const authMethodResult = validateStoredOpenIdMethod({
-    connectorType: args.connectorType,
+): Promise<ResolvedOpenIdCallbackState> {
+  const authMethodResult = await resolveStoredCallbackMethod({
+    resolver: args.resolver,
+    connectorRef: args.connectorRef,
     authMethod: args.storedState.authMethod,
+    expectedGrantKind: "openid-auth",
     origin: args.origin,
     type: args.type,
   });
@@ -768,8 +652,7 @@ function resolveOpenIdCallbackState(
     },
     agentId: args.storedState.agentId,
     authorizeAgent: args.storedState.authorizeAgent,
-    connectorType: authMethodResult.connectorType,
-    authMethod: authMethodResult.authMethod,
+    resolvedMethod: authMethodResult.resolvedMethod,
     expectedReturnTo: args.storedState.redirectUri,
     expectedRealm: storedOpenIdRealm(
       args.storedState.oauthContext,
@@ -798,22 +681,25 @@ function openIdCallbackParamsFromQuery(
 
 const handleOpenIdConnectorCallback$ = command(
   async (
-    { set },
+    { get, set },
     args: {
-      readonly type: string;
+      readonly type: ConnectorCatalogRef;
       readonly query: ConnectorCallbackQuery;
       readonly origin: string;
+      readonly snapshot: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
-    const connectorTypeResult = resolveOpenIdConnectorType(
-      args.origin,
-      args.type,
-    );
-    if (!connectorTypeResult.ok) {
-      return connectorTypeResult.response;
+    const connectorResult = resolveConnectorWithGrant({
+      snapshot: args.snapshot,
+      connectorRef: args.type,
+      grantKind: "openid-auth",
+      origin: args.origin,
+      type: args.type,
+    });
+    if (!connectorResult.ok) {
+      return connectorResult.response;
     }
-    const { connectorType } = connectorTypeResult;
     const state = args.query.state;
     if (!state) {
       return missingStateRedirectResponse(args.origin, args.type);
@@ -821,7 +707,7 @@ const handleOpenIdConnectorCallback$ = command(
 
     const claimedState = await claimStoredOAuthStateForCallback({
       db: set(writeDb$),
-      connectorType,
+      connectorRef: args.type,
       origin: args.origin,
       type: args.type,
       signal,
@@ -832,12 +718,17 @@ const handleOpenIdConnectorCallback$ = command(
       return claimedState.response;
     }
 
-    const resolvedState = resolveOpenIdCallbackState(
+    const resolver = await get(
+      connectorActionResolverForSnapshot(args.snapshot),
+    );
+    signal.throwIfAborted();
+    const resolvedState = await resolveOpenIdCallbackState(
       {
         origin: args.origin,
         type: args.type,
-        connectorType,
+        connectorRef: args.type,
         storedState: claimedState.storedState,
+        resolver,
       },
       signal,
     );
@@ -849,8 +740,7 @@ const handleOpenIdConnectorCallback$ = command(
       set(
         completeOpenIdCallback$,
         {
-          connectorType: resolvedState.connectorType,
-          authMethod: resolvedState.authMethod,
+          resolvedMethod: resolvedState.resolvedMethod,
           callbackParams: openIdCallbackParamsFromQuery(args.query),
           expectedReturnTo: resolvedState.expectedReturnTo,
           expectedRealm: resolvedState.expectedRealm,
@@ -878,37 +768,58 @@ const handleOpenIdConnectorCallback$ = command(
   },
 );
 
+function authCodeCallbackPreflight(args: {
+  readonly type: ConnectorCatalogRef;
+  readonly request: Request;
+  readonly origin: string;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): Response | null {
+  const connectorResult = resolveConnectorWithGrant({
+    snapshot: args.snapshot,
+    connectorRef: args.type,
+    grantKind: "auth-code",
+    origin: args.origin,
+    type: args.type,
+  });
+  if (!connectorResult.ok) {
+    return connectorResult.response;
+  }
+  const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrlForMethods(
+    args.request,
+    [...connectorResult.connector.methods.values()]
+      .filter((runtimeMethod) => {
+        return runtimeMethod.executable;
+      })
+      .map((runtimeMethod) => {
+        return runtimeMethod.method;
+      }),
+  );
+  return canonicalRedirectUrl
+    ? connectorOAuthRedirectResponse(canonicalRedirectUrl)
+    : null;
+}
+
 const handleAuthCodeConnectorCallback$ = command(
   async (
-    { set },
+    { get, set },
     args: {
-      readonly type: string;
+      readonly type: ConnectorCatalogRef;
       readonly query: ConnectorCallbackQuery;
       readonly request: Request;
       readonly origin: string;
+      readonly snapshot: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
-    const connectorTypeResult = resolveAuthCodeConnectorType(
-      args.origin,
-      args.type,
-    );
-    if (!connectorTypeResult.ok) {
-      return connectorTypeResult.response;
-    }
-    const { connectorType } = connectorTypeResult;
-    const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(
-      args.request,
-      connectorType,
-    );
-    if (canonicalRedirectUrl) {
-      return connectorOAuthRedirectResponse(canonicalRedirectUrl);
+    const preflightResponse = authCodeCallbackPreflight(args);
+    if (preflightResponse) {
+      return preflightResponse;
     }
 
     const state = args.query.state;
     const storedStateCallbackArgs = {
       db: set(writeDb$),
-      connectorType,
+      connectorRef: args.type,
       origin: args.origin,
       type: args.type,
       signal,
@@ -964,12 +875,17 @@ const handleAuthCodeConnectorCallback$ = command(
       return claimedState.response;
     }
 
-    const resolvedState = resolveCallbackState(
+    const resolver = await get(
+      connectorActionResolverForSnapshot(args.snapshot),
+    );
+    signal.throwIfAborted();
+    const resolvedState = await resolveCallbackState(
       {
         origin: args.origin,
         type: args.type,
-        connectorType,
+        connectorRef: args.type,
         storedState: claimedState.storedState,
+        resolver,
       },
       signal,
     );
@@ -981,8 +897,7 @@ const handleAuthCodeConnectorCallback$ = command(
       set(
         completeOAuthCallback$,
         {
-          connectorType: resolvedState.connectorType,
-          authMethod: resolvedState.authMethod,
+          resolvedMethod: resolvedState.resolvedMethod,
           code,
           redirectUri: resolvedState.redirectUri,
           state,
@@ -1022,6 +937,8 @@ const callbackConnectorInner$ = command(
     const query = get(queryOf(connectorsTypeCallbackContract.callback));
     const request = get(request$).raw;
     const origin = getConnectorOAuthOrigin(request);
+    const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
+    signal.throwIfAborted();
 
     if (hasOpenIdCallbackFields(query)) {
       return await set(
@@ -1030,6 +947,7 @@ const callbackConnectorInner$ = command(
           type,
           query,
           origin,
+          snapshot,
         },
         signal,
       );
@@ -1042,6 +960,7 @@ const callbackConnectorInner$ = command(
         query,
         request,
         origin,
+        snapshot,
       },
       signal,
     );

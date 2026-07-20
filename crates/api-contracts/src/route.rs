@@ -32,17 +32,28 @@ impl Method {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Route {
     pub method: Method,
+    /// Path for this route.
+    ///
+    /// The path must begin with `/` before calling [`Route::url`].
     pub path: &'static str,
 }
 
 impl Route {
     /// Create a generated API route descriptor.
+    ///
+    /// `path` must begin with `/` before calling [`Self::url`].
     #[must_use]
     pub const fn new(method: Method, path: &'static str) -> Self {
         Self { method, path }
     }
 
-    /// Build an absolute URL for this route from a base API URL.
+    /// Build a URL by appending this route's path to a base API URL.
+    ///
+    /// If `base_url` is empty, returns the route path unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this route's path does not begin with `/`.
     #[must_use]
     pub fn url(self, base_url: &str) -> String {
         url_from_base_and_path(base_url, self.path)
@@ -68,17 +79,28 @@ impl RouteTemplate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRoute {
     pub method: Method,
+    /// Concrete path for this route.
+    ///
+    /// The path must begin with `/` before calling [`ResolvedRoute::url`].
     pub path: String,
 }
 
 impl ResolvedRoute {
     /// Create a generated route descriptor with path params applied.
+    ///
+    /// `path` must begin with `/` before calling [`Self::url`].
     #[must_use]
     pub fn new(method: Method, path: String) -> Self {
         Self { method, path }
     }
 
-    /// Build an absolute URL for this resolved route from a base API URL.
+    /// Build a URL by appending this route's path to a base API URL.
+    ///
+    /// If `base_url` is empty, returns the route path unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this route's path does not begin with `/`.
     #[must_use]
     pub fn url(&self, base_url: &str) -> String {
         url_from_base_and_path(base_url, &self.path)

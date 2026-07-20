@@ -1,28 +1,16 @@
 import { computed, type Computed } from "ccstate";
 import { pageSignal$ } from "../page-signal.ts";
+import { currentPresentationEditorUrl$ } from "./zero-artifact-sidebar.ts";
 
-export function createPresentationDraftByUrlFactory<T>(
+/** Create the draft resource owned by the active presentation editor route. */
+export function createCurrentPresentationDraft<T>(
   load: (url: string, signal: AbortSignal) => Promise<T>,
-): {
-  readonly get: (url: string) => Computed<Promise<T>>;
-  readonly invalidate: (url: string) => void;
-} {
-  const cache = new Map<string, Computed<Promise<T>>>();
-  const get = (url: string) => {
-    const existing = cache.get(url);
-    if (existing) {
-      return existing;
+): Computed<Promise<T>> {
+  return computed((get) => {
+    const url = get(currentPresentationEditorUrl$);
+    if (!url) {
+      throw new Error("Presentation editor URL is unavailable");
     }
-    const draft$ = computed((get) => {
-      return load(url, get(pageSignal$));
-    });
-    cache.set(url, draft$);
-    return draft$;
-  };
-  return {
-    get,
-    invalidate: (url: string) => {
-      cache.delete(url);
-    },
-  };
+    return load(url, get(pageSignal$));
+  });
 }

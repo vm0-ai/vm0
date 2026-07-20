@@ -9,10 +9,7 @@ export function generationTemplateForFeatureSwitches(
   value: GenerationTemplateRequest | undefined,
   features: GenerationTemplateFeatureSwitches,
 ): GenerationTemplateRequest | undefined {
-  if (
-    value?.type === "website" &&
-    !(features?.[FeatureSwitchKey.WebsiteTemplates] ?? false)
-  ) {
+  if (features?.[FeatureSwitchKey.ComposerInlinePromptItems] ?? false) {
     return undefined;
   }
   return value;

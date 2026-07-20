@@ -1031,6 +1031,19 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
     )
 
+    ndjson_lines_failed = resp_meta.get("ndjson_lines_failed", 0)
+    if ndjson_lines_failed > 0:
+        log_usage_underbilling(
+            proxy_log_path,
+            "X NDJSON response contained unparseable rows — billing visibility is incomplete",
+            "unparseable_ndjson_rows",
+            "risk",
+            **log_context,
+            ndjson_lines_failed=ndjson_lines_failed,
+            ndjson_lines_parsed=resp_meta["ndjson_lines_parsed"],
+            response_data_count=resp_meta["response_data_count"],
+        )
+
     # Loud-but-zero billing path: GET with an unparseable response body and
     # no reliable count source.  We deliberately emit nothing rather than
     # blind-guess a quantity — the error log carries enough context for ops

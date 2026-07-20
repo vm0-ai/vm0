@@ -19,6 +19,7 @@ import {
   hashFileContent,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 interface VolumeFileInput {
   readonly path: string;
@@ -180,12 +181,13 @@ const uploadVolumeServerSideInner$ = command(
 
     const writeDb = set(writeDb$);
     const storageType = "volume";
-    const s3Prefix = `${args.orgId}/${storageType}/${args.storageName}`;
+    const { storageId, s3Prefix } = newStorageS3Location(args.orgId);
     const timestamp = nowDate();
 
     const [storage] = await writeDb
       .insert(storages)
       .values({
+        id: storageId,
         userId: VOLUME_ORG_USER_ID,
         orgId: args.orgId,
         name: args.storageName,
@@ -213,7 +215,9 @@ const uploadVolumeServerSideInner$ = command(
       };
     });
     const versionId = computeContentHashFromHashes(storage.id, fileEntries);
-    const s3Key = `${s3Prefix}/${versionId}`;
+    // On upsert conflict the row keeps its original prefix, which can differ
+    // from the freshly generated one — always key objects off the stored value.
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
     const manifest: S3StorageManifest = {
       version: versionId,
@@ -241,11 +245,15 @@ const uploadVolumeServerSideInner$ = command(
           storageId: storage.id,
           s3Key,
           size: totalSize,
+          archiveSize: archiveBuffer.length,
           fileCount: files.length,
           message: null,
           createdBy: "user",
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: storageVersions.id,
+          set: { archiveSize: archiveBuffer.length },
+        });
       signal.throwIfAborted();
 
       const [version] = await tx

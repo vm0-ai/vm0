@@ -308,7 +308,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Vm0Model]: {
     maintainer: "yuma@vm0.ai",
-    description: "Show VM0 Model in the workspace Add model selector.",
+    description: "Show Auto in the workspace Add model selector.",
     enabled: false,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
@@ -324,6 +324,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.ComposerInlinePromptItems]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Render composer context as movable inline items and serialize it into the user prompt instead of message attachment fields.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -334,20 +341,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RelationshipMemory]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -406,6 +399,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ThreeColumnNav]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Slack-style three-column navigation: a labeled icon rail, a pinned-agents and chat-threads list column, and the conversation pane.",
+    enabled: false,
+    // Ming only for the first pass; widen to staff once it settles.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
+  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -459,29 +460,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WebsiteTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the built-in R2-backed website template picker and generation-template flow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowQueue]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Queue workflow automation events per workflow and run them serially instead of firing concurrent runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
@@ -498,6 +477,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.ConnectorActionCallback]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Resume a web chat with a callback prompt after a connector or permission action succeeds.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZeroMail]: {
     maintainer: "yuma@vm0.ai",

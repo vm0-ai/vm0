@@ -2,6 +2,11 @@ import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 
+import {
+  nullableDriverValueDecoder,
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 
 const MODEL_USAGE_KIND = "model";
@@ -36,6 +41,7 @@ const ALL_CACHE_TOKEN_CATEGORIES = [
   ...CACHE_READ_TOKEN_CATEGORIES,
   ...CACHE_CREATION_TOKEN_CATEGORIES,
 ] as const;
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 interface BillingWindow {
   readonly start: Date;
@@ -122,12 +128,11 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
       "cache_tokens_sum",
     ),
     creditsCharged: usageCreditsSum("credits_sum"),
-    model: sql<
-      string | null
-    >`MAX(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} THEN ${usageEvent.provider} ELSE NULL END)`.as(
-      "model",
-    ),
-    userId: sql<string>`MAX(${usageEvent.userId})`.as("user_id"),
+    model:
+      sql`MAX(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} THEN ${usageEvent.provider} ELSE NULL END)`
+        .mapWith(nullableTextDecoder)
+        .as("model"),
+    userId: sql`MAX(${usageEvent.userId})`.mapWith(pgTextDecoder).as("user_id"),
   } satisfies Record<keyof UsageRunTotalsRow, unknown>;
 
   return db
@@ -177,7 +182,7 @@ export function mergedRunCreditsCharged(
 }
 
 export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
-  return sql<string | null>`${events.model}`.as("model");
+  return sql`${events.model}`.mapWith(nullableTextDecoder).as("model");
 }
 
 function usageEventTokenSum(categories: readonly string[], alias: string) {
@@ -187,17 +192,19 @@ function usageEventTokenSum(categories: readonly string[], alias: string) {
     }),
     sql.raw(", "),
   );
-  return sql<number>`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`.as(
-    alias,
-  );
+  return sql`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+    .mapWith(pgInt8ToSafeIntegerDecoder)
+    .as(alias);
 }
 
 function coalesceRunTotal(column: unknown, alias: string) {
-  return sql<number>`COALESCE(${column}, 0)::bigint`.as(alias);
+  return sql`COALESCE(${column}, 0)::bigint`
+    .mapWith(pgInt8ToSafeIntegerDecoder)
+    .as(alias);
 }
 
 function usageCreditsSum(alias: string) {
-  return sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`.as(
-    alias,
-  );
+  return sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+    .mapWith(pgInt8ToSafeIntegerDecoder)
+    .as(alias);
 }

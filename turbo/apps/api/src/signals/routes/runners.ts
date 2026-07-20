@@ -11,8 +11,6 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
-  type SessionHistoryGenerationLocalAvailability,
-  type SessionHistoryGenerationRelationship,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import {
@@ -29,6 +27,7 @@ import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -50,6 +49,11 @@ import { now, nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { executeRawRows } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
@@ -67,9 +71,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  runnerReusableSessionPollPriority,
+  runnerSessionAffinityPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
+  runnerSessionAffinityTelemetryResource,
 } from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -331,6 +336,21 @@ function canonicalizeHeldSessionStates(
             },
           }
         : {}),
+      ...(state.workspaceCaches
+        ? {
+            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
+              return {
+                profile: workspaceCache.profile,
+                ...(workspaceCache.workspaceAffinityVersion
+                  ? {
+                      workspaceAffinityVersion:
+                        workspaceCache.workspaceAffinityVersion,
+                    }
+                  : {}),
+              };
+            }),
+          }
+        : {}),
     };
   });
 }
@@ -358,6 +378,23 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
+  // Legacy senders remain last-arrival-wins during rolling deployments and
+  // intentionally leave any ordered watermark untouched.
+  const snapshotOrder =
+    body.data.snapshotGeneration === undefined ||
+    body.data.snapshotSequence === undefined
+      ? undefined
+      : {
+          generation: body.data.snapshotGeneration,
+          sequence: body.data.snapshotSequence,
+        };
+  const snapshotOrderValues =
+    snapshotOrder === undefined
+      ? {}
+      : {
+          heartbeatGeneration: snapshotOrder.generation,
+          heartbeatSequence: snapshotOrder.sequence,
+        };
   const db = set(writeDb$);
   await db
     .insert(runnerState)
@@ -365,6 +402,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
+      ...snapshotOrderValues,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
@@ -381,6 +419,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
+        ...snapshotOrderValues,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
@@ -392,6 +431,18 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
+      ...(snapshotOrder === undefined
+        ? {}
+        : {
+            setWhere: sql`
+              ${runnerState.heartbeatGeneration} IS NULL
+              OR ${runnerState.heartbeatGeneration} < ${snapshotOrder.generation}
+              OR (
+                ${runnerState.heartbeatGeneration} = ${snapshotOrder.generation}
+                AND ${runnerState.heartbeatSequence} < ${snapshotOrder.sequence}
+              )
+            `,
+          }),
     });
   signal.throwIfAborted();
 
@@ -417,6 +468,7 @@ function recordPollTimingMetrics(args: {
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
   readonly sessionAffinity: string;
+  readonly sessionAffinityResource: string;
   readonly historyGenerationAffinity: string;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
@@ -429,6 +481,7 @@ function recordPollTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
     session_affinity: args.sessionAffinity,
+    session_affinity_resource: args.sessionAffinityResource,
     history_generation_affinity: args.historyGenerationAffinity,
   };
   if (args.pollReason) {
@@ -469,6 +522,25 @@ function recordPollTimingMetrics(args: {
   ]);
 }
 
+function runnerPollPriorityOrder(args: {
+  readonly runnerId: string | undefined;
+  readonly runnerGroup: string;
+  readonly currentDate: Date;
+}): SQL<unknown>[] {
+  if (!args.runnerId) {
+    return [];
+  }
+  return [
+    desc(
+      runnerSessionAffinityPollPriority({
+        runnerId: args.runnerId,
+        runnerGroup: args.runnerGroup,
+        currentDate: args.currentDate,
+      }),
+    ),
+  ];
+}
+
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const pollRequestStartedAtMs = now();
   const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -505,17 +577,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const reusableSessionPriorityOrder = body.data.runnerId
-    ? [
-        desc(
-          runnerReusableSessionPollPriority({
-            runnerId: body.data.runnerId,
-            runnerGroup: group,
-            currentDate,
-          }),
-        ),
-      ]
-    : [];
+  const sessionAffinityPriorityOrder = runnerPollPriorityOrder({
+    runnerId: body.data.runnerId,
+    runnerGroup: group,
+    currentDate,
+  });
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -526,16 +592,17 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
-      historyGenerationRunId: sql<
-        string | null
-      >`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`,
+      historyGenerationRunId:
+        sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
+          nullableDriverValueDecoder(pgTextDecoder),
+        ),
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
     .orderBy(
-      ...reusableSessionPriorityOrder,
+      ...sessionAffinityPriorityOrder,
       runnerJobQueue.createdAt,
       runnerJobQueue.runId,
     )
@@ -576,6 +643,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
     sessionAffinity: affinity.status,
+    sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
     historyGenerationAffinity: affinity.historyGenerationStatus,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
@@ -600,6 +668,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         historyGenerationAffinityProtectedUntil:
           affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
         affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
+        sessionAffinityResource: affinity.resource ?? undefined,
       },
     },
   };
@@ -641,72 +710,6 @@ interface ActiveRunNetworkPolicyScope {
 }
 
 type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
-
-type SessionHistoryGenerationClaimOutcome =
-  | "accepted"
-  | "unavailable"
-  | "preclaim_error";
-
-function recordSessionHistoryGenerationClaimAttempt(args: {
-  readonly runId: string;
-  readonly relationship: SessionHistoryGenerationRelationship | undefined;
-  readonly localAvailability:
-    | SessionHistoryGenerationLocalAvailability
-    | undefined;
-  readonly outcome: SessionHistoryGenerationClaimOutcome;
-  readonly authType: RunnerAuthContext["type"];
-  readonly runnerGroup?: string;
-  readonly profile?: string;
-}): void {
-  if (!args.relationship) {
-    return;
-  }
-  const dimensions: Record<string, string> = {
-    generation_relationship: args.relationship,
-    claim_outcome: args.outcome,
-    auth_type: args.authType,
-  };
-  if (args.localAvailability) {
-    dimensions.generation_local_availability = args.localAvailability;
-  }
-  if (args.runnerGroup) {
-    dimensions.runner_group = args.runnerGroup;
-  }
-  if (args.profile) {
-    dimensions.profile = args.profile;
-  }
-  recordSandboxOperations([
-    {
-      sandboxType: "runner",
-      actionType: "runner_session_history_generation_claim_attempt",
-      durationMs: 0,
-      success: args.outcome === "accepted",
-      runId: args.runId,
-      dimensions,
-    },
-  ]);
-}
-
-function recordSessionHistoryGenerationClaimAttemptForJob(args: {
-  readonly runId: string;
-  readonly relationship: SessionHistoryGenerationRelationship | undefined;
-  readonly localAvailability:
-    | SessionHistoryGenerationLocalAvailability
-    | undefined;
-  readonly outcome: SessionHistoryGenerationClaimOutcome;
-  readonly authType: RunnerAuthContext["type"];
-  readonly job: ClaimableJob["job"];
-}): void {
-  recordSessionHistoryGenerationClaimAttempt({
-    runId: args.runId,
-    relationship: args.relationship,
-    localAvailability: args.localAvailability,
-    outcome: args.outcome,
-    authType: args.authType,
-    runnerGroup: args.job.runnerGroup,
-    profile: args.job.profile,
-  });
-}
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
@@ -818,11 +821,6 @@ type FailedClaimTransitionResult = Exclude<
   { readonly status: "claimed" }
 >;
 
-interface LockedClaimRunRow extends Record<string, unknown> {
-  readonly id: string;
-  readonly status: string;
-}
-
 function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
@@ -830,44 +828,53 @@ function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
   return notFound("Run not found");
 }
 
-interface LockedRunnerJobRow extends Record<string, unknown> {
-  readonly runId: string;
-  readonly isExpired: boolean;
-}
+const lockedRunnerJobRowSchema = z.object({
+  runId: z.string(),
+  isExpired: z.boolean(),
+});
 
-interface ClaimTransitionSqlRow extends Record<string, unknown> {
-  readonly status: ClaimTransitionResult["status"] | "invariant-error";
-  readonly claimedAtMs: number | null;
-}
+const claimTransitionSqlRowSchema = z.object({
+  status: z.enum([
+    "claimed",
+    "job-not-found",
+    "run-not-found",
+    "invariant-error",
+  ]),
+  claimedAtMs: z.number().nullable(),
+});
 
 async function lockClaimRun(
-  db: Pick<Db, "execute">,
+  db: Pick<Db, "select">,
   runId: string,
-): Promise<LockedClaimRunRow | undefined> {
-  const rows = await db.execute<LockedClaimRunRow>(sql`
-    SELECT
-      ${agentRuns.id} AS "id",
-      ${agentRuns.status} AS "status"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  return rows.rows[0];
+): Promise<{ readonly id: string; readonly status: string } | undefined> {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      status: agentRuns.status,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
+  return run;
 }
 
 async function lockRunnerJob(
   db: Pick<Db, "execute">,
   runId: string,
-): Promise<LockedRunnerJobRow | undefined> {
-  const rows = await db.execute<LockedRunnerJobRow>(sql`
-    SELECT
-      ${runnerJobQueue.runId} AS "runId",
-      ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
-    FROM ${runnerJobQueue}
-    WHERE ${runnerJobQueue.runId} = ${runId}
-    FOR UPDATE
-  `);
-  return rows.rows[0];
+): Promise<z.output<typeof lockedRunnerJobRowSchema> | undefined> {
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT
+        ${runnerJobQueue.runId} AS "runId",
+        ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+      FROM ${runnerJobQueue}
+      WHERE ${runnerJobQueue.runId} = ${runId}
+      FOR UPDATE
+    `,
+    lockedRunnerJobRowSchema,
+  );
+  return rows[0];
 }
 
 async function transitionClaimedJobToRunning(
@@ -882,7 +889,9 @@ async function transitionClaimedJobToRunning(
       "nested",
       async () => {
         // Materialized outputs make the row locks depend on run, then queue.
-        return await tx.execute<ClaimTransitionSqlRow>(sql`
+        return await executeRawRows(
+          tx,
+          sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -975,11 +984,13 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-        `);
+          `,
+          claimTransitionSqlRowSchema,
+        );
       },
     );
     signal.throwIfAborted();
-    const row = result.rows[0];
+    const row = result[0];
     if (!row || row.status === "invariant-error") {
       throw new Error("Runner job claim transition violated its invariant");
     }
@@ -1606,7 +1617,9 @@ interface ClaimTimingTelemetry {
   readonly directCandidateInboxWaitMs?: number;
   readonly providerDiscoveryToMainLoopMs?: number;
   readonly mainLoopToLocalAdmissionMs?: number;
-  readonly preLocalAdmissionOutcome?: string;
+  readonly sessionAffinityResource?: string;
+  readonly sessionAffinityLocalResource?: string;
+  readonly localAdmissionResource?: string;
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
@@ -1659,7 +1672,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     providerDiscoveryToMainLoopMs:
       args.telemetry?.providerDiscoveryToMainLoopMs,
     mainLoopToLocalAdmissionMs: args.telemetry?.mainLoopToLocalAdmissionMs,
-    preLocalAdmissionOutcome: args.telemetry?.preLocalAdmissionOutcome,
+    sessionAffinityResource: args.telemetry?.sessionAffinityResource,
+    sessionAffinityLocalResource: args.telemetry?.sessionAffinityLocalResource,
+    localAdmissionResource: args.telemetry?.localAdmissionResource,
     discoverySource: args.telemetry?.discoverySource,
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
@@ -1685,7 +1700,9 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly directCandidateInboxWaitMs: number | undefined;
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
-  readonly preLocalAdmissionOutcome: string | undefined;
+  readonly sessionAffinityResource: string | undefined;
+  readonly sessionAffinityLocalResource: string | undefined;
+  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1721,7 +1738,9 @@ interface ClaimTimingMetricArgs {
   readonly directCandidateInboxWaitMs: number | undefined;
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
-  readonly preLocalAdmissionOutcome: string | undefined;
+  readonly sessionAffinityResource: string | undefined;
+  readonly sessionAffinityLocalResource: string | undefined;
+  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1820,8 +1839,15 @@ function claimTimingDimensions(
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
-  if (args.preLocalAdmissionOutcome) {
-    dimensions.pre_local_admission_outcome = args.preLocalAdmissionOutcome;
+  if (args.sessionAffinityResource) {
+    dimensions.session_affinity_resource = args.sessionAffinityResource;
+  }
+  if (args.sessionAffinityLocalResource) {
+    dimensions.session_affinity_local_resource =
+      args.sessionAffinityLocalResource;
+  }
+  if (args.localAdmissionResource) {
+    dimensions.local_admission_resource = args.localAdmissionResource;
   }
   return dimensions;
 }
@@ -1985,12 +2011,6 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
-      readonly generationRelationship:
-        | SessionHistoryGenerationRelationship
-        | undefined;
-      readonly generationLocalAvailability:
-        | SessionHistoryGenerationLocalAvailability
-        | undefined;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -1999,16 +2019,6 @@ const claimAuthorizedJob$ = command(
   ) => {
     const { db, runId, jobWithRun, claimRouteTiming, signal } = args;
     const run = jobWithRun.run;
-    const recordAttempt = (outcome: SessionHistoryGenerationClaimOutcome) => {
-      recordSessionHistoryGenerationClaimAttemptForJob({
-        runId,
-        relationship: args.generationRelationship,
-        localAvailability: args.generationLocalAvailability,
-        outcome,
-        authType: args.authType,
-        job: jobWithRun.job,
-      });
-    };
 
     const contextParseStartedAt = now();
     const storedContextResult = storedExecutionContextSchema.safeParse(
@@ -2025,7 +2035,7 @@ const claimAuthorizedJob$ = command(
         runId,
         storedContextResult.error.issues,
       );
-      const response = await failClaimForInvalidStoredExecutionContext({
+      return await failClaimForInvalidStoredExecutionContext({
         db,
         runId,
         userId: run.userId,
@@ -2035,8 +2045,6 @@ const claimAuthorizedJob$ = command(
           set(scheduleClaimFailedSideEffects$, failedArgs);
         },
       });
-      recordAttempt("preclaim_error");
-      return response;
     }
     const storedContext = storedContextResult.data;
 
@@ -2051,8 +2059,7 @@ const claimAuthorizedJob$ = command(
       signal,
     );
     if (!responseBodyResult.ok) {
-      recordAttempt("preclaim_error");
-      const response = await claimResponseBuildErrorResponse({
+      return await claimResponseBuildErrorResponse({
         db,
         run,
         runId,
@@ -2062,7 +2069,6 @@ const claimAuthorizedJob$ = command(
           set(scheduleClaimFailedSideEffects$, failedArgs);
         },
       });
-      return response;
     }
     signal.throwIfAborted();
 
@@ -2080,11 +2086,9 @@ const claimAuthorizedJob$ = command(
     );
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {
-      recordAttempt("unavailable");
       return claimTransitionErrorResponse(claimResult);
     }
 
-    recordAttempt("accepted");
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2115,10 +2119,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
-  const generationRelationship =
-    body.data.telemetry?.sessionHistoryGenerationRelationship;
-  const generationLocalAvailability =
-    body.data.telemetry?.sessionHistoryGenerationLocalAvailability;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -2129,15 +2129,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const lookupAuthorizationStartedAt = now();
   const jobWithRun = await getClaimableJob(db, runId, signal);
   if (!isClaimableJob(jobWithRun)) {
-    if (auth.type === "official-runner") {
-      recordSessionHistoryGenerationClaimAttempt({
-        runId,
-        relationship: generationRelationship,
-        localAvailability: generationLocalAvailability,
-        outcome: "unavailable",
-        authType: auth.type,
-      });
-    }
     return jobWithRun;
   }
   const authError = claimAuthorizationError(auth, jobWithRun);
@@ -2155,8 +2146,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     runId,
     authType: auth.type,
     jobWithRun,
-    generationRelationship,
-    generationLocalAvailability,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

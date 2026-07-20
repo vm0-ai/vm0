@@ -11,7 +11,6 @@ import {
   cronConnectorCatalogContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronDrainRelationshipMemoryContract,
   cronExecuteWorkflowAutomationsContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
@@ -22,6 +21,7 @@ import {
   cronSummarizeMemoryContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
+  cronStorageArchiveSizeBackfillContract,
 } from "@vm0/api-contracts/contracts/cron";
 import { describe, expect, it } from "vitest";
 
@@ -46,6 +46,10 @@ function readVercelConfig(): VercelConfig {
 const expectedVercelCrons = [
   {
     path: cronCleanupSandboxesContract.cleanup.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronStorageArchiveSizeBackfillContract.backfill.path,
     schedule: "* * * * *",
   },
   {
@@ -86,10 +90,6 @@ const expectedVercelCrons = [
   },
   {
     path: cronDrainEmailOutboxContract.drain.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronDrainRelationshipMemoryContract.drain.path,
     schedule: "* * * * *",
   },
   {

@@ -12,6 +12,7 @@ export const etherscan = {
         helpText:
           "1. Sign in to [Etherscan](https://etherscan.io)\n2. Open your [API Dashboard](https://etherscan.io/myapikey)\n3. Click **Add +** to create a new API key\n4. Use the key with Etherscan API V2 requests; one key works across supported chains via the `chainid` parameter",
         storage: {
+          version: 1,
           secrets: ["ETHERSCAN_API_KEY"],
           variables: [],
         },

@@ -24,6 +24,7 @@ fn storage(
         vas_version_id: version.into(),
         instructions_target_filename: instructions_target_filename.map(str::to_string),
         archive_url,
+        archive_size: None,
     }
 }
 
@@ -36,6 +37,7 @@ fn artifact(mount_path: &Path, name: &str, version: &str, archive_url: String) -
         archive_url: Some(archive_url),
         empty: None,
         missing_root_policy: None,
+        archive_size: None,
     }
 }
 

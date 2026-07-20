@@ -9,6 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { IN_VITEST } from "../env.ts";
+import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
 import {
   fetchFreshToken,
   handleUnauthorizedRedirect,
@@ -49,6 +50,7 @@ export function createAuthedContractClient<T extends AppRouter>(
           headers.set("Authorization", `Bearer ${token}`);
         }
         addClientHeaders(headers);
+        addCapturedPreviewBypassHeader(headers, options.baseUrl);
         return trpcRestFetchApi({
           ...args,
           fetchOptions: { ...args.fetchOptions, credentials: "include" },

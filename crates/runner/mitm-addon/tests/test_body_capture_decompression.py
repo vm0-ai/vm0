@@ -9,9 +9,12 @@ import pytest
 import zstandard
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
+import mitm_addon
 from body_capture import add_capture_fields
-from body_limits import BODY_CAPTURE_LIMIT
+from body_limits import BODY_CAPTURE_LIMIT, STREAM_BUFFER_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
+from tests.flow_helpers import response_stream
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
 
@@ -152,7 +155,8 @@ class TestDecompression:
         assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
         assert stats["max_input"] < len(compressed)
         assert stats["max_input"] <= 16
-        assert stats["max_output"] < len(original)
+        assert stats["max_output_buffer_limit"] == BODY_CAPTURE_LIMIT + 2
+        assert stats["max_output"] < BODY_CAPTURE_LIMIT * 4
 
     def test_zstd_decompressed(self, real_flow):
         original = b'{"result": "hello world"}'
@@ -222,27 +226,37 @@ class TestDecompression:
         assert entry["response_body_truncated"] is True
         assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
-    def test_truncated_brotli_falls_back(self, real_flow):
-        """Truncated brotli data should fall back gracefully."""
-        original = b"hello world " * 1000
-        compressed = brotli.compress(original)
-        truncated = compressed[: len(compressed) // 2]
-        flow = self._make_flow_with_compressed_buffer(
-            real_flow, truncated, "br", "text/plain", truncated=True
+    @pytest.mark.parametrize("encoding", ["br", "zstd"])
+    def test_truncated_compressed_stream_captures_plaintext_prefix(self, real_flow, encoding):
+        # Moderate entropy keeps the wire body over the cap while allowing both
+        # decoders to emit a useful prefix from the retained bytes.
+        original = bytes(
+            ord("a") + value % 8 for value in pseudo_random_ascii(STREAM_BUFFER_LIMIT * 4)
         )
-        entry = {}
-        add_capture_fields(flow, entry)
-        # Should not crash; body is either partial decompressed or original
-        assert entry.get("response_body_truncated") is True or "response_body" not in entry
+        compressed = (
+            brotli.compress(original)
+            if encoding == "br"
+            else zstandard.ZstdCompressor().compress(original)
+        )
+        assert len(compressed) > STREAM_BUFFER_LIMIT
 
-    def test_truncated_zstd_falls_back(self, real_flow):
-        """Truncated zstd data should fall back gracefully."""
-        original = b"hello world " * 1000
-        compressed = zstandard.ZstdCompressor().compress(original)
-        truncated = compressed[: len(compressed) // 2]
-        flow = self._make_flow_with_compressed_buffer(
-            real_flow, truncated, "zstd", "text/plain", truncated=True
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="text/plain",
+            response_encoding=encoding,
         )
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(compressed) == compressed
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+
         entry = {}
         add_capture_fields(flow, entry)
-        assert entry.get("response_body_truncated") is True or "response_body" not in entry
+        expected_body = original[:BODY_CAPTURE_LIMIT].decode("ascii")
+        assert expected_body
+        assert entry["response_body"] == expected_body
+        assert entry["response_body_encoding"] == "utf-8"
+        assert entry["response_body_truncated"] is True

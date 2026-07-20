@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { resetSignal, setLoop } from "./utils.ts";
+import { onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 
@@ -8,6 +8,62 @@ import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 // ---------------------------------------------------------------------------
 
 const internalVisible$ = state(true);
+
+const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
+const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
+  "vm0AppSkeletonVisibleEventQueued";
+const APP_BOOTSTRAP_SKELETON_ID = "app-bootstrap-skeleton";
+const APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS = "app-bootstrap-skeleton--hidden";
+
+const internalBootstrapSkeletonActive$ = state(false);
+
+export const bootstrapSkeletonActive$ = computed((get) => {
+  return get(internalBootstrapSkeletonActive$);
+});
+
+export const initBootstrapSkeleton$ = command(({ set }) => {
+  const active = document.getElementById(APP_BOOTSTRAP_SKELETON_ID) !== null;
+  if (active) {
+    queueAppSkeletonVisibleEvent();
+  }
+  set(internalBootstrapSkeletonActive$, active);
+});
+
+function queueAppSkeletonVisibleEvent(): void {
+  if (
+    document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] ===
+    "true"
+  ) {
+    return;
+  }
+  document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] =
+    "true";
+  queueMicrotask(() => {
+    window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
+  });
+}
+
+export const appSkeletonVisibleEventRef$ = onRef(
+  command((_visitor, _element: HTMLDivElement, _signal: AbortSignal) => {
+    queueAppSkeletonVisibleEvent();
+  }),
+);
+
+function hideBootstrapSkeleton(): void {
+  const skeleton = document.getElementById(APP_BOOTSTRAP_SKELETON_ID);
+  if (!skeleton) {
+    return;
+  }
+  skeleton.setAttribute("aria-hidden", "true");
+  skeleton.addEventListener(
+    "transitionend",
+    () => {
+      skeleton.remove();
+    },
+    { once: true },
+  );
+  skeleton.classList.add(APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS);
+}
 
 // ---------------------------------------------------------------------------
 // Avatar – picked once at module load so remounts don't flicker
@@ -101,6 +157,8 @@ export const showAppSkeleton$ = command(({ set }) => {
 export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
   set(resetSkeletonCycling$);
 
+  set(internalBootstrapSkeletonActive$, false);
   set(internalVisible$, false);
+  hideBootstrapSkeleton();
   set(captureFirstSkeletonHide$);
 });

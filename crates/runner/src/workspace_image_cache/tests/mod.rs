@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::os::unix::fs::MetadataExt;
+use std::collections::{BTreeMap, HashMap};
+use std::os::unix::fs::{MetadataExt, symlink};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -24,7 +24,11 @@ use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_work
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::storage_fingerprints::StorageFingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES, ResumeSessionHistoryRefKind};
+use crate::types::{
+    HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
+    MAX_WORKSPACE_CACHES_PER_SESSION, ResumeSessionHistoryRefKind, WORKSPACE_AFFINITY_VERSION,
+    WorkspaceCacheState as HeldWorkspaceCacheState,
+};
 use sha2::{Digest, Sha256};
 use tokio::fs;
 
@@ -42,13 +46,29 @@ async fn write_current_cache_entry(
     last_completed_at: &str,
     last_used_at: &str,
 ) -> String {
-    let image = format!("image-{session_id}");
-    let key = cache.scoped_cache_key(
+    write_current_cache_entry_for_profile(
+        cache,
+        run_id,
         TEST_PROFILE_NAME,
         session_id,
         working_dir,
-        image.len() as u64,
-    );
+        last_completed_at,
+        last_used_at,
+    )
+    .await
+}
+
+async fn write_current_cache_entry_for_profile(
+    cache: &SessionWorkspaceCache,
+    run_id: RunId,
+    profile_name: &str,
+    session_id: &str,
+    working_dir: &str,
+    last_completed_at: &str,
+    last_used_at: &str,
+) -> String {
+    let image = format!("image-{session_id}");
+    let key = cache.scoped_cache_key(profile_name, session_id, working_dir, image.len() as u64);
     fs::create_dir_all(cache.session_workspace_cache_entry_dir(&key))
         .await
         .unwrap();
@@ -63,7 +83,7 @@ async fn write_current_cache_entry(
                 format_version: CACHE_FORMAT_VERSION,
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
-                profile_name: TEST_PROFILE_NAME.into(),
+                profile_name: profile_name.into(),
                 session_id: session_id.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: last_completed_at.into(),
@@ -355,6 +375,57 @@ async fn promotion_overwrites_older_cache_entry() {
         .await
         .unwrap();
     assert_eq!(current, b"new image");
+}
+
+#[tokio::test]
+async fn successful_multi_entry_promotion_scans_cache_root_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let first_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "sess-existing-1",
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let second_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "sess-existing-2",
+        "/workspace",
+        "2026-05-01T00:01:00.000Z",
+        "2026-05-01T00:01:00.000Z",
+    )
+    .await;
+    cache.reset_gc_root_scan_count();
+
+    let promoted_key = promote_current_cache_entry(
+        &cache,
+        &paths,
+        "sess-promoted",
+        b"promoted image",
+        "2026-05-01T00:02:00.000Z",
+    )
+    .await;
+
+    assert_eq!(
+        cache.gc_root_scan_count(),
+        1,
+        "successful promotion should inventory the cache root once during mandatory post-promotion GC"
+    );
+    for cache_key in [first_key, second_key, promoted_key] {
+        assert!(
+            paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists(),
+            "healthy under-budget entries should remain after post-promotion GC"
+        );
+    }
 }
 
 #[test]
@@ -1054,12 +1125,20 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
             session_id: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
             reusable_sandbox: None,
+            workspace_caches: vec![HeldWorkspaceCacheState {
+                profile: TEST_PROFILE_NAME.to_owned(),
+                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            }],
         })
         .collect();
     states.push(HeldSessionState {
         session_id: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
         reusable_sandbox: None,
+        workspace_caches: vec![HeldWorkspaceCacheState {
+            profile: TEST_PROFILE_NAME.to_owned(),
+            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+        }],
     });
 
     let capped = cap_workspace_held_session_states(states);
@@ -1077,6 +1156,139 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         capped
             .iter()
             .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}"))
+    );
+}
+
+#[test]
+fn cap_workspace_held_session_states_bounds_nested_resources() {
+    let per_session = (0..=MAX_WORKSPACE_CACHES_PER_SESSION)
+        .map(|index| HeldSessionState {
+            session_id: "sess-multi".into(),
+            last_completed_at: timestamp_for_index(index),
+            reusable_sandbox: None,
+            workspace_caches: vec![HeldWorkspaceCacheState {
+                profile: format!("vm0/profile-{index:02}"),
+                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            }],
+        })
+        .collect();
+
+    let capped = cap_workspace_held_session_states(per_session);
+
+    assert_eq!(capped.len(), 1);
+    assert_eq!(
+        capped[0].workspace_caches.len(),
+        MAX_WORKSPACE_CACHES_PER_SESSION
+    );
+    assert_eq!(capped[0].workspace_caches[0].profile, "vm0/profile-00");
+    assert_eq!(capped[0].last_completed_at, timestamp_for_index(8));
+
+    let global = (0..=MAX_WORKSPACE_CACHES_PER_HEARTBEAT / 8)
+        .map(|index| HeldSessionState {
+            session_id: format!("sess-{index:04}"),
+            last_completed_at: timestamp_for_index(index),
+            reusable_sandbox: None,
+            workspace_caches: (0..8)
+                .map(|profile| HeldWorkspaceCacheState {
+                    profile: format!("vm0/profile-{profile}"),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                })
+                .collect(),
+        })
+        .collect();
+
+    let capped = cap_workspace_held_session_states(global);
+
+    assert_eq!(
+        capped
+            .iter()
+            .map(|state| state.workspace_caches.len())
+            .sum::<usize>(),
+        MAX_WORKSPACE_CACHES_PER_HEARTBEAT
+    );
+    assert!(
+        !capped.iter().any(|state| state.session_id == "sess-0000"),
+        "oldest session should be dropped at the global workspace cap"
+    );
+}
+
+#[tokio::test]
+async fn held_session_states_for_profiles_filters_and_aggregates_current_identities() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths);
+    let run_id = RunId::new_v4();
+    let session_id = "sess-multi-profile";
+    let image_size = format!("image-{session_id}").len() as u64;
+    write_current_cache_entry_for_profile(
+        &cache,
+        run_id,
+        "vm0/default",
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:01.000Z",
+        "2026-05-01T00:00:01.000Z",
+    )
+    .await;
+    write_current_cache_entry_for_profile(
+        &cache,
+        run_id,
+        "vm0/large",
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:02.000Z",
+        "2026-05-01T00:00:02.000Z",
+    )
+    .await;
+    write_current_cache_entry_for_profile(
+        &cache,
+        run_id,
+        "vm0/noncanonical",
+        session_id,
+        "/workspace",
+        "2026-05-01T00:00:03.000Z",
+        "2026-05-01T00:00:03.000Z",
+    )
+    .await;
+
+    let configured = BTreeMap::from([
+        ("vm0/default", image_size),
+        ("vm0/large", image_size),
+        ("vm0/noncanonical", image_size),
+    ]);
+    let states = cache.held_session_states_for_profiles(&configured).await;
+
+    assert_eq!(
+        states,
+        vec![HeldSessionState {
+            session_id: session_id.into(),
+            last_completed_at: "2026-05-01T00:00:02.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![
+                HeldWorkspaceCacheState {
+                    profile: "vm0/default".into(),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                },
+                HeldWorkspaceCacheState {
+                    profile: "vm0/large".into(),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                },
+            ],
+        }]
+    );
+
+    let default_only = BTreeMap::from([("vm0/default", image_size)]);
+    let states = cache.held_session_states_for_profiles(&default_only).await;
+    assert_eq!(states[0].workspace_caches.len(), 1);
+    assert_eq!(states[0].workspace_caches[0].profile, "vm0/default");
+
+    let wrong_size = BTreeMap::from([("vm0/default", image_size + 1)]);
+    assert!(
+        cache
+            .held_session_states_for_profiles(&wrong_size)
+            .await
+            .is_empty()
     );
 }
 
@@ -1508,6 +1720,18 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 
     let identity =
         publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let metadata_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.metadata.json");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    assert!(metadata.get("historyGenerationRunId").is_none());
+    assert!(metadata.get("allocatedBytes").is_none());
+    let held_states = cache.held_session_states().await;
+    assert_eq!(
+        held_states[0].workspace_caches[0].profile,
+        TEST_PROFILE_NAME
+    );
     let sidecar = cache
         .probe_session_history_sidecar(&cache_key, &identity)
         .await
@@ -1519,6 +1743,168 @@ async fn session_history_sidecar_publish_and_probe_hit() {
     );
     assert_eq!(sidecar.encoded_size, history.len() as u64);
     assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn previous_session_history_sidecar_metadata_remains_restoreable() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-previous";
+    let history = br#"{"type":"message","content":"previous"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let metadata_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.metadata.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    let metadata = metadata.as_object_mut().unwrap();
+    assert!(
+        metadata
+            .insert("allocatedBytes".into(), 4096_u64.into())
+            .is_none()
+    );
+    assert!(
+        metadata
+            .insert("historyGenerationRunId".into(), run_id.to_string().into(),)
+            .is_none()
+    );
+    fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+        .await
+        .unwrap();
+
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        sidecar.representation,
+        WorkspaceSessionHistorySidecarRepresentation::Raw
+    );
+    assert_eq!(sidecar.encoded_size, history.len() as u64);
+    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn invalid_session_history_sidecars_are_rejected_by_probe() {
+    #[derive(Clone, Copy, Debug)]
+    enum InvalidSidecarCase {
+        MissingMetadata,
+        MalformedMetadata,
+        UnsupportedRepresentation,
+        MetadataSymlink,
+        MissingBody,
+        BodySymlink,
+        SessionMismatch,
+        InvalidHash,
+        InvalidSize,
+    }
+
+    for case in [
+        InvalidSidecarCase::MissingMetadata,
+        InvalidSidecarCase::MalformedMetadata,
+        InvalidSidecarCase::UnsupportedRepresentation,
+        InvalidSidecarCase::MetadataSymlink,
+        InvalidSidecarCase::MissingBody,
+        InvalidSidecarCase::BodySymlink,
+        InvalidSidecarCase::SessionMismatch,
+        InvalidSidecarCase::InvalidHash,
+        InvalidSidecarCase::InvalidSize,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-sidecar-invalid-observation";
+        let history = br#"{"type":"message","content":"invalid"}"#;
+        let cache_key = write_current_cache_entry(
+            &cache,
+            run_id,
+            session_id,
+            CANONICAL_WORKING_DIR,
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let identity =
+            publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history)
+                .await;
+        let entry_dir = paths.session_workspace_cache_entry_dir(&cache_key);
+        let metadata_path = entry_dir.join("session-history.metadata.json");
+        let body_path = entry_dir.join("session-history.blob");
+
+        match case {
+            InvalidSidecarCase::MissingMetadata => {
+                fs::remove_file(&metadata_path).await.unwrap();
+            }
+            InvalidSidecarCase::MalformedMetadata => {
+                fs::write(&metadata_path, b"not-json").await.unwrap();
+            }
+            InvalidSidecarCase::UnsupportedRepresentation
+            | InvalidSidecarCase::SessionMismatch
+            | InvalidSidecarCase::InvalidHash
+            | InvalidSidecarCase::InvalidSize => {
+                let mut metadata: serde_json::Value =
+                    serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+                match case {
+                    InvalidSidecarCase::UnsupportedRepresentation => {
+                        metadata["representation"] = "codex-zstd".into();
+                    }
+                    InvalidSidecarCase::SessionMismatch => {
+                        metadata["sessionIdHash"] =
+                            hex::encode(Sha256::digest(b"another-session")).into();
+                    }
+                    InvalidSidecarCase::InvalidHash => {
+                        metadata["historyHash"] = "not-a-sha256-hash".into();
+                    }
+                    InvalidSidecarCase::InvalidSize => {
+                        metadata["historySizeBytes"] = 0.into();
+                    }
+                    unexpected => {
+                        panic!("unexpected grouped invalid sidecar case: {unexpected:?}")
+                    }
+                }
+                fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+                    .await
+                    .unwrap();
+            }
+            InvalidSidecarCase::MetadataSymlink => {
+                let target = entry_dir.join("session-history.metadata.target.json");
+                fs::rename(&metadata_path, &target).await.unwrap();
+                symlink(&target, &metadata_path).unwrap();
+            }
+            InvalidSidecarCase::MissingBody => {
+                fs::remove_file(&body_path).await.unwrap();
+            }
+            InvalidSidecarCase::BodySymlink => {
+                let target = entry_dir.join("session-history.target.blob");
+                fs::rename(&body_path, &target).await.unwrap();
+                symlink(&target, &body_path).unwrap();
+            }
+        }
+
+        assert!(
+            cache
+                .probe_session_history_sidecar(&cache_key, &identity)
+                .await
+                .is_err(),
+            "case: {case:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -3392,7 +3778,7 @@ async fn gc_candidate_includes_current_image_without_metadata() {
 }
 
 #[tokio::test]
-async fn gc_prunes_oldest_entries_above_held_session_limit() {
+async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -3400,6 +3786,7 @@ async fn gc_prunes_oldest_entries_above_held_session_limit() {
     let run_id = RunId::new_v4();
 
     let mut oldest_key = String::new();
+    let mut second_oldest_key = String::new();
     let mut newest_key = String::new();
     for index in 0..=MAX_HELD_SESSION_STATES {
         let session_id = format!("sess-{index:04}");
@@ -3416,25 +3803,32 @@ async fn gc_prunes_oldest_entries_above_held_session_limit() {
         if index == 0 {
             oldest_key = key.clone();
         }
+        if index == 1 {
+            second_oldest_key = key.clone();
+        }
         if index == MAX_HELD_SESSION_STATES {
             newest_key = key;
         }
     }
 
+    let oldest_lock = crate::lock::acquire(cache.entry_lock_path(&oldest_key))
+        .await
+        .unwrap();
     let freed = cache.gc(false).await.unwrap();
+    drop(oldest_lock);
 
     assert!(freed > 0);
     assert!(
-        !paths
+        paths
             .session_workspace_cache_current_image(&oldest_key)
             .exists(),
-        "oldest unlocked cache entry should be removed when the cache is over the advertised limit"
+        "the oldest busy entry must remain protected by its entry lock"
     );
     assert!(
         !paths
-            .session_workspace_cache_entry_dir(&oldest_key)
+            .session_workspace_cache_entry_dir(&second_oldest_key)
             .exists(),
-        "GC should remove the whole evicted entry so stale metadata directories do not slow heartbeat scans"
+        "a valid busy entry must still count toward the cap and force eviction of the next eligible candidate"
     );
     assert!(
         paths

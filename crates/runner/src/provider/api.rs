@@ -25,8 +25,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
-    SessionHistoryGenerationRelationship,
+    LocalAdmissionResourceKind, SessionAffinityLocalResource,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -62,11 +61,11 @@ struct ClaimRequestTelemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     main_loop_to_local_admission_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pre_local_admission_outcome: Option<&'static str>,
+    session_affinity_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_generation_relationship: Option<&'static str>,
+    session_affinity_local_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_generation_local_availability: Option<&'static str>,
+    local_admission_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -366,12 +365,14 @@ impl JobProvider for ApiProvider {
                     let history_generation_affinity_protected_until =
                         job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
+                    let session_affinity_resource = job.session_affinity_resource;
                     let profile = job
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_session_affinity_resource(session_affinity_resource)
                         .with_history_generation_run_id(history_generation_run_id)
                         .with_history_generation_affinity_protected_until(
                             history_generation_affinity_protected_until,
@@ -811,7 +812,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
         direct_candidate_inbox_wait_ms,
         provider_discovery_to_main_loop_ms,
         main_loop_to_local_admission_ms,
-        pre_local_admission_outcome,
     ) = if is_ably_candidate {
         (
             candidate
@@ -826,12 +826,9 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             candidate
                 .main_loop_to_local_admission_elapsed()
                 .map(claim_telemetry_duration_ms),
-            candidate
-                .pre_local_admission_outcome()
-                .map(PreLocalAdmissionOutcome::as_str),
         )
     } else {
-        (None, None, None, None, None)
+        (None, None, None, None)
     };
 
     ClaimRequestBody {
@@ -847,13 +844,15 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             direct_candidate_inbox_wait_ms,
             provider_discovery_to_main_loop_ms,
             main_loop_to_local_admission_ms,
-            pre_local_admission_outcome,
-            session_history_generation_relationship: candidate
-                .session_history_generation_relationship()
-                .map(SessionHistoryGenerationRelationship::as_str),
-            session_history_generation_local_availability: candidate
-                .session_history_generation_local_availability()
-                .map(SessionHistoryGenerationLocalAvailability::as_str),
+            session_affinity_resource: candidate
+                .session_affinity_resource()
+                .map(crate::types::SessionAffinityResource::as_str),
+            session_affinity_local_resource: candidate
+                .session_affinity_local_resource()
+                .map(SessionAffinityLocalResource::as_str),
+            local_admission_resource: candidate
+                .local_admission_resource()
+                .map(LocalAdmissionResourceKind::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1439,6 +1438,8 @@ mod tests {
             runner_id: "runner-heartbeat-test".to_string(),
             runner_name: "runner test".to_string(),
             group: "vm0/test".to_string(),
+            snapshot_generation: 7,
+            snapshot_sequence: 42,
             total_vcpu: 8,
             total_memory_mb: 32768,
             max_concurrent: 4,
@@ -1450,6 +1451,7 @@ mod tests {
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
+                workspace_caches: Vec::new(),
             }],
             mode: "running".to_string(),
         }
@@ -1630,7 +1632,6 @@ mod tests {
             body["supportedProfiles"][0],
             crate::profile::DEFAULT_PROFILE
         );
-        assert!(body.get("profiles").is_none());
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
         assert!(body.get("heldSessionStates").is_none());
     }
@@ -1647,15 +1648,15 @@ mod tests {
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
         .with_discovery_source(JobDiscoverySource::Poll)
+        .with_session_affinity_resource(Some(
+            crate::types::SessionAffinityResource::ReusableSandbox,
+        ))
         .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
-        candidate.set_session_history_generation_relationship(
-            SessionHistoryGenerationRelationship::Exact,
-        );
-        candidate.set_session_history_generation_local_availability(
-            SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
-        );
+        candidate
+            .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
+        candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -1674,31 +1675,39 @@ mod tests {
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
         assert_eq!(
-            body["telemetry"]["sessionHistoryGenerationRelationship"],
-            "exact"
+            body["telemetry"]["sessionAffinityResource"],
+            "reusableSandbox"
         );
         assert_eq!(
-            body["telemetry"]["sessionHistoryGenerationLocalAvailability"],
-            "parked_before_discovery_ge_heartbeat_period"
+            body["telemetry"]["sessionAffinityLocalResource"],
+            "reusableSandbox"
+        );
+        assert_eq!(
+            body["telemetry"]["localAdmissionResource"],
+            "reusableSandbox"
         );
         assert!(
             !body
                 .to_string()
                 .contains(&target_generation_run_id.to_string())
         );
+        assert!(!body.to_string().contains("rawSizeBytes"));
+        assert!(!body.to_string().contains("sessionId"));
+        assert!(!body.to_string().contains("historyHash"));
+        assert!(!body.to_string().contains("cacheKey"));
+        assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
     }
 
     #[test]
-    fn claim_request_body_serializes_pre_claim_timing_splits() {
+    fn claim_request_body_serializes_ably_timing_splits() {
         let mut candidate =
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_discovery_source(JobDiscoverySource::Ably)
                 .with_direct_candidate_timing(
                     Some(Duration::from_millis(3)),
                     Some(Duration::from_millis(5)),
-                )
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                );
         candidate.mark_provider_discovery_returned();
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
@@ -1721,15 +1730,6 @@ mod tests {
                 .as_u64()
                 .is_some()
         );
-        assert_eq!(
-            body["telemetry"]["preLocalAdmissionOutcome"],
-            "local_holder"
-        );
-        assert!(
-            body["telemetry"]
-                .get("sessionHistoryGenerationLocalAvailability")
-                .is_none()
-        );
     }
 
     #[test]
@@ -1740,8 +1740,7 @@ mod tests {
                 .with_direct_candidate_timing(
                     Some(Duration::from_millis(3)),
                     Some(Duration::from_millis(5)),
-                )
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected);
+                );
         candidate.mark_provider_discovery_returned();
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
@@ -1769,7 +1768,6 @@ mod tests {
                 .get("mainLoopToLocalAdmissionMs")
                 .is_none()
         );
-        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
@@ -1818,6 +1816,7 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
+        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
         assert!(
             body["telemetry"]
                 .get("directCandidateNotificationToEnqueueMs")
@@ -1838,7 +1837,6 @@ mod tests {
                 .get("mainLoopToLocalAdmissionMs")
                 .is_none()
         );
-        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
@@ -1924,7 +1922,8 @@ mod tests {
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
                         "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
+                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
+                        "sessionAffinityResource": "reusableSandbox"
                     }
                 }));
             })
@@ -1949,6 +1948,10 @@ mod tests {
         );
         assert!(discovered.is_affinity_protected());
         assert!(discovered.is_history_generation_affinity_protected());
+        assert_eq!(
+            discovered.session_affinity_resource(),
+            Some(crate::types::SessionAffinityResource::ReusableSandbox)
+        );
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)

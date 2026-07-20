@@ -26,90 +26,100 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 
 ## Test Files
 
-| File | Tests |
-|------|-------|
-| `test_addon_configuration.py` | Addon option registration and configuration updates |
-| `test_builtin_host_policy_contract.py` | Cross-stage malformed built-in host policy contracts |
-| `test_request_handler_passthrough.py` | Request pass-through, auto-allow, and browser user-agent passthrough decisions |
-| `test_request_handler_authority_validation.py` | HTTPS authority validation before firewall auth |
-| `test_request_handler_firewall_dispatch.py` | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
-| `test_request_handler_public_destination.py` | Request-hook public destination validation and revalidation |
-| `test_request_handler_connector_diagnostics.py` | Request-hook connector diagnostics and inactive built-in connector diagnostics |
-| `test_request_handler_auth_base_body.py` | Request-hook auth-base body admission and cleanup |
-| `test_request_handler_usage_tracking.py` | Request-hook billable usage tracking lifecycle |
-| `test_response_headers_handler.py` | Response-header hook stream setup |
-| `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
-| `test_error_handler.py` | Error hook logging and usage cleanup |
-| `test_done_hook.py` | Shutdown hook usage flush and executor cleanup |
-| `test_runner_usage_flush_signal.py` | Runner-triggered usage and JSONL flush requests |
-| `test_tls_clienthello_hook.py` | TLS clienthello admission behavior |
-| `test_tcp_hooks.py` | TCP start, logging, message drain, end, and error hooks |
-| `test_registry_loading.py` | Registry loading, parsing, unavailable-state, and cache behavior |
-| `test_registry_auth_cache_eviction.py` | Registry-driven auth-cache ownership and eviction behavior |
-| `test_registry_context.py` | VM lookup and public compiled context API behavior |
-| `test_registry_builtin_cache.py` | Registry built-in firewall resolution and compiled-core cache behavior |
-| `test_registry_builtin_base_url_vars.py` | Registry built-in base URL variable resolution and validation |
-| `test_registry_context_state.py` | Registry compiled context reload, unavailable-state, and malformed-shape behavior |
-| `test_matching_path.py` | Low-level firewall path matching |
-| `test_matching_host.py` | Low-level firewall host matching |
-| `test_matching_path_prefix.py` | Low-level firewall path-prefix matching |
-| `test_matching_base_url_static.py` | Static firewall base URL matching and authority normalization |
-| `test_matching_base_url_parameterized.py` | Parameterized firewall base URL matching |
-| `test_matching_mixed_segments.py` | Mixed parameter-segment matcher regressions |
-| `test_matching_anthropic_firewall_scope.py` | Anthropic firewall scope matching regressions |
-| `test_firewall_request_matching.py` | Raw firewall request matching through the compiled matcher |
-| `test_firewall_request_base_matching.py` | Request-layer firewall base URL matching through raw firewall config |
-| `test_firewall_request_rel_path.py` | Request-layer `rel_path` propagation through raw firewall config |
-| `test_firewall_network_policy_decisions.py` | Request-layer network policy decision behavior |
-| `test_compiled_firewall_base_path_matching.py` | Compiled firewall base path, rule path, segment boundary, and path syntax matching |
-| `test_compiled_firewall_host_base_matching.py` | Compiled firewall host-parameterized base matching |
-| `test_compiled_firewall_authority_normalization.py` | Compiled firewall runtime URL, authority, and port normalization |
-| `test_compiled_firewall_idna_matching.py` | Compiled firewall IDNA authority matching and compatibility-alias rejection |
-| `test_compiled_firewall_unknown_policy.py` | Compiled firewall unknown-policy and unsafe-path behavior |
-| `test_compiled_firewall_base_specificity_precedence.py` | Compiled firewall base specificity precedence |
-| `test_compiled_firewall_cross_firewall_precedence.py` | Compiled firewall cross-firewall and permission ordering precedence |
-| `test_compiled_firewall_malformed_auth.py` | Compiled firewall malformed auth config behavior |
-| `test_compiled_firewall_malformed_base.py` | Compiled firewall malformed base and base-scope behavior |
-| `test_compiled_firewall_malformed_permissions.py` | Compiled firewall malformed permission behavior |
-| `test_compiled_firewall_malformed_policies.py` | Compiled firewall malformed policy and payload-shape behavior |
-| `test_compiled_firewall_malformed_precedence.py` | Compiled firewall malformed config and malformed network-policy precedence |
-| `test_compiled_firewall_malformed_rules.py` | Compiled firewall malformed rule and rule-shape behavior |
-| `test_compiled_firewall_permission_aggregation.py` | Compiled firewall denied-permission aggregation and deduplication |
-| `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence |
-| `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
-| `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
-| `test_firewall_rewrite_success.py` | Firewall auth URL rewrite success behavior |
-| `test_firewall_rewrite_forwarding.py` | Firewall auth URL rewrite forwarding behavior |
-| `test_firewall_rewrite_safety.py` | Firewall auth URL rewrite fail-closed and safety behavior |
-| `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
-| `test_url_utils.py` | Rewrite URL, path, query, and auth-base URL utility cases |
-| `test_url_utils_trusted_authority.py` | Trusted request authority success and URL reconstruction |
-| `test_url_utils_trusted_authority_rejection.py` | Trusted request authority rejection matrices |
-| `test_auth_cache.py` | Firewall auth cache behavior |
-| `test_body_capture_decompression.py` | Capture-level body decompression integration |
-| `test_body_capture_encoding.py` | Body capture text detection, encoding, and UTF-8 truncation helpers |
-| `test_body_capture_fields.py` | Ordinary request/response body capture fields |
-| `test_body_capture_headers.py` | Captured network-log header sanitization |
-| `test_body_capture_stream_buffer.py` | Body capture stream-buffer contracts |
-| `test_body_decoding.py` | Shared body decoding, streaming decode, codec limits, and decompression errors |
-| `test_anthropic_messages.py` | Anthropic Messages SSE and JSON usage extraction |
-| `test_openai_responses_event_json.py` | OpenAI Responses event JSON usage extraction and merge behavior |
-| `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
-| `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
-| `test_response_streaming.py` | Response streaming parser setup |
-| `test_model_provider_json_fallback.py` | Model provider buffered JSON fallback usage pipeline |
-| `test_model_provider_json_streaming.py` | Model provider streaming JSON response usage pipeline |
-| `test_model_provider_sse_usage.py` | Model provider SSE usage pipeline |
-| `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
-| `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |
-| `test_model_provider_usage.py` | Model provider usage reporter |
-| `x_connector_usage/` | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates |
-| `test_connector_usage.py` | Connector usage reporter and stream-path detection |
-| `test_usage_idempotency.py` | Usage event idempotency key helpers |
-| `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
-| `test_webhook_delivery_admission.py` | Usage webhook delivery admission, capacity, pending counter, and executor fallback behavior |
-| `test_webhook_http_delivery.py` | Usage webhook HTTP delivery, retry, request, and log behavior |
-| `test_counters.py` | Usage pending counters |
+| File                                                    | Tests                                                                                                                |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
+| `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
+| `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
+| `test_request_handler_authority_validation.py`          | HTTPS authority validation before firewall auth                                                                      |
+| `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
+| `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
+| `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
+| `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
+| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                        |
+| `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
+| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                             |
+| `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
+| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                 |
+| `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
+| `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
+| `test_response_handler_connector_diagnostics.py`        | Response-hook connector diagnostic replacement and streaming lifecycle                                               |
+| `test_response_handler_logging.py`                      | Response-hook network/proxy logging, size accounting, and body capture                                               |
+| `test_response_handler_auth_recovery.py`                | Response-hook 401 firewall-auth cache invalidation and refresh recovery                                              |
+| `test_response_handler_cleanup.py`                      | Response-hook terminal request/response stream-state cleanup                                                         |
+| `test_error_handler.py`                                 | Error hook logging and usage cleanup                                                                                 |
+| `test_done_hook.py`                                     | Shutdown hook usage flush and executor cleanup                                                                       |
+| `test_runner_usage_flush_signal.py`                     | Runner-triggered usage and JSONL flush requests                                                                      |
+| `test_tls_clienthello_hook.py`                          | TLS clienthello admission behavior                                                                                   |
+| `test_tcp_hooks.py`                                     | TCP start, logging, message drain, end, and error hooks                                                              |
+| `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
+| `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
+| `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
+| `test_registry_builtin_cache.py`                        | Registry built-in firewall resolution and compiled-core cache behavior                                               |
+| `test_registry_builtin_base_url_vars.py`                | Registry built-in base URL variable resolution and validation                                                        |
+| `test_registry_context_state.py`                        | Registry compiled context reload, unavailable-state, and malformed-shape behavior                                    |
+| `test_matching_path.py`                                 | Low-level firewall path matching                                                                                     |
+| `test_matching_host.py`                                 | Low-level firewall host matching                                                                                     |
+| `test_matching_path_prefix.py`                          | Low-level firewall path-prefix matching                                                                              |
+| `test_matching_base_url_static.py`                      | Static firewall base URL matching and authority normalization                                                        |
+| `test_matching_base_url_parameterized.py`               | Parameterized firewall base URL matching                                                                             |
+| `test_matching_mixed_segments.py`                       | Mixed parameter-segment matcher regressions                                                                          |
+| `test_matching_anthropic_firewall_scope.py`             | Anthropic firewall scope matching regressions                                                                        |
+| `test_firewall_request_matching.py`                     | Raw firewall request matching through the compiled matcher                                                           |
+| `test_firewall_request_base_matching.py`                | Request-layer firewall base URL matching through raw firewall config                                                 |
+| `test_firewall_request_rel_path.py`                     | Request-layer `rel_path` propagation through raw firewall config                                                     |
+| `test_firewall_network_policy_decisions.py`             | Request-layer network policy decision behavior                                                                       |
+| `test_compiled_firewall_base_path_matching.py`          | Compiled firewall base path, rule path, segment boundary, and path syntax matching                                   |
+| `test_compiled_firewall_host_base_matching.py`          | Compiled firewall host-parameterized base matching                                                                   |
+| `test_compiled_firewall_authority_normalization.py`     | Compiled firewall runtime URL, authority, and port normalization                                                     |
+| `test_compiled_firewall_idna_matching.py`               | Compiled firewall IDNA authority matching and compatibility-alias rejection                                          |
+| `test_compiled_firewall_unknown_policy.py`              | Compiled firewall unknown-policy and unsafe-path behavior                                                            |
+| `test_compiled_firewall_base_specificity_precedence.py` | Compiled firewall base specificity precedence                                                                        |
+| `test_compiled_firewall_cross_firewall_precedence.py`   | Compiled firewall cross-firewall and permission ordering precedence                                                  |
+| `test_compiled_firewall_malformed_auth.py`              | Compiled firewall malformed auth config behavior                                                                     |
+| `test_compiled_firewall_malformed_base.py`              | Compiled firewall malformed base and base-scope behavior                                                             |
+| `test_compiled_firewall_malformed_permissions.py`       | Compiled firewall malformed permission behavior                                                                      |
+| `test_compiled_firewall_malformed_policies.py`          | Compiled firewall malformed policy and payload-shape behavior                                                        |
+| `test_compiled_firewall_malformed_precedence.py`        | Compiled firewall malformed config and malformed network-policy precedence                                           |
+| `test_compiled_firewall_malformed_rules.py`             | Compiled firewall malformed rule and rule-shape behavior                                                             |
+| `test_compiled_firewall_permission_aggregation.py`      | Compiled firewall denied-permission aggregation and deduplication                                                    |
+| `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence                                                      |
+| `test_firewall_auth.py`                                 | Firewall auth header resolution, fetching, forwarding, and cleanup                                                   |
+| `test_auth_base_forwarder.py`                           | Low-level auth.base forwarding, header filtering, and cleanup                                                        |
+| `test_firewall_rewrite_success.py`                      | Firewall auth URL rewrite success behavior                                                                           |
+| `test_firewall_rewrite_forwarding.py`                   | Firewall auth URL rewrite forwarding behavior                                                                        |
+| `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
+| `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
+| `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
+| `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
+| `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
+| `test_auth_cache.py`                                    | Firewall auth cache behavior                                                                                         |
+| `test_body_capture_decompression.py`                    | Capture-level body decompression integration                                                                         |
+| `test_body_capture_encoding.py`                         | Body capture text detection, encoding, and UTF-8 truncation helpers                                                  |
+| `test_body_capture_fields.py`                           | Ordinary request/response body capture fields                                                                        |
+| `test_body_capture_headers.py`                          | Captured network-log header sanitization                                                                             |
+| `test_body_capture_stream_buffer.py`                    | Body capture stream-buffer contracts                                                                                 |
+| `test_body_decoding.py`                                 | Shared body decoding, streaming decode, codec limits, and decompression errors                                       |
+| `test_anthropic_messages.py`                            | Anthropic Messages SSE and JSON usage extraction                                                                     |
+| `test_openai_responses_event_json.py`                   | OpenAI Responses event JSON usage extraction and merge behavior                                                      |
+| `test_openai_responses_json.py`                         | OpenAI Responses non-SSE JSON usage extraction                                                                       |
+| `test_openai_responses_sse.py`                          | OpenAI Responses SSE usage extraction                                                                                |
+| `test_response_streaming.py`                            | Response streaming parser setup                                                                                      |
+| `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
+| `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
+| `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
+| `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
+| `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
+| `test_model_provider_websocket_retention.py`            | Model provider WebSocket message retention and cleanup                                                               |
+| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
+| `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
+| `x_connector_usage/`                                    | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates                             |
+| `test_connector_usage.py`                               | Connector usage reporter and stream-path detection                                                                   |
+| `test_usage_idempotency.py`                             | Usage event idempotency key helpers                                                                                  |
+| `test_usage_reporting_idempotency.py`                   | Hook-level usage reporting idempotency                                                                               |
+| `test_webhook_delivery_admission.py`                    | Usage webhook delivery admission, capacity, pending counter, and executor fallback behavior                          |
+| `test_webhook_http_delivery.py`                         | Usage webhook HTTP delivery, retry, request, and log behavior                                                        |
+| `test_counters.py`                                      | Usage pending counters                                                                                               |
 
 ## Patterns
 

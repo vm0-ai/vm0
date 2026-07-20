@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
@@ -41,15 +41,6 @@ type RunNotCancellableResponse = ReturnType<typeof runNotCancellable>;
 const ACTIVE_STATUSES = ["queued", "pending", "running"] as const;
 type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
 
-interface LockedCancelRunRow extends Record<string, unknown> {
-  readonly id: string;
-  readonly status: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly sandboxId: string | null;
-  readonly runnerGroup: string | null;
-}
-
 function isActiveStatus(status: string): status is ActiveStatus {
   return (ACTIVE_STATUSES as readonly string[]).includes(status);
 }
@@ -79,21 +70,24 @@ export const cancelRun$ = command(
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
-      const lockedRows = await tx.execute<LockedCancelRunRow>(sql`
-        SELECT
-          ${agentRuns.id} AS "id",
-          ${agentRuns.status} AS "status",
-          ${agentRuns.userId} AS "userId",
-          ${agentRuns.orgId} AS "orgId",
-          ${agentRuns.sandboxId} AS "sandboxId",
-          ${agentRuns.runnerGroup} AS "runnerGroup"
-        FROM ${agentRuns}
-        WHERE ${agentRuns.id} = ${args.runId}
-          AND ${agentRuns.userId} = ${args.userId}
-          AND ${agentRuns.orgId} = ${args.orgId}
-        FOR UPDATE
-      `);
-      const run = lockedRows.rows[0];
+      const [run] = await tx
+        .select({
+          id: agentRuns.id,
+          status: agentRuns.status,
+          userId: agentRuns.userId,
+          orgId: agentRuns.orgId,
+          sandboxId: agentRuns.sandboxId,
+          runnerGroup: agentRuns.runnerGroup,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.id, args.runId),
+            eq(agentRuns.userId, args.userId),
+            eq(agentRuns.orgId, args.orgId),
+          ),
+        )
+        .for("update");
       if (!run) {
         return notFound(`No such run: '${args.runId}'`);
       }

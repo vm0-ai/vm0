@@ -77,7 +77,7 @@ pub fn verify_final_session_history_identity_file(
 pub fn export_final_session_history_sidecar_file(
     metadata_path: impl AsRef<Path>,
     export_path: impl AsRef<Path>,
-) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistoryIdentityVerifyError> {
+) -> Result<SessionHistorySidecarExportOutcome, FinalSessionHistoryIdentityVerifyError> {
     let identity = read_final_session_history_identity(metadata_path)?;
     verify_final_session_history_identity_constraints(&identity)?;
     let prepared = session_history::prepare_session_history_sidecar_from_payload_bounded(
@@ -87,9 +87,12 @@ pub fn export_final_session_history_sidecar_file(
     )
     .map_err(map_session_history_digest_error)?;
     verify_final_session_history_digest(&identity, &prepared.digest)?;
-    let source = prepared
-        .into_source()
-        .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
+    let source = match prepared.into_source() {
+        session_history::PreparedSessionHistorySidecarSource::Exportable(source) => source,
+        session_history::PreparedSessionHistorySidecarSource::RawTooLarge => {
+            return Ok(SessionHistorySidecarExportOutcome::Unavailable);
+        }
+    };
     let (representation, bytes) = match source {
         session_history::SessionHistoryCheckpointSource::Decoded(bytes) => {
             (SessionHistorySidecarRepresentation::Raw, bytes)
@@ -101,10 +104,20 @@ pub fn export_final_session_history_sidecar_file(
     crate::paths::write_private(export_path.as_ref(), &bytes)
         .map_err(AgentError::from)
         .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
-    Ok(SessionHistorySidecarExportMetadata {
-        representation,
-        encoded_size: bytes.len() as u64,
-    })
+    Ok(SessionHistorySidecarExportOutcome::Exported(
+        SessionHistorySidecarExportMetadata {
+            representation,
+            encoded_size: bytes.len() as u64,
+        },
+    ))
+}
+
+/// Result of exporting a final verified session-history sidecar.
+pub enum SessionHistorySidecarExportOutcome {
+    /// A verified sidecar file and its metadata were created.
+    Exported(SessionHistorySidecarExportMetadata),
+    /// Final history identity was verified, but no representation fits the export limit.
+    Unavailable,
 }
 
 fn read_final_session_history_identity(

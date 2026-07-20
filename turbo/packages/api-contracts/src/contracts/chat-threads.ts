@@ -6,7 +6,6 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { isSupportedRunModel } from "./model-providers";
-import { zeroMailDraftSchema } from "./zero-mail";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -83,6 +82,7 @@ const artifactItemSchema = z.object({
 const artifactsListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(10_000).optional(),
   cursor: z.string().optional(),
+  updatedAfter: z.string().datetime().optional(),
 });
 
 const artifactsListResponseSchema = z.object({
@@ -97,6 +97,11 @@ const artifactsListResponseSchema = z.object({
    * Opaque cursor for the next page, or null when this is the last page.
    */
   nextCursor: z.string().nullable(),
+  /**
+   * Database time captured before the first page was read. Incremental clients
+   * persist it only after the complete page chain has been cached.
+   */
+  syncUntil: z.string().datetime().optional(),
 });
 
 const artifactFavoriteBodySchema = z.object({
@@ -294,29 +299,15 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
-const workflowSnapshotSchema = z
-  .object({
-    id: z.string().uuid().optional(),
-    agentId: z.string().uuid().optional(),
-    name: z.string(),
-    displayName: z.string().nullable(),
-    description: z.string().nullable(),
-    automationId: z.string().uuid().optional(),
-    triggerId: z.string().uuid().optional(),
-    triggerBrief: z.string().nullable().optional(),
-  })
-  .superRefine((snapshot, context) => {
-    if (
-      snapshot.automationId !== undefined &&
-      snapshot.triggerId !== undefined &&
-      snapshot.automationId !== snapshot.triggerId
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "automationId and triggerId must match",
-      });
-    }
-  });
+const workflowSnapshotSchema = z.object({
+  id: z.string().uuid().optional(),
+  agentId: z.string().uuid().optional(),
+  name: z.string(),
+  displayName: z.string().nullable(),
+  description: z.string().nullable(),
+  automationId: z.string().uuid().optional(),
+  triggerBrief: z.string().nullable().optional(),
+});
 
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
@@ -338,7 +329,6 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
-  mailDraft: zeroMailDraftSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),

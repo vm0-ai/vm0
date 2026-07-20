@@ -1,5 +1,10 @@
 """Shared model-provider flow helpers for mitm-addon tests."""
 
+import base64
+import hashlib
+import hmac
+import json
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,6 +17,51 @@ from tests.flow_helpers import header_map
 RealFlowFactory = Callable[..., http.HTTPFlow]
 _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+
+
+def signed_usage_pricing_headers(
+    unit_prices: dict[str, object] | None = None,
+    *,
+    unit_size: int = 1_000_000,
+    issued_at: object | None = None,
+) -> dict[str, str]:
+    if unit_prices is None:
+        unit_prices = {
+            "tokens.input": 1000,
+            "tokens.cache_read": 100,
+            "tokens.cache_creation": 1250,
+            "tokens.output": 6000,
+        }
+    pricing = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {
+                    "version": 1,
+                    "issuedAt": int(time.time()) if issued_at is None else issued_at,
+                    "unitSize": unit_size,
+                    "unitPrices": unit_prices,
+                },
+                separators=(",", ":"),
+            ).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(
+                b"proxy-secret",
+                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
+                hashlib.sha256,
+            ).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "x-vm0-usage-pricing": pricing,
+        "x-vm0-usage-pricing-signature": signature,
+    }
 
 
 def _openai_responses_websocket_request_headers() -> http.Headers:

@@ -20,6 +20,7 @@ export const reap = {
         helpText:
           "1. Contact the Reap team to obtain an API key for your project\n2. Choose the matching API base URL for the key environment: `https://sandbox.api.reap.global/v1` or `https://prod.api.reap.global/v1`\n3. Copy the API key",
         storage: {
+          version: 1,
           secrets: ["REAP_API_KEY"],
           variables: ["REAP_API_BASE_URL"],
         },

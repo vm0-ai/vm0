@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.9.157](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.156...vsock-test-v0.9.157) (2026-07-20)
+
+## [0.9.156](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.155...vsock-test-v0.9.156) (2026-07-19)
+
+## [0.9.155](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.154...vsock-test-v0.9.155) (2026-07-19)
+
+## [0.9.154](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.153...vsock-test-v0.9.154) (2026-07-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** preserve graceful shutdown failure details ([#22073](https://github.com/vm0-ai/vm0/issues/22073)) ([50ad121](https://github.com/vm0-ai/vm0/commit/50ad1210ebd12c90f294bd0e16e208deb8c4366c))
+
+## [0.9.153](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.152...vsock-test-v0.9.153) (2026-07-17)
+
+## [0.9.152](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.151...vsock-test-v0.9.152) (2026-07-17)
+
+## [0.9.151](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.150...vsock-test-v0.9.151) (2026-07-17)
+
+## [0.9.150](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.149...vsock-test-v0.9.150) (2026-07-16)
+
+## [0.9.149](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.148...vsock-test-v0.9.149) (2026-07-16)
+
 ## [0.9.148](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.147...vsock-test-v0.9.148) (2026-07-16)
 
 

@@ -26,6 +26,7 @@ export const googleAnalytics = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GOOGLE_ANALYTICS_ACCESS_TOKEN",
             "GOOGLE_ANALYTICS_REFRESH_TOKEN",

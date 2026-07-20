@@ -19,6 +19,7 @@ export const close = {
           clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["CLOSE_ACCESS_TOKEN", "CLOSE_REFRESH_TOKEN"],
           variables: [],
         },

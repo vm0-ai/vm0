@@ -10,12 +10,16 @@ import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
+import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 export const SIDEBAR_PARAM = "sidebar";
 
@@ -120,7 +124,7 @@ const resolvePaneThread$ = command(
 
 const setupPaneThread$ = command(
   async (
-    { set },
+    { get, set },
     spec: PaneSpec,
     threadId: string,
     parentSignal: AbortSignal,
@@ -131,7 +135,16 @@ const setupPaneThread$ = command(
 
     const { draft, isNew } = set(ensureDraft$, threadId);
     const dataSource = createRemoteChatThreadDataSource(threadId);
-    const thread = createChatThreadSignals(threadId, draft, dataSource);
+    const initialOptimisticEntries = get(
+      createOptimisticChatMessagesForThread(threadId),
+    );
+    const thread = createChatThreadSignals(
+      threadId,
+      draft,
+      dataSource,
+      initialOptimisticEntries,
+      get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ?? false,
+    );
     set(spec.setPaneThread$, thread);
 
     await set(
@@ -194,6 +207,7 @@ export const loadLeftThread$ = command(
     // and automation panels are anchored to the previous thread's messages.
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
+    set(closeMailDraftSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === threadId) {
@@ -224,6 +238,7 @@ export const loadRightThread$ = command(
 
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
+    set(closeMailDraftSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, threadId);

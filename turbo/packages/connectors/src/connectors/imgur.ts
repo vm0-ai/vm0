@@ -11,6 +11,7 @@ export const imgur = {
         helpText:
           "1. Log in to [Imgur](https://imgur.com)\n2. Go to [Register an Application](https://api.imgur.com/oauth2/addclient)\n3. Fill in the application registration form\n4. After registration, you will receive a **Client ID** and **Client Secret**\n5. Copy and save both credentials",
         storage: {
+          version: 1,
           secrets: ["IMGUR_CLIENT_ID"],
           variables: [],
         },

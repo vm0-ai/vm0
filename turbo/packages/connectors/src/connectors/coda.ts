@@ -12,6 +12,7 @@ export const coda = {
         helpText:
           "1. Open Coda and click your avatar (bottom left) then **Account Settings**\n2. Scroll to **API Settings**\n3. Click **Generate API Token**, give it a name, optionally restrict scope\n4. Copy the token and paste it here",
         storage: {
+          version: 1,
           secrets: ["CODA_TOKEN"],
           variables: [],
         },

@@ -89,10 +89,10 @@ use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
-    HeldSessionStateSnapshot, collect_heartbeat_state,
+    HeartbeatSnapshotMetadata, HeldSessionStateSnapshot, collect_heartbeat_state,
     refresh_workspace_cache_held_session_snapshot,
 };
-use identity::load_or_generate_runner_id;
+use identity::{load_or_generate_runner_id, next_heartbeat_generation};
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
     evict_expired_idle_entries, spawn_idle_destroy_job,
@@ -372,6 +372,7 @@ async fn run_start_with_home(
 
     // Load or generate a persistent runner identity (UUID).
     let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
+    let heartbeat_generation = next_heartbeat_generation(&runner_config.base_dir).await?;
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
     // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
@@ -716,6 +717,7 @@ async fn run_start_with_home(
             id: runner_id,
             name,
             group: group_name,
+            heartbeat_generation,
             profiles: runner_config.profiles,
         },
         paths: RunPaths {
@@ -797,6 +799,7 @@ struct RunnerInfo {
     id: String,
     name: String,
     group: String,
+    heartbeat_generation: u64,
     profiles: BTreeMap<String, ProfileConfig>,
 }
 
@@ -1268,8 +1271,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown, preventing factory Arc leaks that cause
-    // "factory still referenced" warnings from Arc::try_unwrap.
+    // destroys at shutdown so their factory Arcs are released before the
+    // exclusive ownership preflight.
     let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
@@ -1350,6 +1353,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         runner_id: &runner.id,
         name: &runner.name,
         group: &runner.group,
+        snapshot_generation: runner.heartbeat_generation,
         profiles: &runner.profiles,
         budget: &capacity.budget,
         provider: &*provider_state.provider,
@@ -1360,6 +1364,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     refresh_workspace_cache_held_session_snapshot(
         &held_session_snapshot,
         exec_config.workspace_cache.as_ref(),
+        &runner.profiles,
     )
     .await;
     debug_assert!(held_session_snapshot.workspace_cache_loaded());
@@ -1531,7 +1536,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         drained_ready_candidates,
                         "session affinity state triggered immediate heartbeat"
                     );
-                    heartbeat.request(live_mode);
+                    heartbeat.request(live_mode)?;
                 }
             }
             // The active heartbeat future is pinned in the controller so
@@ -1540,7 +1545,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             result = heartbeat.wait_for_send(), if heartbeat_sending => {
                 result?;
                 let live_mode = *mode_rx.borrow();
-                heartbeat.finish_send(live_mode);
+                heartbeat.finish_send(live_mode)?;
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
@@ -1630,7 +1635,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
-                heartbeat.request(live_mode);
+                heartbeat.request(live_mode)?;
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
@@ -1646,7 +1651,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 };
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                     info!(source, "session affinity state triggered immediate heartbeat");
-                    heartbeat.request(live_mode);
+                    heartbeat.request(live_mode)?;
                 }
             }
         }
@@ -1661,7 +1666,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let phase = teardown.phase_start("heartbeat_drain");
     heartbeat.drain().await;
-    drop(heartbeat);
+    let final_heartbeat_sequence = heartbeat.into_next_snapshot_sequence();
     teardown.phase_complete("heartbeat_drain", phase);
 
     // Drop the pinned discover future before provider shutdown so any
@@ -1688,9 +1693,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     {
         let pool = shared.idle_pool.lock().await;
         let state = collect_heartbeat_state(
-            &runner.id,
-            &runner.name,
-            &runner.group,
+            HeartbeatSnapshotMetadata {
+                runner_id: &runner.id,
+                runner_name: &runner.name,
+                group: &runner.group,
+                generation: runner.heartbeat_generation,
+                sequence: final_heartbeat_sequence,
+            },
             &runner.profiles,
             &capacity.budget,
             &pool,
@@ -1763,8 +1772,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
-    // mismatch eviction, etc.) so their factory Arcs are dropped before
-    // shutdown_factories calls Arc::try_unwrap.
+    // mismatch eviction, etc.) so their factory Arcs are dropped before the
+    // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         match result {
@@ -1785,7 +1794,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     info!("shutting down factories");
     let phase = teardown.phase_start("shutdown_factory_instances");
-    shutdown_factory_instances(&mut factories, Some(&teardown)).await;
+    shutdown_factory_instances(&mut factories, Some(&teardown)).await?;
     teardown.phase_complete("shutdown_factory_instances", phase);
 
     // Keep the pool-scoped INPUT filters installed until dnsmasq is gone.

@@ -2,6 +2,7 @@ use super::*;
 
 use std::sync::Arc;
 
+use crate::paths::RunnerPaths;
 use crate::resource_budget::ResourceBudget;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 use crate::workspace_promotion::test_support::WorkspacePromotionFixture;
@@ -112,16 +113,27 @@ async fn idle_destroy_job_destroy_panic_releases_budget_lease() {
 
 #[tokio::test]
 async fn idle_destroy_job_stop_panic_still_attempts_destroy_and_releases_budget_lease() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-stop-panic").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.push_stop_panic("simulated idle stop panic");
     let (budget, lease) = reserved_budget_lease();
-    let job = make_idle_destroy_job(Arc::clone(&overrides), lease).await;
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
 
     let promoted = job.run_with_context("test_stop_panic").await;
 
     assert!(!promoted);
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
+    assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
 #[tokio::test]
@@ -139,6 +151,90 @@ async fn idle_destroy_job_stop_error_still_attempts_destroy_and_releases_budget_
     assert!(!promoted);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-promote").await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let (budget, lease) = reserved_budget_lease();
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
+
+    let promoted = job.run_with_context("test_idle_destroy_promote").await;
+
+    assert!(promoted);
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(budget.allocated(), (0, 0, 0));
+    let states = fixture.cache.held_session_states().await;
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].session_id, fixture.session_id);
+}
+
+#[tokio::test]
+async fn idle_destroy_job_stop_error_abandons_frozen_workspace_and_still_destroys() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-stop-error").await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_stop_result(Err(sandbox::SandboxError::Start {
+        message: "simulated idle stop failure".into(),
+    }));
+    let (budget, lease) = reserved_budget_lease();
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
+
+    let promoted = job.run_with_context("test_idle_destroy_stop_error").await;
+
+    assert!(!promoted);
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(budget.allocated(), (0, 0, 0));
+    assert!(fixture.cache.held_session_states().await.is_empty());
+}
+
+#[tokio::test]
+async fn idle_destroy_job_publication_failure_after_stop_still_destroys() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-publish-error").await;
+    let paths = RunnerPaths::new(fixture._dir.path().join("runner"));
+    tokio::fs::remove_file(paths.active_workspace_image(&fixture.sandbox_id))
+        .await
+        .unwrap();
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let (budget, lease) = reserved_budget_lease();
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
+
+    let promoted = job
+        .run_with_context("test_idle_destroy_publish_error")
+        .await;
+
+    assert!(!promoted);
+    assert_eq!(overrides.unpark_call_count(), 1);
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(budget.allocated(), (0, 0, 0));
+    assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
 #[tokio::test]

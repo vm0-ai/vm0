@@ -12,6 +12,7 @@ export const keyframeLabs = {
         helpText:
           "1. Sign in to your Keyframe Labs account\n2. Follow the [Keyframe Labs API docs](https://docs.keyframelabs.com) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["KEYFRAME_LABS_API_KEY"],
           variables: [],
         },

@@ -12,6 +12,7 @@ export const qomplement = {
         helpText:
           "1. Sign in to your qomplement account\n2. Follow the [qomplement API docs](https://docs.qomplement.com/) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["QOMPLEMENT_API_KEY"],
           variables: [],
         },

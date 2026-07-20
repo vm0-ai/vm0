@@ -12,7 +12,7 @@ import { zeroMailCommand } from "../index";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
-const MESSAGE_ID = "550e8400-e29b-41d4-a716-446655440002";
+const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
 function stubAgentContext(enabledTypes: readonly string[]) {
   return [
@@ -104,10 +104,10 @@ describe("zero mail", () => {
     );
   });
 
-  it("creates a persistent mail card without asking the model to echo JSON", async () => {
+  it("links an existing Gmail draft and prints only the review URL", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/mail/drafts",
+        "http://localhost:3000/api/zero/mail/drafts/link",
         async ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-zero-token",
@@ -115,50 +115,24 @@ describe("zero mail", () => {
           expect(await request.json()).toStrictEqual({
             threadId: THREAD_ID,
             agentId: AGENT_ID,
-            provider: "gmail",
-            to: ["recipient@example.com"],
-            subject: "Hello",
-            body: "Mail body",
+            gmailDraftId: "r-test-draft",
           });
           return HttpResponse.json(
             {
-              messageId: MESSAGE_ID,
-              mailDraft: {
-                version: 1,
-                provider: "gmail",
-                from: "sender@example.com",
-                to: ["recipient@example.com"],
-                subject: "Hello",
-                body: "Mail body",
-                status: "draft",
-                createdAt: "2026-07-14T00:00:00.000Z",
-                updatedAt: "2026-07-14T00:00:00.000Z",
-              },
+              mailDraftId: MAIL_DRAFT_ID,
+              mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
             },
-            { status: 201 },
+            { status: 200 },
           );
         },
       ),
     );
 
-    await zeroMailCommand.parseAsync([
-      "node",
-      "cli",
-      "send",
-      "--provider",
-      "gmail",
-      "--to",
-      "recipient@example.com",
-      "--subject",
-      "Hello",
-      "--body",
-      "Mail body",
-    ]);
+    await zeroMailCommand.parseAsync(["node", "cli", "link", "r-test-draft"]);
 
-    const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("Mail draft card created");
-    expect(output).toContain("sender@example.com");
-    expect(output).toContain("do not repeat the draft");
-    expect(output).not.toContain('"mailDraft"');
+    expect(mockConsoleLog).toHaveBeenCalledOnce();
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+    );
   });
 });

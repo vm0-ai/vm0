@@ -13,6 +13,7 @@ export const v0 = {
         helpText:
           "1. Log in to [v0](https://v0.dev)\n2. Go to **Settings** → **Keys** ([direct link](https://v0.dev/chat/settings/keys))\n3. Create a new API key\n4. Copy the generated token",
         storage: {
+          version: 1,
           secrets: ["V0_TOKEN"],
           variables: [],
         },

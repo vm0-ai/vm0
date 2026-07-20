@@ -10,6 +10,12 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import {
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
   getDefaultModel,
   getModelProviderFirewall,
   getModelProviderCodexRuntimeConfig,
@@ -35,14 +41,10 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  getConnectorAuthMethod,
-  getConnectorAuthMethodRuntimeMetadata,
+  connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-utils";
-import {
-  connectorTypeSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   getFirewallExecutionMetadata,
   isFirewallExecutionMetadataConnectorType,
@@ -112,9 +114,13 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, inArray, or, sql } from "drizzle-orm";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import {
+  pgNullDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import {
   badRequestMessage,
   notFound,
@@ -166,9 +172,16 @@ import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
-  connectorRuntimeCredentialStatus,
+  connectorRuntimeCredentialStatusWithMethod,
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
+import {
+  getConnectorRuntimeConnector,
+  getConnectorRuntimeMethod,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeMethod,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -183,7 +196,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  checkOrgModelRunAdmission,
+  checkOrgPlanRunAdmission,
   checkOrgCreditsForRunAdmission,
   checkResolvedOrgCreditsForRunAdmission,
   resolveOrgCreditAvailability,
@@ -365,13 +378,13 @@ interface ResolvedCompose {
 type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
   readonly source: ConnectorScopeSource;
 }
 
 interface ExplicitConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
@@ -398,11 +411,6 @@ interface LaunchRunIdentity {
 }
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
-
-interface LockedRunPersistenceRow extends Record<string, unknown> {
-  readonly status: string;
-  readonly sandboxId: string | null;
-}
 
 interface DerivedPersistenceResult {
   readonly status: RunStatus;
@@ -620,7 +628,7 @@ interface ConnectorRuntimeContext {
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
     | undefined;
-  readonly connectorTypes: readonly ConnectorType[];
+  readonly connectorTypes: readonly ConnectorCatalogRef[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -640,6 +648,10 @@ interface PersistedRunEnvironmentSnapshot {
   readonly secrets: readonly PersistedRunEnvironmentSecret[];
   readonly variables: readonly PersistedRunEnvironmentVariable[];
 }
+
+const persistedRunEnvironmentRowKindDecoder = zodEnumDriverValueDecoder(
+  z.enum(["variable", "secret"]),
+);
 
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
@@ -759,11 +771,19 @@ function skillMountPath(
 // differs from the compose, and skills mounted at the wrong path are invisible
 // to the agent.
 function buildSystemSkillVolumes(
-  connectorTypes: readonly ConnectorType[],
+  connectorTypes: readonly ConnectorCatalogRef[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
   const seedNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  const allSkillNames = [...new Set([...seedNames, ...connectorTypes])];
+  // Exact catalog skill selection is owned by #21815. Until then, preserve
+  // the existing vm0-skills mounts only for locally known connector names.
+  const staticConnectorSkillNames = connectorTypes.flatMap((connectorRef) => {
+    const parsed = connectorTypeSchema.safeParse(connectorRef);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const allSkillNames = [
+    ...new Set([...seedNames, ...staticConnectorSkillNames]),
+  ];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
@@ -800,7 +820,7 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
   },
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] | undefined {
@@ -1664,7 +1684,7 @@ async function multiAuthModelProviderEnvironment(
     .select({
       name: secretsTable.name,
       encryptedValue: hasFirewallAuth
-        ? sql<string | null>`NULL`
+        ? sql`NULL`.mapWith(pgNullDecoder)
         : secretsTable.encryptedValue,
     })
     .from(secretsTable)
@@ -2035,41 +2055,43 @@ async function loadPersistedRunEnvironmentSnapshot(
     readonly content: AgentComposeContent;
   },
 ): Promise<PersistedRunEnvironmentSnapshot> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-    );
-    const variableRows = await tx
-      .select({
-        name: variables.name,
-        value: variables.value,
-        userId: variables.userId,
+  const environment = firstAgent(args.content)?.environment;
+  const referencedSecretNames = environment
+    ? extractAndGroupVariables(environment).secrets.map((ref) => {
+        return ref.name;
       })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, args.orgId),
-          eq(variables.type, "user"),
-          or(
-            eq(variables.userId, ORG_SENTINEL_USER_ID),
-            eq(variables.userId, args.userId),
-          ),
+    : [];
+  const secretNamesToLoad = [...new Set(referencedSecretNames)];
+  const variableQuery = db
+    .select({
+      kind: sql`'variable'`
+        .mapWith(persistedRunEnvironmentRowKindDecoder)
+        .as("kind"),
+      name: variables.name,
+      value: variables.value,
+      userId: variables.userId,
+    })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.type, "user"),
+        or(
+          eq(variables.userId, ORG_SENTINEL_USER_ID),
+          eq(variables.userId, args.userId),
         ),
-      );
-
-    const environment = firstAgent(args.content)?.environment;
-    const referencedSecretNames = environment
-      ? extractAndGroupVariables(environment).secrets.map((ref) => {
-          return ref.name;
-        })
-      : [];
-    const secretNamesToLoad = [...new Set(referencedSecretNames)];
-    const secretRows =
-      secretNamesToLoad.length > 0
-        ? await tx
+      ),
+    );
+  const rows =
+    secretNamesToLoad.length > 0
+      ? await variableQuery.unionAll(
+          db
             .select({
+              kind: sql`'secret'`
+                .mapWith(persistedRunEnvironmentRowKindDecoder)
+                .as("kind"),
               name: secretsTable.name,
-              encryptedValue: secretsTable.encryptedValue,
+              value: secretsTable.encryptedValue,
               userId: secretsTable.userId,
             })
             .from(secretsTable)
@@ -2083,11 +2105,29 @@ async function loadPersistedRunEnvironmentSnapshot(
                 ),
                 inArray(secretsTable.name, secretNamesToLoad),
               ),
-            )
-        : [];
+            ),
+        )
+      : await variableQuery;
 
-    return { variables: variableRows, secrets: secretRows };
-  });
+  const variableRows: PersistedRunEnvironmentVariable[] = [];
+  const secretRows: PersistedRunEnvironmentSecret[] = [];
+  for (const row of rows) {
+    if (row.kind === "variable") {
+      variableRows.push({
+        name: row.name,
+        value: row.value,
+        userId: row.userId,
+      });
+    } else {
+      secretRows.push({
+        name: row.name,
+        encryptedValue: row.value,
+        userId: row.userId,
+      });
+    }
+  }
+
+  return { variables: variableRows, secrets: secretRows };
 }
 
 function buildMergedVariables(args: {
@@ -2203,8 +2243,9 @@ function filterSecretConnectorMetadataMap(args: {
 }
 
 interface StoredConnectorRuntimeRow {
-  readonly connectorType: ConnectorType;
-  readonly authMethod: string;
+  readonly connectorType: ConnectorCatalogRef;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly needsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
 }
@@ -2217,8 +2258,8 @@ interface StoredConnectorRuntimeRowCandidate {
 }
 
 interface ConnectorEnvBindingSet {
-  readonly connectorType: ConnectorType;
-  readonly authMethod: string;
+  readonly connectorType: ConnectorCatalogRef;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
 
@@ -2275,16 +2316,30 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorTypes: readonly ConnectorType[] | undefined,
+  allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined,
+  snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
-    const parsed = connectorTypeSchema.safeParse(row.type);
-    return parsed.success
+    const connectorRef = connectorCatalogRefSchema.safeParse(row.type);
+    const authMethodId = connectorCatalogAuthMethodIdSchema.safeParse(
+      row.authMethod,
+    );
+    if (!connectorRef.success || !authMethodId.success) {
+      return [];
+    }
+    const runtimeMethod = getConnectorRuntimeMethod({
+      snapshot,
+      connectorRef: connectorRef.data,
+      authMethodId: authMethodId.data,
+      requireExecutable: true,
+    });
+    return runtimeMethod
       ? [
           {
-            connectorType: parsed.data,
-            authMethod: row.authMethod,
+            connectorType: connectorRef.data,
+            authMethod: authMethodId.data,
+            runtimeMethod,
             needsReconnect: row.needsReconnect,
             tokenExpiresAt: row.tokenExpiresAt,
           },
@@ -2304,9 +2359,8 @@ function storedConnectorRuntimeCredentialStatus(
   row: StoredConnectorRuntimeRow,
   now: Date,
 ): ConnectorCredentialStatus {
-  return connectorRuntimeCredentialStatus({
-    type: row.connectorType,
-    authMethod: row.authMethod,
+  return connectorRuntimeCredentialStatusWithMethod({
+    method: row.runtimeMethod.method,
     storedNeedsReconnect: row.needsReconnect,
     tokenExpiresAt: row.tokenExpiresAt,
     now,
@@ -2317,16 +2371,9 @@ function connectorEnvBindingSets(
   rows: readonly StoredConnectorRuntimeRow[],
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
-    const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
-    const metadata = getConnectorAuthMethodRuntimeMetadata(
-      row.connectorType,
-      row.authMethod,
+    const metadata = connectorAuthMethodRuntimeMetadata(
+      row.runtimeMethod.method,
     );
-    if (!method || !metadata) {
-      throw new Error(
-        `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
-      );
-    }
     return {
       connectorType: row.connectorType,
       authMethod: row.authMethod,
@@ -2944,8 +2991,9 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -2964,6 +3012,7 @@ async function loadStoredConnectorMaterializationPlan(
       userId: args.userId,
       allowedConnectorTypes,
       scopeSource: args.scopeSource,
+      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
     timing,
   );
@@ -2975,7 +3024,7 @@ async function loadStoredConnectorRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3029,11 +3078,13 @@ async function loadStoredConnectorRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
     args.allowedConnectorTypes,
+    args.connectorCatalogSnapshot,
     nowDate(),
   );
   if (allowedConnectorRows.length === 0) {
@@ -3051,7 +3102,8 @@ function buildStoredConnectorMaterializationPlan(args: {
 function filterStoredConnectorRows(
   args: {
     readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3097,8 +3149,9 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -3124,6 +3177,7 @@ async function loadStoredConnectorMaterializationSnapshot(
       {
         connectorRows,
         allowedConnectorTypes: args.allowedConnectorTypes,
+        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         timingDimensions: baseTimingDimensions,
       },
       timing,
@@ -3755,7 +3809,7 @@ async function buildPermissionManifest(args: {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
-  readonly connectorTypes?: readonly ConnectorType[];
+  readonly connectorTypes?: readonly ConnectorCatalogRef[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {
@@ -4001,7 +4055,7 @@ async function checkFinalRunAdmission(
   const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
   args.signal.throwIfAborted();
   return (
-    checkOrgModelRunAdmission({
+    checkOrgPlanRunAdmission({
       capabilities,
       modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
@@ -4113,6 +4167,47 @@ async function resolveByComposeId(
   };
 }
 
+interface ResumeSessionSnapshot {
+  readonly runId: string;
+  readonly cliAgentSessionId: string;
+  readonly cliAgentSessionHistory: string | null;
+  readonly cliAgentSessionHistoryHash: string | null;
+  readonly sessionHistoryBlobEncoding: string | null;
+}
+
+function resumeSessionFromSnapshot(
+  snapshot: ResumeSessionSnapshot,
+): StoredExecutionContext["resumeSession"] | undefined {
+  const hash = snapshot.cliAgentSessionHistoryHash;
+  let encoding: CompressedSessionHistoryBlobEncoding | undefined;
+  if (snapshot.sessionHistoryBlobEncoding !== null) {
+    const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+      snapshot.sessionHistoryBlobEncoding,
+    );
+    if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
+      encoding = parsedEncoding;
+    }
+  }
+  if (hash) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      historyGenerationRunId: snapshot.runId,
+      historyRef: {
+        kind: "blob",
+        hash,
+        ...(encoding ? { encoding } : {}),
+      },
+    };
+  }
+  if (snapshot.cliAgentSessionHistory) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      sessionHistory: snapshot.cliAgentSessionHistory,
+    };
+  }
+  return undefined;
+}
+
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -4120,88 +4215,119 @@ function resolveBySessionId(
   orgId: string,
   timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [session] = await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_lookup_session",
-        "nested",
-        async () => {
-          return await db
-            .select({
+  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
+    const [snapshot] = await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_resolve_compose_lookup_session_snapshot",
+      "nested",
+      async () => {
+        return await db
+          .select({
+            session: {
               id: agentSessions.id,
-              agentComposeId: agentSessions.agentComposeId,
-              conversationId: agentSessions.conversationId,
               artifacts: agentSessions.artifacts,
-              conversationRunId: conversations.runId,
-            })
-            .from(agentSessions)
-            .leftJoin(
-              conversations,
-              eq(agentSessions.conversationId, conversations.id),
-            )
-            .where(
-              and(
-                eq(agentSessions.id, agentSessionId),
-                eq(agentSessions.userId, userId),
-                eq(agentSessions.orgId, orgId),
-              ),
-            )
-            .limit(1);
-        },
-      );
-
-      if (!session) {
-        return notFound("Agent session not found");
-      }
-
-      const resolved = await resolveByComposeId(
-        db,
-        session.agentComposeId,
-        timing,
-      );
-      if (isRouteError(resolved)) {
-        return resolved;
-      }
-
-      const conversationId = session.conversationId;
-      const resumeSession =
-        conversationId === null
-          ? undefined
-          : await measureApiDispatchTiming(
-              timing,
-              "api_dispatch_resolve_compose_load_resume_session",
-              "nested",
-              async () => {
-                return await get(loadResumeSession(db, conversationId, timing));
-              },
-            );
-      const conversationRunId = session.conversationRunId;
-      const [lastRun] = conversationRunId
-        ? await measureApiDispatchTiming(
-            timing,
-            "api_dispatch_resolve_compose_lookup_session_vars",
-            "nested",
-            async () => {
-              return await db
-                .select({ vars: agentRuns.vars })
-                .from(agentRuns)
-                .where(eq(agentRuns.id, conversationRunId))
-                .limit(1);
             },
+            compose: {
+              id: agentComposes.id,
+              name: agentComposes.name,
+              orgId: agentComposes.orgId,
+              userId: agentComposes.userId,
+              headVersionId: agentComposes.headVersionId,
+            },
+            version: {
+              id: agentComposeVersions.id,
+              content: agentComposeVersions.content,
+            },
+            conversation: {
+              id: conversations.id,
+              runId: conversations.runId,
+              cliAgentSessionId: conversations.cliAgentSessionId,
+              cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+              cliAgentSessionHistoryHash:
+                conversations.cliAgentSessionHistoryHash,
+            },
+            historyBlob: {
+              hash: blobs.hash,
+              encoding: blobs.encoding,
+            },
+            previousRun: {
+              id: agentRuns.id,
+              vars: agentRuns.vars,
+            },
+          })
+          .from(agentSessions)
+          .leftJoin(
+            agentComposes,
+            eq(agentSessions.agentComposeId, agentComposes.id),
           )
-        : [];
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposeVersions.id, agentComposes.headVersionId),
+          )
+          .leftJoin(
+            conversations,
+            eq(agentSessions.conversationId, conversations.id),
+          )
+          .leftJoin(
+            blobs,
+            eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+          )
+          .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+          .where(
+            and(
+              eq(agentSessions.id, agentSessionId),
+              eq(agentSessions.userId, userId),
+              eq(agentSessions.orgId, orgId),
+            ),
+          )
+          .limit(1);
+      },
+    );
 
-      return {
-        ...resolved,
-        artifacts: session.artifacts ?? [],
-        vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
-        agentSessionId: session.id,
-        continuedFromAgentSessionId: session.id,
-        resumeSession,
-      };
-    },
-  );
+    if (!snapshot) {
+      return notFound("Agent session not found");
+    }
+    if (!snapshot.compose) {
+      return notFound("Agent compose not found");
+    }
+    if (!snapshot.compose.headVersionId || !snapshot.version) {
+      return badRequestMessage(
+        "Agent compose has no versions. Run 'vm0 build' first.",
+      );
+    }
+
+    const conversation = snapshot.conversation;
+    const resumeSession = conversation
+      ? await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_resolve_session_history",
+          "nested",
+          (): StoredExecutionContext["resumeSession"] | undefined => {
+            return resumeSessionFromSnapshot({
+              ...conversation,
+              sessionHistoryBlobEncoding:
+                snapshot.historyBlob?.encoding ?? null,
+            });
+          },
+        )
+      : undefined;
+
+    return {
+      agentComposeVersionId: snapshot.version.id,
+      composeId: snapshot.compose.id,
+      composeUserId: snapshot.compose.userId,
+      agentName: snapshot.compose.name || undefined,
+      orgId: snapshot.compose.orgId,
+      content: snapshot.version.content as AgentComposeContent,
+      artifacts: snapshot.session.artifacts ?? [],
+      vars:
+        (snapshot.previousRun?.vars as Record<string, string> | null) ??
+        undefined,
+      agentSessionId: snapshot.session.id,
+      continuedFromAgentSessionId: snapshot.session.id,
+      resumeSession,
+    };
+  });
 }
 
 function resolveByCheckpointId(
@@ -4306,49 +4432,14 @@ function loadResumeSession(
         return undefined;
       }
 
-      const resumeSession = await measureApiDispatchTiming(
+      return await measureApiDispatchTiming(
         timing,
         "api_dispatch_resolve_compose_resolve_session_history",
         "nested",
-        (): Promise<StoredExecutionContext["resumeSession"] | null> => {
-          const cliAgentSessionId = conversation.cliAgentSessionId;
-          const hash = conversation.cliAgentSessionHistoryHash;
-          let encoding: CompressedSessionHistoryBlobEncoding | undefined;
-          if (conversation.sessionHistoryBlobEncoding !== null) {
-            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
-              conversation.sessionHistoryBlobEncoding,
-            );
-            if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
-              encoding = parsedEncoding;
-            }
-          }
-          if (hash) {
-            return Promise.resolve({
-              sessionId: cliAgentSessionId,
-              historyGenerationRunId: conversation.runId,
-              historyRef: {
-                kind: "blob",
-                hash,
-                ...(encoding ? { encoding } : {}),
-              },
-            });
-          }
-          const sessionHistory = conversation.cliAgentSessionHistory;
-          if (sessionHistory) {
-            return Promise.resolve({
-              sessionId: cliAgentSessionId,
-              sessionHistory,
-            });
-          }
-          return Promise.resolve(null);
+        (): StoredExecutionContext["resumeSession"] | undefined => {
+          return resumeSessionFromSnapshot(conversation);
         },
       );
-
-      if (resumeSession === null) {
-        return undefined;
-      }
-
-      return resumeSession;
     },
   );
 }
@@ -5347,15 +5438,14 @@ async function lockRunForDerivedPersistence(
   tx: DbTransaction,
   runId: string,
 ): Promise<DerivedPersistenceResult | null> {
-  const rows = await tx.execute<LockedRunPersistenceRow>(sql`
-    SELECT
-      ${agentRuns.status} AS "status",
-      ${agentRuns.sandboxId} AS "sandboxId"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  const row = rows.rows[0];
+  const [row] = await tx
+    .select({
+      status: agentRuns.status,
+      sandboxId: agentRuns.sandboxId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
   if (!row) {
     return null;
   }
@@ -6151,6 +6241,7 @@ async function loadRunConnectorContexts(
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
   },
+  connectorCatalogSnapshot: ConnectorRuntimeSnapshot,
   featureSwitchContext: FeatureSwitchContext,
   timing?: ApiDispatchTimingCollector,
 ): Promise<{
@@ -6171,6 +6262,7 @@ async function loadRunConnectorContexts(
             userId: args.userId,
             allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
             scopeSource: args.connectorScope.source,
+            connectorCatalogSnapshot,
           },
           timing,
         );
@@ -6344,6 +6436,30 @@ interface PreparedRuntimeContext {
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
+  readonly connectorScope: EffectiveConnectorScope;
+}
+
+function connectorScopeForRuntimeSnapshot(
+  scope: EffectiveConnectorScope,
+  snapshot: ConnectorRuntimeSnapshot,
+): EffectiveConnectorScope {
+  if (scope.allowedConnectorTypes === undefined) {
+    return scope;
+  }
+  return {
+    ...scope,
+    allowedConnectorTypes: scope.allowedConnectorTypes.filter(
+      (connectorRef) => {
+        const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+        return (
+          connector !== undefined &&
+          [...connector.methods.values()].some((method) => {
+            return method.executable;
+          })
+        );
+      },
+    ),
+  };
 }
 
 function connectorScopeFromCreateArgs(
@@ -6535,6 +6651,7 @@ async function prepareRunConnectorContexts(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<
   Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
@@ -6551,6 +6668,7 @@ async function prepareRunConnectorContexts(args: {
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
           },
+          args.connectorCatalogSnapshot,
           args.featureSwitchContext,
           args.timing,
         );
@@ -6579,6 +6697,12 @@ async function prepareRunRuntimeContext(args: {
 }): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
+  args.signal.throwIfAborted();
+  const connectorScope = connectorScopeForRuntimeSnapshot(
+    args.connectorScope,
+    connectorCatalogSnapshot,
+  );
   const modelProvider = await args.timing.measure(
     "api_dispatch_prepare_context_resolve_model_provider",
     "nested",
@@ -6600,8 +6724,9 @@ async function prepareRunRuntimeContext(args: {
   const connectorContexts = await prepareRunConnectorContexts({
     db: args.db,
     createArgs: args.createArgs,
-    connectorScope: args.connectorScope,
+    connectorScope,
     featureSwitchContext,
+    connectorCatalogSnapshot,
     timing: args.timing,
   });
   if (isRouteError(connectorContexts)) {
@@ -6615,7 +6740,7 @@ async function prepareRunRuntimeContext(args: {
   args.signal.throwIfAborted();
 
   const storedConnectorTiming = storedConnectorTimingDimensions({
-    scopeSource: args.connectorScope.source,
+    scopeSource: connectorScope.source,
     connectorCount: storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
   });
   const overriddenConnectorSecretAliases = overriddenRuntimeSecretAliases([
@@ -6688,6 +6813,7 @@ async function prepareRunRuntimeContext(args: {
     permissionManifest,
     billableFirewalls: modelUsageContext.billableFirewalls,
     modelUsageProvider: modelUsageContext.modelUsageProvider,
+    connectorScope,
   };
 }
 
@@ -6806,7 +6932,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
-              connectorScope: bodyContext.connectorScope,
+              connectorScope: runtimeContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
@@ -7366,6 +7492,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
@@ -7399,16 +7526,18 @@ export const prepareAgentRun$ = command(
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     const { args, timing } = input;
     const db = set(writeDb$);
-    const tierGate = await timing.measure(
-      "api_dispatch_check_org_tier",
-      "top_level",
-      async () => {
-        return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
-      },
-    );
-    signal.throwIfAborted();
-    if (tierGate) {
-      return tierGate;
+    if (input.checkOrgPlanStatusBeforeContext) {
+      const tierGate = await timing.measure(
+        "api_dispatch_check_org_tier",
+        "top_level",
+        async () => {
+          return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
+        },
+      );
+      signal.throwIfAborted();
+      if (tierGate) {
+        return tierGate;
+      }
     }
 
     const context = await timing.measure(
@@ -7513,7 +7642,11 @@ export const createAgentRun$ = command(
       "top_level",
       args.apiStartTime,
     );
-    const prepared = await set(prepareAgentRun$, { args, timing }, signal);
+    const prepared = await set(
+      prepareAgentRun$,
+      { args, timing, checkOrgPlanStatusBeforeContext: true },
+      signal,
+    );
     if (isRouteError(prepared)) {
       return prepared;
     }

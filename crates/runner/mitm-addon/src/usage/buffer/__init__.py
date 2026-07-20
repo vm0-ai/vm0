@@ -59,6 +59,7 @@ __all__ = [
     "buffer_source_usage_events",
     "buffer_usage_events",
     "configure_usage_buffer",
+    "drain_usage_events_after_executor_shutdown",
     "flush_usage_events",
     "reset_usage_buffer_for_tests",
 ]
@@ -181,6 +182,11 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     schedule another timer.
     """
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
+
+
+def drain_usage_events_after_executor_shutdown() -> None:
+    """Synchronously drain usage retained after the executor has stopped."""
+    _usage_event_buffer.drain_usage_events_after_executor_shutdown()
 
 
 def reset_usage_buffer_for_tests(

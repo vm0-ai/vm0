@@ -12,6 +12,7 @@ export const interfaze = {
         helpText:
           "1. Sign in to your Interfaze account\n2. Follow the [Interfaze API docs](https://interfaze.ai/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["INTERFAZE_API_KEY"],
           variables: [],
         },

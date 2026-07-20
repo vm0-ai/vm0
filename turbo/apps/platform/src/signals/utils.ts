@@ -121,7 +121,7 @@ export async function clearAllDetached() {
   return settledResult;
 }
 
-const isAbortError = (error: unknown): boolean => {
+export const isAbortError = (error: unknown): boolean => {
   if (
     (error instanceof Error || error instanceof DOMException) &&
     error.name === "AbortError"
@@ -371,6 +371,7 @@ export async function setLoop(
   loopBody: (signal: AbortSignal) => Promise<boolean> | boolean,
   interval: number,
   signal: AbortSignal,
+  options: { retryTransientErrors?: boolean } = {},
 ): Promise<void> {
   let fibIndex = 0;
   let loopCount = 0;
@@ -401,6 +402,9 @@ export async function setLoop(
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
+      if (options.retryTransientErrors === false) {
+        throw error;
+      }
       const backoff =
         FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
       L.warn(

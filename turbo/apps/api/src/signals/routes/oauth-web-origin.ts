@@ -6,6 +6,8 @@ type Vm0HostRole = "api" | "www";
 
 function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
   return (
+    (role === "www" &&
+      (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
     hostname === `${role}.vm0.ai` ||
     hostname === `${role}.vm6.ai` ||
     hostname.endsWith(`-${role}.vm6.ai`) ||

@@ -12,6 +12,7 @@ export const amadeus = {
         helpText:
           "1. Sign in to the [Amadeus for Developers portal](https://developers.amadeus.com/)\n2. Create or open an app in **My Self-Service Workspace**\n3. Copy the app's **API Key** and **API Secret**\n4. Use them with the client credentials grant to request an access token",
         storage: {
+          version: 1,
           secrets: ["AMADEUS_API_KEY", "AMADEUS_API_SECRET"],
           variables: [],
         },

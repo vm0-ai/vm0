@@ -89,13 +89,14 @@ async function syncArtifactFilesToGoogleDrive(
             },
             fetchOptions: params.signal ? { signal: params.signal } : undefined,
           }),
-          [200],
-          { toast: false },
+          [200, 400, 401, 403, 404, 503],
         ),
         params.signal,
       );
       const result: ArtifactGoogleDriveSyncResult = settled.ok
-        ? { ok: true }
+        ? settled.value.status === 200
+          ? { ok: true }
+          : { ok: false, message: settled.value.body.error.message }
         : {
             ok: false,
             message: googleDriveSyncErrorMessage(settled.error),

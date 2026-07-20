@@ -1,11 +1,16 @@
 import type {
   ConnectorAuthMethodId,
+  ConnectorAuthMethodRuntimeConfig,
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
+  ConnectorDeviceAuthStartOptionsConfig,
   ConnectorManualGrantFieldConfig,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorAuthMethod,
+  parseConnectorDeviceAuthStartOptionsConfig,
+} from "@vm0/connectors/connector-utils";
 
 interface PublicManualGrantFieldDescriptor {
   readonly publicId: string;
@@ -46,7 +51,16 @@ export function getPublicManualGrantFieldDescriptors(
   if (method?.grant.kind !== "manual") {
     return null;
   }
-  return Object.entries(method.grant.fields).map(([privateName, config]) => {
+  return publicManualGrantFieldDescriptors(method.grant);
+}
+
+function publicManualGrantFieldDescriptors(
+  grant: Extract<
+    ConnectorAuthMethodRuntimeConfig["grant"],
+    { readonly kind: "manual" }
+  >,
+): readonly PublicManualGrantFieldDescriptor[] {
+  return Object.entries(grant.fields).map(([privateName, config]) => {
     return {
       publicId: config.publicId,
       privateName,
@@ -63,7 +77,16 @@ export function getPublicDeviceAuthStartOptionDescriptors(
   if (method?.grant.kind !== "device-auth") {
     return null;
   }
-  return Object.entries(method.grant.startOptions ?? {}).map(
+  return publicDeviceAuthStartOptionDescriptors(method.grant);
+}
+
+function publicDeviceAuthStartOptionDescriptors(
+  grant: Extract<
+    ConnectorAuthMethodRuntimeConfig["grant"],
+    { readonly kind: "device-auth" }
+  >,
+): readonly PublicDeviceAuthStartOptionDescriptor[] {
+  return Object.entries(grant.startOptions ?? {}).map(
     ([privateName, config]) => {
       return {
         publicId: config.publicId,
@@ -74,19 +97,35 @@ export function getPublicDeviceAuthStartOptionDescriptors(
   );
 }
 
-export function normalizeManualGrantSubmittedValues(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
+export function normalizeManualGrantSubmittedValuesWithMethod(args: {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly values: Readonly<Record<string, string>>;
 }): ManualGrantSubmittedValuesNormalizationResult {
-  const descriptors = getPublicManualGrantFieldDescriptors(
-    args.type,
-    args.authMethod,
-  );
+  const descriptors =
+    args.method.grant.kind === "manual"
+      ? publicManualGrantFieldDescriptors(args.method.grant)
+      : null;
+  return normalizeManualGrantSubmittedValuesFromDescriptors({
+    connectorRef: args.connectorRef,
+    authMethodId: args.authMethodId,
+    descriptors,
+    values: args.values,
+  });
+}
+
+function normalizeManualGrantSubmittedValuesFromDescriptors(args: {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly descriptors: readonly PublicManualGrantFieldDescriptor[] | null;
+  readonly values: Readonly<Record<string, string>>;
+}): ManualGrantSubmittedValuesNormalizationResult {
+  const descriptors = args.descriptors;
   if (!descriptors) {
     return {
       ok: false,
-      message: `${args.type} ${args.authMethod} auth method does not use a manual grant`,
+      message: `${args.connectorRef} ${args.authMethodId} auth method does not use a manual grant`,
     };
   }
 
@@ -171,21 +210,47 @@ export function normalizeManualGrantSubmittedValues(args: {
   };
 }
 
-export function normalizeDeviceAuthStartOptions(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
+export function normalizeDeviceAuthStartOptionsWithMethod(args: {
+  readonly authMethodId: string;
+  readonly connectorRef: string;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): DeviceAuthStartOptionsNormalizationResult {
   if (!args.options) {
     return { ok: true, options: undefined };
   }
+  const descriptors =
+    args.method.grant.kind === "device-auth"
+      ? publicDeviceAuthStartOptionDescriptors(args.method.grant)
+      : null;
+  return normalizeDeviceAuthStartOptionsFromDescriptors({
+    authMethodId: args.authMethodId,
+    connectorRef: args.connectorRef,
+    descriptors,
+    startOptions:
+      args.method.grant.kind === "device-auth"
+        ? args.method.grant.startOptions
+        : undefined,
+    options: args.options,
+  });
+}
 
-  const descriptors = getPublicDeviceAuthStartOptionDescriptors(
-    args.type,
-    args.authMethod,
-  );
-  if (!descriptors || descriptors.length === 0) {
-    return { ok: true, options: args.options };
+function normalizeDeviceAuthStartOptionsFromDescriptors(args: {
+  readonly authMethodId: string;
+  readonly connectorRef: string;
+  readonly descriptors: readonly PublicDeviceAuthStartOptionDescriptor[] | null;
+  readonly options: ConnectorDeviceAuthStartOptions | undefined;
+  readonly startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
+}): DeviceAuthStartOptionsNormalizationResult {
+  if (!args.options) {
+    return { ok: true, options: undefined };
+  }
+  const descriptors = args.descriptors;
+  if (!descriptors) {
+    return {
+      ok: false,
+      message: `${args.connectorRef} ${args.authMethodId} auth method does not use a device-auth grant`,
+    };
   }
 
   const descriptorByPublicId = new Map(
@@ -239,5 +304,13 @@ export function normalizeDeviceAuthStartOptions(args: {
     };
   }
 
-  return { ok: true, options: Object.fromEntries(normalizedOptions) };
+  const parsed = parseConnectorDeviceAuthStartOptionsConfig({
+    connectorRef: args.connectorRef,
+    authMethodId: args.authMethodId,
+    startOptions: args.startOptions,
+    options: Object.fromEntries(normalizedOptions),
+  });
+  return parsed.success
+    ? { ok: true, options: parsed.options }
+    : { ok: false, message: parsed.message };
 }

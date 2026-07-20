@@ -10,7 +10,6 @@ import {
   composesMainContract,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -76,12 +75,11 @@ import { zeroApiKeysRoutes } from "../../zero-api-keys";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
-import type { ApiTestUser } from "./api-bdd";
+import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
@@ -140,7 +138,6 @@ const runRoutes = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronTelegramCleanupRoutes,
-  ...zeroOnboardingSetupRoutes,
   ...runnersRoutes,
   ...agentRunsCreateRoutes,
   ...agentRunsReadRoutes,
@@ -219,6 +216,8 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
+    readonly snapshotGeneration?: RunnerHeartbeatBody["snapshotGeneration"];
+    readonly snapshotSequence?: RunnerHeartbeatBody["snapshotSequence"];
     readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
@@ -232,6 +231,12 @@ function runnerHeartbeatBody(
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
+    ...(args.snapshotGeneration === undefined
+      ? {}
+      : { snapshotGeneration: args.snapshotGeneration }),
+    ...(args.snapshotSequence === undefined
+      ? {}
+      : { snapshotSequence: args.snapshotSequence }),
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,
@@ -314,13 +319,9 @@ export function createRunsApi(context: TestContext) {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 
-      await accept(
-        runApp(context)(onboardingSetupContract).setup({
-          headers: authenticate(context, actor),
-          body: { displayName: "BDD Entitled Agent" },
-        }),
-        [200, 409],
-      );
+      await createBddApi(context).bootstrapOnboarding(actor, {
+        displayName: "BDD Entitled Agent",
+      });
 
       const suffix = randomUUID().slice(0, 8);
       const customerId = options.customerId ?? `cus_bdd_${suffix}`;
@@ -509,6 +510,22 @@ export function createRunsApi(context: TestContext) {
           headers: authorization === undefined ? {} : { authorization },
           params: { id: runId },
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawClaimRunnerJobAs(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersJobClaimContract).claim({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { id: runId },
+          body: body as RunnerJobClaimRequest,
         }),
         statuses,
       );
@@ -952,6 +969,8 @@ export function createRunsApi(context: TestContext) {
       args: {
         readonly runnerId?: string;
         readonly group?: string;
+        readonly snapshotGeneration?: RunnerHeartbeatBody["snapshotGeneration"];
+        readonly snapshotSequence?: RunnerHeartbeatBody["snapshotSequence"];
         readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
@@ -1036,6 +1055,22 @@ export function createRunsApi(context: TestContext) {
           headers: runnerHeaders(validAuth),
           params: { id: runId },
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawClaimRunnerJob(
+      validAuth: boolean,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersJobClaimContract).claim({
+          headers: runnerHeaders(validAuth),
+          params: { id: runId },
+          body: body as RunnerJobClaimRequest,
         }),
         statuses,
       );

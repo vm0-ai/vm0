@@ -104,6 +104,22 @@ struct RunnerStatus {
     updated_at: DateTime<Utc>,
 }
 
+struct StatusSnapshot {
+    generation: u64,
+    status: RunnerStatus,
+}
+
+struct PersistenceState {
+    published_generation: u64,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+struct StatusWriteGate {
+    started: std::sync::Arc<tokio::sync::Notify>,
+    release: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
 /// Serialize as ISO 8601 with millisecond precision, matching JS `Date.toISOString()`.
 fn serialize_iso<S: serde::Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
@@ -119,9 +135,14 @@ pub struct StatusTracker {
     dns_port: Option<u16>,
     path: PathBuf,
     state: Mutex<MutableState>,
+    persistence: Mutex<PersistenceState>,
+    #[cfg(test)]
+    write_gate: Option<StatusWriteGate>,
 }
 
 struct MutableState {
+    /// Monotonic generation assigned to every requested whole-status write.
+    generation: u64,
     mode: RunnerMode,
     /// Map of run_id → active run state for all active runs. Keyed by run_id so
     /// conditional active-run removal stays O(log n); the paired `sandbox_id`
@@ -161,19 +182,39 @@ impl StatusTracker {
             dns_port,
             path,
             state: Mutex::new(MutableState {
+                generation: 0,
                 mode: RunnerMode::Starting,
                 active_runs: BTreeMap::new(),
                 idle_revision: 0,
                 idle_vms: Vec::new(),
             }),
+            persistence: Mutex::new(PersistenceState {
+                published_generation: 0,
+            }),
+            #[cfg(test)]
+            write_gate: None,
         }
+    }
+
+    #[cfg(test)]
+    fn new_with_write_gate(
+        path: PathBuf,
+        started: std::sync::Arc<tokio::sync::Notify>,
+        release: std::sync::Arc<tokio::sync::Semaphore>,
+    ) -> Self {
+        let mut tracker = Self::new(path, 4, None, None);
+        tracker.write_gate = Some(StatusWriteGate { started, release });
+        tracker
     }
 
     /// Transition the reported lifecycle mode and flush the status file.
     pub async fn set_mode(&self, mode: RunnerMode) {
-        let mut state = self.state.lock().await;
-        state.mode = mode;
-        self.write_status(&state).await;
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            state.mode = mode;
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await;
     }
 
     /// Register an active run as running and flush the status file.
@@ -206,16 +247,19 @@ impl StatusTracker {
         sandbox_id: SandboxId,
         phase: ActiveRunPhase,
     ) {
-        let mut state = self.state.lock().await;
-        state.active_runs.insert(
-            run_id,
-            ActiveRunState {
-                sandbox_id,
-                phase,
-                phase_started_at: Utc::now(),
-            },
-        );
-        self.write_status(&state).await;
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            state.active_runs.insert(
+                run_id,
+                ActiveRunState {
+                    sandbox_id,
+                    phase,
+                    phase_started_at: Utc::now(),
+                },
+            );
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await;
     }
 
     /// Register an active run and replace the idle VM list in the same status
@@ -271,33 +315,40 @@ impl StatusTracker {
         revision: u64,
         idle_vms: Vec<IdleVm>,
     ) -> bool {
-        let mut state = self.state.lock().await;
-        state.active_runs.insert(
-            run_id,
-            ActiveRunState {
-                sandbox_id,
-                phase,
-                phase_started_at: Utc::now(),
-            },
-        );
-        let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
-        self.write_status(&state).await;
+        let (applied, snapshot) = {
+            let mut state = self.state.lock().await;
+            state.active_runs.insert(
+                run_id,
+                ActiveRunState {
+                    sandbox_id,
+                    phase,
+                    phase_started_at: Utc::now(),
+                },
+            );
+            let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
+            let snapshot = self.capture_changed_snapshot(&mut state);
+            (applied, snapshot)
+        };
+        self.persist_snapshot(snapshot).await;
         applied
     }
 
     /// Transition a preparing active run to running only if it still points at
     /// the expected sandbox.
     pub async fn mark_run_running_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
-        let mut state = self.state.lock().await;
-        let Some(current) = state.active_runs.get_mut(&run_id) else {
-            return false;
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            let Some(current) = state.active_runs.get_mut(&run_id) else {
+                return false;
+            };
+            if current.sandbox_id != sandbox_id {
+                return false;
+            }
+            current.phase = ActiveRunPhase::Running;
+            current.phase_started_at = Utc::now();
+            self.capture_changed_snapshot(&mut state)
         };
-        if current.sandbox_id != sandbox_id {
-            return false;
-        }
-        current.phase = ActiveRunPhase::Running;
-        current.phase_started_at = Utc::now();
-        self.write_status(&state).await;
+        self.persist_snapshot(snapshot).await;
         true
     }
 
@@ -306,13 +357,17 @@ impl StatusTracker {
     /// Returns `false` if another task already removed the run or reused the
     /// `run_id` with a different sandbox.
     pub async fn remove_run_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
-        let mut state = self.state.lock().await;
-        let removed = matches!(state.active_runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
-        if removed {
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            let removed = matches!(state.active_runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
+            if !removed {
+                return false;
+            }
             state.active_runs.remove(&run_id);
-            self.write_status(&state).await;
-        }
-        removed
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await;
+        true
     }
 
     /// Replace the idle VM list only if the snapshot is at least as new as the
@@ -321,23 +376,29 @@ impl StatusTracker {
     /// Returns `false` when a stale async writer lost the race to a newer
     /// snapshot and was intentionally ignored.
     pub async fn set_idle_info_at_revision(&self, revision: u64, idle_vms: Vec<IdleVm>) -> bool {
-        let mut state = self.state.lock().await;
-        let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
-        if !applied {
-            return false;
-        }
-        self.write_status(&state).await;
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
+            if !applied {
+                return false;
+            }
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await;
         true
     }
 
     /// Write the initial status file.
     pub async fn write_initial(&self) {
-        let state = self.state.lock().await;
-        self.write_status(&state).await;
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await;
     }
 
-    /// Atomic write: write to a temp file in the same directory, then rename.
-    async fn write_status(&self, state: &MutableState) {
+    fn capture_changed_snapshot(&self, state: &mut MutableState) -> StatusSnapshot {
+        state.generation += 1;
         let active_runs: Vec<ActiveRun> = state
             .active_runs
             .iter()
@@ -360,7 +421,15 @@ impl StatusTracker {
             updated_at: Utc::now(),
         };
 
-        let json = match serde_json::to_string_pretty(&status) {
+        StatusSnapshot {
+            generation: state.generation,
+            status,
+        }
+    }
+
+    /// Publish an owned snapshot through same-directory atomic replacement.
+    async fn persist_snapshot(&self, snapshot: StatusSnapshot) {
+        let json = match serde_json::to_string_pretty(&snapshot.status) {
             Ok(j) => j,
             Err(e) => {
                 warn!(error = %e, "failed to serialize status");
@@ -368,8 +437,29 @@ impl StatusTracker {
             }
         };
 
-        if let Err(e) = crate::private_fs::write_private_file(&self.path, json.as_bytes()).await {
-            warn!(error = %e, path = %self.path.display(), "failed to write status file");
+        let mut persistence = self.persistence.lock().await;
+        if persistence.published_generation >= snapshot.generation {
+            return;
+        }
+
+        #[cfg(test)]
+        if let Some(gate) = &self.write_gate {
+            gate.started.notify_one();
+            let permit = gate
+                .release
+                .acquire()
+                .await
+                .expect("status write gate closed");
+            permit.forget();
+        }
+
+        match crate::private_fs::write_private_file(&self.path, json.as_bytes()).await {
+            Ok(()) => {
+                persistence.published_generation = snapshot.generation;
+            }
+            Err(e) => {
+                warn!(error = %e, path = %self.path.display(), "failed to write status file");
+            }
         }
     }
 }
@@ -404,7 +494,12 @@ fn apply_idle_info_at_revision(
 
 #[cfg(test)]
 mod tests {
+    use std::future::{Future, poll_fn};
+    use std::sync::Arc;
+    use std::task::Poll;
+
     use super::*;
+    use tokio::sync::{Notify, Semaphore};
 
     fn read_status(path: &std::path::Path) -> serde_json::Value {
         let content = std::fs::read_to_string(path).unwrap();
@@ -425,6 +520,82 @@ mod tests {
         assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
         assert!(status["updated_at"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn blocked_status_write_releases_state_for_new_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let tracker = Arc::new(StatusTracker::new_with_write_gate(
+            path.clone(),
+            Arc::clone(&started),
+            Arc::clone(&release),
+        ));
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        let first_write_started = started.notified();
+        let first_tracker = Arc::clone(&tracker);
+        let first = tokio::spawn(async move {
+            first_tracker.add_preparing_run(run_id, sandbox_id).await;
+        });
+        first_write_started.await;
+
+        let mut second = Box::pin(tracker.set_mode(RunnerMode::Draining));
+        let second_is_pending =
+            poll_fn(|cx| Poll::Ready(matches!(second.as_mut().poll(cx), Poll::Pending))).await;
+        assert!(
+            second_is_pending,
+            "second transition should wait for ordered persistence"
+        );
+
+        {
+            let state = tracker
+                .state
+                .try_lock()
+                .expect("state lock should be released before persistence");
+            assert_eq!(state.generation, 2);
+            assert_eq!(state.mode, RunnerMode::Draining);
+            let active = state.active_runs.get(&run_id).unwrap();
+            assert_eq!(active.sandbox_id, sandbox_id);
+            assert_eq!(active.phase, ActiveRunPhase::Preparing);
+        }
+
+        release.add_permits(2);
+        first.await.unwrap();
+        second.await;
+
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "draining");
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], sandbox_id.to_string());
+        assert_eq!(runs[0]["phase"], "preparing");
+    }
+
+    #[tokio::test]
+    async fn older_snapshot_does_not_replace_newer_publication() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        let (older, newer) = {
+            let mut state = tracker.state.lock().await;
+            state.mode = RunnerMode::Running;
+            let older = tracker.capture_changed_snapshot(&mut state);
+            state.mode = RunnerMode::Draining;
+            let newer = tracker.capture_changed_snapshot(&mut state);
+            (older, newer)
+        };
+
+        tracker.persist_snapshot(newer).await;
+        tracker.persist_snapshot(older).await;
+
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "draining");
     }
 
     #[cfg(unix)]

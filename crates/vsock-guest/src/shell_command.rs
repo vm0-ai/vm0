@@ -32,6 +32,9 @@
 //! spawned operation. Callers must retain the guard while the shell wrapper may
 //! still need to open the script; dropping it too early can remove the script
 //! before bash reads it.
+//! `SpawnedShellCommand` also returns exec process-containment ownership
+//! only after a successful spawn. Setup failures clean that containment before
+//! returning the original spawn error.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -44,7 +47,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 
 use shell_quote::quote_shell_arg;
 
-use crate::process_containment::SupervisedProcessContainment;
+use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
@@ -154,6 +157,7 @@ pub(crate) struct PreparedShellCommand {
 pub(crate) struct SpawnedShellCommand {
     pub(crate) child: Child,
     pub(crate) env_script: Option<EnvScriptGuard>,
+    pub(crate) process_containment: ExecProcessContainment,
 }
 
 fn effective_uid() -> libc::uid_t {
@@ -553,25 +557,37 @@ pub(crate) fn spawn_shell_command_with_pipes(
     env: &[(&str, &str)],
     sudo: bool,
     pipe_stdin: bool,
-    process_containment: Option<&SupervisedProcessContainment>,
+    process_containment: ExecProcessContainment,
 ) -> io::Result<SpawnedShellCommand> {
-    let PreparedShellCommand {
-        mut command,
-        env_script,
-    } = build_shell_command_with_env(command, env, sudo)?;
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    if pipe_stdin {
-        command.stdin(Stdio::piped());
-    }
-    if let Some(process_containment) = process_containment {
+    let spawn_result = (|| -> io::Result<(Child, Option<EnvScriptGuard>)> {
+        let PreparedShellCommand {
+            mut command,
+            env_script,
+        } = build_shell_command_with_env(command, env, sudo)?;
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        if pipe_stdin {
+            command.stdin(Stdio::piped());
+        }
         process_containment
             .configure_command(&mut command)
             .map_err(|error| {
                 io::Error::other(format!("process containment setup failed: {error}"))
             })?;
+        let child = crate::process::spawn_in_own_process_group(&mut command)?;
+        Ok((child, env_script))
+    })();
+
+    match spawn_result {
+        Ok((child, env_script)) => Ok(SpawnedShellCommand {
+            child,
+            env_script,
+            process_containment,
+        }),
+        Err(error) => {
+            let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            Err(error)
+        }
     }
-    let child = crate::process::spawn_in_own_process_group(&mut command)?;
-    Ok(SpawnedShellCommand { child, env_script })
 }
 
 #[cfg(test)]

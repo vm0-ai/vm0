@@ -21,6 +21,7 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
+const ADDON_READY_FILENAME: &str = "addon-ready";
 /// Short bounded retry for Linux `execve` returning ETXTBSY while a freshly
 /// installed/replaced mitmdump binary is still observed as writable.
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
@@ -510,6 +511,17 @@ pub(crate) async fn spawn_mitmdump(
     usage_state_id: &str,
 ) -> RunnerResult<tokio::process::Child> {
     let _prepared_ca = crate::ca::prepare_for_proxy(&config.ca_dir, &config.ca_lock_path).await?;
+    let addon_ready_path = config.addon_dir.join(ADDON_READY_FILENAME);
+    match tokio::fs::remove_file(&addon_ready_path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(RunnerError::Internal(format!(
+                "remove stale addon ready marker {}: {error}",
+                addon_ready_path.display()
+            )));
+        }
+    }
     let mut cmd = tokio::process::Command::new(&config.mitmdump_bin);
     cmd.arg("--mode")
         .arg("transparent")
@@ -518,12 +530,19 @@ pub(crate) async fn spawn_mitmdump(
         .arg("--set")
         .arg(format!("confdir={}", config.ca_dir.display()))
         .arg("--set")
+        .arg("upstream_cert=false")
+        .arg("--set")
         .arg(format!(
             "vm0_proxy_registry_path={}",
             config.registry_path.display()
         ))
         .arg("--set")
         .arg(format!("vm0_usage_state_id={usage_state_id}"))
+        .arg("--set")
+        .arg(format!(
+            "vm0_addon_ready_path={}",
+            addon_ready_path.display()
+        ))
         .arg("--set")
         .arg(format!(
             "vm0_builtin_firewall_catalog_cache_path={}",
@@ -599,8 +618,15 @@ pub(crate) async fn spawn_mitmdump(
         });
     }
 
-    // Wait for process to be alive (poll liveness).
-    if let Err(e) = wait_for_ready(&mut child, port, READY_TIMEOUT).await {
+    if let Err(e) = wait_for_ready(
+        &mut child,
+        port,
+        &addon_ready_path,
+        usage_state_id,
+        READY_TIMEOUT,
+    )
+    .await
+    {
         stopping.store(true, Ordering::Release);
         let _ = child.kill().await;
         return Err(e);
@@ -662,10 +688,12 @@ async fn retry_text_busy_spawn<T>(
     }
 }
 
-/// Wait for mitmdump to start listening on `port` (TCP connect probe).
+/// Wait for the addon to initialize and mitmdump to start listening on `port`.
 async fn wait_for_ready(
     child: &mut tokio::process::Child,
     port: u16,
+    addon_ready_path: &Path,
+    expected_usage_state_id: &str,
     timeout: Duration,
 ) -> RunnerResult<()> {
     let poll_interval = Duration::from_millis(200);
@@ -690,15 +718,24 @@ async fn wait_for_ready(
                 )));
             }
         }
-        // Probe TCP port.
-        if tokio::net::TcpStream::connect(addr).await.is_ok() {
+        let addon_is_ready = match tokio::fs::read_to_string(addon_ready_path).await {
+            Ok(usage_state_id) => usage_state_id == expected_usage_state_id,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => {
+                return Err(RunnerError::Internal(format!(
+                    "read addon ready marker {}: {error}",
+                    addon_ready_path.display()
+                )));
+            }
+        };
+        if addon_is_ready && tokio::net::TcpStream::connect(addr).await.is_ok() {
             return Ok(());
         }
         tokio::time::sleep(poll_interval).await;
     }
 
     Err(RunnerError::Internal(format!(
-        "mitmdump did not start listening on port {port} within {}s",
+        "mitmdump did not initialize its addon and start listening on port {port} within {}s",
         timeout.as_secs()
     )))
 }
@@ -747,19 +784,28 @@ mod tests {
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 port=""
+ready_path=""
+usage_state_id=""
 prev=""
 for arg in "$@"; do
   if [ "$prev" = "--listen-port" ]; then
     port="$arg"
-    break
   fi
+  case "$arg" in
+    vm0_addon_ready_path=*) ready_path="${arg#vm0_addon_ready_path=}" ;;
+    vm0_usage_state_id=*) usage_state_id="${arg#vm0_usage_state_id=}" ;;
+  esac
   prev="$arg"
 done
-exec python3 - "$port" <<'PY'
+exec python3 - "$port" "$ready_path" "$usage_state_id" <<'PY'
 import socket
 import sys
+from pathlib import Path
 
 port = int(sys.argv[1])
+ready_path = Path(sys.argv[2])
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(sys.argv[3], encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(("127.0.0.1", port))
@@ -900,6 +946,7 @@ PY
             "builtin_firewall_cache.py",
             "flow_metadata_keys.py",
             "matching.py",
+            "mitmproxy_compat.py",
             "registry.py",
             "response_streaming.py",
             "runner_flush_lifecycle.py",
@@ -1002,6 +1049,7 @@ PY
         // `sleep` never listens on TCP — guarantees timeout.
         let mut child = tokio::process::Command::new("sleep")
             .arg("60")
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1010,8 +1058,18 @@ PY
         let raw_pid = child.id().unwrap() as i32;
         let pid = nix::unistd::Pid::from_raw(raw_pid);
         let port = find_available_port().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let addon_ready_path = dir.path().join(ADDON_READY_FILENAME);
+        std::fs::write(&addon_ready_path, "usage-state-test").unwrap();
 
-        let result = wait_for_ready(&mut child, port, Duration::from_millis(500)).await;
+        let result = wait_for_ready(
+            &mut child,
+            port,
+            &addon_ready_path,
+            "usage-state-test",
+            Duration::from_millis(500),
+        )
+        .await;
         assert!(result.is_err());
 
         // Process must still be alive — wait_for_ready does NOT kill on error.
@@ -1045,12 +1103,80 @@ PY
         let _ = child.wait().await;
 
         let port = find_available_port().unwrap();
-        let result = wait_for_ready(&mut child, port, Duration::from_secs(5)).await;
+        let dir = tempfile::tempdir().unwrap();
+        let result = wait_for_ready(
+            &mut child,
+            port,
+            &dir.path().join(ADDON_READY_FILENAME),
+            "usage-state-test",
+            Duration::from_secs(5),
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn spawn_mitmdump_passes_usage_state_id_option() {
+    async fn wait_for_ready_rejects_missing_marker_when_port_is_open() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let dir = tempfile::tempdir().unwrap();
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let error = wait_for_ready(
+            &mut child,
+            port,
+            &dir.path().join(ADDON_READY_FILENAME),
+            "current-usage-state",
+            Duration::from_millis(500),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("did not initialize its addon"));
+        let _ = child.kill().await;
+    }
+
+    #[tokio::test]
+    async fn wait_for_ready_rejects_stale_marker_when_port_is_open() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let dir = tempfile::tempdir().unwrap();
+        let addon_ready_path = dir.path().join(ADDON_READY_FILENAME);
+        std::fs::write(&addon_ready_path, "old-usage-state").unwrap();
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let error = wait_for_ready(
+            &mut child,
+            port,
+            &addon_ready_path,
+            "current-usage-state",
+            Duration::from_millis(500),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("did not initialize its addon"));
+        let _ = child.kill().await;
+    }
+
+    #[tokio::test]
+    async fn spawn_mitmdump_passes_runner_options_and_preserves_ca() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         crate::ca::ensure(&home).await.unwrap();
@@ -1092,9 +1218,22 @@ PY
             "proxy preparation must not rotate the standalone identity"
         );
         assert!(
+            args.lines().any(|arg| arg == "upstream_cert=false"),
+            "mitmdump args should scope generated certificates to TLS SNI; got:\n{args}",
+        );
+        assert!(
             args.lines()
                 .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
             "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
+        );
+        assert!(
+            args.lines().any(|arg| {
+                arg == format!(
+                    "vm0_addon_ready_path={}",
+                    config.addon_dir.join(ADDON_READY_FILENAME).display()
+                )
+            }),
+            "mitmdump args should include vm0_addon_ready_path option; got:\n{args}",
         );
         assert!(
             args.lines().any(|arg| {

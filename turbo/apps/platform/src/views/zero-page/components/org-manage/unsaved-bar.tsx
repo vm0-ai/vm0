@@ -15,9 +15,7 @@ export function UnsavedBar({
   testId?: string;
   saveDisabled?: boolean;
 }) {
-  const container =
-    document.getElementById("org-manage-content") ??
-    document.getElementById("settings-dialog-content");
+  const container = document.getElementById("settings-dialog-content");
   if (!container) {
     return null;
   }

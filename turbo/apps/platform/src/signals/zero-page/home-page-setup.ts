@@ -1,6 +1,9 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
+import {
+  checkUnifiedSettingsParam$,
+  handoffSettingsDialogSession$,
+} from "./settings/settings-dialog.ts";
 import { homeAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
@@ -23,12 +26,23 @@ export const setupHomePage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    const settings = params.get("settings");
+    const billingView = params.get("billingView");
     const forwardParams = new URLSearchParams();
     if (prompt) {
       forwardParams.set("prompt", prompt);
     }
     if (queue) {
       forwardParams.set("queue", queue);
+    }
+    if (settings) {
+      forwardParams.set("settings", settings);
+    }
+    if (billingView) {
+      forwardParams.set("billingView", billingView);
+    }
+    if (settings) {
+      set(handoffSettingsDialogSession$);
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: homeAgentId },

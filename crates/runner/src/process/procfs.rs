@@ -166,11 +166,39 @@ fn parse_process_stat(content: &[u8]) -> Option<ProcessStat> {
     })
 }
 
+#[derive(Debug)]
+pub(crate) enum ProcessStatRead {
+    Found(ProcessStat),
+    Missing,
+    Unreadable(std::io::Error),
+    Invalid,
+}
+
+fn classify_process_stat_read(result: std::io::Result<Vec<u8>>) -> ProcessStatRead {
+    match result {
+        Ok(content) => match parse_process_stat(&content) {
+            Some(stat) => ProcessStatRead::Found(stat),
+            None => ProcessStatRead::Invalid,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ProcessStatRead::Missing,
+        Err(error) => ProcessStatRead::Unreadable(error),
+    }
+}
+
+/// Read `/proc/{pid}/stat` without conflating disappearance and read failures.
+pub(crate) async fn read_process_stat_checked(pid: u32) -> ProcessStatRead {
+    let path = format!("/proc/{pid}/stat");
+    classify_process_stat_read(tokio::fs::read(&path).await)
+}
+
 /// Read `/proc/{pid}/stat` and extract process facts.
 pub(crate) async fn read_process_stat(pid: u32) -> Option<ProcessStat> {
-    let path = format!("/proc/{pid}/stat");
-    let content = tokio::fs::read(&path).await.ok()?;
-    parse_process_stat(&content)
+    match read_process_stat_checked(pid).await {
+        ProcessStatRead::Found(stat) => Some(stat),
+        ProcessStatRead::Missing | ProcessStatRead::Unreadable(_) | ProcessStatRead::Invalid => {
+            None
+        }
+    }
 }
 
 /// Read `/proc/{pid}/cwd` symlink to get the process working directory.
@@ -714,6 +742,49 @@ mod tests {
                 starttime: 123456
             })
         );
+    }
+
+    #[test]
+    fn checked_process_stat_read_distinguishes_parsed_content() {
+        let stat = stat_with_comm("firecracker", "S", "1100", "123456");
+
+        assert!(matches!(
+            classify_process_stat_read(Ok(stat.into_bytes())),
+            ProcessStatRead::Found(ProcessStat {
+                state: 'S',
+                ppid: 1200,
+                pgid: 1100,
+                starttime: 123456,
+            })
+        ));
+    }
+
+    #[test]
+    fn checked_process_stat_read_distinguishes_missing_content() {
+        let error = std::io::Error::from(std::io::ErrorKind::NotFound);
+
+        assert!(matches!(
+            classify_process_stat_read(Err(error)),
+            ProcessStatRead::Missing
+        ));
+    }
+
+    #[test]
+    fn checked_process_stat_read_distinguishes_unreadable_content() {
+        let error = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+
+        let ProcessStatRead::Unreadable(error) = classify_process_stat_read(Err(error)) else {
+            panic!("expected unreadable process stat");
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn checked_process_stat_read_distinguishes_invalid_content() {
+        assert!(matches!(
+            classify_process_stat_read(Ok(b"invalid stat".to_vec())),
+            ProcessStatRead::Invalid
+        ));
     }
 
     #[test]

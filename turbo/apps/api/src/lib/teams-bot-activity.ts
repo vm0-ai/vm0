@@ -38,6 +38,10 @@ interface ActivityBase {
   readonly idempotencyKey: string;
 }
 
+interface MessageActivityBase extends ActivityBase {
+  readonly activityId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -204,18 +208,9 @@ function normalizeTeamsMentions(args: {
   };
 }
 
-function idempotencyKey(
-  conversationId: string,
-  activityType: string,
-  activityId: string | null,
-  timestamp: string | null,
-): string {
-  const idPart = activityId ?? timestamp ?? "unknown";
-  return `${conversationId}:${activityType}:${idPart}`;
-}
-
 function activityBase(
   activity: Record<string, unknown>,
+  activityType: string,
 ): ActivityBase | InvalidTeamsActivityResult {
   const serviceUrl = readString(activity, "serviceUrl");
   const conversation = readRecord(activity, "conversation");
@@ -223,8 +218,6 @@ function activityBase(
   const channelData = readRecord(activity, "channelData");
   const tenant = channelData ? readRecord(channelData, "tenant") : null;
   const tenantId = tenant ? readString(tenant, "id") : null;
-  const activityType = readString(activity, "type") ?? "unknown";
-
   if (!serviceUrl) {
     return { ok: false, error: "Missing Teams activity serviceUrl" };
   }
@@ -239,6 +232,10 @@ function activityBase(
   const channel = channelData ? readRecord(channelData, "channel") : null;
   const activityId = readString(activity, "id");
   const timestamp = readString(activity, "timestamp");
+  const idempotencyId = activityId ?? timestamp;
+  if (!idempotencyId) {
+    return { ok: false, error: "Missing Teams activity id or timestamp" };
+  }
 
   return {
     activityId,
@@ -254,18 +251,13 @@ function activityBase(
     teamName: team ? readString(team, "name") : null,
     channelId: channel ? readString(channel, "id") : null,
     timestamp,
-    idempotencyKey: idempotencyKey(
-      conversationId,
-      activityType,
-      activityId,
-      timestamp,
-    ),
+    idempotencyKey: `${conversationId}:${activityType}:${idempotencyId}`,
   };
 }
 
 function messageActivity(
   activity: Record<string, unknown>,
-  base: ActivityBase,
+  base: MessageActivityBase,
 ): TeamsInboundActivity {
   const sender = normalizeActor(activity.from);
   const recipientValue = activity.recipient;
@@ -282,7 +274,7 @@ function messageActivity(
   return {
     ...base,
     kind: "message",
-    threadId: readString(activity, "replyToId") ?? base.activityId ?? "root",
+    threadId: readString(activity, "replyToId") ?? base.activityId,
     sender,
     recipient,
     rawText,
@@ -374,13 +366,22 @@ export function normalizeTeamsActivity(
     return { ok: false, error: "Missing Teams activity type" };
   }
 
-  const base = activityBase(input);
+  const base = activityBase(input, activityType);
   if ("ok" in base) {
     return base;
   }
 
   if (activityType === "message") {
-    return { ok: true, activity: messageActivity(input, base) };
+    if (!base.activityId) {
+      return { ok: false, error: "Missing Teams message activity id" };
+    }
+    return {
+      ok: true,
+      activity: messageActivity(input, {
+        ...base,
+        activityId: base.activityId,
+      }),
+    };
   }
   if (activityType === "conversationUpdate") {
     return { ok: true, activity: conversationUpdateActivity(input, base) };

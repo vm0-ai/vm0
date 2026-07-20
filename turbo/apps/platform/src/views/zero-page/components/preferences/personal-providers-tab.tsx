@@ -20,8 +20,10 @@ import {
   setSettingsCodexResetDialog$,
   settingsCodexResetDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
-import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
+import { modelPlanCapabilities$ } from "../../../../signals/zero-page/model-plan-capabilities.ts";
+import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
@@ -53,12 +55,12 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
+  const modelCapabilitiesLoadable = useLastLoadable(modelPlanCapabilities$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
   const openClaudeCodeDeviceAuthDialog = useSet(
-    setClaudeCodeDeviceAuthDialogStatePersonal$,
+    openClaudeCodeDeviceAuthDialogPersonal$,
   );
-  const openCodexDeviceAuthDialog = useSet(
-    setCodexDeviceAuthDialogStatePersonal$,
-  );
+  const openCodexDeviceAuthDialog = useSet(openCodexDeviceAuthDialogPersonal$);
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
@@ -68,9 +70,14 @@ function OAuthCredentialsSection() {
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
 
-  const isLoading = providersLoadable.state === "loading";
+  const isLoading =
+    providersLoadable.state === "loading" ||
+    modelCapabilitiesLoadable.state === "loading";
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
+  const supportByok =
+    modelCapabilitiesLoadable.state !== "hasData" ||
+    modelCapabilitiesLoadable.data.supportByok;
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
@@ -78,18 +85,23 @@ function OAuthCredentialsSection() {
   const codexResetCredits = openAI?.subscriptionResetCredits ?? null;
 
   const connectClaudeCode = () => {
-    const next = {
-      open: true,
-      mode: claudeCode?.needsReconnect ? "reconnect" : "connect",
-    } as const;
-    openClaudeCodeDeviceAuthDialog(next);
+    if (!supportByok) {
+      openBillingPlans();
+      return;
+    }
+    const mode = claudeCode?.needsReconnect ? "reconnect" : "connect";
+    detach(
+      openClaudeCodeDeviceAuthDialog(mode, pageSignal),
+      Reason.DomCallback,
+    );
   };
   const connectOpenAI = () => {
-    const next = {
-      open: true,
-      mode: openAI?.needsReconnect ? "reconnect" : "connect",
-    } as const;
-    openCodexDeviceAuthDialog(next);
+    if (!supportByok) {
+      openBillingPlans();
+      return;
+    }
+    const mode = openAI?.needsReconnect ? "reconnect" : "connect";
+    detach(openCodexDeviceAuthDialog(mode, pageSignal), Reason.DomCallback);
   };
 
   const confirmCodexReset = () => {
@@ -128,6 +140,7 @@ function OAuthCredentialsSection() {
           <>
             <ClaudeOAuthCredentialRow
               actionPending={actionPending}
+              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
               onAction={connectClaudeCode}
@@ -140,6 +153,7 @@ function OAuthCredentialsSection() {
             />
             <CodexOAuthCredentialRow
               actionPending={actionPending}
+              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
               provider={openAI}
               resetCredits={codexResetCredits}
               status={openAIStatus}
@@ -170,12 +184,14 @@ function OAuthCredentialsSection() {
 
 function ClaudeOAuthCredentialRow({
   actionPending,
+  actionLabel,
   provider,
   status,
   onAction,
   onDisconnect,
 }: {
   actionPending: boolean;
+  actionLabel: string;
   provider: ModelProviderResponse | undefined;
   status: OAuthStatus;
   onAction: () => void;
@@ -188,6 +204,7 @@ function ClaudeOAuthCredentialRow({
       description="Connect with Claude Code login for Claude-backed model routes."
       provider={provider}
       status={status}
+      actionLabel={actionLabel}
       menuItems={
         provider
           ? [
@@ -212,6 +229,7 @@ function ClaudeOAuthCredentialRow({
 
 function CodexOAuthCredentialRow({
   actionPending,
+  actionLabel,
   provider,
   resetCredits,
   status,
@@ -220,6 +238,7 @@ function CodexOAuthCredentialRow({
   onOpenReset,
 }: {
   actionPending: boolean;
+  actionLabel: string;
   provider: ModelProviderResponse | undefined;
   resetCredits: number | null;
   status: OAuthStatus;
@@ -234,6 +253,7 @@ function CodexOAuthCredentialRow({
       description="Connect with Codex device login for Codex-backed model routes."
       provider={provider}
       status={status}
+      actionLabel={actionLabel}
       menuItems={
         provider
           ? [
@@ -515,6 +535,7 @@ function OAuthCredentialRow({
   description,
   provider,
   status,
+  actionLabel,
   disabled = false,
   menuItems,
   onAction,
@@ -525,6 +546,7 @@ function OAuthCredentialRow({
   description: string;
   provider: ModelProviderResponse | undefined;
   status: OAuthStatus;
+  actionLabel: string;
   disabled?: boolean;
   menuItems: OAuthMenuItem[];
   onAction: () => void;
@@ -563,11 +585,15 @@ function OAuthCredentialRow({
             variant="outline"
             size="sm"
             className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
-            aria-label={`Connect ${title}`}
+            aria-label={
+              actionLabel === "Connect"
+                ? `Connect ${title}`
+                : `${actionLabel} ${title}`
+            }
             disabled={disabled}
             onClick={onAction}
           >
-            Connect
+            {actionLabel}
           </Button>
         ) : (
           <div className="ml-auto flex items-center justify-end gap-1.5">

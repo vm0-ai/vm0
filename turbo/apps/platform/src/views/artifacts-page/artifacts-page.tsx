@@ -9,9 +9,12 @@ import {
   IconAlertTriangle,
   IconCarambola,
   IconCarambolaFilled,
+  IconCheck,
+  IconChevronDown,
   IconDownload,
   IconDots,
   IconExternalLink,
+  IconFilter,
   IconHistory,
   IconMessagePlus,
   IconPhoto,
@@ -33,13 +36,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -48,6 +47,7 @@ import {
 } from "@vm0/ui";
 
 import { agents$ } from "../../signals/agent.ts";
+import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import {
   applyArtifactFavoriteOverrides,
   artifactFavoriteOverrides$,
@@ -288,6 +288,133 @@ function useOpenArtifactPreview(): (item: ArtifactItem) => void {
   };
 }
 
+function artifactsAgentName(agent: TeamComposeItem): string {
+  return agent.displayName ?? "Zero";
+}
+
+function ArtifactsAgentFilterSectionLabel({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground/80">
+      {children}
+    </div>
+  );
+}
+
+function ArtifactsAgentFilterOption({
+  active,
+  onSelect,
+  children,
+}: {
+  readonly active: boolean;
+  readonly onSelect: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+      {active && (
+        <IconCheck size={15} stroke={2} className="shrink-0 text-foreground" />
+      )}
+    </DropdownMenuItem>
+  );
+}
+
+function ArtifactsAgentFilter({
+  agents,
+  selectedAgentId,
+  onAgentChange,
+}: {
+  readonly agents: readonly TeamComposeItem[];
+  readonly selectedAgentId: string | null;
+  readonly onAgentChange: (value: string | null) => void;
+}) {
+  const activeAgent =
+    selectedAgentId === null
+      ? undefined
+      : agents.find((agent) => {
+          return agent.id === selectedAgentId;
+        });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="Agent filter"
+          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+        >
+          <IconFilter
+            size={14}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          {activeAgent && (
+            <AvatarFromUrl
+              avatarUrl={activeAgent.avatarUrl}
+              alt={artifactsAgentName(activeAgent)}
+              size={16}
+              className="h-4 w-4 rounded-full object-cover"
+            />
+          )}
+          <span className="max-w-[140px] truncate">
+            {activeAgent ? artifactsAgentName(activeAgent) : "All agents"}
+          </span>
+          <IconChevronDown
+            size={14}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-y-auto"
+      >
+        <ArtifactsAgentFilterOption
+          active={selectedAgentId === null}
+          onSelect={() => {
+            onAgentChange(null);
+          }}
+        >
+          All agents
+        </ArtifactsAgentFilterOption>
+        {agents.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <ArtifactsAgentFilterSectionLabel>
+              Agents
+            </ArtifactsAgentFilterSectionLabel>
+            {agents.map((agent) => {
+              return (
+                <ArtifactsAgentFilterOption
+                  key={agent.id}
+                  active={selectedAgentId === agent.id}
+                  onSelect={() => {
+                    onAgentChange(agent.id);
+                  }}
+                >
+                  <AvatarFromUrl
+                    avatarUrl={agent.avatarUrl}
+                    alt={artifactsAgentName(agent)}
+                    size={16}
+                    className="h-4 w-4 rounded-full object-cover"
+                  />
+                  <span className="truncate">{artifactsAgentName(agent)}</span>
+                </ArtifactsAgentFilterOption>
+              );
+            })}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ArtifactsToolbar({
   search,
   selectedAgentId,
@@ -356,29 +483,11 @@ function ArtifactsToolbar({
             </button>
           )}
         </div>
-        <Select
-          value={selectedAgentId ?? "all"}
-          onValueChange={(value) => {
-            onAgentChange(value === "all" ? null : value);
-          }}
-        >
-          <SelectTrigger
-            aria-label="Agent filter"
-            className="w-full transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:w-52"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All agents</SelectItem>
-            {agents.map((agent) => {
-              return (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.displayName ?? "Zero"}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        <ArtifactsAgentFilter
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          onAgentChange={onAgentChange}
+        />
       </div>
       <div
         className="flex flex-wrap items-center gap-1.5"
@@ -619,10 +728,10 @@ function ArtifactCardActions({
       {showFavoriteAction && (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100",
+            "h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -641,9 +750,9 @@ function ArtifactCardActions({
           }}
         >
           {favorited ? (
-            <IconCarambolaFilled size={14} aria-hidden />
+            <IconCarambolaFilled size={16} aria-hidden />
           ) : (
-            <IconCarambola size={14} stroke={1.7} aria-hidden />
+            <IconCarambola size={16} stroke={1.5} aria-hidden />
           )}
         </Button>
       )}
@@ -651,13 +760,13 @@ function ArtifactCardActions({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100 data-[state=open]:bg-gray-100"
+            className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
-            <IconDots size={14} stroke={1.7} aria-hidden />
+            <IconDots size={16} stroke={1.5} aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -676,7 +785,7 @@ function ArtifactCardActions({
             }}
           >
             <IconMessagePlus size={14} stroke={1.7} aria-hidden />
-            Ask about it
+            Ask about this
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
@@ -684,7 +793,7 @@ function ArtifactCardActions({
             }}
           >
             <IconHistory size={14} stroke={1.7} aria-hidden />
-            View creation chat
+            View original chat
           </DropdownMenuItem>
           {isZipArtifact(item) ? (
             <DropdownMenuItem
@@ -708,7 +817,7 @@ function ArtifactCardActions({
                 aria-label={`Open preview for ${item.filename}`}
               >
                 <IconExternalLink size={14} stroke={1.7} aria-hidden />
-                Open a new tab
+                Open in new tab
               </a>
             </DropdownMenuItem>
           )}

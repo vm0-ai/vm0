@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type {
@@ -273,6 +273,45 @@ describe("chat run queue", () => {
       expect(queuedBodies).toHaveLength(1);
     });
     expect(queuedBodies[0]?.modelSelection).toBeUndefined();
+  });
+
+  it("queues the committed composer text after IME composition ends", async () => {
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockActiveRunThread(THREAD_ID, {
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const composer = await activeRunComposer();
+    await fill(composer, "排");
+
+    fireEvent.compositionStart(composer, { data: "排" });
+    const paragraph = composer.querySelector("p");
+    if (!paragraph) {
+      throw new Error("Composer paragraph not found");
+    }
+    paragraph.textContent = "排队完整内容";
+
+    fireEvent.click(screen.getByLabelText("Send"));
+    expect(queuedBodies).toHaveLength(0);
+
+    fireEvent.compositionEnd(composer, { data: "排队完整内容" });
+    fireEvent.input(composer, {
+      data: "排队完整内容",
+      inputType: "insertCompositionText",
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+    });
+    expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
   it("keeps the draft when the hydrated model is unavailable for queueing", async () => {

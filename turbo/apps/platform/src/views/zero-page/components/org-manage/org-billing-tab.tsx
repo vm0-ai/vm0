@@ -69,7 +69,7 @@ import {
   selectedTarget$,
   setLockedTarget$,
   setSelectedTarget$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+} from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 
 const PLANS = [
   {

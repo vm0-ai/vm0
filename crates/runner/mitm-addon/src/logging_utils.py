@@ -47,12 +47,23 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
 
 
 def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
-    """Flush accepted JSONL writes for a path."""
+    """Wait until accepted JSONL writes for a path have been processed.
+
+    Failed append attempts count as processed and are reported through mitmproxy
+    warnings without affecting the result. ``False`` only means a configured
+    timeout expired with accepted writes still pending; ``True`` does not
+    confirm that every line was persisted.
+    """
     return jsonl_writer.flush_log_path(log_path, timeout=timeout)
 
 
 def flush_all_logs() -> None:
-    """Flush accepted JSONL writes for all paths."""
+    """Wait until accepted JSONL writes for all paths have been processed.
+
+    Failed append attempts count as processed and are reported through mitmproxy
+    warnings; completion of this call does not confirm that every line was
+    persisted.
+    """
     jsonl_writer.flush_all_logs()
 
 

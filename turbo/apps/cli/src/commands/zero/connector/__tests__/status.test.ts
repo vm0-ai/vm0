@@ -126,6 +126,10 @@ describe("zero connector status command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_AGENT_ID", "");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
   });
 
   afterEach(() => {
@@ -165,7 +169,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("/connectors/github/connect");
       expect(logCalls).not.toContain("Authorized:");
       expect(logCalls).not.toContain("Diagnose it with");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("does not print connect guidance for unavailable connectors", async () => {
@@ -197,7 +201,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
   });
 
@@ -252,7 +256,37 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("callbackPrompt=");
+    });
+
+    it("prints a callback URL example in the current web chat", async () => {
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
+      server.use(
+        stubConnector(connectedGithub),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).toContain("threadId=thread-abc-123");
+      expect(logCalls).toContain(
+        "callbackPrompt=SOMETHING_AGENT_WANT_TO_BE_CALLBACK",
+      );
+      expect(logCalls).toContain("automatically start the next round");
     });
 
     it("uses the production app origin in authorization links", async () => {
@@ -308,7 +342,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("shows connect guidance when connector is authorized but not connected", async () => {
@@ -339,7 +373,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("shows reconnect guidance when connector needs reconnect", async () => {
@@ -368,7 +402,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {

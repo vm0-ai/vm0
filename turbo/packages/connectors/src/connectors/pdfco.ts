@@ -11,6 +11,7 @@ export const pdfco = {
       "api-token": {
         label: "API Key",
         storage: {
+          version: 1,
           secrets: ["PDFCO_TOKEN"],
           variables: [],
         },

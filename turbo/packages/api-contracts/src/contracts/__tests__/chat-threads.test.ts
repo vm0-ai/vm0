@@ -49,18 +49,6 @@ describe("chat message response contract", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("accepts a legacy-only workflow Automation identifier", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
-      id: "message-1",
-      role: "user",
-      content: "Run the workflow",
-      createdAt: "2026-07-13T00:00:00.000Z",
-      workflowSnapshot: { ...workflowSnapshot, triggerId: automationId },
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
   it("accepts a canonical-only workflow Automation identifier", () => {
     const parsed = pagedChatMessageSchema.safeParse({
       id: "message-1",
@@ -71,38 +59,13 @@ describe("chat message response contract", () => {
     });
 
     expect(parsed.success).toBe(true);
-  });
-
-  it("accepts equal dual workflow Automation identifiers", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
-      id: "message-1",
-      role: "user",
-      content: "Run the workflow",
-      createdAt: "2026-07-13T00:00:00.000Z",
-      workflowSnapshot: {
-        ...workflowSnapshot,
-        automationId,
-        triggerId: automationId,
-      },
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data.workflowSnapshot).toStrictEqual({
+      ...workflowSnapshot,
+      automationId,
     });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects unequal dual workflow Automation identifiers", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
-      id: "message-1",
-      role: "user",
-      content: "Run the workflow",
-      createdAt: "2026-07-13T00:00:00.000Z",
-      workflowSnapshot: {
-        ...workflowSnapshot,
-        automationId,
-        triggerId: "22222222-2222-4222-8222-222222222222",
-      },
-    });
-
-    expect(parsed.success).toBe(false);
   });
 });
 
@@ -332,10 +295,14 @@ describe("artifacts contract", () => {
     const parsed = artifactsContract.list.query.safeParse({
       limit: "50",
       cursor: "opaque-token",
+      updatedAfter: "2026-07-20T04:00:00.000Z",
     });
 
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.limit).toBe(50);
+    expect(parsed.success && parsed.data.updatedAfter).toBe(
+      "2026-07-20T04:00:00.000Z",
+    );
   });
 
   it("accepts a minimal generated artifact item", () => {
@@ -417,6 +384,7 @@ describe("artifacts contract", () => {
       artifacts: [],
       truncated: false,
       nextCursor: null,
+      syncUntil: "2026-07-20T04:01:00.000Z",
     });
 
     expect(parsed.success).toBe(true);

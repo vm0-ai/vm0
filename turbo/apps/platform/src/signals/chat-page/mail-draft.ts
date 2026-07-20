@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -6,109 +6,200 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import {
+  resolvePlatformOriginForTarget,
+  rewritePlatformHostname,
+} from "../api-base.ts";
+import { pageSignal$ } from "../page-signal.ts";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
-export interface MailDraftFields {
-  readonly to: readonly string[];
-  readonly subject: string;
-  readonly body: string;
+export interface MailDraftDescriptor {
+  readonly mailDraftId: string;
+  readonly originalUrl: string;
+  readonly href: string;
 }
 
-interface MailDraftCommandArgs {
-  readonly threadId: string;
-  readonly messageId: string;
+export interface MailDraftSignals extends MailDraftDescriptor {
+  readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
+  readonly reload$: Command<void, []>;
+  readonly delete$: Command<Promise<void>, [AbortSignal]>;
+  readonly send$: Command<Promise<ZeroMailDraft>, [AbortSignal]>;
 }
 
-interface SaveMailDraftCommandArgs extends MailDraftCommandArgs {
-  readonly fields: MailDraftFields;
+export interface MailDraftCardSignalsRegistry {
+  register(descriptor: MailDraftDescriptor): MailDraftSignals;
+  resolve(resourceKey: string): MailDraftSignals;
+  entries(): ReadonlyMap<string, MailDraftSignals>;
 }
 
-const internalMailDraftOverrides$ = state<Record<string, ZeroMailDraft>>({});
-
-export const mailDraftOverrides$ = computed((get) => {
-  return get(internalMailDraftOverrides$);
+export const emptyMailDraftSignalsById$ = computed<
+  ReadonlyMap<string, MailDraftSignals>
+>(() => {
+  return new Map();
 });
 
-export const updateMailDraft$ = command(
-  async (
-    { get, set },
-    args: SaveMailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
-    const response = await accept(
-      client.updateDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        body: {
-          to: [...args.fields.to],
-          subject: args.fields.subject,
-          body: args.fields.body,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
-    return response.body.mailDraft;
-  },
-);
+function browserOrigin(): string | null {
+  if (typeof location === "undefined" || !location.origin) {
+    return null;
+  }
+  return location.origin;
+}
 
-export const cancelMailDraft$ = command(
-  async (
-    { get, set },
-    args: MailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
-    const response = await accept(
-      client.cancelDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
-    return response.body.mailDraft;
-  },
-);
+function addAllowedOriginVariants(
+  origins: Set<string>,
+  baseUrl: string | null,
+) {
+  if (!baseUrl || !URL.canParse(baseUrl)) {
+    return;
+  }
+  const parsed = new URL(baseUrl);
+  origins.add(parsed.origin);
+  for (const target of ["api", "www", "app", "platform"] as const) {
+    const variant = new URL(parsed);
+    variant.hostname = rewritePlatformHostname(variant.hostname, target);
+    origins.add(variant.origin);
+  }
+}
 
-export const sendMailDraft$ = command(
-  async (
-    { get, set },
-    args: SaveMailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
+function allowedOrigins(): Set<string> {
+  const origins = new Set<string>();
+  addAllowedOriginVariants(origins, browserOrigin());
+  addAllowedOriginVariants(origins, resolvePlatformOriginForTarget("api"));
+  return origins;
+}
+
+function hasExplicitUrlOrigin(value: string): boolean {
+  return URL.canParse(value) || value.trimStart().startsWith("//");
+}
+
+function isPlatformHostname(hostname: string): boolean {
+  const platformDomain = ["vm0.ai", "vm6.ai", "vm7.ai"].some((suffix) => {
+    return hostname === suffix || hostname.endsWith(`.${suffix}`);
+  });
+  return platformDomain && /(^|-)(platform|app|www|api)\./u.test(hostname);
+}
+
+function parseUrl(value: string): URL | null {
+  const baseUrl = browserOrigin() ?? resolvePlatformOriginForTarget("api");
+  if (baseUrl && URL.canParse(value, baseUrl)) {
+    return new URL(value, baseUrl);
+  }
+  return URL.canParse(value) ? new URL(value) : null;
+}
+
+export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
+  const url = parseUrl(value);
+  if (!url) {
+    return null;
+  }
+  const explicitOrigin = hasExplicitUrlOrigin(value);
+  if (
+    explicitOrigin &&
+    ((url.protocol !== "http:" && url.protocol !== "https:") ||
+      (!allowedOrigins().has(url.origin) && !isPlatformHostname(url.hostname)))
+  ) {
+    return null;
+  }
+  const match = url.pathname.match(
+    /^\/mail\/drafts\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/?$/iu,
+  );
+  const mailDraftId = match?.[1];
+  if (!mailDraftId) {
+    return null;
+  }
+  return {
+    mailDraftId,
+    originalUrl: value,
+    href: `/mail/drafts/${mailDraftId}`,
+  };
+}
+
+function newestDraft(
+  first: ZeroMailDraft,
+  second: ZeroMailDraft,
+): ZeroMailDraft {
+  return Date.parse(second.updatedAt) >= Date.parse(first.updatedAt)
+    ? second
+    : first;
+}
+
+function createMailDraftSignals(
+  descriptor: MailDraftDescriptor,
+): MailDraftSignals {
+  const reloadVersion$ = state(0);
+  const mutationDraft$ = state<ZeroMailDraft | null | undefined>(undefined);
+  const serverDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+    get(reloadVersion$);
     const response = await accept(
-      client.sendDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        body: {
-          to: [...args.fields.to],
-          subject: args.fields.subject,
-          body: args.fields.body,
-        },
+      get(zeroClient$)(zeroMailContract).getDraft({
+        params: { mailDraftId: descriptor.mailDraftId },
+        fetchOptions: { signal: get(pageSignal$) },
+      }),
+      [200, 404],
+    );
+    return response.status === 200 ? response.body.mailDraft : null;
+  });
+  const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+    const mutation = get(mutationDraft$);
+    const server = await get(serverDraft$);
+    if (mutation === null || server === null) {
+      return mutation === undefined ? server : mutation;
+    }
+    return mutation === undefined ? server : newestDraft(server, mutation);
+  });
+  const reload$ = command(({ set }) => {
+    set(reloadVersion$, (version) => {
+      return version + 1;
+    });
+  });
+  const delete$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await accept(
+        get(zeroClient$)(zeroMailContract).deleteDraft({
+          params: { mailDraftId: descriptor.mailDraftId },
+          fetchOptions: { signal },
+        }),
+        [204],
+      );
+      signal.throwIfAborted();
+      set(mutationDraft$, null);
+    },
+  );
+  const send$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const response = await accept(
+      get(zeroClient$)(zeroMailContract).sendDraft({
+        params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
+    set(mutationDraft$, response.body.mailDraft);
     return response.body.mailDraft;
-  },
-);
+  });
+  return { ...descriptor, draft$, reload$, delete$, send$ };
+}
+
+export function createMailDraftCardSignalsRegistry(): MailDraftCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, MailDraftSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.mailDraftId,
+        () => {
+          return createMailDraftSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
+    entries() {
+      return signalsByResourceKey;
+    },
+  };
+}

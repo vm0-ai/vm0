@@ -17,6 +17,7 @@ export const gmail = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GMAIL_ACCESS_TOKEN", "GMAIL_REFRESH_TOKEN"],
           variables: [],
         },

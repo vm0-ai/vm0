@@ -141,12 +141,15 @@ function WorkflowComposerPlaceholder({
   sending: boolean | undefined;
 }) {
   const hasInput = useGet(composer.hasInput$);
+  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
   if (hasInput) {
     return null;
   }
   return (
     <div
-      className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 ${
+        hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
+      }`}
       aria-hidden="true"
     >
       {workflowComposerPlaceholder(sending)}
@@ -180,6 +183,10 @@ function handleComposerKeyDownCapture(
   event: KeyboardEvent,
   context: ComposerKeyDownContext,
 ): boolean {
+  if (event.isComposing || event.keyCode === 229) {
+    context.onKeyDown(event);
+    return event.defaultPrevented;
+  }
   if (
     event.key === "Enter" &&
     event.shiftKey &&
@@ -387,6 +394,7 @@ export function TiptapWorkflowComposer({
   });
   const setWorkflowNames = useSet(composer.setWorkflowNames$);
   const setEventHandlers = useSet(composer.setEventHandlers$);
+  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const containerRefSignal = singleLineOnMobile
     ? composer.setCompactContainerRef$
     : autoFocus
@@ -414,7 +422,7 @@ export function TiptapWorkflowComposer({
       clipboardData?.getData("text/plain") || clipboardData?.getData("text");
     if (plainText) {
       event.preventDefault();
-      composer.editor.commands.insertContent(plainText);
+      insertPromptMarkdown(plainText);
       return true;
     }
     return event.defaultPrevented;

@@ -22,6 +22,7 @@ use crate::handlers::{
     MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
 };
 use crate::log::log;
+use crate::process_containment::verify_exec_process_containment_empty;
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -209,7 +210,16 @@ fn handle_quiesce_operations(
     }
 
     match operation_state.enter_quiescing() {
-        QuiesceResult::Quiesced => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
+        // Quiescing atomically fences new guest operations. Once pending is
+        // zero, this is the final race-free boundary before the VM is parked.
+        QuiesceResult::Quiesced => match verify_exec_process_containment_empty() {
+            Ok(()) => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
+            Err(error) => send_error_response(
+                seq,
+                &format!("guest process containment is not empty: {error}"),
+                writer,
+            ),
+        },
         QuiesceResult::Busy { pending } => send_error_response(
             seq,
             &format!("guest operations still pending: {pending}"),

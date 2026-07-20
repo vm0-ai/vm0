@@ -55,6 +55,7 @@ pub struct NetnsLease {
     info: NetnsInfo,
     pool_instance_id: u64,
     active: bool,
+    reuse_eligible: bool,
 }
 
 impl NetnsLease {
@@ -63,6 +64,7 @@ impl NetnsLease {
             info,
             pool_instance_id,
             active: true,
+            reuse_eligible: true,
         }
     }
 
@@ -91,6 +93,18 @@ impl NetnsLease {
 
     pub(super) fn pool_instance_id(&self) -> u64 {
         self.pool_instance_id
+    }
+
+    pub(crate) fn mark_non_reusable(&mut self) {
+        self.reuse_eligible = false;
+    }
+
+    pub(crate) fn mark_reusable(&mut self) {
+        self.reuse_eligible = true;
+    }
+
+    pub(super) fn reuse_eligible(&self) -> bool {
+        self.reuse_eligible
     }
 
     pub(super) fn into_info(mut self) -> NetnsInfo {
@@ -124,7 +138,9 @@ impl Drop for NetnsLease {
 /// When both proxy and DNS ports are set, callers must start the DNS service
 /// and call [`super::NetnsPool::activate_dns_readiness`] before acquiring.
 pub struct NetnsPoolConfig {
-    /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
+    /// Host proxy port for outbound TCP redirects. When `dns_port` is also set,
+    /// those redirects exclude TCP 53 and 853: TCP 53 is redirected to
+    /// `dns_port`, while TCP 853 is blocked.
     pub proxy_port: Option<u16>,
     /// DNS proxy port for DNS query redirect. Only meaningful with `proxy_port`.
     pub dns_port: Option<u16>,
@@ -137,8 +153,10 @@ pub(crate) struct CheckedNetnsPoolConfig {
 
 impl NetnsPoolConfig {
     /// Validate host tools required by [`NetnsPool::create`].
-    pub(crate) fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
-        crate::prerequisites::check_network_prerequisites(self.dns_port.is_some())?;
+    pub(crate) async fn into_checked(
+        self,
+    ) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
+        crate::prerequisites::check_network_prerequisites(self.dns_port.is_some()).await?;
         Ok(CheckedNetnsPoolConfig { inner: self })
     }
 }

@@ -90,7 +90,7 @@ import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import {
   applyUserPermissionGrants$,
-  userPermissionGrantsByAgent,
+  currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   allConnectorTypes$,
@@ -100,13 +100,14 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
-  agentVisibleWorkflows$,
+  currentAgentVisibleWorkflows$,
   allWorkflowAutomationEntries$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   permConnectorType$,
+  agentPermissionMetadata$,
   setPermConnectorType$,
   permSearch$,
   setPermSearch$,
@@ -119,7 +120,6 @@ import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
@@ -658,6 +658,7 @@ export function AgentPermissionsDrawer({
       targetKind={targetKind}
       connectorType={connectorType}
       connectorLabel={connectorLabel}
+      metadata$={agentPermissionMetadata$}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
@@ -694,14 +695,9 @@ function JobPermissionsTab({
   const deauthorizeFn = useSet(deauthorizeAgentConnector$);
   const saveConnectors = useSet(saveAgentConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId,
-    }),
-  );
+  const userGrantsLoadable = useLoadable(currentAgentUserPermissionGrants$);
   const userGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  useUserPermissionGrantExpiryTick(userGrants);
   const activeUserGrantSnapshot = activeUserPermissionGrantSnapshot(userGrants);
   const userGrantPolicies =
     userGrantsLoadable.state === "hasData"
@@ -867,8 +863,8 @@ function JobInstructionsTab() {
   );
 }
 
-function AgentWorkflowsTab({ agentId }: { readonly agentId: string }) {
-  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+function AgentWorkflowsTab() {
+  const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
   const automationEntriesLoadable = useLastLoadable(
     allWorkflowAutomationEntries$,
   );
@@ -1016,7 +1012,7 @@ function AgentProfileSettings({
   onDelete: () => Promise<void>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+  const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
   const agentsLoadable = useLoadable(agents$);
   const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
 
@@ -1049,7 +1045,8 @@ function AgentProfileSettings({
 
   return (
     <ZeroSettingsTab
-      key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
+      key={agentId}
+      agentId={agentId}
       displayName={displayName}
       description={description}
       sound={resolvedSound}
@@ -1102,7 +1099,7 @@ function AgentTabContent({
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
     case "workflows": {
-      return <AgentWorkflowsTab agentId={agentId} />;
+      return <AgentWorkflowsTab />;
     }
     case "profile": {
       return (

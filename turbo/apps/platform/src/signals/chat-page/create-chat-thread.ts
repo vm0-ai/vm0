@@ -18,8 +18,8 @@ import {
   setLoop,
   withCleanup,
 } from "../utils.ts";
-import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
-import { createWorkflowQueueChangedHandler as workflowQueueHandler } from "./workflow-queue.ts";
+import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
+import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
   type PrependScrollCompensationToken,
@@ -36,9 +36,11 @@ import {
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
+  createOptimisticChatMessageEntry,
   createOptimisticChatMessagesForThread,
   reconcileOptimisticChatMessages$,
   type OptimisticChatMessageEntry,
+  type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import {
@@ -80,10 +82,26 @@ import {
   loadIndexedDbChatMessages$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
+import type { BodyRenderBlock, ParsedBodyBlock } from "./parse-body-blocks.ts";
+import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import {
-  enrichBlocksWithTextPreviews,
-  parseBodyRenderBlocks,
-} from "./parse-body-blocks.ts";
+  createArtifactCardSignalsRegistry,
+  type ArtifactCardSignalsRegistry,
+} from "./artifact-card-signals.ts";
+import {
+  createConnectorCardSignalsRegistry,
+  createCustomConnectorCardSignalsRegistry,
+  type ConnectorCardSignalsRegistry,
+  type CustomConnectorCardSignalsRegistry,
+} from "./connector-action-block.ts";
+import {
+  createPermissionCardSignalsRegistry,
+  type PermissionCardSignalsRegistry,
+} from "./permission-card-signals.ts";
+import {
+  createComputerUseAuthorizationCardSignalsRegistry,
+  type ComputerUseAuthorizationCardSignalsRegistry,
+} from "./computer-use-authorization-block.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -103,9 +121,8 @@ import {
   personalModelProvider$,
   selectedModelAvailable$,
 } from "../zero-page/model-first-personal-oauth.ts";
-import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
-
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
@@ -116,6 +133,7 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -693,13 +711,10 @@ function createModelSelection(
       const mode =
         status.status === "needs_reconnect" ? "reconnect" : "connect";
       if (status.providerType === "claude-code-oauth-token") {
-        set(setClaudeCodeDeviceAuthDialogStatePersonal$, {
-          open: true,
-          mode,
-        });
+        await set(openClaudeCodeDeviceAuthDialogPersonal$, mode, signal);
         return;
       }
-      set(setCodexDeviceAuthDialogStatePersonal$, { open: true, mode });
+      await set(openCodexDeviceAuthDialogPersonal$, mode, signal);
     },
   );
 
@@ -896,6 +911,18 @@ function createAgentInfoSignals(
   });
 
   return { agentId$, agentDisplayName$, agentPinned$ };
+}
+
+function createThreadOwnedSignals(
+  threadId: string,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
+) {
+  return {
+    ...createAgentInfoSignals(threadMeta$),
+    headerAutomations: createHeaderAutomationSignals(threadId),
+    workflowQueue: createWorkflowQueueSignals(threadId),
+    ...createThreadUIState(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,7 +1289,16 @@ function createRenderedChatGroups(
   };
 }
 
-type PersistentChatMessages$ = State<PagedChatMessage[]>;
+interface RegisteredChatMessage {
+  readonly message: PagedChatMessage;
+  readonly blocks: BodyRenderBlock[];
+}
+
+type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
+
+type BodyBlocksRenderer = (
+  blocks: readonly ParsedBodyBlock[],
+) => BodyRenderBlock[];
 
 function compareCursorString(left: string, right: string): number {
   if (left < right) {
@@ -1304,21 +1340,43 @@ function compareServerMessageOrder(
   return 0;
 }
 
-function mergeServerMessages(
-  messageSets: readonly (readonly PagedChatMessage[])[],
-): PagedChatMessage[] {
-  const byId = new Map<string, PagedChatMessage>();
-  for (const messages of messageSets) {
-    for (const message of messages) {
-      byId.set(message.id, message);
+function mergeRegisteredMessages(
+  messageSets: readonly (readonly RegisteredChatMessage[])[],
+): RegisteredChatMessage[] {
+  const byId = new Map<string, RegisteredChatMessage>();
+  for (const entries of messageSets) {
+    for (const entry of entries) {
+      byId.set(entry.message.id, entry);
     }
   }
-  return Array.from(byId.values()).sort(compareServerMessageOrder);
+  return Array.from(byId.values()).sort((left, right) => {
+    return compareServerMessageOrder(left.message, right.message);
+  });
+}
+
+function skipsMessageBodyRendering(message: PagedChatMessage): boolean {
+  return (
+    isInterruptControlMessage(message) ||
+    isRecallControlMessage(message) ||
+    isQueueMarkerMessage(message) ||
+    isGoalMarkerMessage(message)
+  );
+}
+
+function registerChatMessage(
+  message: PagedChatMessage,
+  registerBodyBlocks: BodyBlocksRenderer,
+): RegisteredChatMessage {
+  const blocks = skipsMessageBodyRendering(message)
+    ? []
+    : registerBodyBlocks(parseMessageBodyBlocks(message));
+  return { message, blocks };
 }
 
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
+  registerBodyBlocks: BodyBlocksRenderer,
 ) {
   return command(
     async (
@@ -1330,7 +1388,11 @@ function createWritePersistentMessages(
         return;
       }
       const reportedCompletedRunIds = new Set(
-        completedRunIdsFromMessages(get(persistentMessages$)),
+        completedRunIdsFromMessages(
+          get(persistentMessages$).map((entry) => {
+            return entry.message;
+          }),
+        ),
       );
       const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
         (runId) => {
@@ -1340,8 +1402,11 @@ function createWritePersistentMessages(
       for (const _ of newlyCompletedRunIds) {
         captureTaskCompletedSuccessfully();
       }
+      const registeredMessages = msgs.map((message) => {
+        return registerChatMessage(message, registerBodyBlocks);
+      });
       set(persistentMessages$, (prev) => {
-        return mergeServerMessages([prev, msgs]);
+        return mergeRegisteredMessages([prev, registeredMessages]);
       });
       set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
       await set(writeIndexedDbChatMessages$, threadId, msgs, signal);
@@ -1353,30 +1418,39 @@ function createWritePersistentMessages(
 interface ChatMessageProjectionEntry {
   message: PagedChatMessage;
   source: "server" | "optimistic";
+  blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
 
 function projectRawMessages({
   persistentMessages,
   optimisticEntries,
+  resolveBodyBlocks,
 }: {
-  persistentMessages: readonly PagedChatMessage[];
+  persistentMessages: readonly RegisteredChatMessage[];
   optimisticEntries: readonly OptimisticChatMessageEntry[];
+  resolveBodyBlocks: BodyBlocksRenderer;
 }): ChatMessageProjectionEntry[] {
   const serverIds = new Set(
-    persistentMessages.map((message) => {
-      return message.id;
+    persistentMessages.map((entry) => {
+      return entry.message.id;
     }),
   );
   const optimistic = optimisticEntries.filter((entry) => {
     return !serverIds.has(entry.message.id);
   });
   return [
-    ...persistentMessages.map((message) => {
-      return { message, source: "server" as const };
+    ...persistentMessages.map((entry) => {
+      return { ...entry, source: "server" as const };
     }),
     ...optimistic.map((entry) => {
-      return { ...entry, source: "optimistic" as const };
+      return {
+        message: entry.message,
+        blocks: resolveBodyBlocks(entry.parsedBodyBlocks),
+        source: "optimistic" as const,
+        optimisticUserMessageAssociation:
+          entry.optimisticUserMessageAssociation,
+      };
     }),
   ];
 }
@@ -1384,14 +1458,17 @@ function projectRawMessages({
 function createRawMessagesComputed({
   persistentMessages$,
   optimisticMessages$,
+  resolveBodyBlocks,
 }: {
   persistentMessages$: PersistentChatMessages$;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
+  resolveBodyBlocks: BodyBlocksRenderer;
 }): Computed<ChatMessageProjectionEntry[]> {
   return computed((get): ChatMessageProjectionEntry[] => {
     return projectRawMessages({
       persistentMessages: get(persistentMessages$),
       optimisticEntries: get(optimisticMessages$),
+      resolveBodyBlocks,
     });
   });
 }
@@ -1403,14 +1480,11 @@ function createTranscriptMessagesComputed(
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
-          previews: message.role === "assistant",
-        });
         if (message.role !== "assistant") {
           return {
             ...message,
             role: "user" as const,
-            blocks: enrichBlocksWithTextPreviews(blocks),
+            blocks: entry.blocks,
             isQueued,
             isOptimisticRun,
           };
@@ -1418,7 +1492,7 @@ function createTranscriptMessagesComputed(
         return {
           ...message,
           role: "assistant" as const,
-          blocks: enrichBlocksWithTextPreviews(blocks),
+          blocks: entry.blocks,
           isQueued,
           isOptimisticRun: false,
         };
@@ -1429,6 +1503,7 @@ function createTranscriptMessagesComputed(
 
 interface SemanticChatMessage {
   readonly message: PagedChatMessage;
+  readonly blocks: BodyRenderBlock[];
   readonly isQueued: boolean;
   readonly isOptimisticRun: boolean;
 }
@@ -1490,6 +1565,7 @@ function semanticTranscriptMessagesFromRaw(
             message,
             message.interruptsRunId,
           ),
+          blocks: [],
           isQueued: false,
           isOptimisticRun: false,
         },
@@ -1505,7 +1581,7 @@ function semanticTranscriptMessagesFromRaw(
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
       message.error === undefined;
-    return [{ message, isQueued, isOptimisticRun }];
+    return [{ message, blocks: entry.blocks, isQueued, isOptimisticRun }];
   });
 }
 
@@ -1996,25 +2072,29 @@ function createSyncRemoteMessagesCommand({
   >;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
+  const sinceId$ = computed((get): string | undefined => {
+    return get(persistentMessages$).at(-1)?.message.id;
+  });
+
   return command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId = get(persistentMessages$).at(-1)?.id;
-    const startedWithoutCursor = sinceId === undefined;
+    const startedWithoutCursor = get(sinceId$) === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
+      const requestedSinceId = get(sinceId$);
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceId: requestedSinceId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: sinceId ?? null,
+        sinceId: requestedSinceId ?? null,
         gotCount: result.messages.length,
       });
 
-      if (sinceId === undefined) {
+      if (requestedSinceId === undefined) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2024,7 +2104,6 @@ function createSyncRemoteMessagesCommand({
 
       await set(writePersistentMessages$, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
     }
@@ -2043,7 +2122,7 @@ function createSyncRemoteMessagesCommand({
       return;
     }
 
-    let beforeId = get(persistentMessages$)[0]!.id;
+    let beforeId = get(persistentMessages$)[0]!.message.id;
     async function syncMessagesBefore(): Promise<void> {
       const result = await set(
         dataSource.listMessagesBefore$,
@@ -2147,14 +2226,147 @@ function createActiveGoalObjectiveComputed(
   });
 }
 
-function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
-  const persistentChatMessages$ = state<PagedChatMessage[]>([]);
+interface BodyBlockRegistries {
+  readonly artifactCardSignals: ArtifactCardSignalsRegistry;
+  readonly connectorCardSignals: ConnectorCardSignalsRegistry;
+  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
+  readonly permissionCardSignals: PermissionCardSignalsRegistry;
+  readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
+  readonly mailDraftCardSignals: ReturnType<
+    typeof createMailDraftCardSignalsRegistry
+  >;
+}
+
+function createBodyBlocksRenderer({
+  artifactCardSignals,
+  connectorCardSignals,
+  customConnectorCardSignals,
+  permissionCardSignals,
+  computerUseAuthorizationCardSignals,
+  mailDraftCardSignals,
+}: BodyBlockRegistries): (
+  resolution: "register" | "resolve",
+) => BodyBlocksRenderer {
+  return (resolution) => {
+    return (blocks) => {
+      return blocks.map((block): BodyRenderBlock => {
+        switch (block.type) {
+          case "markdown": {
+            return block;
+          }
+          case "artifact": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? artifactCardSignals.register(block.descriptor)
+                  : artifactCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "connector-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? connectorCardSignals.register(block.descriptor)
+                  : connectorCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "custom-connector-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? customConnectorCardSignals.register(block.descriptor)
+                  : customConnectorCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "permission-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? permissionCardSignals.register(block.descriptor)
+                  : permissionCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "computer-use-authorization": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? computerUseAuthorizationCardSignals.register(
+                      block.descriptor,
+                    )
+                  : computerUseAuthorizationCardSignals.resolve(
+                      block.resourceKey,
+                    ),
+            };
+          }
+          case "mail-draft": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? mailDraftCardSignals.register(block.descriptor)
+                  : mailDraftCardSignals.resolve(block.resourceKey),
+            };
+          }
+        }
+        const exhaustive: never = block;
+        return exhaustive;
+      });
+    };
+  };
+}
+
+function createPagedMessages(
+  threadId: string,
+  dataSource: ChatThreadRemote,
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
+) {
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry();
+  const artifactCardSignals = createArtifactCardSignalsRegistry();
+  const connectorCardSignals = createConnectorCardSignalsRegistry();
+  const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
+  const permissionCardSignals = createPermissionCardSignalsRegistry();
+  const computerUseAuthorizationCardSignals =
+    createComputerUseAuthorizationCardSignalsRegistry();
+  const bodyBlocksRenderer = createBodyBlocksRenderer({
+    artifactCardSignals,
+    connectorCardSignals,
+    customConnectorCardSignals,
+    permissionCardSignals,
+    computerUseAuthorizationCardSignals,
+    mailDraftCardSignals,
+  });
+  const registerBodyBlocks = bodyBlocksRenderer("register");
+  const resolveBodyBlocks = bodyBlocksRenderer("resolve");
+
+  for (const entry of initialOptimisticEntries) {
+    registerBodyBlocks(entry.parsedBodyBlocks);
+  }
+  const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
+  const appendOptimisticMessage$ = command(
+    ({ set }, input: OptimisticChatMessageInput): void => {
+      const entry = createOptimisticChatMessageEntry(input);
+      registerBodyBlocks(entry.parsedBodyBlocks);
+      set(appendOptimisticChatMessage$, entry);
+    },
+  );
 
   const rawMessages$ = createRawMessagesComputed({
     persistentMessages$: persistentChatMessages$,
     optimisticMessages$,
+    resolveBodyBlocks,
   });
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
@@ -2173,15 +2385,24 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
 
   const renderedMessages = createRenderedChatGroups(semanticMessages$);
 
+  const mailDraftCardSignalsById$ = computed((get) => {
+    get(rawMessages$);
+    return mailDraftCardSignals.entries();
+  });
+
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
+    registerBodyBlocks,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
+      const registeredMessages = messages.map((message) => {
+        return registerChatMessage(message, registerBodyBlocks);
+      });
       set(persistentChatMessages$, (previous) => {
-        return mergeServerMessages([messages, previous]);
+        return mergeRegisteredMessages([registeredMessages, previous]);
       });
     },
   );
@@ -2236,11 +2457,13 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
+    appendOptimisticMessage$,
     ...semanticSignals,
     ...renderedMessages,
     rawMessages$,
     messageRunIndicatorState$,
     activeGoalObjective$,
+    mailDraftCardSignalsById$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
   };
@@ -2249,12 +2472,14 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
 function createChatThreadMessagePipeline({
   threadId,
   dataSource,
+  initialOptimisticEntries,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
 }: {
   threadId: string;
   dataSource: ChatThreadRemote;
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
     []
@@ -2265,7 +2490,11 @@ function createChatThreadMessagePipeline({
   >;
   awayFromBottom$: Computed<boolean>;
 }) {
-  const pagedMessages = createPagedMessages(threadId, dataSource);
+  const pagedMessages = createPagedMessages(
+    threadId,
+    dataSource,
+    initialOptimisticEntries,
+  );
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: pagedMessages.allRenderedChatGroups$,
@@ -2385,6 +2614,10 @@ interface RunTrackingDeps {
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
+  automationSignals: Pick<
+    ChatThreadSignals,
+    "headerAutomations" | "workflowQueue"
+  >;
   dataSource: ChatThreadRemote;
 }
 
@@ -2579,6 +2812,7 @@ function createRunTracking({
   fetchUpdatedMessage$,
   reloadArtifacts$,
   autoScroll$,
+  automationSignals,
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
@@ -2660,8 +2894,7 @@ function createRunTracking({
     });
 
     const onAutomationsChanged$ = command(({ set }) => {
-      L.debug("onAutomationsChanged$ fired", { threadId });
-      set(reloadHeaderAutomationMenu$);
+      set(automationSignals.headerAutomations.reload$);
       return false;
     });
 
@@ -2677,7 +2910,6 @@ function createRunTracking({
       return false;
     });
 
-    L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
 
@@ -2696,7 +2928,8 @@ function createRunTracking({
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,
-              onWorkflowQueueChanged$: workflowQueueHandler(threadId),
+              onWorkflowQueueChanged$:
+                automationSignals.workflowQueue.handleChanged$,
               onSubscribed$,
             },
           },
@@ -2722,6 +2955,12 @@ interface PreparedSendMessageResult {
   attachFiles: AttachFile[] | undefined;
   attachments: PagedChatMessage["attachFiles"];
   hasTextContent: boolean;
+}
+
+function shouldIncludeDraftAttachments(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return !(features[FeatureSwitchKey.ComposerInlinePromptItems] ?? false);
 }
 
 function prepareTextOnlyUserMessage(
@@ -2753,7 +2992,7 @@ function createSendOptimisticMessageEntry({
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
-}): OptimisticChatMessageEntry {
+}): OptimisticChatMessageInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
@@ -2811,39 +3050,43 @@ function sendMessageRequestBody(params: {
   };
 }
 
-const appendOptimisticSendMessage$ = command(
-  (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly agentId: string;
-      readonly clientMessageId: string;
-      readonly chatThreadSortEventId: string;
-      readonly createdAt: string;
-      readonly result: PreparedSendMessageResult;
-      readonly generationTemplate: GenerationTemplateRequest | undefined;
-      readonly options: SendMessageOptions | undefined;
-    },
-  ) => {
-    set(touchOptimisticChatThreadSort$, {
-      id: args.chatThreadSortEventId,
-      threadId: args.threadId,
-      agentId: args.agentId,
-      createdAt: args.createdAt,
-    });
-    set(
-      appendOptimisticChatMessage$,
-      createSendOptimisticMessageEntry({
+function createAppendOptimisticSendMessage(
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>,
+) {
+  return command(
+    (
+      { set },
+      args: {
+        readonly threadId: string;
+        readonly agentId: string;
+        readonly clientMessageId: string;
+        readonly chatThreadSortEventId: string;
+        readonly createdAt: string;
+        readonly result: PreparedSendMessageResult;
+        readonly generationTemplate: GenerationTemplateRequest | undefined;
+        readonly options: SendMessageOptions | undefined;
+      },
+    ) => {
+      set(touchOptimisticChatThreadSort$, {
+        id: args.chatThreadSortEventId,
         threadId: args.threadId,
-        clientMessageId: args.clientMessageId,
+        agentId: args.agentId,
         createdAt: args.createdAt,
-        result: args.result,
-        generationTemplate: args.generationTemplate,
-        options: args.options,
-      }),
-    );
-  },
-);
+      });
+      set(
+        appendOptimisticMessage$,
+        createSendOptimisticMessageEntry({
+          threadId: args.threadId,
+          clientMessageId: args.clientMessageId,
+          createdAt: args.createdAt,
+          result: args.result,
+          generationTemplate: args.generationTemplate,
+          options: args.options,
+        }),
+      );
+    },
+  );
+}
 
 function createComposerSendButtonSignals(messages: {
   allFinished$: Computed<Promise<boolean>>;
@@ -2878,6 +3121,7 @@ interface SendMessageDeps {
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
 }
 
 interface ValidatedSendMessageRequest {
@@ -2943,16 +3187,21 @@ function createPerformSendMessage(deps: SendMessageDeps) {
     flushDraftClear$,
     scrollToBottom$,
     syncRemoteMessages$,
+    appendOptimisticMessage$,
   } = deps;
+  const appendOptimisticSendMessage$ = createAppendOptimisticSendMessage(
+    appendOptimisticMessage$,
+  );
   return command(
     async (
       { get, set },
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
+      const features = get(featureSwitch$);
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
-        get(featureSwitch$),
+        features,
       );
       const result =
         request.options?.includeDraftAttachments === false
@@ -2962,6 +3211,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
               draft,
               request.prompt,
               {
+                includeAttachments: shouldIncludeDraftAttachments(features),
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
                     request.modelSelection?.selectedModel,
@@ -3092,6 +3342,7 @@ interface QueueMessageDeps {
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }
 
@@ -3105,6 +3356,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     flushDraftClear$,
     scrollToBottom$,
     writePersistentMessages$,
+    appendOptimisticMessage$,
     dataSource,
   } = deps;
   const optimisticCreateUnsettled$ =
@@ -3130,9 +3382,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
+      const features = get(featureSwitch$);
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
-        get(featureSwitch$),
+        features,
       );
 
       const modelSelectionResult = await set(modelSelectionForSend$, signal);
@@ -3146,6 +3399,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         draft,
         prompt,
         {
+          includeAttachments: shouldIncludeDraftAttachments(features),
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
           ),
@@ -3170,7 +3424,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         agentId: meta.agentId,
         createdAt: nowIso,
       });
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
         message: {
@@ -3189,7 +3443,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
-      const features = get(featureSwitch$);
       const codexFastModeEnabled =
         features[FeatureSwitchKey.CodexFastMode] ?? false;
       const realAgentInPreviewEnabled =
@@ -3237,6 +3490,7 @@ interface RecallMessageDeps {
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }
 
@@ -3247,6 +3501,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
     rawMessages$,
     draft,
     writePersistentMessages$,
+    appendOptimisticMessage$,
     dataSource,
   } = deps;
 
@@ -3268,7 +3523,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
       }
 
       const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         message: {
           id: clientMessageId,
@@ -3328,6 +3583,7 @@ function createCancelRunWithQueuedRecall({
   threadMeta$,
   rawMessages$,
   writePersistentMessages$,
+  appendOptimisticMessage$,
   dataSource,
 }: {
   threadId: string;
@@ -3337,6 +3593,7 @@ function createCancelRunWithQueuedRecall({
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }) {
   const optimisticCreateUnsettled$ =
@@ -3360,7 +3617,7 @@ function createCancelRunWithQueuedRecall({
     const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
       (runId) => {
         const clientMessageId = crypto.randomUUID();
-        set(appendOptimisticChatMessage$, {
+        set(appendOptimisticMessage$, {
           threadId,
           message: {
             id: clientMessageId,
@@ -3376,7 +3633,7 @@ function createCancelRunWithQueuedRecall({
 
     const recallRequests = queuedMessages.map((message) => {
       const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         message: {
           id: clientMessageId,
@@ -3821,10 +4078,52 @@ function createThinkingIndicatorSignals(
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
+function publicChatThreadMessageSignals(
+  messages: ReturnType<typeof createChatThreadMessagePipeline>,
+) {
+  return {
+    latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
+    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
+    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
+    visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
+    messageImageGroups$: messages.messageImageGroups$,
+    mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
+    hasMessages$: messages.hasMessages$,
+    hasQueuedMessages$: messages.hasQueuedMessages$,
+    queuedMessageItems$: messages.queuedMessageItems$,
+    emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
+    thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
+    thinkingMessageId$: messages.thinkingMessageId$,
+    thinkingText$: messages.thinkingText$,
+    recommendedFollowupSource$: messages.recommendedFollowupSource$,
+    activeGoalObjective$: messages.activeGoalObjective$,
+    donePhrase$: messages.donePhrase$,
+    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
+    resetRenderedChatGroupsIfAtBottom$:
+      messages.resetRenderedChatGroupsIfAtBottom$,
+  };
+}
+
+function createThreadComposer(
+  draft: DraftSignals,
+  threadId: string,
+  inlinePromptItems: boolean,
+) {
+  const workflowComposer = createWorkflowComposerSignals(
+    draft,
+    threadId,
+    inlinePromptItems,
+  );
+  return { workflowComposer, focusInput$: workflowComposer.focus$ };
+}
+
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
+  inlinePromptItems = false,
 ): ChatThreadSignals {
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
@@ -3855,11 +4154,11 @@ export function createChatThreadSignals(
   const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const agentInfo = createAgentInfoSignals(threadMeta$);
-  const threadUi = createThreadUIState();
+  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
+    initialOptimisticEntries,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
     awayFromBottom$,
@@ -3879,6 +4178,7 @@ export function createChatThreadSignals(
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,
+    automationSignals: threadOwned,
     dataSource,
   });
   const messageActions = createThreadMessageActions({
@@ -3893,13 +4193,10 @@ export function createChatThreadSignals(
     scrollToBottom$: scrollSignals.scrollToBottom$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     writePersistentMessages$: messages.writePersistentMessages$,
+    appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const workflowComposer = createWorkflowComposerSignals(draft);
-  const thinkingIndicator = createThinkingIndicatorSignals(
-    messages.thinkingText$,
-    messages.thinkingMessageId$,
-  );
+  const composer = createThreadComposer(draft, threadId, inlinePromptItems);
   return {
     threadId,
     remoteThreadDetail$,
@@ -3917,34 +4214,17 @@ export function createChatThreadSignals(
     setContainerRef$,
     awayFromBottom$,
     draft,
-    workflowComposer,
+    ...composer,
     composerFileInput$,
     setComposerFileInput$,
-    ...agentInfo,
-    ...threadUi,
-    focusInput$: workflowComposer.focus$,
+    ...threadOwned,
     queueDraftSync$,
-    latestChatMessageId$: messages.latestChatMessageId$,
-    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
-    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
-    visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
-    messageImageGroups$: messages.messageImageGroups$,
-    hasMessages$: messages.hasMessages$,
-    hasQueuedMessages$: messages.hasQueuedMessages$,
-    queuedMessageItems$: messages.queuedMessageItems$,
-    emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
-    thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
-    thinkingMessageId$: messages.thinkingMessageId$,
-    thinkingText$: messages.thinkingText$,
-    recommendedFollowupSource$: messages.recommendedFollowupSource$,
-    activeGoalObjective$: messages.activeGoalObjective$,
-    donePhrase$: messages.donePhrase$,
-    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
-    resetRenderedChatGroupsIfAtBottom$:
-      messages.resetRenderedChatGroupsIfAtBottom$,
+    ...publicChatThreadMessageSignals(messages),
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    ...thinkingIndicator,
+    ...createThinkingIndicatorSignals(
+      messages.thinkingText$,
+      messages.thinkingMessageId$,
+    ),
     ...artifact,
   };
 }

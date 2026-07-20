@@ -113,11 +113,13 @@ struct CacheTarget {
     name: String,
     version: String,
     archive_url: String,
+    archive_size: Option<u64>,
 }
 
 #[derive(Clone)]
 struct CacheTargetGroup {
     targets: Vec<CacheTarget>,
+    archive_size: Option<u64>,
 }
 
 /// Cold cache work selected during storage planning but not yet started.
@@ -770,10 +772,30 @@ fn group_targets(targets: Vec<CacheTarget>) -> Vec<CacheTargetGroup> {
     let mut groups = Vec::with_capacity(group_order.len());
     for key in group_order {
         if let Some(targets) = groups_by_key.remove(&key) {
-            groups.push(CacheTargetGroup { targets });
+            let archive_size = reconcile_archive_size(&targets);
+            groups.push(CacheTargetGroup {
+                targets,
+                archive_size,
+            });
         }
     }
     groups
+}
+
+fn reconcile_archive_size(targets: &[CacheTarget]) -> Option<u64> {
+    let mut known_size = None;
+    for size in targets
+        .iter()
+        .filter_map(|target| target.archive_size)
+        .filter(|size| *size > 0)
+    {
+        match known_size {
+            None => known_size = Some(size),
+            Some(known) if known == size => {}
+            Some(_) => return None,
+        }
+    }
+    known_size
 }
 
 fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
@@ -785,6 +807,7 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
                 &candidate.archive_url,
                 &candidate.name,
                 &candidate.version,
+                candidate.archive_size,
             )
         })
         .collect()
@@ -795,6 +818,7 @@ fn cache_target_from_entry(
     archive_url: &str,
     name: &str,
     version: &str,
+    archive_size: Option<u64>,
 ) -> Option<CacheTarget> {
     // Empty components would hash to the same fixed digest as every other
     // empty component, collapsing distinct manifest entries into a shared
@@ -807,6 +831,7 @@ fn cache_target_from_entry(
         name: name.to_string(),
         version: version.to_string(),
         archive_url: archive_url.to_string(),
+        archive_size: archive_size.filter(|size| *size > 0),
     })
 }
 
@@ -815,9 +840,13 @@ async fn process_group_background_fill(
     http: &Client,
     home: &HomePaths,
 ) -> RunnerResult<BackgroundFillOutcome> {
+    if group.archive_size.is_some_and(|size| size > CACHE_MAX_SIZE) {
+        return Ok(BackgroundFillOutcome::Skipped);
+    }
+
     let mut saw_retryable_skipped = false;
     for target in &group.targets {
-        match process_one_background_fill(target, http, home).await? {
+        match process_one_background_fill(target, group.archive_size, http, home).await? {
             BackgroundFillOutcome::RetryableSkipped => {
                 saw_retryable_skipped = true;
             }
@@ -853,6 +882,7 @@ async fn process_group_hit_or_passthrough(
 
 async fn process_one_background_fill(
     target: &CacheTarget,
+    archive_size: Option<u64>,
     http: &Client,
     home: &HomePaths,
 ) -> RunnerResult<BackgroundFillOutcome> {
@@ -887,7 +917,7 @@ async fn process_one_background_fill(
         }
     }
 
-    let outcome = match fetch_cache_target(target, http).await? {
+    let outcome = match fetch_cache_target(target, archive_size, http).await? {
         CacheFetchOutcome::Downloaded(bytes) => {
             let size = bytes.len() as u64;
             write_to_cache(&cache_dir, &bytes).await?;
@@ -902,32 +932,37 @@ async fn process_one_background_fill(
 
 async fn fetch_cache_target(
     target: &CacheTarget,
+    archive_size: Option<u64>,
     http: &Client,
 ) -> RunnerResult<CacheFetchOutcome> {
-    // Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe failure is
-    // treated as passthrough — the entry keeps its original R2 URL and the
-    // guest downloads it as today.
-    let size = match retry_cache_fetch(|| probe_size(http, &target.archive_url)).await {
-        Ok(SizeProbe::Known(n)) => n,
-        Ok(SizeProbe::Unknown(reason)) => {
-            let reason = reason.as_str();
-            warn!(
-                name = %target.name,
-                version = %target.version,
-                reason,
-                "storage_cache: probe returned no usable size header, passthrough"
-            );
-            return Ok(CacheFetchOutcome::RetryableSkipped);
-        }
-        Err(e) => {
-            let reason = e.to_string();
-            warn!(
-                name = %target.name,
-                version = %target.version,
-                error = %reason,
-                "storage_cache: probe failed, passthrough"
-            );
-            return Ok(CacheFetchOutcome::RetryableSkipped);
+    let size = match archive_size {
+        Some(size) => size,
+        None => {
+            // Legacy queued contexts do not carry encoded size. Preserve the
+            // existing bounded range probe for those entries.
+            match retry_cache_fetch(|| probe_size(http, &target.archive_url)).await {
+                Ok(SizeProbe::Known(n)) => n,
+                Ok(SizeProbe::Unknown(reason)) => {
+                    let reason = reason.as_str();
+                    warn!(
+                        name = %target.name,
+                        version = %target.version,
+                        reason,
+                        "storage_cache: probe returned no usable size header, passthrough"
+                    );
+                    return Ok(CacheFetchOutcome::RetryableSkipped);
+                }
+                Err(e) => {
+                    let reason = e.to_string();
+                    warn!(
+                        name = %target.name,
+                        version = %target.version,
+                        error = %reason,
+                        "storage_cache: probe failed, passthrough"
+                    );
+                    return Ok(CacheFetchOutcome::RetryableSkipped);
+                }
+            }
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -976,13 +1011,13 @@ async fn fetch_cache_target(
             warn!(
                 name = %target.name,
                 version = %target.version,
-                probe_size = size,
+                expected_size = size,
                 observed_size,
                 limit = CACHE_MAX_SIZE,
-                "storage_cache: full download exceeded probed size limit, failing closed"
+                "storage_cache: full download exceeded expected size limit, failing closed"
             );
             return Err(RunnerError::Internal(format!(
-                "storage cache download size mismatch for {}@{}: probe reported {size} bytes within {CACHE_MAX_SIZE} byte limit, but full GET reached {observed_size} bytes",
+                "storage cache download size mismatch for {}@{}: expected {size} bytes within {CACHE_MAX_SIZE} byte limit, but full GET reached {observed_size} bytes",
                 target.name, target.version
             )));
         }
@@ -993,9 +1028,9 @@ async fn fetch_cache_target(
         warn!(
             name = %target.name,
             version = %target.version,
-            probe_size = size,
+            expected_size = size,
             observed_size,
-            "storage_cache: full download size differed from probe, passthrough"
+            "storage_cache: full download size differed from expectation, passthrough"
         );
         return Ok(CacheFetchOutcome::RetryableSkipped);
     }
@@ -2119,7 +2154,20 @@ mod tests {
             vas_storage_name: name.to_string(),
             vas_version_id: version.to_string(),
             instructions_target_filename: None,
+            archive_size: None,
         }
+    }
+
+    fn storage_entry_with_archive_size(
+        mount_path: String,
+        url: String,
+        name: &str,
+        version: &str,
+        archive_size: Option<u64>,
+    ) -> StorageEntry {
+        let mut entry = storage_entry(mount_path, url, name, version);
+        entry.archive_size = archive_size;
+        entry
     }
 
     fn artifact_entry(mount_path: String, url: String, name: &str, version: &str) -> ArtifactEntry {
@@ -2131,6 +2179,7 @@ mod tests {
             vas_version_id: version.to_string(),
             empty: None,
             missing_root_policy: None,
+            archive_size: None,
         }
     }
 
@@ -2277,7 +2326,7 @@ mod tests {
             self.inner.kill().await
         }
 
-        async fn park(&mut self) -> sandbox::Result<()> {
+        async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
             self.inner.park().await
         }
 
@@ -3360,6 +3409,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn known_archive_size_downloads_without_range_probe() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/known-size.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/known-size.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let original = server.url("/known-size.tar.gz");
+        let name = "known-size";
+        let version = "v1";
+        let mut manifest = plan_from_entries(
+            vec![storage_entry_with_archive_size(
+                format!("/mnt/{name}"),
+                original,
+                name,
+                version,
+                Some(body.len() as u64),
+            )],
+            Vec::new(),
+            None,
+        );
+
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+
+        probe.assert_calls_async(0).await;
+        get.assert_async().await;
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+    }
+
+    #[tokio::test]
     async fn probe_transient_status_retry_then_success_rewrites_url() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -3743,7 +3849,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn over_size_entry_is_passthrough() {
+    async fn legacy_over_size_entry_probes_then_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -3754,17 +3860,24 @@ mod tests {
         let probe = server
             .mock_async(|when, then| {
                 when.method(GET)
-                    .path("/big.tar.gz")
+                    .path("/legacy-big.tar.gz")
                     .header("range", "bytes=0-0");
                 then.status(206)
                     .header("content-range", format!("bytes 0-0/{too_big}"))
                     .body(b"x");
             })
             .await;
-        // Full GET must NOT be called for passthrough — no mock registered.
+        let unexpected_full_get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/legacy-big.tar.gz")
+                    .header_missing("range");
+                then.status(200);
+            })
+            .await;
 
-        let original = server.url("/big.tar.gz");
-        let name = "user-volume";
+        let original = server.url("/legacy-big.tar.gz");
+        let name = "legacy-user-volume";
         let version = "v9";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
@@ -3774,6 +3887,53 @@ mod tests {
                 .unwrap();
 
         probe.assert_async().await;
+        unexpected_full_get.assert_calls_async(0).await;
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
+        assert!(!home.storage_cache_dir(name, version).exists());
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_TOTAL);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_SKIPPED, true);
+    }
+
+    #[tokio::test]
+    async fn known_over_size_entry_is_passthrough_without_http() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let too_big = CACHE_MAX_SIZE + 1;
+        let unexpected_get = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/big.tar.gz");
+                then.status(200);
+            })
+            .await;
+
+        let original = server.url("/big.tar.gz");
+        let name = "user-volume";
+        let version = "v9";
+        let mut manifest = plan_from_entries(
+            vec![storage_entry_with_archive_size(
+                format!("/mnt/{name}"),
+                original.clone(),
+                name,
+                version,
+                Some(too_big),
+            )],
+            Vec::new(),
+            None,
+        );
+
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+
+        unexpected_get.assert_calls_async(0).await;
 
         // archive_url untouched.
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
@@ -3955,13 +4115,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shorter_full_download_is_passthrough_without_cache_write() {
+    async fn known_size_mismatch_is_passthrough_without_cache_write() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
         let server = MockServer::start_async().await;
         let body = tarball_bytes();
+        let expected_size = body.len() as u64 + 1;
 
         let probe = server
             .mock_async(|when, then| {
@@ -3969,7 +4130,7 @@ mod tests {
                     .path("/short-body.tar.gz")
                     .header("range", "bytes=0-0");
                 then.status(206)
-                    .header("content-range", format!("bytes 0-0/{}", body.len() + 1))
+                    .header("content-range", format!("bytes 0-0/{expected_size}"))
                     .body(b"x");
             })
             .await;
@@ -3985,14 +4146,24 @@ mod tests {
         let original = server.url("/short-body.tar.gz");
         let name = "short-body";
         let version = "v1";
-        let mut manifest = fresh_storage_plan(original.clone(), name, version);
+        let mut manifest = plan_from_entries(
+            vec![storage_entry_with_archive_size(
+                format!("/mnt/{name}"),
+                original.clone(),
+                name,
+                version,
+                Some(expected_size),
+            )],
+            Vec::new(),
+            None,
+        );
 
         let records =
             populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
                 .unwrap();
 
-        probe.assert_async().await;
+        probe.assert_calls_async(0).await;
         get.assert_async().await;
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
@@ -5162,7 +5333,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn duplicate_same_key_cold_miss_downloads_and_stages_once() {
+    async fn duplicate_conflicting_archive_sizes_fall_back_to_probe() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -5209,11 +5380,25 @@ mod tests {
 
         let name = "duplicate-miss";
         let version = "v1";
-        let mut manifest = fresh_duplicate_storage_plan(
-            server.url("/duplicate-a.tar.gz"),
-            server.url("/duplicate-b.tar.gz"),
-            name,
-            version,
+        let mut manifest = plan_from_entries(
+            vec![
+                storage_entry_with_archive_size(
+                    "/mnt/duplicate-a".into(),
+                    server.url("/duplicate-a.tar.gz"),
+                    name,
+                    version,
+                    Some(body.len() as u64),
+                ),
+                storage_entry_with_archive_size(
+                    "/mnt/duplicate-b".into(),
+                    server.url("/duplicate-b.tar.gz"),
+                    name,
+                    version,
+                    Some(body.len() as u64 + 1),
+                ),
+            ],
+            Vec::new(),
+            None,
         );
 
         let records =
@@ -5238,6 +5423,87 @@ mod tests {
         assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
         let ops = telemetry.pending_ops_snapshot();
         assert_op_count(&ops, "storage_cache_hit", 2);
+    }
+
+    #[tokio::test]
+    async fn duplicate_equal_and_missing_archive_sizes_share_known_size() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-known-a.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-known-a.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "duplicate-known-size";
+        let version = "v1";
+        let archive_size = body.len() as u64;
+        let mut manifest = plan_from_entries(
+            vec![
+                storage_entry_with_archive_size(
+                    "/mnt/known-a".into(),
+                    server.url("/duplicate-known-a.tar.gz"),
+                    name,
+                    version,
+                    Some(archive_size),
+                ),
+                storage_entry_with_archive_size(
+                    "/mnt/known-b".into(),
+                    server.url("/duplicate-known-b.tar.gz"),
+                    name,
+                    version,
+                    None,
+                ),
+                storage_entry_with_archive_size(
+                    "/mnt/known-c".into(),
+                    server.url("/duplicate-known-c.tar.gz"),
+                    name,
+                    version,
+                    Some(archive_size),
+                ),
+            ],
+            Vec::new(),
+            None,
+        );
+
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+
+        probe.assert_calls_async(0).await;
+        full.assert_async().await;
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "duplicate entries should share one staged guest archive"
+        );
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        for index in 0..3 {
+            assert_eq!(
+                storage_archive_url(&manifest, index),
+                Some(expected.as_str())
+            );
+        }
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
     }
 
     #[tokio::test]

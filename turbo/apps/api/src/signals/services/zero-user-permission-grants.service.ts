@@ -15,7 +15,17 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { and, asc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
@@ -24,7 +34,10 @@ import type {
 
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { publishNetworkPolicyRefreshToRunnerGroup } from "../external/realtime";
+import {
+  publishConnectorPermissionUpdatedSafely,
+  publishNetworkPolicyRefreshToRunnerGroup,
+} from "../external/realtime";
 import { nowDate } from "../external/time";
 import {
   defaultFirewallPolicyForPermissionIndex,
@@ -156,7 +169,9 @@ function validateGrantExpiration(grant: {
   return null;
 }
 
-function activeGrantCondition(checkedAt: Date) {
+export function activeUserPermissionGrantCondition(
+  checkedAt: Date,
+): SQL | undefined {
   return or(
     isNull(userPermissionGrants.expiresAt),
     gt(userPermissionGrants.expiresAt, checkedAt),
@@ -367,7 +382,7 @@ function formatUserPermissionGrant(
   };
 }
 
-export async function loadActiveUserPermissionGrants(
+async function loadActiveUserPermissionGrants(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   checkedAt: Date = nowDate(),
@@ -380,7 +395,7 @@ export async function loadActiveUserPermissionGrants(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        activeGrantCondition(checkedAt),
+        activeUserPermissionGrantCondition(checkedAt),
       ),
     )
     .orderBy(
@@ -404,7 +419,7 @@ async function loadActiveUserPermissionGrantsForConnectorRefs(
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
         inArray(userPermissionGrants.connectorRef, connectorRefs),
-        activeGrantCondition(checkedAt),
+        activeUserPermissionGrantCondition(checkedAt),
       ),
     )
     .orderBy(
@@ -709,6 +724,8 @@ export const applyUserPermissionGrants$ = command(
     if ("status" in rows) {
       return rows;
     }
+    await publishConnectorPermissionUpdatedSafely(args.userId);
+    signal.throwIfAborted();
     const responseScope = applyPermissionGrantResponseScope(args);
 
     return {

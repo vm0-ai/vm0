@@ -5,14 +5,13 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
+import { resetSignal } from "../../utils.ts";
 import {
+  clearPendingLogo$,
   initProfileName$,
-  setActiveOrgManageTab$,
   setBillingScrollTarget$,
   setBillingSubPage$,
-  type OrgManageTab,
-} from "./org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "./org-manage-dialog.ts";
+} from "./workspace-settings-state.ts";
 
 export const SETTINGS_SECTIONS = [
   "preference",
@@ -27,8 +26,8 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
-type OrgManageOnlySettingsSection = "providers";
-type UnifiedSettingsSection = SettingsSection | OrgManageOnlySettingsSection;
+type LegacySettingsSection = "providers";
+type UnifiedSettingsSection = SettingsSection | LegacySettingsSection;
 
 // `usage` stays visible to everyone. The rendered label and detail UI depend
 // on org role and feature switches.
@@ -46,6 +45,11 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 }
 
 const internalSettingsDialogOpen$ = state(false);
+const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
+const resetSettingsDialogSignal$ = resetSignal();
+const internalSettingsDialogSessionActive$ = state(false);
+const internalSettingsDialogInitialized$ = state(false);
+const internalSettingsDialogHandoffPending$ = state(false);
 const internalExternalProfileModalOpen$ = state(false);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
@@ -55,6 +59,8 @@ const pendingAccountMenuSettingsSection$ = state<{
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
+
+export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
 
 export const externalProfileModalOpen$ = computed((get) => {
   return get(internalExternalProfileModalOpen$);
@@ -121,29 +127,81 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
+const releaseSettingsDialogSession$ = command(({ get, set }) => {
+  set(internalSettingsDialogSignal$, null);
+  set(internalSettingsDialogSessionActive$, false);
+  set(clearPendingLogo$);
+
+  const handoffPending = get(internalSettingsDialogHandoffPending$);
+  set(internalSettingsDialogHandoffPending$, false);
+  if (!handoffPending) {
+    set(internalSettingsDialogOpen$, false);
+    set(internalSettingsDialogInitialized$, false);
+  }
+});
+
+const clearSettingsDialogSession$ = command(({ set }) => {
+  set(releaseSettingsDialogSession$);
+  set(internalSettingsDialogOpen$, false);
+  set(internalSettingsDialogInitialized$, false);
+  set(internalSettingsDialogHandoffPending$, false);
+});
+
+export const handoffSettingsDialogSession$ = command(({ set }) => {
+  set(internalSettingsDialogHandoffPending$, true);
+});
+
+export const closeSettingsModal$ = command(({ get, set }) => {
+  set(resetSettingsDialogSignal$);
+  set(clearSettingsDialogSession$);
+
+  const params = new URLSearchParams(get(searchParams$));
+  if (params.has("settings") || params.has("billingView")) {
+    params.delete("settings");
+    params.delete("billingView");
+    set(updateSearchParams$, params);
+  }
+});
+
 export const setSettingsDialogOpen$ = command(
-  async ({ get, set }, open: boolean, signal: AbortSignal) => {
-    set(internalSettingsDialogOpen$, open);
-    if (open) {
-      await set(initProfileName$, signal);
-      signal.throwIfAborted();
+  async ({ get, set }, open: boolean, pageSignal: AbortSignal) => {
+    if (!open) {
+      set(closeSettingsModal$);
+      return;
+    }
+
+    if (get(internalSettingsDialogSessionActive$)) {
+      set(setSettingsActiveSection$, get(internalActiveSection$));
+      return;
+    }
+
+    const dialogInitialized = get(internalSettingsDialogInitialized$);
+    const modalSignal = set(resetSettingsDialogSignal$, pageSignal);
+    modalSignal.addEventListener(
+      "abort",
+      () => {
+        set(releaseSettingsDialogSession$);
+      },
+      { once: true },
+    );
+    set(internalSettingsDialogSignal$, modalSignal);
+    set(internalSettingsDialogSessionActive$, true);
+    set(internalSettingsDialogOpen$, true);
+    if (!dialogInitialized) {
+      await set(initProfileName$, modalSignal);
+      pageSignal.throwIfAborted();
+      modalSignal.throwIfAborted();
       set(reloadBillingStatus$);
-      const params = new URLSearchParams(get(searchParams$));
-      const section = get(internalActiveSection$);
-      if (section === "model") {
-        set(reloadPersonalModelProviders$);
-      }
-      if (params.get("settings") !== section) {
-        params.set("settings", section);
-        set(updateSearchParams$, params);
-      }
-    } else {
-      const params = new URLSearchParams(get(searchParams$));
-      if (params.has("settings") || params.has("billingView")) {
-        params.delete("settings");
-        params.delete("billingView");
-        set(updateSearchParams$, params);
-      }
+      set(internalSettingsDialogInitialized$, true);
+    }
+    const params = new URLSearchParams(get(searchParams$));
+    const section = get(internalActiveSection$);
+    if (section === "model") {
+      set(reloadPersonalModelProviders$);
+    }
+    if (params.get("settings") !== section) {
+      params.set("settings", section);
+      set(updateSearchParams$, params);
     }
   },
 );
@@ -169,38 +227,16 @@ function isUnifiedSettingsSection(
   return isSettingsSection(value) || value === "providers";
 }
 
-function orgManageTabForSettingsSection(
+function settingsSectionFromParam(
   section: UnifiedSettingsSection,
-): OrgManageTab | null {
-  switch (section) {
-    case "general": {
-      return "general";
-    }
-    case "people": {
-      return "members";
-    }
-    case "providers": {
-      return "providers";
-    }
-    case "billing": {
-      return "billing";
-    }
-    case "usage": {
-      return "usage";
-    }
-    case "invoices": {
-      return "invoices";
-    }
-    default: {
-      return null;
-    }
-  }
+): SettingsSection {
+  return section === "providers" ? "model" : section;
 }
 
 /**
  * Check URL for `?settings=<section>` and auto-open the matching settings
- * surface. Admin-only workspace sections open the workspace management dialog
- * for admins, and fall back to the closest non-admin section otherwise.
+ * surface. The legacy `providers` value remains an alias for `model` so old
+ * links keep opening the unified settings dialog.
  * Valid settings params stay in the URL while the dialog is open; closing the
  * dialog clears them.
  */
@@ -220,7 +256,7 @@ export const checkUnifiedSettingsParam$ = command(
       return;
     }
 
-    const section = value;
+    const section = settingsSectionFromParam(value);
     const opensBillingPlans = section === "billing" && billingView === "plans";
     const opensBuyCredits = section === "billing" && billingView === "credits";
     const isAdmin = await get(isOrgAdmin$);
@@ -228,14 +264,6 @@ export const checkUnifiedSettingsParam$ = command(
     const features = get(featureSwitch$);
     const apiKeysEnabled = Boolean(features[FeatureSwitchKey.ApiKeys]);
 
-    const orgManageTab = orgManageTabForSettingsSection(section);
-    if (orgManageTab && isAdmin) {
-      set(setActiveOrgManageTab$, orgManageTab);
-      set(setBillingSubPage$, opensBillingPlans);
-      set(setBillingScrollTarget$, opensBuyCredits ? "buy-credits" : null);
-      await set(setOrgManageDialogOpen$, true, signal);
-      return;
-    }
     if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
       set(setBillingSubPage$, false);
       set(setBillingScrollTarget$, null);
@@ -247,7 +275,6 @@ export const checkUnifiedSettingsParam$ = command(
     }
 
     const resolved: SettingsSection =
-      !isSettingsSection(section) ||
       (section === "api-keys" && !apiKeysEnabled) ||
       (!isAdmin && isAdminOnlySettingsSection(section))
         ? "preference"

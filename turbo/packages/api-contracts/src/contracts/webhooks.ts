@@ -6,6 +6,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
+  sessionHistorySizeBucketSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -491,9 +492,8 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        // Multi-artifact snapshot payload. Canonical
-        // `Array<{name, version, mountPath}>` form persisted verbatim to
-        // checkpoints.artifact_snapshots.
+        // Multi-artifact snapshots validated by artifactSnapshotsSchema and
+        // persisted to checkpoints.artifact_snapshots.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
@@ -680,16 +680,6 @@ const metricDataSchema = z.object({
   disk_used: z.number(),
   disk_total: z.number(),
 });
-
-const sessionHistorySizeBucketSchema = z.enum([
-  "lt_64_kib",
-  "64_256_kib",
-  "256_kib_1_mib",
-  "1_4_mib",
-  "4_16_mib",
-  "16_64_mib",
-  "64_128_mib",
-]);
 
 const sessionHistoryCompressionRatioBucketSchema = z.enum([
   "identity",
@@ -915,16 +905,18 @@ export type WebhookStoragesCommitContract =
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
  * Receives billing usage records from the sandbox for persistence in the
- * `usage_event` ledger. Reporters send `{ runId, events }` batches.
+ * `usage_event` ledger. Reporters send `{ runId, events }` batches. Trusted
+ * model-provider reporters may include `grossCredits`, calculated from a
+ * signed proxy price schedule; other events use server pricing.
  */
 const webhookUsageEventItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     kind: z.enum(["connector", "model", "image"]),
     provider: z.string().min(1).max(100),
-    billingSku: z.string().min(1).max(100).optional(),
     category: z.string().min(1).max(100),
     quantity: z.number().int().min(0),
+    grossCredits: z.number().int().min(0).optional(),
   })
   .strict();
 

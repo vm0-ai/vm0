@@ -4,10 +4,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import { planProImg, planTeamImg } from "./platform-assets.ts";
 import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+  openSettingsBillingPlans$,
+  setSettingsDialogOpen$,
+} from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 
 function nextTierInfo(tier: string): { label: string; img: string } | null {
@@ -28,9 +27,8 @@ export function SidebarUpgradeCard() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openManage = useSet(setOrgManageDialogOpen$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
+  const openSettings = useSet(setSettingsDialogOpen$);
 
   if (!isAdmin) {
     return null;
@@ -45,9 +43,8 @@ export function SidebarUpgradeCard() {
   }
 
   const handleClick = () => {
-    setTab("billing");
-    setSubPage(true);
-    detach(openManage(true, pageSignal), Reason.DomCallback);
+    openBillingPlans();
+    detach(openSettings(true, pageSignal), Reason.DomCallback);
   };
 
   return (

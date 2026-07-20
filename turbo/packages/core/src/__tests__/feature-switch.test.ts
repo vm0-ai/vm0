@@ -12,6 +12,9 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -31,13 +34,16 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ComposerInlinePromptItems, {}),
+    ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
     ).toBe(false);
@@ -129,10 +135,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       true,
@@ -144,9 +146,12 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
@@ -166,10 +171,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
@@ -183,9 +184,13 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
     );

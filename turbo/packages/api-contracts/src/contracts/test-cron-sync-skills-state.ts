@@ -17,6 +17,7 @@ const skillVersionSeedSchema = z.object({
   s3_prefix: z.string(),
   s3_key: z.string(),
   size: z.number(),
+  archive_size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   file_count: z.number(),
   frontmatter: z.unknown(),
 });
@@ -32,6 +33,9 @@ const skillRowSchema = z.object({
 const storageRowSchema = z.object({
   type: z.string(),
   head_version_id: z.string().nullable(),
+  size: z.number(),
+  version_size: z.number().nullable(),
+  archive_size: z.number().nullable(),
 });
 
 export const testCronSyncSkillsStateActionBodySchema = z.discriminatedUnion(

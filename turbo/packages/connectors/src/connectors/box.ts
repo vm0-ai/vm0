@@ -19,6 +19,7 @@ export const box = {
           clientSecretEnv: "BOX_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["BOX_ACCESS_TOKEN", "BOX_REFRESH_TOKEN"],
           variables: [],
         },

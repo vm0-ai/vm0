@@ -113,14 +113,14 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.5"
-CLAUDE_CODE_VERSION="2.1.211"
-CODEX_CLI_VERSION="0.144.5"
+CLAUDE_CODE_VERSION="2.1.215"
+CODEX_CLI_VERSION="0.144.6"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.2.3"
-AGENT_BROWSER_VERSION="0.32.0"
-PNPM_VERSION="11.13.1"
-CHROMIUM_VERSION="150.0.7871.114-1~deb12u1"
-CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260712T033608Z"
+AGENT_BROWSER_VERSION="0.32.3"
+PNPM_VERSION="11.15.1"
+CHROMIUM_VERSION="150.0.7871.124-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260716T075414Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -357,7 +357,7 @@ install_packages() {
     php php-cli php-common php-curl php-mbstring php-xml php-zip \
     default-jdk maven gradle \
     gcc g++ clang make cmake \
-    postgresql-18 postgresql-contrib-18 \
+    postgresql-18 postgresql-contrib-18 postgresql-18-pgvector \
     redis-server \
     gh
 

@@ -9,7 +9,8 @@ use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 use vsock_proto::{
     Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    RawMessage,
 };
 
 struct TestNormalOperationFence;
@@ -108,6 +109,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         delete_workspace_on_leak_cleanup: true,
         destroyed: true,
         is_parked: false,
+        park_outcome: None,
         park_fence: None,
     }
 }
@@ -157,6 +159,26 @@ async fn mock_vsock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
 
     let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
     stream.write_all(&pong).await.unwrap();
+}
+
+async fn attach_mock_shutdown_guest(sandbox: &FirecrackerSandbox) -> UnixStream {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vsock_path = temp_dir
+        .path()
+        .join("shutdown")
+        .to_string_lossy()
+        .into_owned();
+    let wait_vsock_path = vsock_path.clone();
+    let host_task = tokio::spawn(async move {
+        VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
+            .await
+            .unwrap()
+    });
+    let mut guest = connect_mock_guest(&vsock_path).await;
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut guest, &mut decoder).await;
+    *sandbox.guest.lock().await = Some(Arc::new(host_task.await.unwrap()));
+    guest
 }
 
 async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
@@ -625,7 +647,10 @@ async fn wait_for_path_removed(path: &Path) {
     .unwrap();
 }
 
-fn assert_idle_transition(result: sandbox::Result<()>, expected: SandboxIdleTransition) {
+fn assert_idle_transition<T: std::fmt::Debug>(
+    result: sandbox::Result<T>,
+    expected: SandboxIdleTransition,
+) {
     match result {
         Err(SandboxError::IdleTransition { transition, .. }) => {
             assert_eq!(transition, expected);
@@ -737,13 +762,15 @@ impl Drop for ClosingStateFence {
 fn termination_releases_park_fence_and_clears_parked_flag() {
     let events = event_log();
     let mut is_parked = true;
+    let mut park_outcome = Some(SandboxParkOutcome::Reusable);
     let mut fence = Some(RecordedFence {
         events: Arc::clone(&events),
     });
 
-    release_park_state_for_termination(&mut is_parked, &mut fence);
+    release_park_state_for_termination(&mut is_parked, &mut park_outcome, &mut fence);
 
     assert!(!is_parked);
+    assert!(park_outcome.is_none());
     assert!(fence.is_none());
     assert_eq!(logged_events(&events), vec!["release_fence"]);
 }
@@ -812,6 +839,31 @@ async fn ready_for_park_boundary_quiesces_before_firecracker_park() {
     assert_eq!(
         logged_events(&events),
         vec!["guest_quiesce", "firecracker_park"]
+    );
+    assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+}
+
+#[tokio::test]
+async fn ready_for_park_boundary_preserves_non_reusable_outcome() {
+    let coordinator = ParkCoordinator::new();
+
+    let (_fence, outcome) = super::park_with_ready_for_park(
+        "test-sandbox",
+        &coordinator,
+        || async { Ok(TestNormalOperationFence) },
+        || async { Ok(()) },
+        || async {
+            Ok(SandboxParkOutcome::NonReusable(
+                SandboxParkNonReusableReason::SevereMemoryRetention,
+            ))
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
     );
     assert!(matches!(coordinator.state(), CoordinatorState::Parked));
 }
@@ -1148,7 +1200,7 @@ async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty()
         },
         || async move {
             park_events.lock().unwrap().push("firecracker_park");
-            Err(idle_transition_error(
+            Err::<(), _>(idle_transition_error(
                 SandboxIdleTransition::Park,
                 "pause failed",
             ))
@@ -3477,11 +3529,15 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
         .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
 }
 
-fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
-    let actual = event
+fn captured_event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+    event
         .fields
         .get(field)
-        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = captured_event_field(event, field);
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
 }
 
@@ -3493,6 +3549,7 @@ fn exec_capture_request_preserves_stable_operation_label() {
         timeout: Duration::from_millis(42),
         env: &[("TEST_ENV", "value")],
         sudo: true,
+        expected_exit_codes: &[10],
         stdin_bytes: Some(&stdin),
         output_limits: sandbox::ExecOutputLimits::separate(123, 456),
     };
@@ -3507,7 +3564,7 @@ fn exec_capture_request_preserves_stable_operation_label() {
     assert_eq!(capture.stdin_bytes, Some(stdin.as_slice()));
     assert_eq!(capture.stdout_limit_bytes, 123);
     assert_eq!(capture.stderr_limit_bytes, 456);
-    assert!(capture.expected_exit_codes.is_empty());
+    assert_eq!(capture.expected_exit_codes, &[10]);
     assert_eq!(capture.wait_timeout, Duration::from_millis(5042));
 }
 
@@ -3518,6 +3575,146 @@ fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
             .get("message")
             .is_some_and(|actual| actual == message)
     })
+}
+
+fn assert_shutdown_failure_event<'a>(
+    events: &'a [CapturedEvent],
+    sandbox_id: &str,
+    failure_kind: &str,
+) -> &'a CapturedEvent {
+    let event = captured_event(events, "graceful shutdown failed");
+    assert_event_field(event, "sandbox_id", sandbox_id);
+    assert_event_field(event, "timeout_ms", "5000");
+    assert_event_field(event, "failure_kind", failure_kind);
+    captured_event_field(event, "elapsed_ms")
+        .parse::<u64>()
+        .unwrap_or_else(|error| panic!("invalid elapsed_ms; error={error}; event={event:#?}"));
+    event
+}
+
+#[tokio::test]
+async fn stop_with_shutdown_ack_is_quiet() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        assert!(shutdown.payload.is_empty());
+        let response = vsock_proto::encode(MSG_SHUTDOWN_ACK, shutdown.seq, &[]).unwrap();
+        guest.write_all(&response).await.unwrap();
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    assert!(!has_captured_event(&events, "graceful shutdown failed"));
+}
+
+#[tokio::test]
+async fn stop_logs_shutdown_timeout_and_reaches_stopped() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let (shutdown_seen_tx, shutdown_seen_rx) = tokio::sync::oneshot::channel();
+    let (release_guest_tx, release_guest_rx) = tokio::sync::oneshot::channel();
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        shutdown_seen_tx.send(()).unwrap();
+        let _ = release_guest_rx.await;
+    });
+
+    let (result, events) = capture_async_log_events(async {
+        let stop = sandbox.stop();
+        tokio::pin!(stop);
+        tokio::select! {
+            result = &mut stop => panic!("stop completed before timeout: {result:?}"),
+            seen = shutdown_seen_rx => seen.unwrap(),
+        }
+        tokio::time::pause();
+        tokio::time::advance(SHUTDOWN_TIMEOUT).await;
+        stop.await
+    })
+    .await;
+
+    result.unwrap();
+    let _ = release_guest_tx.send(());
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "timeout");
+    let elapsed_ms = captured_event_field(event, "elapsed_ms")
+        .parse::<u64>()
+        .unwrap();
+    assert!(
+        elapsed_ms >= duration_ms(SHUTDOWN_TIMEOUT),
+        "shutdown timeout elapsed too early; event={event:#?}"
+    );
+    assert_event_field(event, "error", "request timeout");
+}
+
+#[tokio::test]
+async fn stop_logs_shutdown_request_failure_and_reaches_stopped() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        drop(guest);
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "request_failure");
+    assert_event_field(event, "error", "connection closed");
+}
+
+#[tokio::test]
+async fn stop_logs_unexpected_shutdown_response_and_kills_process() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let child = tokio::process::Command::new("cat")
+        .process_group(0)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let child_pid = child.id().unwrap();
+    let process = monitor_process(
+        &sandbox.id,
+        child,
+        Arc::clone(&sandbox.state),
+        Arc::clone(&sandbox.state_publish_lock),
+        sandbox.state_tx.clone(),
+        Arc::clone(&sandbox.guest),
+        CancellationToken::new(),
+    );
+    sandbox.runtime.set_process(process);
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        let response = vsock_proto::encode(MSG_PONG, shutdown.seq, &[]).unwrap();
+        guest.write_all(&response).await.unwrap();
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    assert!(!pid_is_running(child_pid), "fallback must kill the process");
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "unexpected_response");
+    assert!(
+        captured_event_field(event, "error").contains("unexpected lifecycle response type"),
+        "unexpected shutdown error; event={event:#?}"
+    );
 }
 
 fn mib(value: i64) -> i64 {
@@ -3554,9 +3751,10 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "near-target")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     assert!(!has_captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway"
@@ -3590,9 +3788,10 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stalled")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3608,6 +3807,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     assert_event_field(event, "max_actual_mib", "Some(1250)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
     assert_event_field(event, "reason", "actual_stalled");
+    assert_event_field(event, "admission_action", "reuse");
 }
 
 #[tokio::test]
@@ -3621,9 +3821,10 @@ async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "pressure-limited")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     assert!(!has_captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway"
@@ -3670,6 +3871,7 @@ fn balloon_settle_summary_classifies_progressing_timeout() {
     summary.observe(&balloon_statistics(target_mib, 1300));
 
     assert_eq!(summary.reason(), "actual_progressing_timeout");
+    assert_eq!(summary.park_outcome(), SandboxParkOutcome::Reusable);
     assert_eq!(summary.last_actual_mib, Some(1300));
     assert_eq!(summary.last_deficit_mib, Some(236));
     assert_eq!(summary.first_actual_mib, Some(1200));
@@ -3716,9 +3918,10 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stale-target")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3742,9 +3945,10 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "slow-stats")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3767,9 +3971,13 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "severe")).await;
 
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3781,6 +3989,7 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     assert_event_field(event, "reported_available_mib", "Some(0)");
     assert_event_field(event, "reported_total_mib", "Some(2048)");
     assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -4481,9 +4690,18 @@ async fn unpark_retry_after_failure_succeeds() {
 
 #[tokio::test]
 async fn park_pause_failure_propagates_as_idle_transition() {
-    // Balloon inflate OK (204), vm pause fails (500).
-    let (sock, reqs, _dir) =
-        spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
+    // Balloon inflate succeeds and observes a severe deficit. The next stats
+    // request fails, terminating settle with that severe classification, but
+    // the final VM pause still fails and must remain an operational error.
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
+        std::collections::VecDeque::from(vec![204, 500]),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Status(500),
+        ]),
+    )
+    .await;
 
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
@@ -4732,7 +4950,7 @@ async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
         "pressure-limited-park",
     ))
     .await;
-    result.unwrap();
+    assert_eq!(result.unwrap(), SandboxParkOutcome::Reusable);
 
     assert!(is_parked);
     assert!(controller.is_none());
@@ -4761,24 +4979,29 @@ async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
 }
 
 #[tokio::test]
-async fn park_pauses_after_balloon_settle_timeout() {
-    // Balloon never reaches target — wait_for_balloon must time out
-    // and proceed to pause anyway.
-    let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
-    let (sock, reqs, _dir) = spawn_mock_fc_api(
+async fn park_rejects_severe_balloon_retention_after_pausing() {
+    // Balloon never progresses despite observing the requested target.
+    // Parking must still pause the VM, then report it as non-reusable.
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
         std::collections::VecDeque::new(),
-        Some(Arc::clone(&balloon_actual)),
+        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+            target_mib, 0,
+        ))]),
     )
     .await;
 
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
 
-    park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
+    let outcome = park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
         .await
         .unwrap();
 
-    // Park must succeed despite balloon never reaching target.
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
     assert!(is_parked);
 
     let reqs = reqs.lock().await;
