@@ -1849,6 +1849,22 @@ describe("connectors page", () => {
 
   it("completes a device-auth connector grant", async () => {
     mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "base44",
+        label: "Base44",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "OAuth",
+            description: "Sign in with Base44 to grant access.",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
 
     context.mocks.browser.open(createMockAuthWindow());
     detachedSetupPage({ context, path: "/connectors" });
