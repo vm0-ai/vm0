@@ -3,7 +3,7 @@ import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-work
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { and, asc, eq, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, or, type SQL } from "drizzle-orm";
 
 import { db$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
@@ -263,7 +263,12 @@ export function workflowSummary(args: {
 
 function workflowRunPrioritySort(userId: string): SQL[] {
   return [
-    sql`(${zeroWorkflows.visibility} = 'private' AND ${zeroWorkflows.ownerUserId} = ${userId}) DESC`,
+    desc(
+      and(
+        eq(zeroWorkflows.visibility, "private"),
+        eq(zeroWorkflows.ownerUserId, userId),
+      ) as SQL,
+    ),
     asc(zeroWorkflows.createdAt),
   ];
 }

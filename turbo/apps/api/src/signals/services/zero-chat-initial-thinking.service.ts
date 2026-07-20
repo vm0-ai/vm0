@@ -1,6 +1,17 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+} from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
@@ -80,8 +91,18 @@ async function loadThinkingContextMessages(args: {
         isNull(chatMessages.runLifecycleEvent),
         isNull(chatMessages.recommendedFollowups),
         isNull(chatMessages.usagePayload),
-        sql<boolean>`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${args.runId})`,
-        sql<boolean>`(${chatMessages.runEventId} IS NULL OR ${chatMessages.runEventId} NOT IN ('queue:queued', 'queue:dequeued', ${INITIAL_THINKING_RUN_EVENT_ID}))`,
+        or(
+          isNull(chatMessages.runId),
+          ne(chatMessages.runId, args.runId),
+        ) as SQL,
+        or(
+          isNull(chatMessages.runEventId),
+          notInArray(chatMessages.runEventId, [
+            "queue:queued",
+            "queue:dequeued",
+            INITIAL_THINKING_RUN_EVENT_ID,
+          ]),
+        ) as SQL,
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
@@ -121,7 +142,10 @@ async function runCanReceiveThinkingMessage(args: {
       and(
         eq(chatMessages.runId, args.runId),
         eq(chatMessages.role, "assistant"),
-        sql<boolean>`(${chatMessages.content} IS NOT NULL OR ${chatMessages.error} IS NOT NULL)`,
+        or(
+          isNotNull(chatMessages.content),
+          isNotNull(chatMessages.error),
+        ) as SQL,
       ),
     )
     .limit(1);

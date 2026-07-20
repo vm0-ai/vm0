@@ -1,5 +1,5 @@
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { sql } from "drizzle-orm";
+import { isNotNull } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 
@@ -52,7 +52,7 @@ export async function insertChatMessage(
           ? await query
               .onConflictDoNothing({
                 target: chatMessages.runId,
-                where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+                where: isNotNull(chatMessages.runLifecycleEvent),
               })
               .returning({
                 id: chatMessages.id,
