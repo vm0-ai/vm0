@@ -7,6 +7,7 @@ import {
   ARTIFACT_ITEMS_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
+  ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
 import { createArtifactItemCacheStores } from "./idb-artifact-item-store.ts";
 
@@ -127,6 +128,7 @@ function indexKey(indexName: string, item: ArtifactItem): IDBValidKey | null {
 
 class MemoryArtifactDb {
   private readonly rows = new Map<string, ArtifactItem>();
+  private syncState: unknown;
 
   seedLegacyItem(item: Omit<ArtifactItem, "size">): void {
     this.rows.set(item.artifactItemId, item as ArtifactItem);
@@ -139,6 +141,17 @@ class MemoryArtifactDb {
           store: this.store(),
           done: Promise.resolve(),
         } satisfies FakeTransaction;
+      },
+      get: (storeName: string) => {
+        return Promise.resolve(
+          storeName === ARTIFACT_SYNC_STORE ? this.syncState : undefined,
+        );
+      },
+      put: (storeName: string, value: unknown) => {
+        if (storeName === ARTIFACT_SYNC_STORE) {
+          this.syncState = value;
+        }
+        return Promise.resolve();
       },
     } as unknown as IDBPDatabase;
   }
@@ -357,6 +370,17 @@ describe("artifact item IndexedDB cache reads", () => {
       stores.readStore.readByRunFile(item.runId, item.fileId),
     ).resolves.toStrictEqual(item);
   });
+
+  it("reads and writes the last artifact synchronization timestamp", async () => {
+    const { stores } = setupStores();
+    const lastSyncedAt = "2026-07-20T04:00:00.000Z";
+
+    await expect(stores.readStore.readLastSyncedAt()).resolves.toBe(null);
+    await stores.writeStore.setLastSyncedAt(lastSyncedAt);
+    await expect(stores.readStore.readLastSyncedAt()).resolves.toBe(
+      lastSyncedAt,
+    );
+  });
 });
 
 describe("artifact item IndexedDB cache writes and failures", () => {
@@ -408,9 +432,7 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(
       stores.writeStore.upsertItems([item]),
     ).resolves.toBeUndefined();
-    await expect(
-      stores.writeStore.replaceItems([item]),
-    ).resolves.toBeUndefined();
+    await expect(stores.writeStore.replaceItems([item])).resolves.toBe(false);
     await expect(
       stores.writeStore.deleteItems([item.artifactItemId]),
     ).resolves.toBeUndefined();

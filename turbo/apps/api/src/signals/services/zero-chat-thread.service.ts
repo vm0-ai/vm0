@@ -170,6 +170,7 @@ const artifactListSqlRowSchema = z.object({
   metadata: z.unknown(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
+  cursor_updated_at: z.string().optional(),
   thread_id: z.string(),
   thread_title: z.string().nullable(),
   agent_id: z.string(),
@@ -180,6 +181,7 @@ const artifactListSqlRowSchema = z.object({
 type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 
 const artifactVisibilityRowSchema = z.object({ visible: z.boolean() });
+const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
 type ChatSearchMessageRow = {
   readonly messageId: string;
@@ -1087,10 +1089,21 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
 const ARTIFACTS_DEFAULT_LIMIT = 10_000;
 const ARTIFACTS_MAX_LIMIT = 10_000;
 
-const artifactCursorSchema = z.object({
+const artifactHistoryCursorSchema = z.object({
   createdAt: z.string(),
   rowId: z.string(),
 });
+const artifactChangesCursorSchema = z.object({
+  updatedAt: z.string(),
+  rowId: z.string(),
+  syncUntil: z.string(),
+});
+const artifactCursorSchema = z.union([
+  artifactHistoryCursorSchema,
+  artifactChangesCursorSchema,
+]);
+type ArtifactHistoryCursor = z.infer<typeof artifactHistoryCursorSchema>;
+type ArtifactChangesCursor = z.infer<typeof artifactChangesCursorSchema>;
 type ArtifactCursor = z.infer<typeof artifactCursorSchema>;
 
 function encodeArtifactCursor(cursor: ArtifactCursor): string {
@@ -1108,12 +1121,222 @@ interface ZeroArtifactsArgs {
   readonly orgId: string;
   readonly limit?: number;
   readonly cursor?: string;
+  readonly updatedAfter?: string;
 }
 
 interface ZeroArtifactsResult {
   readonly artifacts: readonly ArtifactItem[];
   readonly truncated: boolean;
   readonly nextCursor: string | null;
+  readonly syncUntil: string;
+}
+
+async function artifactSyncUntil(db: Db): Promise<string> {
+  const rows = await executeRawRows(
+    db,
+    sql`SELECT to_char(
+      clock_timestamp() AT TIME ZONE 'UTC',
+      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+    ) AS sync_until`,
+    artifactSyncUntilRowSchema,
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Failed to read artifact sync timestamp");
+  }
+  return row.sync_until;
+}
+
+async function listChangedArtifacts(args: {
+  readonly db: Db;
+  readonly query: ZeroArtifactsArgs;
+  readonly limit: number;
+  readonly cursor: ArtifactChangesCursor | null;
+  readonly updatedAfter: string;
+  readonly syncUntil: string;
+  readonly signal: AbortSignal;
+}): Promise<ZeroArtifactsResult> {
+  const lowerBoundClause = args.cursor
+    ? sql`(${runUploadedFiles.updatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : sql`${runUploadedFiles.updatedAt} >= ${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC'`;
+  const conditions = artifactVisibilityConditions(args.query);
+  const rows = await executeRawRows(
+    args.db,
+    sql`
+      WITH changed_artifact_ids AS MATERIALIZED (
+        SELECT ${runUploadedFiles.id}
+        FROM ${runUploadedFiles}
+        WHERE ${runUploadedFiles.url} IS NOT NULL
+          AND ${lowerBoundClause}
+          AND ${runUploadedFiles.updatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
+      )
+      SELECT
+        ${runUploadedFiles.id} AS row_id,
+        ${runUploadedFiles.runId} AS run_id,
+        ${runUploadedFiles.externalId} AS external_id,
+        ${runUploadedFiles.filename} AS filename,
+        ${runUploadedFiles.contentType} AS content_type,
+        ${runUploadedFiles.sizeBytes} AS size_bytes,
+        ${runUploadedFiles.url} AS url,
+        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
+        ${runUploadedFiles.metadata} AS metadata,
+        ${runUploadedFiles.createdAt} AS created_at,
+        to_char(
+          ${runUploadedFiles.createdAt},
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_created_at,
+        to_char(
+          ${runUploadedFiles.updatedAt},
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_updated_at,
+        ${chatThreads.id} AS thread_id,
+        ${chatThreads.title} AS thread_title,
+        ${zeroAgents.id} AS agent_id,
+        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+        ${zeroAgents.avatarUrl} AS agent_avatar_url,
+        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+      FROM changed_artifact_ids
+      INNER JOIN ${runUploadedFiles}
+        ON ${runUploadedFiles.id} = changed_artifact_ids.id
+      INNER JOIN ${agentRuns}
+        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${zeroRuns}
+        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${chatThreads}
+        ON ${chatThreads.id} = COALESCE(
+          ${zeroRuns.chatThreadId},
+          (
+            SELECT ${chatMessages.chatThreadId}
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            ORDER BY ${chatMessages.createdAt} ASC
+            LIMIT 1
+          )
+        )
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+      INNER JOIN ${zeroAgents}
+        ON ${zeroAgents.id} = ${agentComposes.id}
+      LEFT JOIN ${userArtifactFavorites}
+        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
+        AND ${userArtifactFavorites.userId} = ${args.query.userId}
+        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+      WHERE ${sql.join(conditions, sql` AND `)}
+      ORDER BY ${runUploadedFiles.updatedAt} ASC, ${runUploadedFiles.id} ASC
+      LIMIT ${args.limit + 1}
+    `,
+    artifactListSqlRowSchema,
+  );
+  args.signal.throwIfAborted();
+
+  const hasMore = rows.length > args.limit;
+  const pageRows = hasMore ? rows.slice(0, args.limit) : rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow?.cursor_updated_at
+      ? encodeArtifactCursor({
+          updatedAt: lastRow.cursor_updated_at,
+          rowId: lastRow.row_id,
+          syncUntil: args.syncUntil,
+        })
+      : null;
+
+  return {
+    artifacts: pageRows.map(toArtifactItem),
+    truncated: hasMore,
+    nextCursor,
+    syncUntil: args.syncUntil,
+  };
+}
+
+async function listArtifactHistory(args: {
+  readonly db: Db;
+  readonly query: ZeroArtifactsArgs;
+  readonly limit: number;
+  readonly cursor: ArtifactHistoryCursor | null;
+  readonly syncUntil: string;
+  readonly signal: AbortSignal;
+}): Promise<ZeroArtifactsResult> {
+  // The full path returns raw visible rows. URL canonicalization happens in
+  // the IndexedDB merge so this query never sorts the complete history by URL.
+  const keysetClause = args.cursor
+    ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : sql``;
+  const conditions = artifactVisibilityConditions(args.query);
+  const rows = await executeRawRows(
+    args.db,
+    sql`
+      SELECT
+        ${runUploadedFiles.id} AS row_id,
+        ${runUploadedFiles.runId} AS run_id,
+        ${runUploadedFiles.externalId} AS external_id,
+        ${runUploadedFiles.filename} AS filename,
+        ${runUploadedFiles.contentType} AS content_type,
+        ${runUploadedFiles.sizeBytes} AS size_bytes,
+        ${runUploadedFiles.url} AS url,
+        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
+        ${runUploadedFiles.metadata} AS metadata,
+        ${runUploadedFiles.createdAt} AS created_at,
+        ${chatThreads.id} AS thread_id,
+        ${chatThreads.title} AS thread_title,
+        ${zeroAgents.id} AS agent_id,
+        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+        ${zeroAgents.avatarUrl} AS agent_avatar_url,
+        to_char(
+          ${runUploadedFiles.createdAt},
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_created_at,
+        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+      FROM ${runUploadedFiles}
+      INNER JOIN ${agentRuns}
+        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${zeroRuns}
+        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${chatThreads}
+        ON ${chatThreads.id} = COALESCE(
+          ${zeroRuns.chatThreadId},
+          (
+            SELECT ${chatMessages.chatThreadId}
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            ORDER BY ${chatMessages.createdAt} ASC
+            LIMIT 1
+          )
+        )
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+      INNER JOIN ${zeroAgents}
+        ON ${zeroAgents.id} = ${agentComposes.id}
+      LEFT JOIN ${userArtifactFavorites}
+        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
+        AND ${userArtifactFavorites.userId} = ${args.query.userId}
+        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+      WHERE ${sql.join(conditions, sql` AND `)}
+      ${keysetClause}
+    ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
+      LIMIT ${args.limit + 1}
+    `,
+    artifactListSqlRowSchema,
+  );
+  args.signal.throwIfAborted();
+
+  const hasMore = rows.length > args.limit;
+  const pageRows = hasMore ? rows.slice(0, args.limit) : rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow
+      ? encodeArtifactCursor({
+          createdAt: lastRow.cursor_created_at,
+          rowId: lastRow.row_id,
+        })
+      : null;
+
+  return {
+    artifacts: pageRows.map(toArtifactItem),
+    truncated: hasMore,
+    nextCursor,
+    syncUntil: args.syncUntil,
+  };
 }
 
 interface ArtifactFavoriteArgs {
@@ -1134,99 +1357,29 @@ export const zeroArtifacts$ = command(
       ARTIFACTS_MAX_LIMIT,
     );
     const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
-    // Keyset must be applied AFTER the DISTINCT ON (url) dedup (on the deduped
-    // representatives), matching the final ORDER BY created_at DESC, row_id
-    // DESC. Pushing it into scoped_artifacts (pre-dedup) would let an older row
-    // of an already-emitted url slip past the cursor and re-surface as a dup.
-    const keysetClause = cursor
-      ? sql`WHERE (deduped_artifacts.created_at, deduped_artifacts.row_id) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.rowId}::uuid)`
-      : sql``;
-    const conditions = artifactVisibilityConditions(args);
+    const changesCursor = cursor && "updatedAt" in cursor ? cursor : null;
+    const syncUntil = changesCursor?.syncUntil ?? (await artifactSyncUntil(db));
+    const updatedAfter = changesCursor?.updatedAt ?? args.updatedAfter;
+    if (updatedAfter !== undefined) {
+      return await listChangedArtifacts({
+        db,
+        query: args,
+        limit,
+        cursor: changesCursor,
+        updatedAfter,
+        syncUntil,
+        signal,
+      });
+    }
 
-    const rows = await executeRawRows(
+    return await listArtifactHistory({
       db,
-      sql`
-        WITH scoped_artifacts AS (
-        SELECT
-          ${runUploadedFiles.id} AS row_id,
-          ${runUploadedFiles.runId} AS run_id,
-          ${runUploadedFiles.externalId} AS external_id,
-          ${runUploadedFiles.filename} AS filename,
-          ${runUploadedFiles.contentType} AS content_type,
-          ${runUploadedFiles.sizeBytes} AS size_bytes,
-          ${runUploadedFiles.url} AS url,
-          ${runUploadedFiles.previewImageUrl} AS preview_image_url,
-          ${runUploadedFiles.metadata} AS metadata,
-          ${runUploadedFiles.createdAt} AS created_at,
-          ${chatThreads.id} AS thread_id,
-          ${chatThreads.title} AS thread_title,
-          ${zeroAgents.id} AS agent_id,
-          COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-          ${zeroAgents.avatarUrl} AS agent_avatar_url
-        FROM ${runUploadedFiles}
-        INNER JOIN ${agentRuns}
-          ON ${agentRuns.id} = ${runUploadedFiles.runId}
-        INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${runUploadedFiles.runId}
-        INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              ORDER BY ${chatMessages.createdAt} ASC
-              LIMIT 1
-            )
-          )
-        INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-        INNER JOIN ${zeroAgents}
-          ON ${zeroAgents.id} = ${agentComposes.id}
-        WHERE ${sql.join(conditions, sql` AND `)}
-      ),
-      deduped_artifacts AS (
-        SELECT DISTINCT ON (url) *
-        FROM scoped_artifacts
-        ORDER BY url, created_at DESC, row_id DESC
-      )
-      SELECT
-        deduped_artifacts.*,
-        to_char(
-          deduped_artifacts.created_at,
-          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
-      FROM deduped_artifacts
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.userId}
-        AND ${userArtifactFavorites.artifactUrl} = deduped_artifacts.url
-      ${keysetClause}
-      ORDER BY created_at DESC, row_id DESC
-        LIMIT ${limit + 1}
-      `,
-      artifactListSqlRowSchema,
-    );
-    signal.throwIfAborted();
-
-    // Over-fetch one row to detect whether a further page exists.
-    const hasMore = rows.length > limit;
-    const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const lastRow = pageRows.at(-1);
-    const nextCursor =
-      hasMore && lastRow
-        ? encodeArtifactCursor({
-            createdAt: lastRow.cursor_created_at,
-            rowId: lastRow.row_id,
-          })
-        : null;
-
-    return {
-      artifacts: pageRows.map(toArtifactItem),
-      truncated: hasMore,
-      nextCursor,
-    };
+      query: args,
+      limit,
+      cursor: cursor && "createdAt" in cursor ? cursor : null,
+      syncUntil,
+      signal,
+    });
   },
 );
 

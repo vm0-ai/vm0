@@ -19,11 +19,27 @@ import {
   ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
   ARTIFACT_ITEMS_STORE,
+  ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
 import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
+const ARTIFACT_SYNC_STATE_ID = "artifacts";
+
+function storedLastSyncedAt(raw: unknown): string {
+  if (
+    raw !== null &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    (raw as { id?: unknown }).id === ARTIFACT_SYNC_STATE_ID &&
+    typeof (raw as { lastSyncedAt?: unknown }).lastSyncedAt === "string" &&
+    !Number.isNaN(Date.parse((raw as { lastSyncedAt: string }).lastSyncedAt))
+  ) {
+    return (raw as { lastSyncedAt: string }).lastSyncedAt;
+  }
+  throw new Error("Invalid artifact sync state");
+}
 
 type ArtifactItemKind = ArtifactItem["artifactKind"];
 
@@ -49,6 +65,7 @@ interface ArtifactItemReadStore {
     fileId: string,
     signal?: AbortSignal,
   ): Promise<ArtifactItem | null>;
+  readLastSyncedAt(signal?: AbortSignal): Promise<string | null>;
 }
 
 interface ArtifactItemWriteStore {
@@ -59,7 +76,8 @@ interface ArtifactItemWriteStore {
   replaceItems(
     items: readonly ArtifactItem[],
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<boolean>;
+  setLastSyncedAt(lastSyncedAt: string, signal?: AbortSignal): Promise<void>;
   deleteItems(
     artifactItemIds: readonly string[],
     signal?: AbortSignal,
@@ -217,6 +235,20 @@ function createReadStore(
         signal,
       );
     },
+
+    async readLastSyncedAt(signal) {
+      return await chatIdbReadOr(
+        "artifacts:readLastSyncedAt",
+        async () => {
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const raw = await db.get(ARTIFACT_SYNC_STORE, ARTIFACT_SYNC_STATE_ID);
+          return raw === undefined ? null : storedLastSyncedAt(raw);
+        },
+        null,
+        signal,
+      );
+    },
   };
 }
 
@@ -248,7 +280,7 @@ function createWriteStore(
     },
 
     async replaceItems(items, signal) {
-      await chatIdbWriteBestEffort(
+      return await chatIdbWriteBestEffort(
         "artifacts:replaceItems",
         async () => {
           const db = await getDb();
@@ -261,6 +293,21 @@ function createWriteStore(
           }
           await tx.done;
           L.debug("artifacts:replaceItems:done", { count: items.length });
+        },
+        signal,
+      );
+    },
+
+    async setLastSyncedAt(lastSyncedAt, signal) {
+      await chatIdbWriteBestEffort(
+        "artifacts:setLastSyncedAt",
+        async () => {
+          const db = await getDb();
+          signal?.throwIfAborted();
+          await db.put(ARTIFACT_SYNC_STORE, {
+            id: ARTIFACT_SYNC_STATE_ID,
+            lastSyncedAt,
+          });
         },
         signal,
       );

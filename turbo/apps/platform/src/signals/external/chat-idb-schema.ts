@@ -5,7 +5,7 @@ const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
 const CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION = 10;
 const CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION = 11;
 const CHAT_IDB_LOCAL_CACHE_RESET_VERSION = 14;
-const CHAT_IDB_SCHEMA_VERSION = 14;
+const CHAT_IDB_SCHEMA_VERSION = 15;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -14,6 +14,7 @@ export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
 export const ARTIFACT_ITEMS_STORE = "artifact_items";
+export const ARTIFACT_SYNC_STORE = "artifact_sync";
 export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
 export const CHAT_THREAD_EVENTS_ORDER_INDEX = "byCreatedAt";
 export const ARTIFACT_ITEMS_CREATED_AT_INDEX = "byCreatedAt";
@@ -76,6 +77,10 @@ function createArtifactItemsStore(db: IDBPDatabase): void {
   store.createIndex(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
 }
 
+function createArtifactSyncStore(db: IDBPDatabase): void {
+  db.createObjectStore(ARTIFACT_SYNC_STORE, { keyPath: "id" });
+}
+
 function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
   if (db.objectStoreNames.contains(storeName)) {
     db.deleteObjectStore(storeName);
@@ -88,6 +93,7 @@ function deleteLocalCacheStores(db: IDBPDatabase): void {
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
   deleteObjectStoreIfExists(db, ARTIFACT_ITEMS_STORE);
+  deleteObjectStoreIfExists(db, ARTIFACT_SYNC_STORE);
   deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
 }
 
@@ -130,5 +136,8 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
   if (!db.objectStoreNames.contains(ARTIFACT_ITEMS_STORE)) {
     createArtifactItemsStore(db);
+  }
+  if (!db.objectStoreNames.contains(ARTIFACT_SYNC_STORE)) {
+    createArtifactSyncStore(db);
   }
 }

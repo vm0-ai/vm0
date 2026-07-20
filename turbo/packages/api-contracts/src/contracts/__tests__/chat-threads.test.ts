@@ -295,10 +295,14 @@ describe("artifacts contract", () => {
     const parsed = artifactsContract.list.query.safeParse({
       limit: "50",
       cursor: "opaque-token",
+      updatedAfter: "2026-07-20T04:00:00.000Z",
     });
 
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.limit).toBe(50);
+    expect(parsed.success && parsed.data.updatedAfter).toBe(
+      "2026-07-20T04:00:00.000Z",
+    );
   });
 
   it("accepts a minimal generated artifact item", () => {
@@ -380,6 +384,7 @@ describe("artifacts contract", () => {
       artifacts: [],
       truncated: false,
       nextCursor: null,
+      syncUntil: "2026-07-20T04:01:00.000Z",
     });
 
     expect(parsed.success).toBe(true);

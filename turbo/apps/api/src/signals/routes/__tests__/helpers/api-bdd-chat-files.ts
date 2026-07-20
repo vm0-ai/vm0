@@ -1043,7 +1043,11 @@ export function createChatFilesBddApi(context: TestContext) {
 
     async listArtifacts(
       actor: ApiTestUser,
-      query: { readonly limit?: number; readonly cursor?: string } = {},
+      query: {
+        readonly limit?: number;
+        readonly cursor?: string;
+        readonly updatedAfter?: string;
+      } = {},
     ): Promise<ArtifactsListResponse> {
       const response = await accept(
         artifactsClient().list({

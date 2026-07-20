@@ -787,6 +787,9 @@ describe("GET /api/zero/artifacts", () => {
         );
       }),
     ).toBeTruthy();
+    if (!firstResponse.syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
 
     host.captureHostedSitesS3();
     const redeployed = await host.redeployHtml(owner.actor, {
@@ -795,7 +798,9 @@ describe("GET /api/zero/artifacts", () => {
     });
     await flushWaitUntilForTest();
 
-    const refreshedResponse = await chat.listArtifacts(owner.actor);
+    const refreshedResponse = await chat.listArtifacts(owner.actor, {
+      updatedAfter: firstResponse.syncUntil,
+    });
     const refreshedArtifact = refreshedResponse.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });
@@ -986,10 +991,114 @@ describe("GET /api/zero/artifacts", () => {
       expect(pages).toBeLessThanOrEqual(10);
     } while (cursor);
 
-    // Every artifact surfaced exactly once across pages — no cursor-drift dups,
-    // no skips — proving keyset walks the deduped winner set correctly.
+    // Every raw artifact row surfaced exactly once across pages with no cursor
+    // drift, repeated rows, or skips.
     expect(collected).toHaveLength(created.length);
     expect(new Set(collected)).toStrictEqual(new Set(created));
+  }, 120_000);
+
+  it("returns duplicate URLs as raw rows during a full load", async () => {
+    const owner = await artifactActor("Artifacts API raw full load agent");
+    const sharedId = randomUUID();
+    owner.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${owner.actor.userId}/${sharedId}/shared.html`,
+      size: 512,
+    });
+
+    const runIds: string[] = [];
+    for (const prompt of ["first shared upload", "second shared upload"]) {
+      const run = await sendChatRun(owner.actor, {
+        agentId: owner.agentId,
+        prompt,
+      });
+      const { claim, sandboxHeaders } = await claimChatRun(
+        owner.runnerGroup,
+        run.runId,
+      );
+      await chat.completeUploadWithBearer(
+        `Bearer ${zeroTokenFromClaim(claim)}`,
+        { id: sharedId, contentType: "text/html" },
+        [200],
+      );
+      await completeChatRunOk(run.runId, sandboxHeaders);
+      runIds.push(run.runId);
+    }
+
+    const response = await chat.listArtifacts(owner.actor);
+    const sharedRows = response.artifacts.filter((artifact) => {
+      return artifact.fileId === sharedId;
+    });
+    expect(sharedRows).toHaveLength(2);
+    expect(
+      new Set(
+        sharedRows.map((artifact) => {
+          return artifact.runId;
+        }),
+      ),
+    ).toStrictEqual(new Set(runIds));
+    expect(
+      new Set(
+        sharedRows.map((artifact) => {
+          return artifact.url;
+        }),
+      ),
+    ).toHaveLength(1);
+  }, 120_000);
+
+  it("returns only artifacts updated within the incremental sync window", async () => {
+    const owner = await artifactActor("Artifacts API incremental agent");
+    const existing = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `existing-${randomUUID().slice(0, 8)}`,
+    });
+    const baseline = await chat.listArtifacts(owner.actor);
+    const syncUntil = baseline.syncUntil;
+    if (!syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
+
+    const created = [];
+    for (const label of ["first", "second"]) {
+      created.push(
+        await createHostedArtifact({
+          actor: owner.actor,
+          agentId: owner.agentId,
+          runnerGroup: owner.runnerGroup,
+          site: `incremental-${label}-${randomUUID().slice(0, 8)}`,
+        }),
+      );
+    }
+
+    const collected: string[] = [];
+    let cursor: string | undefined;
+    let responseSyncUntil: string | undefined;
+    do {
+      const page = await chat.listArtifacts(owner.actor, {
+        limit: 1,
+        cursor,
+        updatedAfter: syncUntil,
+      });
+      responseSyncUntil ??= page.syncUntil;
+      expect(page.syncUntil).toBe(responseSyncUntil);
+      collected.push(
+        ...page.artifacts.map((artifact) => {
+          return artifact.fileId;
+        }),
+      );
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(collected).not.toContain(existing.fileId);
+    expect(new Set(collected)).toStrictEqual(
+      new Set(
+        created.map((artifact) => {
+          return artifact.fileId;
+        }),
+      ),
+    );
   }, 120_000);
 });
 
