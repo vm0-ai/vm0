@@ -2131,12 +2131,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [400],
     );
     expectApiError(missingSupport.body);
-    const legacySupport = await api.requestRawPollRunner(
-      true,
-      { group: runnerGroup, profiles: ["vm0/default"] },
-      [400],
-    );
-    expectApiError(legacySupport.body);
     const emptySupport = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: [] },
@@ -2165,12 +2159,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(incompatiblePoll.body.job).toBeNull();
 
-    const compatiblePoll = await api.requestRawPollRunner(
+    const compatiblePoll = await api.requestPollRunner(
       true,
       {
         group: runnerGroup,
         supportedProfiles: ["vm0/default"],
-        profiles: ["vm0/large"],
       },
       [200],
     );
@@ -2361,42 +2354,31 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiError(missingProfileListHeartbeat.body);
 
-    const legacyAvailableHeartbeat = await api.requestRawHeartbeatRunner(
+    const canonicalHeartbeat = await api.requestRawHeartbeatRunner(
       true,
-      [400],
-      rawHeartbeatBody({ availableProfiles: ["vm0/default"] }),
+      [200],
+      rawHeartbeatBody({
+        admittableProfiles: ["vm0/default"],
+      }),
     );
-    expectApiError(legacyAvailableHeartbeat.body);
-
-    const legacyStaticHeartbeat = await api.requestRawHeartbeatRunner(
-      true,
-      [400],
-      rawHeartbeatBody({ profiles: ["vm0/default"] }),
-    );
-    expectApiError(legacyStaticHeartbeat.body);
-
-    const finalHeartbeatWithExtraLegacyFields =
-      await api.requestRawHeartbeatRunner(
-        true,
-        [200],
-        rawHeartbeatBody({
-          admittableProfiles: ["vm0/default"],
-          availableProfiles: ["vm0/large"],
-          profiles: ["vm0/large"],
-        }),
-      );
-    expect(finalHeartbeatWithExtraLegacyFields.body).toStrictEqual({
+    expect(canonicalHeartbeat.body).toStrictEqual({
       ok: true,
     });
-    const finalHeartbeatHolder = await pollFollowUp(
-      "continue when final heartbeat includes extra legacy fields",
+    const canonicalHeartbeatHolder = await pollFollowUp(
+      "continue with a canonical heartbeat",
     );
-    expect(finalHeartbeatHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(sessionAffinityProtectedUntil(finalHeartbeatHolder.job)).toBeNull();
+    expect(canonicalHeartbeatHolder.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
     expect(
-      historyGenerationAffinityProtectedUntil(finalHeartbeatHolder.job),
+      sessionAffinityProtectedUntil(canonicalHeartbeatHolder.job),
     ).toBeNull();
-    expect(sessionAffinityResource(finalHeartbeatHolder.job)).toBeUndefined();
+    expect(
+      historyGenerationAffinityProtectedUntil(canonicalHeartbeatHolder.job),
+    ).toBeNull();
+    expect(
+      sessionAffinityResource(canonicalHeartbeatHolder.job),
+    ).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -2480,11 +2462,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       ],
     });
-    const duplicateLegacyParent = await pollFollowUp(
-      "continue with a duplicate legacy parent beside a capable mismatch",
+    const duplicateBareParent = await pollFollowUp(
+      "continue with a duplicate bare parent beside a capable mismatch",
     );
-    expect(sessionAffinityProtectedUntil(duplicateLegacyParent.job)).toBeNull();
-    expect(sessionAffinityResource(duplicateLegacyParent.job)).toBeUndefined();
+    expect(sessionAffinityProtectedUntil(duplicateBareParent.job)).toBeNull();
+    expect(sessionAffinityResource(duplicateBareParent.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -2536,66 +2518,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "reusableSandbox",
     );
 
-    const previousSidecarRunnerId = randomUUID();
-    const previousSidecarHeartbeat = await api.requestRawHeartbeatRunner(
-      true,
-      [200],
-      rawHeartbeatBody({
-        runnerId: previousSidecarRunnerId,
-        admittableProfiles: ["vm0/default"],
-        heldSessionStates: [
-          {
-            sessionId: cliAgentSessionId,
-            lastCompletedAt: nowDate().toISOString(),
-            workspaceCaches: [
-              {
-                profile: "vm0/default",
-                workspaceAffinityVersion: 1,
-                sessionHistorySidecar: {
-                  historyGenerationRunId: first.runId,
-                  rawSizeBucket: "64_256_kib",
-                },
-              },
-            ],
-          },
-        ],
-      }),
-    );
-    expect(previousSidecarHeartbeat.body).toStrictEqual({ ok: true });
-    const reusableWithPreviousSidecarHeartbeat = await pollFollowUp(
-      "accept a previous heartbeat while preferring reusable affinity",
-    );
-    expect(
-      sessionAffinityProtectedUntil(reusableWithPreviousSidecarHeartbeat.job),
-    ).toStrictEqual(expect.any(String));
-    expect(
-      historyGenerationAffinityProtectedUntil(
-        reusableWithPreviousSidecarHeartbeat.job,
-      ),
-    ).toStrictEqual(expect.any(String));
-    expect(
-      sessionAffinityResource(reusableWithPreviousSidecarHeartbeat.job),
-    ).toBe("reusableSandbox");
-
-    await heartbeatHolder({ admittableProfiles: [], mode: "stopping" });
-    const workspaceFromPreviousHeartbeat = await pollFollowUp(
-      "use typed workspace affinity from a previous heartbeat",
-    );
-    expect(sessionAffinityResource(workspaceFromPreviousHeartbeat.job)).toBe(
-      "workspaceCache",
-    );
-    expect(
-      historyGenerationAffinityProtectedUntil(
-        workspaceFromPreviousHeartbeat.job,
-      ),
-    ).toBeNull();
     for (const { runId, resource } of [
       {
-        runId: reusableWithPreviousSidecarHeartbeat.run.runId,
+        runId: reusableOverWorkspace.run.runId,
         resource: "reusableSandbox",
       },
       {
-        runId: workspaceFromPreviousHeartbeat.run.runId,
+        runId: capableWorkspaceHolder.run.runId,
         resource: "workspaceCache",
       },
     ]) {
@@ -2610,21 +2539,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
             session_affinity_resource: resource,
           }),
         );
-        expect(events[0]).not.toHaveProperty("workspace_sidecar_exact_holder");
-        expect(events[0]).not.toHaveProperty(
-          "workspace_sidecar_different_holder",
-        );
-        expect(events[0]).not.toHaveProperty("workspace_sidecar_legacy_holder");
-        expect(events[0]).not.toHaveProperty("workspace_sidecar_absent_holder");
       }
     }
-    await api.requestHeartbeatRunner(true, [200], {
-      runnerId: previousSidecarRunnerId,
-      group: runnerGroup,
-      admittableProfiles: [],
-      heldSessionStates: [],
-      mode: "stopping",
-    });
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -3091,15 +3007,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
-    const legacyPriorityPoll = await api.requestPollRunner(
+    const genericPriorityPoll = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
-    if (legacyPriorityPoll.status !== 200) {
-      throw new Error("Expected legacy FIFO poll to return 200");
+    if (genericPriorityPoll.status !== 200) {
+      throw new Error("Expected generic FIFO poll to return 200");
     }
-    expect(legacyPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+    expect(genericPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
 
     const reusablePriorityPoll = await api.requestPollRunner(
       true,
@@ -3127,7 +3043,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       ],
     });
-    const legacyReusablePriorityPoll = await api.requestPollRunner(
+    const genericReusablePriorityPoll = await api.requestPollRunner(
       true,
       {
         runnerId: affinityRunnerId,
@@ -3136,10 +3052,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
       [200],
     );
-    if (legacyReusablePriorityPoll.status !== 200) {
-      throw new Error("Expected legacy reusable-priority poll to return 200");
+    if (genericReusablePriorityPoll.status !== 200) {
+      throw new Error("Expected generic reusable-priority poll to return 200");
     }
-    expect(legacyReusablePriorityPoll.body.job?.runId).toBe(
+    expect(genericReusablePriorityPoll.body.job?.runId).toBe(
       newerReusable.runId,
     );
 

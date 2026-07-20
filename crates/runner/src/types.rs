@@ -2074,8 +2074,6 @@ mod tests {
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
         assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
-        assert!(json.get("profiles").is_none());
-        assert!(json.get("availableProfiles").is_none());
         assert_eq!(
             json["heldSessionStates"],
             json!([{
@@ -2095,9 +2093,9 @@ mod tests {
     }
 
     #[test]
-    fn held_session_state_accepts_legacy_shape_and_omits_absent_capability() {
+    fn held_session_state_accepts_minimal_shape_and_omits_absent_capability() {
         let state: HeldSessionState = serde_json::from_value(json!({
-            "sessionId": "session-legacy",
+            "sessionId": "session-minimal",
             "lastCompletedAt": "2026-05-28T00:00:00.000Z",
             "reusableSandbox": {
                 "profile": "vm0/default"

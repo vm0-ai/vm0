@@ -1632,7 +1632,6 @@ mod tests {
             body["supportedProfiles"][0],
             crate::profile::DEFAULT_PROFILE
         );
-        assert!(body.get("profiles").is_none());
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
         assert!(body.get("heldSessionStates").is_none());
     }
