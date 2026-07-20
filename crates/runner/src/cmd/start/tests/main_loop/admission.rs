@@ -350,25 +350,12 @@ async fn reusable_affinity_reservation_is_restored_after_claim_conflict() {
         "lost claim should restore the generic reusable reservation"
     );
     assert_eq!(budget.allocated(), (2, 4096, 1));
-    let candidates = env.handle.claim_candidates();
-    let candidate = candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == run_id)
-        .expect("generic reusable candidate should reach claim");
-    assert_eq!(
-        candidate.session_affinity_local_resource(),
-        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
-    );
-    assert_eq!(
-        candidate.local_admission_resource(),
-        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
-    );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn reusable_claim_without_generation_target_reports_selected_resources() {
+async fn reusable_claim_without_generation_target_reuses_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -409,14 +396,6 @@ async fn reusable_claim_without_generation_target_reports_selected_resources() {
     assert_eq!(
         candidate.session_affinity_resource(),
         Some(SessionAffinityResource::ReusableSandbox)
-    );
-    assert_eq!(
-        candidate.session_affinity_local_resource(),
-        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
-    );
-    assert_eq!(
-        candidate.local_admission_resource(),
-        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
     );
 
     shutdown(&env, run_handle).await;
@@ -777,14 +756,6 @@ async fn expired_generation_protection_preserves_local_session_claim() {
         .iter()
         .find(|candidate| candidate.run_id() == run_id)
         .expect("claim should record the protected candidate");
-    assert_eq!(
-        claimed_candidate.session_affinity_local_resource(),
-        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
-    );
-    assert_eq!(
-        claimed_candidate.local_admission_resource(),
-        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
-    );
     assert!(
         claimed_candidate
             .main_loop_to_local_admission_elapsed()
@@ -909,14 +880,6 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
     assert_eq!(
         claimed_candidate.session_affinity_resource(),
         Some(SessionAffinityResource::WorkspaceCache)
-    );
-    assert_eq!(
-        claimed_candidate.session_affinity_local_resource(),
-        Some(crate::provider::SessionAffinityLocalResource::WorkspaceCache)
-    );
-    assert_eq!(
-        claimed_candidate.local_admission_resource(),
-        Some(crate::provider::LocalAdmissionResourceKind::Fresh)
     );
     assert_eq!(
         env.handle.deferred_poll_delays().len(),

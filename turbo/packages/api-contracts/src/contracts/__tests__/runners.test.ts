@@ -716,18 +716,18 @@ describe("runner claim capability contract", () => {
         directCandidateInboxWaitMs: 2,
         providerDiscoveryToMainLoopMs: 3,
         mainLoopToLocalAdmissionMs: 4,
-        sessionAffinityResource: "workspaceCache",
-        sessionAffinityLocalResource: "workspaceCache",
-        localAdmissionResource: "fresh",
       },
     });
 
     expect(result.success).toBe(true);
   });
 
-  it("accepts and strips a previous runner generation relationship", () => {
+  it("accepts and strips previous runner telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
+        sessionAffinityResource: "workspaceCache",
+        sessionAffinityLocalResource: "workspaceCache",
+        localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "fresh",
       },
     });

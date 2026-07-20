@@ -25,7 +25,6 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    LocalAdmissionResourceKind, SessionAffinityLocalResource,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -60,12 +59,6 @@ struct ClaimRequestTelemetry {
     provider_discovery_to_main_loop_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     main_loop_to_local_admission_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_affinity_resource: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_affinity_local_resource: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    local_admission_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -844,15 +837,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             direct_candidate_inbox_wait_ms,
             provider_discovery_to_main_loop_ms,
             main_loop_to_local_admission_ms,
-            session_affinity_resource: candidate
-                .session_affinity_resource()
-                .map(crate::types::SessionAffinityResource::as_str),
-            session_affinity_local_resource: candidate
-                .session_affinity_local_resource()
-                .map(SessionAffinityLocalResource::as_str),
-            local_admission_resource: candidate
-                .local_admission_resource()
-                .map(LocalAdmissionResourceKind::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1641,7 +1625,7 @@ mod tests {
         let now = std::time::Instant::now();
         let target_generation_run_id: RunId =
             "00000000-0000-0000-0000-000000000099".parse().unwrap();
-        let mut candidate = JobCandidate::new_with_timing_for_test(
+        let candidate = JobCandidate::new_with_timing_for_test(
             RunId::nil(),
             crate::profile::DEFAULT_PROFILE.to_string(),
             now.checked_sub(Duration::from_millis(25)).unwrap(),
@@ -1654,9 +1638,6 @@ mod tests {
         .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
-        candidate
-            .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
-        candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -1674,18 +1655,13 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
-        assert_eq!(
-            body["telemetry"]["sessionAffinityResource"],
-            "reusableSandbox"
+        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
+        assert!(
+            body["telemetry"]
+                .get("sessionAffinityLocalResource")
+                .is_none()
         );
-        assert_eq!(
-            body["telemetry"]["sessionAffinityLocalResource"],
-            "reusableSandbox"
-        );
-        assert_eq!(
-            body["telemetry"]["localAdmissionResource"],
-            "reusableSandbox"
-        );
+        assert!(body["telemetry"].get("localAdmissionResource").is_none());
         assert!(
             !body
                 .to_string()

@@ -45,36 +45,6 @@ impl JobDiscoverySource {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionAffinityLocalResource {
-    ReusableSandbox,
-    WorkspaceCache,
-}
-
-impl SessionAffinityLocalResource {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::ReusableSandbox => "reusableSandbox",
-            Self::WorkspaceCache => "workspaceCache",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum LocalAdmissionResourceKind {
-    ReusableSandbox,
-    Fresh,
-}
-
-impl LocalAdmissionResourceKind {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::ReusableSandbox => "reusableSandbox",
-            Self::Fresh => "fresh",
-        }
-    }
-}
-
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -95,8 +65,6 @@ pub struct JobCandidate {
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
     session_affinity_resource: Option<SessionAffinityResource>,
-    session_affinity_local_resource: Option<SessionAffinityLocalResource>,
-    local_admission_resource: Option<LocalAdmissionResourceKind>,
     history_generation_run_id: Option<RunId>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
@@ -130,8 +98,6 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
             session_affinity_resource: None,
-            session_affinity_local_resource: None,
-            local_admission_resource: None,
             history_generation_run_id: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
@@ -228,14 +194,6 @@ impl JobCandidate {
         self.session_affinity_resource
     }
 
-    pub(crate) fn session_affinity_local_resource(&self) -> Option<SessionAffinityLocalResource> {
-        self.session_affinity_local_resource
-    }
-
-    pub(crate) fn local_admission_resource(&self) -> Option<LocalAdmissionResourceKind> {
-        self.local_admission_resource
-    }
-
     pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
         self.history_generation_run_id
     }
@@ -298,17 +256,6 @@ impl JobCandidate {
             .as_deref()
             .and_then(parse_affinity_protected_until);
         self
-    }
-
-    pub(crate) fn set_session_affinity_local_resource(
-        &mut self,
-        resource: SessionAffinityLocalResource,
-    ) {
-        self.session_affinity_local_resource = Some(resource);
-    }
-
-    pub(crate) fn set_local_admission_resource(&mut self, resource: LocalAdmissionResourceKind) {
-        self.local_admission_resource = Some(resource);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
