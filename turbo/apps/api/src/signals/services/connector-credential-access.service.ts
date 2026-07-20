@@ -6,7 +6,16 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, exists, inArray, isNull, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { ReadonlyDb } from "../external/db";
@@ -49,6 +58,11 @@ interface ConnectorCredentialStoredIdentity {
 
 export interface ConnectorCredentialReadGroup {
   readonly access: ConnectorCredentialAccess;
+  /**
+   * Multi-phase readers may pin the connector row they originally observed.
+   * Single-statement and connector-locked callers do not need this condition.
+   */
+  readonly connectorStateRevision?: bigint;
   readonly names: readonly string[];
 }
 
@@ -125,6 +139,7 @@ function assertDeclaredNames(args: {
 function connectorIdentityExists(
   db: ReadonlyDb,
   access: ConnectorCredentialAccess,
+  connectorStateRevision: bigint | undefined,
 ): SQL {
   return exists(
     db
@@ -138,6 +153,12 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.type, access.connectorRef),
           eq(credentialAccessConnector.authMethod, access.authMethodId),
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
+          connectorStateRevision === undefined
+            ? undefined
+            : sql`(
+                EXTRACT(EPOCH FROM ${credentialAccessConnector.updatedAt})
+                * 1000000
+              )::bigint = ${connectorStateRevision}`,
         ),
       ),
   );
@@ -174,7 +195,11 @@ export function connectorCredentialSecretReadCondition(args: {
         eq(secrets.type, "connector"),
         inArray(secrets.name, names),
         connectorOwnerCondition(secrets.connectorId, group.access),
-        connectorIdentityExists(args.db, group.access),
+        connectorIdentityExists(
+          args.db,
+          group.access,
+          group.connectorStateRevision,
+        ),
       ),
     ];
   });
@@ -202,7 +227,11 @@ export function connectorCredentialVariableReadCondition(args: {
         eq(variables.type, "connector"),
         inArray(variables.name, names),
         connectorOwnerCondition(variables.connectorId, group.access),
-        connectorIdentityExists(args.db, group.access),
+        connectorIdentityExists(
+          args.db,
+          group.access,
+          group.connectorStateRevision,
+        ),
       ),
     ];
   });

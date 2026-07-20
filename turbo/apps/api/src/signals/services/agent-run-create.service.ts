@@ -116,6 +116,7 @@ import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import {
+  pgInt8ToBigIntDecoder,
   pgNullDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
@@ -2249,6 +2250,7 @@ function filterSecretConnectorMetadataMap(args: {
 interface StoredConnectorRuntimeRow {
   readonly access: ConnectorCredentialAccess;
   readonly connectorType: ConnectorCatalogRef;
+  readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly needsReconnect: boolean;
@@ -2259,6 +2261,7 @@ interface StoredConnectorRuntimeRowCandidate {
   readonly connectorId: string;
   readonly type: string;
   readonly authMethod: string;
+  readonly connectorStateRevision: bigint;
   readonly needsReconnect: boolean;
   readonly orgId: string;
   readonly storageVersion: number | null;
@@ -2269,6 +2272,7 @@ interface StoredConnectorRuntimeRowCandidate {
 interface ConnectorEnvBindingSet {
   readonly access: ConnectorCredentialAccess;
   readonly connectorType: ConnectorCatalogRef;
+  readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
@@ -2350,6 +2354,7 @@ function allowedStoredConnectorRows(
       {
         access,
         connectorType: access.runtimeMethod.connectorRef,
+        connectorStateRevision: row.connectorStateRevision,
         authMethod: access.runtimeMethod.authMethodId,
         runtimeMethod: access.runtimeMethod,
         needsReconnect: row.needsReconnect,
@@ -2388,6 +2393,7 @@ function connectorEnvBindingSets(
     return {
       access: row.access,
       connectorType: row.connectorType,
+      connectorStateRevision: row.connectorStateRevision,
       authMethod: row.authMethod,
       runtimeBindings: metadata.runtimeBindings,
     };
@@ -2442,7 +2448,15 @@ function storedConnectorCredentialReadGroups(args: {
         }),
       ),
     ];
-    return names.length === 0 ? [] : [{ access: bindingSet.access, names }];
+    return names.length === 0
+      ? []
+      : [
+          {
+            access: bindingSet.access,
+            connectorStateRevision: bindingSet.connectorStateRevision,
+            names,
+          },
+        ];
   });
 }
 
@@ -3076,6 +3090,10 @@ async function loadStoredConnectorRows(
           connectorId: connectors.id,
           type: connectors.type,
           authMethod: connectors.authMethod,
+          connectorStateRevision: sql`(
+              EXTRACT(EPOCH FROM ${connectors.updatedAt})
+              * 1000000
+            )::bigint`.mapWith(pgInt8ToBigIntDecoder),
           needsReconnect: connectors.needsReconnect,
           orgId: connectors.orgId,
           storageVersion: connectors.storageVersion,
