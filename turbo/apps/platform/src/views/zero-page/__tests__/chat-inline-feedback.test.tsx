@@ -1043,14 +1043,14 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
 
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(
+    fireEvent.click(await screen.findByLabelText("Template"));
+    fireEvent.click(
       await screen.findByLabelText(
         `Preview ${template.title} at current slide`,
       ),
     );
-    await user.click(await screen.findByLabelText("Select style Gold Luxe"));
-    await user.click(
+    fireEvent.click(await screen.findByLabelText("Select style Gold Luxe"));
+    fireEvent.click(
       await screen.findByLabelText(`Select template ${template.title}`),
     );
     await waitFor(() => {
@@ -1080,10 +1080,13 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    fireEvent.click(buttonByText("Provide feedback"));
 
-    await findFeedbackNote();
-    await user.keyboard("Use the attached brief as supporting context.");
+    const feedbackNote = await findFeedbackNote();
+    pastePlainText(
+      feedbackNote,
+      "Use the attached brief as supporting context.",
+    );
     expect(
       screen.getByLabelText(`Remove template ${templateChipLabel}`),
     ).toBeInTheDocument();
@@ -1091,7 +1094,7 @@ describe("chat inline feedback", () => {
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Send"));
+    fireEvent.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(sentBodies[0]).toMatchObject({
@@ -1120,6 +1123,126 @@ describe("chat inline feedback", () => {
     expect(sentBody?.prompt).toContain(
       "Use the attached brief as supporting context.",
     );
+  });
+
+  it("filters hidden attachment references from inline feedback sends", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The launch summary needs visual context.";
+    let sentBody: RunCreateCapture | undefined;
+    const imageUrl =
+      "https://cdn.vm0.io/artifacts/user_1/feedback-model-switch/diagram.png";
+
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000705",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+      {
+        id: "00000000-0000-4000-a000-000000000706",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: "msg-feedback-model-switch-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-model-switch",
+          createdAt: "2026-07-20T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-model-switch-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-model-switch",
+          createdAt: "2026-07-20T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-feedback-model-switch",
+      filename: "diagram.png",
+      contentType: "image/png",
+      size: 128,
+      url: imageUrl,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+    const feedbackNote = await findFeedbackNote();
+    await user.click(feedbackNote);
+    await user.keyboard("Review ");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["image"], "diagram.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(feedbackNote).toHaveTextContent("Review image1");
+      expect(
+        screen.getByLabelText("Open image preview for diagram.png"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Open image preview for diagram.png"),
+      ).not.toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+    });
+    expect(sentBody?.prompt).toContain("Review");
+    expect(sentBody?.prompt).not.toContain("image1");
+    expect(sentBody?.prompt).not.toContain(imageUrl);
+    expect(sentBody?.prompt).not.toContain("vm0-attachment-reference");
+    expect(sentBody?.attachFiles).toBeUndefined();
   });
 
   it("keeps committed inline feedback while drafting another selected comment", async () => {

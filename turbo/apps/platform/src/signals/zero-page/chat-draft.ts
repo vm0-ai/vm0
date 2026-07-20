@@ -16,6 +16,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { splitInlinePromptLine } from "./composer-inline-prompt-items.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -234,7 +235,7 @@ export interface DraftSignals {
     [ZeroChatAttachment, AbortSignal]
   >;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
-  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
+  restoreAttachments$: Command<ZeroChatAttachment[], [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   removeAttachmentByClientId$: Command<void, [string]>;
   dragOver$: Computed<boolean>;
@@ -255,8 +256,8 @@ export interface DraftInputSyncTarget {
  */
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
+  clientId: string = crypto.randomUUID(),
 ): ZeroChatAttachment {
-  const clientId = crypto.randomUUID();
   const fileInfo$ = computed(
     (): Promise<{ id: string; url: string } | null> => {
       return Promise.resolve({ id: persisted.id, url: persisted.url });
@@ -282,6 +283,31 @@ export function createRestoredAttachment(
     cancel$,
     upload$,
   };
+}
+
+export function createRestoredDraftAttachments(
+  content: string,
+  persisted: readonly PersistedAttachment[],
+): ZeroChatAttachment[] {
+  const referenceClientIdsByUrl = new Map<string, string[]>();
+  for (const line of content.split("\n")) {
+    for (const segment of splitInlinePromptLine(line)) {
+      if (
+        segment.type !== "file" ||
+        segment.promptReference === undefined ||
+        segment.clientId === undefined
+      ) {
+        continue;
+      }
+      const clientIds = referenceClientIdsByUrl.get(segment.url) ?? [];
+      clientIds.push(segment.clientId);
+      referenceClientIdsByUrl.set(segment.url, clientIds);
+    }
+  }
+  return persisted.map((attachment) => {
+    const clientId = referenceClientIdsByUrl.get(attachment.url)?.shift();
+    return createRestoredAttachment(attachment, clientId);
+  });
 }
 
 function createDraftInputSignals() {
@@ -391,12 +417,15 @@ function createDraftAttachmentSignals(
   const restoreAttachments$ = command(
     ({ set }, persisted: PersistedAttachment[]) => {
       if (persisted.length === 0) {
-        return;
+        return [];
       }
-      const restored = persisted.map(createRestoredAttachment);
+      const restored = persisted.map((attachment) => {
+        return createRestoredAttachment(attachment);
+      });
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
+      return restored;
     },
   );
   const removeAttachment$ = command(

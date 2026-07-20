@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
 import { createWorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
+import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import {
   codexFastModeEnabled$,
@@ -36,10 +37,12 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
 });
 
 export const chatPageWorkflowComposer$ = computed((get) => {
+  const features = get(featureSwitch$);
   return createWorkflowComposerSignals(
     get(talkDraft$),
     undefined,
-    get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ?? false,
+    composerInlinePromptItemsEnabled(features),
+    features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false,
   );
 });
 

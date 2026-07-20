@@ -45,6 +45,9 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ComposerInlinePromptItems, {}),
     ).toBe(false);
     expect(
+      isFeatureEnabled(FeatureSwitchKey.ComposerInlineAttachmentReferences, {}),
+    ).toBe(false);
+    expect(
       isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
     ).toBe(false);
   });
@@ -152,6 +155,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
       true,
     );
+    expect(
+      staffOrgStates[FeatureSwitchKey.ComposerInlineAttachmentReferences],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
@@ -191,6 +197,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
       false,
     );
+    expect(
+      otherOrgStates[FeatureSwitchKey.ComposerInlineAttachmentReferences],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
     );

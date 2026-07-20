@@ -48,6 +48,7 @@ import {
 } from "./template-preview-runtime.ts";
 import {
   inlineTemplateMetadataFromRequest,
+  serializeInlineAttachmentReferencePromptItem,
   serializeInlineFilePromptItem,
   serializeInlineTemplatePromptItem,
   splitInlinePromptLine,
@@ -120,6 +121,7 @@ export interface WorkflowComposerSignals {
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
   readonly insertFile$: Command<void, [ComposerInlineFileAttachment]>;
+  readonly insertReferencedFile$: Command<void, [ComposerInlineFileAttachment]>;
   readonly resolveFile$: Command<
     void,
     [clientId: string, fileId: string, url: string]
@@ -128,7 +130,13 @@ export interface WorkflowComposerSignals {
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
-  readonly readInputForSubmission$: Command<Promise<string>, [AbortSignal]>;
+  readonly readInputForSubmission$: Command<
+    Promise<string>,
+    [
+      attachmentReferenceClientIds: ReadonlySet<string> | null,
+      signal: AbortSignal,
+    ]
+  >;
   readonly setTemplateAttachmentLifecycleRef$: Command<
     (() => void) | undefined,
     [HTMLButtonElement | null]
@@ -158,6 +166,7 @@ export interface ComposerInlineFileAttachment {
   readonly size: number;
   readonly fileId?: string;
   readonly url?: string;
+  readonly promptReference?: string;
 }
 
 export interface WorkflowComposerEventHandlers {
@@ -716,13 +725,15 @@ function inlineFileNodeAttributes(
   const size: unknown = node.attrs.size;
   const fileId: unknown = node.attrs.fileId;
   const url: unknown = node.attrs.url;
+  const promptReference: unknown = node.attrs.promptReference;
   if (
     typeof clientId !== "string" ||
     typeof filename !== "string" ||
     typeof contentType !== "string" ||
     typeof size !== "number" ||
     (fileId !== null && typeof fileId !== "string") ||
-    (url !== null && typeof url !== "string")
+    (url !== null && typeof url !== "string") ||
+    (promptReference !== null && typeof promptReference !== "string")
   ) {
     throw new Error("Inline file node attributes are invalid");
   }
@@ -733,20 +744,77 @@ function inlineFileNodeAttributes(
     size,
     ...(fileId === null ? {} : { fileId }),
     ...(url === null ? {} : { url }),
+    ...(promptReference === null ? {} : { promptReference }),
   };
 }
 
 function inlineFileNodeText(node: ProseMirrorNode): string {
   const attributes = inlineFileNodeAttributes(node);
+  const label = attributes.promptReference ?? attributes.filename;
+  if (attributes.promptReference && attributes.url) {
+    return serializeInlineAttachmentReferencePromptItem(
+      label,
+      attributes.url,
+      attributes.clientId,
+    );
+  }
   return attributes.url
-    ? serializeInlineFilePromptItem(attributes.filename, attributes.url)
-    : attributes.filename;
+    ? serializeInlineFilePromptItem(label, attributes.url)
+    : label;
+}
+
+function inlineFileSubmissionText(
+  node: ProseMirrorNode,
+  attachmentReferenceClientIds: ReadonlySet<string>,
+): string {
+  const attributes = inlineFileNodeAttributes(node);
+  if (!attributes.promptReference) {
+    return inlineFileNodeText(node);
+  }
+  return attachmentReferenceClientIds.has(attributes.clientId)
+    ? attributes.promptReference
+    : "";
+}
+
+function createInlineFileReferenceNodeView(node: ProseMirrorNode): NodeView {
+  const dom = document.createElement("span");
+  dom.dataset.composerInlineFile = "";
+  dom.className = "text-foreground";
+  dom.contentEditable = "false";
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): boolean {
+    const reference = inlineFileNodeAttributes(nextNode).promptReference;
+    if (!reference) {
+      return false;
+    }
+    dom.textContent = reference;
+    return true;
+  }
+  render(currentNode);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type || !render(nextNode)) {
+        return false;
+      }
+      currentNode = nextNode;
+      return true;
+    },
+    ignoreMutation() {
+      return true;
+    },
+  };
 }
 
 function createInlineFileNodeView(
   node: ProseMirrorNode,
   removeFile: () => void,
 ): NodeView {
+  if (inlineFileNodeAttributes(node).promptReference) {
+    return createInlineFileReferenceNodeView(node);
+  }
   const dom = document.createElement("span");
   dom.dataset.composerInlineFile = "";
   dom.className =
@@ -772,11 +840,9 @@ function createInlineFileNodeView(
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const attributes = inlineFileNodeAttributes(nextNode);
-    title.textContent = attributes.filename;
-    removeButton.setAttribute(
-      "aria-label",
-      `Remove file ${attributes.filename}`,
-    );
+    const label = attributes.promptReference ?? attributes.filename;
+    title.textContent = label;
+    removeButton.setAttribute("aria-label", `Remove file ${label}`);
     icon.replaceChildren();
     const fileIcon = createComposerIcon(12, 1.5, [
       "M15 7l-6.5 6.5a2.121 2.121 0 0 0 3 3l6.5-6.5a4.243 4.243 0 0 0-6-6l-6.5 6.5a6.364 6.364 0 0 0 9 9l6.5-6.5",
@@ -910,8 +976,11 @@ function feedbackNoteContent(note: string): JSONContent[] {
   });
 }
 
-function feedbackNoteFromNode(node: ProseMirrorNode): string {
-  return nodeText(node);
+function feedbackNoteFromNode(
+  node: ProseMirrorNode,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
+): string {
+  return nodeText(node, node.content.size, attachmentReferenceClientIds);
 }
 
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
@@ -1218,11 +1287,32 @@ function insertInlineFile(
           size: attachment.size,
           fileId: attachment.fileId ?? null,
           url: attachment.url ?? null,
+          promptReference: attachment.promptReference ?? null,
         },
       },
       { type: "text", text: " " },
     ])
     .run();
+}
+
+function nextInlineFilePromptReference(
+  document: ProseMirrorNode,
+  contentType: string,
+): string {
+  const prefix = contentType.startsWith("image/") ? "image" : "file";
+  let nextIndex = 1;
+  document.descendants((node) => {
+    if (node.type.name !== INLINE_FILE_NODE_NAME) {
+      return true;
+    }
+    const reference = inlineFileNodeAttributes(node).promptReference;
+    const match = reference?.match(new RegExp(`^${prefix}(\\d+)$`));
+    if (match) {
+      nextIndex = Math.max(nextIndex, Number(match[1]) + 1);
+    }
+    return true;
+  });
+  return `${prefix}${nextIndex}`;
 }
 
 interface LocatedInlineFile {
@@ -1251,7 +1341,10 @@ function locateInlineFile(
 function inlineFileClientIds(document: ProseMirrorNode): ReadonlySet<string> {
   const clientIds = new Set<string>();
   document.descendants((node) => {
-    if (node.type.name === INLINE_FILE_NODE_NAME) {
+    if (
+      node.type.name === INLINE_FILE_NODE_NAME &&
+      !inlineFileNodeAttributes(node).promptReference
+    ) {
       clientIds.add(inlineFileNodeAttributes(node).clientId);
     }
     return true;
@@ -1294,6 +1387,7 @@ function removeInlineFile(editor: Editor, clientId: string): void {
 
 function inlinePromptSegmentToJson(
   segment: ReturnType<typeof splitInlinePromptLine>[number],
+  featureModes: WorkflowComposerFeatureModes,
 ): JSONContent {
   switch (segment.type) {
     case "text": {
@@ -1306,15 +1400,36 @@ function inlinePromptSegmentToJson(
       };
     }
     case "file": {
+      if (
+        segment.promptReference !== undefined &&
+        !featureModes.inlineAttachmentReferences
+      ) {
+        if (!featureModes.inlinePromptItems) {
+          return { type: "text", text: segment.promptReference };
+        }
+        return {
+          type: INLINE_FILE_NODE_NAME,
+          attrs: {
+            clientId: segment.clientId ?? segment.url,
+            filename: segment.promptReference,
+            contentType: "application/octet-stream",
+            size: 0,
+            fileId: null,
+            url: segment.url,
+            promptReference: null,
+          },
+        };
+      }
       return {
         type: INLINE_FILE_NODE_NAME,
         attrs: {
-          clientId: segment.url,
+          clientId: segment.clientId ?? segment.url,
           filename: segment.filename,
           contentType: "application/octet-stream",
           size: 0,
           fileId: null,
           url: segment.url,
+          promptReference: segment.promptReference ?? null,
         },
       };
     }
@@ -1335,14 +1450,25 @@ function inlinePromptSegmentToJson(
   }
 }
 
-function valueToWorkflowComposerDoc(value: string): JSONContent {
+interface WorkflowComposerFeatureModes {
+  readonly inlinePromptItems: boolean;
+  readonly inlineAttachmentReferences: boolean;
+}
+
+function valueToWorkflowComposerDoc(
+  value: string,
+  featureModes: WorkflowComposerFeatureModes = {
+    inlinePromptItems: false,
+    inlineAttachmentReferences: false,
+  },
+): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
     if (line.length === 0) {
       return { type: "paragraph" };
     }
-    const inlineContent = splitInlinePromptLine(line).map(
-      inlinePromptSegmentToJson,
-    );
+    const inlineContent = splitInlinePromptLine(line).map((segment) => {
+      return inlinePromptSegmentToJson(segment, featureModes);
+    });
     return { type: "paragraph", content: inlineContent };
   });
   return { type: "doc", content };
@@ -1351,6 +1477,7 @@ function valueToWorkflowComposerDoc(value: string): JSONContent {
 function nodeText(
   node: ProseMirrorNode,
   to: number = node.content.size,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
 ): string {
   return node.textBetween(0, to, "\n", (leafNode) => {
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -1360,13 +1487,18 @@ function nodeText(
       return inlineTemplateNodeText(leafNode);
     }
     if (leafNode.type.name === INLINE_FILE_NODE_NAME) {
-      return inlineFileNodeText(leafNode);
+      return attachmentReferenceClientIds
+        ? inlineFileSubmissionText(leafNode, attachmentReferenceClientIds)
+        : inlineFileNodeText(leafNode);
     }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
   });
 }
 
-function workflowComposerDocToString(editor: Editor): string {
+function workflowComposerDocToString(
+  editor: Editor,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
+): string {
   const sections: string[] = [];
   let textBlocks: string[] = [];
   let feedbackItems: FeedbackItem[] = [];
@@ -1398,7 +1530,7 @@ function workflowComposerDocToString(editor: Editor): string {
       feedbackItems.push({
         id: attributes.feedbackId,
         quote: attributes.quote,
-        note: feedbackNoteFromNode(node),
+        note: feedbackNoteFromNode(node, attachmentReferenceClientIds),
       });
       continue;
     }
@@ -1408,7 +1540,9 @@ function workflowComposerDocToString(editor: Editor): string {
       continue;
     }
     flushFeedbackItems();
-    textBlocks.push(nodeText(node));
+    textBlocks.push(
+      nodeText(node, node.content.size, attachmentReferenceClientIds),
+    );
   }
   flushTextBlocks();
   flushFeedbackItems();
@@ -1678,6 +1812,7 @@ function createInlineFileNode(): Node<undefined, unknown> {
         size: { default: 0 },
         fileId: { default: null },
         url: { default: null },
+        promptReference: { default: null },
       };
     },
     parseHTML() {
@@ -1824,9 +1959,10 @@ function setWorkflowComposerDocument(
 function workflowComposerDocumentForValue(
   editor: Editor,
   value: string,
+  featureModes: WorkflowComposerFeatureModes,
 ): ProseMirrorNode {
   const textDocument = editor.schema.nodeFromJSON(
-    valueToWorkflowComposerDoc(value),
+    valueToWorkflowComposerDoc(value, featureModes),
   );
   const templateAttachment = locateTemplateAttachment(editor.state.doc)?.node;
   if (!templateAttachment) {
@@ -1885,6 +2021,7 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$,
   feedback,
   compositionGate,
+  featureModes,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -1896,6 +2033,7 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
+  featureModes: WorkflowComposerFeatureModes;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
@@ -1939,7 +2077,7 @@ function createMountEditorCommand({
       if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
           editor,
-          workflowComposerDocumentForValue(editor, input),
+          workflowComposerDocumentForValue(editor, input, featureModes),
         );
       }
       editor.mount(element);
@@ -1960,7 +2098,7 @@ function createMountEditorCommand({
           }
           const changed = setWorkflowComposerDocument(
             editor,
-            workflowComposerDocumentForValue(editor, value),
+            workflowComposerDocumentForValue(editor, value, featureModes),
           );
           if (changed) {
             runtime.replaceFeedbackItems(
@@ -2060,12 +2198,17 @@ function createInsertChatThreadCommand(
   });
 }
 
-function createInsertTextCommands(editor: Editor) {
+function createInsertTextCommands(
+  editor: Editor,
+  featureModes: WorkflowComposerFeatureModes,
+) {
   const insertText$ = command((_context, value: string) => {
     editor.chain().focus().insertContent(value).run();
   });
   const insertPromptMarkdown$ = command((_context, value: string) => {
-    const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
+    const doc = editor.schema.nodeFromJSON(
+      valueToWorkflowComposerDoc(value, featureModes),
+    );
     const slice = Slice.maxOpen(doc.content, true);
     editor
       .chain()
@@ -2190,6 +2333,17 @@ function createInlinePromptItemCommands(editor: Editor) {
       insertInlineFile(editor, attachment);
     },
   );
+  const insertReferencedFile$ = command(
+    (_context, attachment: ComposerInlineFileAttachment) => {
+      insertInlineFile(editor, {
+        ...attachment,
+        promptReference: nextInlineFilePromptReference(
+          editor.state.doc,
+          attachment.contentType,
+        ),
+      });
+    },
+  );
   const resolveFile$ = command(
     (_context, clientId: string, fileId: string, url: string) => {
       resolveInlineFile(editor, clientId, fileId, url);
@@ -2198,13 +2352,40 @@ function createInlinePromptItemCommands(editor: Editor) {
   const removeFile$ = command((_context, clientId: string) => {
     removeInlineFile(editor, clientId);
   });
-  return { insertTemplate$, insertFile$, resolveFile$, removeFile$ };
+  return {
+    insertTemplate$,
+    insertFile$,
+    insertReferencedFile$,
+    resolveFile$,
+    removeFile$,
+  };
+}
+
+function createReadInputForSubmissionCommand(
+  editor: Editor,
+  compositionGate: CompositionGate,
+) {
+  return command(
+    (
+      _context,
+      attachmentReferenceClientIds: ReadonlySet<string> | null,
+      signal: AbortSignal,
+    ) => {
+      return compositionGate.runWhenSettled(() => {
+        return workflowComposerDocToString(
+          editor,
+          attachmentReferenceClientIds,
+        );
+      }, signal);
+    },
+  );
 }
 
 export function createWorkflowComposerSignals(
   draft: DraftSignals,
   threadId?: string,
   inlinePromptItems = false,
+  inlineAttachmentReferences = false,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2212,6 +2393,7 @@ export function createWorkflowComposerSignals(
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
+  const featureModes = { inlinePromptItems, inlineAttachmentReferences };
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
@@ -2278,6 +2460,7 @@ export function createWorkflowComposerSignals(
       selectedSuggestionIndexState$,
       feedback,
       compositionGate,
+      featureModes,
       autoFocus,
       singleLineOnMobile,
     });
@@ -2291,13 +2474,12 @@ export function createWorkflowComposerSignals(
     activeChatThreadSuggestionRange$,
   );
   const { insertText$, insertPromptMarkdown$, appendText$ } =
-    createInsertTextCommands(editor);
+    createInsertTextCommands(editor, featureModes);
   const inlinePromptItemCommands = createInlinePromptItemCommands(editor);
-  const readInputForSubmission$ = command((_context, signal: AbortSignal) => {
-    return compositionGate.runWhenSettled(() => {
-      return workflowComposerDocToString(editor);
-    }, signal);
-  });
+  const readInputForSubmission$ = createReadInputForSubmissionCommand(
+    editor,
+    compositionGate,
+  );
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });

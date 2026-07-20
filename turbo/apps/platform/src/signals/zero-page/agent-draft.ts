@@ -8,7 +8,7 @@ import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-att
 import { resetSignal } from "../utils.ts";
 import {
   createDraftSignals,
-  createRestoredAttachment,
+  createRestoredDraftAttachments,
   type DraftSignals,
 } from "./chat-draft.ts";
 
@@ -159,7 +159,10 @@ export const loadAgentDraft$ = command(
     set(
       draft.seed$,
       result.body.draftContent ?? "",
-      attachments.map(createRestoredAttachment),
+      createRestoredDraftAttachments(
+        result.body.draftContent ?? "",
+        attachments,
+      ),
     );
   },
 );
