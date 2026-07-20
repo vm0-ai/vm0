@@ -3417,37 +3417,27 @@ function CompletedWorkFoldRow({
   groups,
   expanded,
   onToggle,
-  thread,
 }: {
   groups: readonly GroupedChatMessageGroup[];
   expanded: boolean;
   onToggle: () => void;
-  thread: ChatThreadSignals;
 }) {
   const label = completedWorkLabel(groups);
-  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   return (
-    <div
-      data-chat-completed-work-fold
-      className="min-w-0 border-b border-border/40 pb-2 @[900px]:-mx-2 @[900px]:-mb-[15px] @[900px]:border-b-0 @[900px]:pb-0"
-    >
+    <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-[15px]">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-lg px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted/50 @[900px]:mt-1.5 @[900px]:min-h-9 @[900px]:gap-2 @[900px]:px-2 @[900px]:py-1.5"
+        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
         <IconHourglass
           aria-hidden
           size={14}
-          className="hidden shrink-0 text-muted-foreground/70 @[900px]:block"
+          className="shrink-0 text-muted-foreground/70"
         />
-        <span className="truncate text-[13px] font-medium text-foreground @[900px]:hidden">
-          {displayName}
-        </span>
-        <span className="text-muted-foreground/50 @[900px]:hidden">·</span>
-        <span className="shrink-0 text-[13px]">{label}</span>
+        <span className="text-[13px]">{label}</span>
         <IconChevronRight
           aria-hidden
           size={14}
@@ -3830,17 +3820,14 @@ function RecommendedFollowupList({
   };
 
   return (
-    <div
-      ref={handleRecommendedFollowupsRef}
-      className="flex flex-col gap-1 @[900px]:-mx-2 @[900px]:gap-0"
-    >
+    <div ref={handleRecommendedFollowupsRef} className="-mx-2">
       {source.followups.map((followup, followupIndex) => {
         return (
           <button
             key={followup.prompt}
             type="button"
             title={followup.prompt}
-            className="group flex min-h-10 w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-2 py-2 text-left transition-colors hover:bg-muted/40 @[900px]:border-transparent @[900px]:bg-transparent"
+            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
             onClick={() => {
               handleSelect(followup, followupIndex);
             }}
@@ -4495,12 +4482,12 @@ function FinishedRunRow({
   const label = source ? "Keep going" : donePhrase;
 
   return (
-    <div className="flex flex-col gap-2 rounded-[var(--zero-card-radius)] bg-gray-50 p-3 @[900px]:rounded-none @[900px]:bg-transparent @[900px]:p-0">
+    <div className="flex flex-col gap-2">
       <div className="flex h-5 flex-col justify-center gap-1.5">
-        <div className="hidden h-px w-full bg-border/40 @[900px]:block" />
+        <div className="h-px w-full bg-border/40" />
         <div className="flex items-center gap-2">
           <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
-          <div className="hidden h-px flex-1 bg-border/40 @[900px]:block" />
+          <div className="h-px flex-1 bg-border/40" />
         </div>
       </div>
       {source ? (
@@ -6631,24 +6618,6 @@ function PagedAssistantGroup({
       />
     );
   };
-  const assistantMessages = (
-    <>
-      {showCompletedWorkFold && completedWorkFold.expanded
-        ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
-            return (
-              <div key={hiddenGroup.beginMessageId} className="contents">
-                {hiddenGroup.messages.map((msg) => {
-                  return renderAssistantMessageItem(msg);
-                })}
-              </div>
-            );
-          })
-        : null}
-      {group.messages.map((msg) => {
-        return renderAssistantMessageItem(msg);
-      })}
-    </>
-  );
 
   return (
     <div
@@ -6656,34 +6625,37 @@ function PagedAssistantGroup({
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
-      {showCompletedWorkFold ? (
-        <div className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-x-2 gap-y-2 @[900px]:-ml-[46px] @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-x-2.5 @[900px]:gap-y-0">
-          <AssistantBubbleAvatar thread={thread} />
-          <div className="contents @[900px]:relative @[900px]:flex @[900px]:flex-col @[900px]:gap-2">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="relative flex flex-col gap-2">
+          {runGroupFolds?.map((fold) => {
+            return (
+              <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
+            );
+          })}
+          {showCompletedWorkFold && (
             <CompletedWorkFoldRow
               groups={completedWorkFold.groups}
               expanded={completedWorkFold.expanded}
               onToggle={completedWorkFold.onToggle}
-              thread={thread}
             />
-            <div className="relative col-span-2 flex flex-col gap-2">
-              {assistantMessages}
-            </div>
-          </div>
+          )}
+          {showCompletedWorkFold && completedWorkFold.expanded
+            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <div key={hiddenGroup.beginMessageId} className="contents">
+                    {hiddenGroup.messages.map((msg) => {
+                      return renderAssistantMessageItem(msg);
+                    })}
+                  </div>
+                );
+              })
+            : null}
+          {group.messages.map((msg) => {
+            return renderAssistantMessageItem(msg);
+          })}
         </div>
-      ) : (
-        <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          <AssistantBubbleAvatar thread={thread} />
-          <div className="relative flex flex-col gap-2">
-            {runGroupFolds?.map((fold) => {
-              return (
-                <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
-              );
-            })}
-            {assistantMessages}
-          </div>
-        </div>
-      )}
+      </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />
     </div>
   );
