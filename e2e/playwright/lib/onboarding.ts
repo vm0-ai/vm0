@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { deriveServiceOrigin } from "../playwright.config";
 import { signInFromCurrentHostedAuthPage } from "./auth";
+import { rewritePreviewAppFallbackUrl } from "./onboarding-handoff-url";
 
 type AuthHeaders = Readonly<
   Record<"Authorization", string> &
@@ -68,7 +69,7 @@ export async function startVideoOnboardingCheckout(
 
 export async function waitForPaidOnboardingAppHandoff(
   page: Page,
-  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "onboardingUrl" | "auth">,
 ): Promise<URL> {
   return await waitForPaidOnboardingHandoff(page, options, 180_000);
 }
@@ -110,7 +111,7 @@ async function clickOnboardingButton(page: Page, name: RegExp): Promise<void> {
 
 async function waitForChatPage(
   page: Page,
-  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "onboardingUrl" | "auth">,
   continueAfterAuth: (() => Promise<void>) | undefined,
 ): Promise<void> {
   await waitForOnboardingHandoff(
@@ -124,23 +125,25 @@ async function waitForChatPage(
 
 async function waitForOnboardingHandoff(
   page: Page,
-  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "onboardingUrl" | "auth">,
   isTargetUrl: (url: URL) => boolean,
   timeout: number,
   continueAfterAuth?: () => Promise<void>,
 ): Promise<URL> {
   const configuredAppOrigin = new URL(options.appUrl).origin;
+  const onboardingOrigin = new URL(options.onboardingUrl).origin;
+  const isExpectedTargetUrl = (url: URL) =>
+    url.origin === configuredAppOrigin && isTargetUrl(url);
   await waitForExpectedUrl(
     page,
     configuredAppOrigin,
-    (url) =>
-      (url.origin === configuredAppOrigin && isTargetUrl(url)) ||
-      isHostedSignInUrl(url),
+    onboardingOrigin,
+    (url) => isExpectedTargetUrl(url) || isHostedSignInUrl(url),
     timeout,
   );
 
   const currentUrl = new URL(page.url());
-  if (isTargetUrl(currentUrl)) {
+  if (isExpectedTargetUrl(currentUrl)) {
     return currentUrl;
   }
 
@@ -150,26 +153,18 @@ async function waitForOnboardingHandoff(
     );
   }
 
-  const redirectOrigin = redirectOriginFromAuthUrl(currentUrl);
   await signInFromCurrentHostedAuthPage(page, options.auth.email, {
     activeOrganizationId: options.auth.activeOrganizationId,
   });
-  const isAllowedTargetUrl = (url: URL) => {
-    return (
-      isTargetUrl(url) &&
-      (url.origin === configuredAppOrigin ||
-        url.origin === redirectOrigin ||
-        redirectOrigin === null)
-    );
-  };
   await waitForExpectedUrl(
     page,
     configuredAppOrigin,
-    (url) => isAllowedTargetUrl(url) || isOnboardingUrl(url),
+    onboardingOrigin,
+    (url) => isExpectedTargetUrl(url) || isOnboardingUrl(url),
     timeout,
   );
   const postAuthUrl = new URL(page.url());
-  if (isAllowedTargetUrl(postAuthUrl)) {
+  if (isExpectedTargetUrl(postAuthUrl)) {
     return postAuthUrl;
   }
 
@@ -183,7 +178,8 @@ async function waitForOnboardingHandoff(
   await waitForExpectedUrl(
     page,
     configuredAppOrigin,
-    isAllowedTargetUrl,
+    onboardingOrigin,
+    isExpectedTargetUrl,
     timeout,
   );
   return new URL(page.url());
@@ -201,6 +197,7 @@ type UrlMatcher = (url: URL) => boolean;
 async function waitForExpectedUrl(
   page: Page,
   appOrigin: string,
+  onboardingOrigin: string,
   matchesExpectedUrl: UrlMatcher,
   timeoutMs: number,
 ): Promise<URL> {
@@ -208,7 +205,11 @@ async function waitForExpectedUrl(
 
   while (true) {
     const currentUrl = new URL(page.url());
-    const rewrittenUrl = rewritePreviewAppFallbackUrl(currentUrl, appOrigin);
+    const rewrittenUrl = rewritePreviewAppFallbackUrl(
+      currentUrl,
+      appOrigin,
+      onboardingOrigin,
+    );
     if (rewrittenUrl) {
       console.log("[e2e] rewriting onboarding preview handoff", {
         from: currentUrl.toString(),
@@ -232,68 +233,9 @@ async function waitForExpectedUrl(
     await page.waitForURL(
       (url) =>
         matchesExpectedUrl(url) ||
-        rewritePreviewAppFallbackUrl(url, appOrigin) !== null,
+        rewritePreviewAppFallbackUrl(url, appOrigin, onboardingOrigin) !== null,
       { timeout: remainingMs, waitUntil: "domcontentloaded" },
     );
-  }
-}
-
-function rewritePreviewAppFallbackUrl(
-  url: URL,
-  appOrigin: string,
-): string | null {
-  const rewrittenUrl = withExpectedPreviewAppOrigin(url, appOrigin);
-  if (!rewrittenUrl) {
-    return null;
-  }
-
-  rewriteNestedRedirectUrl(rewrittenUrl, appOrigin);
-  return rewrittenUrl.toString();
-}
-
-function withExpectedPreviewAppOrigin(url: URL, appOrigin: string): URL | null {
-  if (!isPreviewAppStagingFallback(url, appOrigin)) {
-    return null;
-  }
-
-  const appUrl = new URL(appOrigin);
-  const rewrittenUrl = new URL(url.toString());
-  rewrittenUrl.protocol = appUrl.protocol;
-  rewrittenUrl.host = appUrl.host;
-  return rewrittenUrl;
-}
-
-function isPreviewAppStagingFallback(url: URL, appOrigin: string): boolean {
-  const appUrl = new URL(appOrigin);
-  const previewDomainMatch = /^pr-\d+-app\.(.+)$/.exec(appUrl.hostname);
-  if (!previewDomainMatch) {
-    return false;
-  }
-
-  return (
-    url.protocol === appUrl.protocol &&
-    url.hostname === `staging-app.${previewDomainMatch[1]}`
-  );
-}
-
-function rewriteNestedRedirectUrl(url: URL, appOrigin: string): void {
-  const redirectUrl = url.searchParams.get("redirect_url");
-  if (!redirectUrl) {
-    return;
-  }
-
-  try {
-    const rewrittenRedirectUrl = withExpectedPreviewAppOrigin(
-      new URL(redirectUrl),
-      appOrigin,
-    );
-    if (rewrittenRedirectUrl) {
-      url.searchParams.set("redirect_url", rewrittenRedirectUrl.toString());
-    }
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error;
-    }
   }
 }
 
@@ -313,17 +255,13 @@ function isOnboardingUrl(url: URL): boolean {
   return url.pathname.startsWith("/onboarding/");
 }
 
-function redirectOriginFromAuthUrl(url: URL): string | null {
-  const redirectUrl = url.searchParams.get("redirect_url");
-  return redirectUrl ? new URL(redirectUrl).origin : null;
-}
-
 async function waitForPaidOnboardingHandoff(
   page: Page,
-  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "onboardingUrl" | "auth">,
   timeout: number,
 ): Promise<URL> {
   const configuredAppOrigin = new URL(options.appUrl).origin;
+  const onboardingOrigin = new URL(options.onboardingUrl).origin;
   const deadline = Date.now() + timeout;
   let nextBillingReturnReloadAt: number | null = null;
 
@@ -332,6 +270,7 @@ async function waitForPaidOnboardingHandoff(
     const rewrittenUrl = rewritePreviewAppFallbackUrl(
       currentUrl,
       configuredAppOrigin,
+      onboardingOrigin,
     );
     if (rewrittenUrl) {
       console.log("[e2e] rewriting paid onboarding preview handoff", {
