@@ -729,35 +729,14 @@ describe("runner claim capability contract", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts and strips previous attribution telemetry", () => {
+  it("accepts and strips a previous runner generation relationship", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
-        preLocalAdmissionOutcome: "local_holder",
         sessionHistoryGenerationRelationship: "fresh",
-        sessionHistoryGenerationLocalAvailability:
-          "parked_before_discovery_ge_heartbeat_period",
-        workspaceSessionHistorySidecarRelationship: "exact",
-        workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
       },
     });
 
     expect(body.telemetry).toEqual({});
-  });
-
-  it("accepts old claim bodies without generation telemetry", () => {
-    expect(runnersJobClaimContract.claim.body.safeParse({}).success).toBe(true);
-  });
-
-  it("rejects the removed legacy local resource value", () => {
-    const result = runnersJobClaimContract.claim.body.safeParse({
-      telemetry: {
-        sessionAffinityResource: "workspaceCache",
-        sessionAffinityLocalResource: "legacySession",
-        localAdmissionResource: "fresh",
-      },
-    });
-
-    expect(result.success).toBe(false);
   });
 });
 

@@ -4390,6 +4390,13 @@
       "when": 1784524716294,
       "tag": "0626_white_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 627,
+      "version": "7",
+      "when": 1784534410768,
+      "tag": "0627_expand_chat_message_queue_automation_id",
+      "breakpoints": true
     }
   ]
 }

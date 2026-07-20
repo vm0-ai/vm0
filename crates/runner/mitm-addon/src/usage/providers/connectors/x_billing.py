@@ -341,22 +341,32 @@ def _label_has_tld_prefix_before_unicode(label: str) -> bool:
 
 
 def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: str) -> bool:
-    labels = tuple(candidate.split("."))
+    if candidate.isascii():
+        simple_ascii_candidate = candidate.lower()
+        # Canonical A-label validation remains owned by the shared IDNA path.
+        use_simple_ascii_labels = "xn--" not in simple_ascii_candidate
+        labels = (simple_ascii_candidate if use_simple_ascii_labels else candidate).split(".")
+    else:
+        use_simple_ascii_labels = False
+        labels = candidate.split(".")
     last_label_index = len(labels) - 1
     for index, label in enumerate(labels):
-        if index > 0 and _label_has_tld_prefix_before_unicode(label):
-            return True
+        if use_simple_ascii_labels:
+            normalized_label = label
+        else:
+            if index > 0 and _label_has_tld_prefix_before_unicode(label):
+                return True
 
-        try:
-            normalized_label = normalize_idna_label(label)
-        except UnsafeIdnaCompatibilityMappingError:
-            # Keep billing conservative for URL-like compatibility aliases,
-            # but do not fold them into unrelated ASCII domains.
-            if index == last_label_index:
-                return _is_twitter_text_tld_boundary(following_char)
-            continue
-        except UnicodeError:
-            return False
+            try:
+                normalized_label = normalize_idna_label(label)
+            except UnsafeIdnaCompatibilityMappingError:
+                # Keep billing conservative for URL-like compatibility aliases,
+                # but do not fold them into unrelated ASCII domains.
+                if index == last_label_index:
+                    return _is_twitter_text_tld_boundary(following_char)
+                continue
+            except UnicodeError:
+                return False
 
         if not _label_is_billing_domain_label(normalized_label):
             return False

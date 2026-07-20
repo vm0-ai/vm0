@@ -56,7 +56,9 @@ async function workflowQueueResponse(
       pending: pending.map((event) => {
         return {
           id: event.id,
-          triggerId: event.triggerId,
+          automationId: event.automationId,
+          // Rollback compatibility for clients that predate automationId.
+          triggerId: event.automationId,
           triggerSource: event.triggerSource,
           triggerBrief: event.triggerBrief,
           createdAt: event.createdAt.toISOString(),

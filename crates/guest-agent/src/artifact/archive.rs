@@ -1226,6 +1226,7 @@ mod tests {
 
     #[test]
     fn collect_file_metadata_nonexistent_dir() {
+        let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
         let err = collect_file_metadata("/nonexistent/path/that/does/not/exist").unwrap_err();
         assert!(
