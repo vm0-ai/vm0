@@ -237,6 +237,9 @@ struct Shared {
     /// Notified when the connection closes. Pure signalling — all state is in
     /// `state`.
     close_notify: Notify,
+    /// One-shot test hook at the unlocked exec-output payload-copy boundary.
+    #[cfg(test)]
+    exec_output_before_copy_hook: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 struct ListenerSocketGuard {
@@ -961,6 +964,8 @@ impl VsockHost {
             }),
             normal_operations: NormalOperationTracker::new(),
             close_notify: Notify::new(),
+            #[cfg(test)]
+            exec_output_before_copy_hook: std::sync::Mutex::new(None),
         });
 
         let reader_shared = Arc::clone(&shared);
