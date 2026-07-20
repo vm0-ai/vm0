@@ -499,7 +499,6 @@ async function connectGithubUserWithSetupGrant(args: {
     readonly clientSecret: string;
   };
   readonly installRecordId: string;
-  readonly orgId: string;
   readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly signal: AbortSignal;
   readonly userId: string;
@@ -603,7 +602,6 @@ const connectGithubUserAfterSetup$ = command(
         codeExchangeLogContext,
         credentials,
         installRecordId: args.installRecordId,
-        orgId: args.orgId,
         resolvedMethod,
         signal,
         userId: vm0UserId,

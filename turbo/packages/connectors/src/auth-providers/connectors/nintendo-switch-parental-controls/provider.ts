@@ -72,6 +72,8 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
         accessToken: token.accessToken,
         signal: args.signal,
       });
+      const accountId = nintendoSwitchParentalControlsAccountId(token.idToken);
+      const userInfo = nintendoSwitchParentalControlsUserInfo(token.idToken);
       const smartDeviceId = randomUUID();
       const deviceCatalog = await withConnectorGrantCompensation(
         () => {
@@ -97,7 +99,7 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
           accessToken: token.accessToken,
           idToken: token.idToken,
           smartDeviceId,
-          accountId: nintendoSwitchParentalControlsAccountId(token.idToken),
+          accountId,
           language: profile.language,
           deviceCatalog,
         },
@@ -106,7 +108,7 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
           token.scopes.length > 0
             ? token.scopes
             : args.externalCodeGrant.scopes,
-        userInfo: nintendoSwitchParentalControlsUserInfo(token.idToken),
+        userInfo,
       };
     },
     rollbackGrant: (args) => {

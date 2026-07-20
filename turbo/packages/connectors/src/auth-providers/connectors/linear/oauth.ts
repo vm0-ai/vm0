@@ -108,7 +108,13 @@ export async function exchangeLinearCode(
       return fetchLinearUserInfo(accessToken);
     },
     (signal) => {
-      return revokeLinearToken(clientId, clientSecret, accessToken, signal);
+      return revokeLinearGrant({
+        clientId,
+        clientSecret,
+        accessToken,
+        refreshToken: data.refresh_token ?? null,
+        signal,
+      });
     },
   );
 
@@ -234,10 +240,11 @@ async function fetchLinearUserInfo(
  * Uses RFC 7009 token revocation endpoint with Basic Auth.
  * Ref: https://linear.app/developers/oauth-2-0-authentication
  */
-export async function revokeLinearToken(
+async function revokeLinearOAuthToken(
   clientId: string,
   clientSecret: string,
-  accessToken: string,
+  token: string,
+  tokenTypeHint: "access_token" | "refresh_token",
   signal: AbortSignal,
 ): Promise<void> {
   const response = await fetch("https://api.linear.app/oauth/revoke", {
@@ -248,13 +255,38 @@ export async function revokeLinearToken(
       Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
     },
     body: new URLSearchParams({
-      token: accessToken,
-      token_type_hint: "access_token",
+      token,
+      token_type_hint: tokenTypeHint,
     }),
   });
 
   if (!response.ok) {
     throw new Error(`Linear token revocation failed: ${response.status}`);
+  }
+}
+
+export async function revokeLinearGrant(args: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly accessToken: string;
+  readonly refreshToken: string | null | undefined;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await revokeLinearOAuthToken(
+    args.clientId,
+    args.clientSecret,
+    args.accessToken,
+    "access_token",
+    args.signal,
+  );
+  if (args.refreshToken) {
+    await revokeLinearOAuthToken(
+      args.clientId,
+      args.clientSecret,
+      args.refreshToken,
+      "refresh_token",
+      args.signal,
+    );
   }
 }
 

@@ -1,9 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
-  requiredConnectorGrantOutput,
-  withConnectorGrantCompensation,
-} from "../../grant-compensation";
-import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
   fetchSlackUserInfo,
@@ -32,21 +28,9 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
         code,
         redirectUri,
       );
-      const slackUser = await withConnectorGrantCompensation(
-        () => {
-          return fetchSlackUserInfo(
-            slackResult.userId,
-            slackResult.accessToken,
-          );
-        },
-        (signal) => {
-          return revokeSlackToken(
-            clientId,
-            clientSecret,
-            slackResult.accessToken,
-            signal,
-          );
-        },
+      const slackUser = await fetchSlackUserInfo(
+        slackResult.userId,
+        slackResult.accessToken,
       );
       return {
         outputs: {
@@ -59,15 +43,6 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
           email: slackUser.email,
         },
       };
-    },
-    rollbackGrant: (args) => {
-      const { clientId, clientSecret } = args.authClient;
-      return revokeSlackToken(
-        clientId,
-        clientSecret,
-        requiredConnectorGrantOutput(args.result.outputs, "accessToken"),
-        args.signal,
-      );
     },
   },
   access: {

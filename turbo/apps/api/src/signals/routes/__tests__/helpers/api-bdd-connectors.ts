@@ -100,6 +100,9 @@ const TEST_OAUTH_USERINFO_URL =
   "http://localhost:3000/api/test/oauth-provider/userinfo";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_OAUTH_USER_INFO_URL = "https://slack.com/api/users.info";
+const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token";
+const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
+const LINEAR_OAUTH_REVOKE_URL = "https://api.linear.app/oauth/revoke";
 const GITHUB_APP_INSTALLATIONS_URL = "https://api.github.com/app/installations";
 const GITHUB_APP_SLUG = "bdd-github-app";
 
@@ -121,6 +124,7 @@ function expectStatus<
 
 interface GitHubConnectorOAuthRecorder {
   readonly tokenBodies: URLSearchParams[];
+  readonly tokenRollbackAuthorizations: (string | null)[];
   readonly tokenRollbackBodies: Readonly<Record<string, unknown>>[];
   readonly tokenRollbackClientIds: string[];
   readonly grantRevokeBodies: Readonly<Record<string, unknown>>[];
@@ -136,6 +140,7 @@ export function mockGitHubConnectorOAuth(
 
   const recorder: GitHubConnectorOAuthRecorder = {
     tokenBodies: [],
+    tokenRollbackAuthorizations: [],
     tokenRollbackBodies: [],
     tokenRollbackClientIds: [],
     grantRevokeBodies: [],
@@ -162,6 +167,9 @@ export function mockGitHubConnectorOAuth(
     http.delete(
       "https://api.github.com/applications/:clientId/token",
       async ({ params, request }) => {
+        recorder.tokenRollbackAuthorizations.push(
+          request.headers.get("authorization"),
+        );
         recorder.tokenRollbackClientIds.push(String(params.clientId));
         recorder.tokenRollbackBodies.push(
           z.record(z.string(), z.unknown()).parse(await request.json()),
@@ -300,9 +308,16 @@ export function mockTestOAuthAuthCodeProvider(
  * the slack oauth method has static (non-refreshable) access, so a stored
  * token has no expiry.
  */
-export function mockSlackConnectorOAuth(): void {
+interface SlackConnectorOAuthRecorder {
+  readonly revokeAuthorizations: (string | null)[];
+}
+
+export function mockSlackConnectorOAuth(): SlackConnectorOAuthRecorder {
   mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "slack-client-id");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-client-secret");
+  const recorder: SlackConnectorOAuthRecorder = {
+    revokeAuthorizations: [],
+  };
 
   server.use(
     http.post(SLACK_OAUTH_TOKEN_URL, () => {
@@ -326,7 +341,53 @@ export function mockSlackConnectorOAuth(): void {
         },
       });
     }),
+    http.post("https://slack.com/api/auth.revoke", ({ request }) => {
+      recorder.revokeAuthorizations.push(request.headers.get("authorization"));
+      return HttpResponse.json({ ok: true, revoked: true });
+    }),
   );
+  return recorder;
+}
+
+interface LinearConnectorOAuthRecorder {
+  readonly revokeBodies: URLSearchParams[];
+}
+
+export function mockLinearConnectorOAuth(): LinearConnectorOAuthRecorder {
+  mockOptionalEnv("LINEAR_OAUTH_CLIENT_ID", "linear-client-id");
+  mockOptionalEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-client-secret");
+  const recorder: LinearConnectorOAuthRecorder = {
+    revokeBodies: [],
+  };
+
+  server.use(
+    http.post(LINEAR_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      const code = body.get("code") ?? "missing-code";
+      return HttpResponse.json({
+        access_token: `linear-access-${code}`,
+        refresh_token: `linear-refresh-${code}`,
+        expires_in: 86_400,
+        scope: "read,write",
+      });
+    }),
+    http.post(LINEAR_GRAPHQL_URL, () => {
+      return HttpResponse.json({
+        data: {
+          viewer: {
+            id: "linear-user-id",
+            name: "BDD Linear User",
+            email: "bdd-linear@example.test",
+          },
+        },
+      });
+    }),
+    http.post(LINEAR_OAUTH_REVOKE_URL, async ({ request }) => {
+      recorder.revokeBodies.push(new URLSearchParams(await request.text()));
+      return new HttpResponse(null, { status: 200 });
+    }),
+  );
+  return recorder;
 }
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";

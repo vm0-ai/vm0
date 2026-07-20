@@ -2220,6 +2220,8 @@ export const upsertConnectorTokenConnection$ = command(
           }),
         );
         if (!transaction.ok) {
+          // Drizzle issues COMMIT only after the callback resolves. A
+          // rejection after that point cannot prove that the write rolled back.
           if (transactionCallbackCompleted) {
             commitStatus = "unknown";
           }

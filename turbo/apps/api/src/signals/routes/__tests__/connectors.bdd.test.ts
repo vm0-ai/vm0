@@ -9,6 +9,7 @@
  *   /api/zero/feature-switches.
  */
 
+import { Buffer } from "node:buffer";
 import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
@@ -33,6 +34,7 @@ import {
   mockDeferredTestOAuthTokenEndpoint,
   mockGitHubConnectorOAuth,
   mockGithubAppInstallProvider,
+  mockLinearConnectorOAuth,
   mockSlackConnectorOAuth,
   mockSlockOAuthProvider,
   mockStripeCliDashboardAuth,
@@ -2863,6 +2865,93 @@ describe("CONN-02: auth-code grant compensation", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
+  it("does not reuse Slack's authorization-wide revoke for failed-attempt rollback", async () => {
+    const provider = mockSlackConnectorOAuth();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+
+    const start = await connectorsApi.startOauth(actor, "slack", "oauth");
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const callback = await connectorsApi.completeOauthCallback("slack", {
+      code: "bdd-slack-precommit-failure",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(callback, {
+      type: "slack",
+      message: "OAuth authorization failed. Please try again.",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+    expect(provider.revokeAuthorizations).toStrictEqual([]);
+    const missing = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "slack",
+      [404],
+    );
+    expectApiError(missing.body);
+  });
+
+  it("revokes both Linear credentials for rollback and ordinary disconnect", async () => {
+    const provider = mockLinearConnectorOAuth();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+
+    const failedStart = await connectorsApi.startOauth(
+      actor,
+      "linear",
+      "oauth",
+    );
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await connectorsApi.completeOauthCallback("linear", {
+      code: "failed-attempt",
+      state: stateFromAuthorizationUrl(failedStart.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(failed, {
+      type: "linear",
+      message: "OAuth authorization failed. Please try again.",
+    });
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+
+    const connectedStart = await connectorsApi.startOauth(
+      actor,
+      "linear",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("linear", {
+      code: "connected-attempt",
+      state: stateFromAuthorizationUrl(connectedStart.authorizationUrl),
+    });
+    await connectorsApi.deleteConnectorByType(actor, "linear");
+
+    expect(
+      provider.revokeBodies.map((body) => {
+        return {
+          token: body.get("token"),
+          tokenTypeHint: body.get("token_type_hint"),
+        };
+      }),
+    ).toStrictEqual([
+      {
+        token: "linear-access-failed-attempt",
+        tokenTypeHint: "access_token",
+      },
+      {
+        token: "linear-refresh-failed-attempt",
+        tokenTypeHint: "refresh_token",
+      },
+      {
+        token: "linear-access-connected-attempt",
+        tokenTypeHint: "access_token",
+      },
+      {
+        token: "linear-refresh-connected-attempt",
+        tokenTypeHint: "refresh_token",
+      },
+    ]);
+  });
+
   it("finishes persistence after the request is cancelled following provider success", async () => {
     const requestAbort = new AbortController();
     const provider = mockTestOAuthAuthCodeProvider({
@@ -3167,6 +3256,11 @@ describe("CONN-02: GitHub installation link after connector OAuth", () => {
     expect(appExchange?.has("redirect_uri")).toBeFalsy();
     expect(provider.tokenRollbackClientIds).toStrictEqual([
       "github-app-client-id",
+    ]);
+    expect(provider.tokenRollbackAuthorizations).toStrictEqual([
+      `Basic ${Buffer.from(
+        "github-app-client-id:github-app-client-secret",
+      ).toString("base64")}`,
     ]);
     expect(provider.tokenRollbackBodies).toStrictEqual([
       { access_token: "github-access-github-app-setup-code" },

@@ -286,6 +286,55 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
     });
   });
 
+  it("validates Nintendo identity before registering a smart device", async () => {
+    const { result: started, providerState } =
+      await startNintendoSwitchParentalControlsSession();
+    let federationRequests = 0;
+    let logoutRequests = 0;
+
+    server.use(
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN_URL, () => {
+        return HttpResponse.json({ session_token: "invalid-id-session-token" });
+      }),
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "invalid-id-access-token",
+          expires_in: 3600,
+          id_token: "invalid-id-token",
+          token_type: "Bearer",
+        });
+      }),
+      http.get(NINTENDO_SWITCH_PARENTAL_CONTROLS_PROFILE_URL, () => {
+        return HttpResponse.json({ country: "US", language: "en" });
+      }),
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL, () => {
+        federationRequests += 1;
+        return HttpResponse.json({
+          loginInfo: { ownedDevices: [] },
+        });
+      }),
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL, () => {
+        logoutRequests += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "nintendo-switch-parental-controls",
+        authMethod: "api",
+        authClient: nintendoSwitchParentalControlsAuthClient(),
+        providerState: started.providerState,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.redirectUri}#session_token_code=invalid-id-code&state=${providerState.state}`,
+        signal: testSignal(),
+      }),
+    ).rejects.toThrow(
+      "Nintendo Switch Parental Controls ID token is missing a payload",
+    );
+    expect(federationRequests).toBe(0);
+    expect(logoutRequests).toBe(0);
+  });
+
   it("logs out the generated smart device when federation is cancelled", async () => {
     const { result: started, providerState } =
       await startNintendoSwitchParentalControlsSession();

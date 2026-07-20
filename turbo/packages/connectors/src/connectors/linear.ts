@@ -53,6 +53,7 @@ export const linear = {
           kind: "token-revoke",
           inputs: {
             accessToken: "$secrets.LINEAR_ACCESS_TOKEN",
+            refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
           },
         },
       },

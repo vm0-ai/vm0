@@ -51,6 +51,7 @@ import type {
   ConnectorAuthProviderGrantResult,
   ConnectorAuthProviderGrantResultForMethod,
 } from "./grant-result";
+import { withConnectorGrantCompensation } from "./grant-compensation";
 import {
   type AuthUrlResult,
   type ExternalCodeAuthorizationStartResult,
@@ -1302,6 +1303,29 @@ function assertGrantOutputs(args: {
   });
 }
 
+async function assertGrantOutputsWithRollback(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly authClient: ConnectorAuthClient;
+  readonly result: ConnectorAuthProviderGrantResult;
+}): Promise<void> {
+  await withConnectorGrantCompensation(
+    async () => {
+      assertGrantOutputs({
+        selection: args.selection,
+        result: args.result,
+      });
+    },
+    async (signal) => {
+      await rollbackConnectorAuthGrantWithMethod({
+        ...args.selection,
+        authClient: args.authClient,
+        result: args.result,
+        signal,
+      });
+    },
+  );
+}
+
 function assertOptionalConnectorAuthClientMatchesMethod(args: {
   readonly selection: ConnectorAuthProviderMethodSelection;
   readonly authClient: ConnectorAuthClient | undefined;
@@ -1409,7 +1433,11 @@ export async function exchangeConnectorAuthCodeWithMethod(
     codeVerifier: args.codeVerifier,
     oauthContext: args.oauthContext,
   });
-  assertGrantOutputs({ selection: args, result });
+  await assertGrantOutputsWithRollback({
+    selection: args,
+    authClient: args.authClient,
+    result,
+  });
   return result;
 }
 
@@ -1493,7 +1521,11 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
     providerState: args.providerState,
     signal: args.signal,
   });
-  assertGrantOutputs({ selection: args, result });
+  await assertGrantOutputsWithRollback({
+    selection: args,
+    authClient: args.authClient,
+    result,
+  });
   return result;
 }
 
@@ -1516,7 +1548,6 @@ export async function rollbackConnectorAuthGrantWithMethod(
     selection: args,
     authClient: args.authClient,
   });
-  assertGrantOutputs({ selection: args, result: args.result });
   await invokeRuntimeProvider<RuntimeGrantRollbackArgs, Promise<void>>(
     grant.rollbackGrant,
     {
