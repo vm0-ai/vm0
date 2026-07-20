@@ -228,7 +228,7 @@ describe("prompt query parameter injection", () => {
     });
   });
 
-  it("starts an optimistic website template chat from the prompt route when enabled", async () => {
+  it("starts an optimistic website template chat from the prompt route", async () => {
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
       return item.id === "website-template:warm-cards";
     });
