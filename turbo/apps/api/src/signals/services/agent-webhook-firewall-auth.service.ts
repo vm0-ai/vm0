@@ -61,6 +61,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
+import {
+  pgInt8ToBigIntDecoder,
+  pgNullDecoder,
+} from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -386,7 +390,7 @@ interface RefreshStateRow {
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
   readonly lastRefreshErrorCode: string | null;
-  readonly updatedAtMicros: bigint | number | string;
+  readonly updatedAtMicros: bigint;
 }
 
 interface ValidatedRefreshOutput {
@@ -1668,13 +1672,16 @@ async function loadModelProviderRefreshStateRow(
 ): Promise<RefreshStateRow | null> {
   const query = db
     .select({
-      authMethod: sql<string | null>`NULL`,
-      connectorId: sql<string | null>`NULL`,
-      storageVersion: sql<number | null>`NULL`,
+      authMethod: sql`NULL`.mapWith(pgNullDecoder),
+      connectorId: sql`NULL`.mapWith(pgNullDecoder),
+      storageVersion: sql`NULL`.mapWith(pgNullDecoder),
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       needsReconnect: modelProviders.needsReconnect,
       lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
-      updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
+      updatedAtMicros:
+        sql`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`.mapWith(
+          pgInt8ToBigIntDecoder,
+        ),
     })
     .from(modelProviders)
     .where(
@@ -1702,8 +1709,11 @@ async function loadConnectorRefreshStateRow(
       storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
-      lastRefreshErrorCode: sql<string | null>`NULL`,
-      updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
+      lastRefreshErrorCode: sql`NULL`.mapWith(pgNullDecoder),
+      updatedAtMicros:
+        sql`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`.mapWith(
+          pgInt8ToBigIntDecoder,
+        ),
     })
     .from(connectors)
     .where(
@@ -1780,7 +1790,7 @@ async function loadRefreshState(
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
     lastRefreshErrorCode: row.lastRefreshErrorCode,
-    updatedAtMicros: BigInt(row.updatedAtMicros),
+    updatedAtMicros: row.updatedAtMicros,
   };
 }
 

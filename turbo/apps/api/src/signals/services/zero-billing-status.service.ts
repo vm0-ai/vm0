@@ -18,6 +18,7 @@ import {
   sql,
 } from "drizzle-orm";
 
+import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -639,7 +640,10 @@ export function zeroBillingStatus(
         .limit(1),
       db
         .select({
-          total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,
+          total:
+            sql`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`.mapWith(
+              pgIntegerDecoder,
+            ),
         })
         .from(creditExpiresRecord)
         .where(

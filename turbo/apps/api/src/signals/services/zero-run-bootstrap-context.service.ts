@@ -1,3 +1,8 @@
+import { userPermissionGrantActionSchema } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  type ZeroWorkflowVisibility,
+  zeroWorkflowVisibilitySchema,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
@@ -15,13 +20,17 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import {
-  zeroWorkflows,
-  type ZeroWorkflowVisibility,
-} from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
+import { z } from "zod";
 
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+  zodDriverValueDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import type { ReadonlyDb } from "../external/db";
 import {
   agentConnectorScopeFromRows,
@@ -41,7 +50,14 @@ import {
   type RunWorkflowSourceRow,
 } from "./zero-workflow-data.service";
 
-type PromptSnapshotRowKind = "user_info" | "feature_switch";
+const promptSnapshotRowKindSchema = z.enum(["user_info", "feature_switch"]);
+type PromptSnapshotRowKind = z.output<typeof promptSnapshotRowKindSchema>;
+const promptSnapshotRowKindDecoder = zodEnumDriverValueDecoder(
+  promptSnapshotRowKindSchema,
+);
+const promptSnapshotSwitchesDecoder = zodDriverValueDecoder(
+  z.record(z.string(), z.boolean()),
+);
 
 interface PromptSnapshotQueryRow {
   readonly kind: PromptSnapshotRowKind;
@@ -52,12 +68,38 @@ interface PromptSnapshotQueryRow {
   readonly switches: Record<string, boolean> | null;
 }
 
-type ExecutionScopeSnapshotRowKind =
-  | "builtin_connector"
-  | "custom_connector"
-  | "workflow"
-  | "permission_grant"
-  | "trigger_agent";
+const executionScopeSnapshotRowKindSchema = z.enum([
+  "builtin_connector",
+  "custom_connector",
+  "workflow",
+  "permission_grant",
+  "trigger_agent",
+]);
+type ExecutionScopeSnapshotRowKind = z.output<
+  typeof executionScopeSnapshotRowKindSchema
+>;
+const executionScopeSnapshotRowKindDecoder = zodEnumDriverValueDecoder(
+  executionScopeSnapshotRowKindSchema,
+);
+const workflowVisibilityDecoder = zodEnumDriverValueDecoder(
+  zeroWorkflowVisibilitySchema,
+);
+const permissionGrantActionDecoder = zodEnumDriverValueDecoder(
+  userPermissionGrantActionSchema,
+);
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
+const nullablePromptSnapshotSwitchesDecoder = nullableDriverValueDecoder(
+  promptSnapshotSwitchesDecoder,
+);
+const nullableWorkflowVisibilityDecoder = nullableDriverValueDecoder(
+  workflowVisibilityDecoder,
+);
+const nullablePermissionGrantActionDecoder = nullableDriverValueDecoder(
+  permissionGrantActionDecoder,
+);
+const nullableTimestampDecoder = nullableDriverValueDecoder(
+  zeroWorkflows.createdAt,
+);
 
 interface ExecutionScopeSnapshotQueryRow {
   readonly kind: ExecutionScopeSnapshotRowKind;
@@ -117,12 +159,16 @@ export async function loadZeroRunPromptContextSnapshot(
 ): Promise<ZeroRunPromptContext> {
   const userInfoQuery = db
     .select({
-      kind: sql<PromptSnapshotRowKind>`'user_info'`.as("kind"),
+      kind: sql`'user_info'`.mapWith(promptSnapshotRowKindDecoder).as("kind"),
       name: userCache.name,
-      email: sql<string | null>`${userCache.email}`.as("email"),
+      email: sql`${userCache.email}`.mapWith(nullableTextDecoder).as("email"),
       timezone: orgMembersMetadata.timezone,
-      featureUserId: sql<string | null>`NULL::text`.as("feature_user_id"),
-      switches: sql<Record<string, boolean> | null>`NULL::jsonb`.as("switches"),
+      featureUserId: sql`NULL::text`
+        .mapWith(nullableTextDecoder)
+        .as("feature_user_id"),
+      switches: sql`NULL::jsonb`
+        .mapWith(nullablePromptSnapshotSwitchesDecoder)
+        .as("switches"),
     })
     .from(userCache)
     .leftJoin(
@@ -135,17 +181,18 @@ export async function loadZeroRunPromptContextSnapshot(
     .where(eq(userCache.userId, args.userId));
   const featureSwitchQuery = db
     .select({
-      kind: sql<PromptSnapshotRowKind>`'feature_switch'`.as("kind"),
-      name: sql<string | null>`NULL::text`.as("name"),
-      email: sql<string | null>`NULL::text`.as("email"),
-      timezone: sql<string | null>`NULL::text`.as("timezone"),
-      featureUserId: sql<string | null>`${userFeatureSwitches.userId}`.as(
-        "feature_user_id",
-      ),
-      switches: sql<Record<
-        string,
-        boolean
-      > | null>`${userFeatureSwitches.switches}`.as("switches"),
+      kind: sql`'feature_switch'`
+        .mapWith(promptSnapshotRowKindDecoder)
+        .as("kind"),
+      name: sql`NULL::text`.mapWith(nullableTextDecoder).as("name"),
+      email: sql`NULL::text`.mapWith(nullableTextDecoder).as("email"),
+      timezone: sql`NULL::text`.mapWith(nullableTextDecoder).as("timezone"),
+      featureUserId: sql`${userFeatureSwitches.userId}`
+        .mapWith(nullableTextDecoder)
+        .as("feature_user_id"),
+      switches: sql`${userFeatureSwitches.switches}`
+        .mapWith(nullablePromptSnapshotSwitchesDecoder)
+        .as("switches"),
     })
     .from(userFeatureSwitches)
     .where(
@@ -214,14 +261,20 @@ export async function loadZeroRunPromptContextSnapshot(
 
 function emptyExecutionScopeSnapshotFields() {
   return {
-    id: sql<string | null>`NULL::text`.as("id"),
-    name: sql<string | null>`NULL::text`.as("name"),
-    detail: sql<string | null>`NULL::text`.as("detail"),
-    visibility: sql<ZeroWorkflowVisibility | null>`NULL::text`.as("visibility"),
-    ownerUserId: sql<string | null>`NULL::text`.as("owner_user_id"),
-    action: sql<FirewallPermissionGrantAction | null>`NULL::text`.as("action"),
-    createdAt: sql<Date | null>`NULL::timestamp`
-      .mapWith(zeroWorkflows.createdAt)
+    id: sql`NULL::text`.mapWith(nullableTextDecoder).as("id"),
+    name: sql`NULL::text`.mapWith(nullableTextDecoder).as("name"),
+    detail: sql`NULL::text`.mapWith(nullableTextDecoder).as("detail"),
+    visibility: sql`NULL::text`
+      .mapWith(nullableWorkflowVisibilityDecoder)
+      .as("visibility"),
+    ownerUserId: sql`NULL::text`
+      .mapWith(nullableTextDecoder)
+      .as("owner_user_id"),
+    action: sql`NULL::text`
+      .mapWith(nullablePermissionGrantActionDecoder)
+      .as("action"),
+    createdAt: sql`NULL::timestamp`
+      .mapWith(nullableTimestampDecoder)
       .as("created_at"),
   };
 }
@@ -232,9 +285,13 @@ async function queryZeroRunExecutionScopeSnapshot(
 ): Promise<ExecutionScopeSnapshotQueryRow[]> {
   const builtinConnectorQuery = db
     .select({
-      kind: sql<ExecutionScopeSnapshotRowKind>`'builtin_connector'`.as("kind"),
+      kind: sql`'builtin_connector'`
+        .mapWith(executionScopeSnapshotRowKindDecoder)
+        .as("kind"),
       ...emptyExecutionScopeSnapshotFields(),
-      name: sql<string | null>`${userConnectors.connectorType}`.as("name"),
+      name: sql`${userConnectors.connectorType}`
+        .mapWith(nullableTextDecoder)
+        .as("name"),
     })
     .from(userConnectors)
     .where(
@@ -246,11 +303,13 @@ async function queryZeroRunExecutionScopeSnapshot(
     );
   const customConnectorQuery = db
     .select({
-      kind: sql<ExecutionScopeSnapshotRowKind>`'custom_connector'`.as("kind"),
+      kind: sql`'custom_connector'`
+        .mapWith(executionScopeSnapshotRowKindDecoder)
+        .as("kind"),
       ...emptyExecutionScopeSnapshotFields(),
-      id: sql<
-        string | null
-      >`${userCustomConnectors.customConnectorId}::text`.as("id"),
+      id: sql`${userCustomConnectors.customConnectorId}::text`
+        .mapWith(nullableTextDecoder)
+        .as("id"),
     })
     .from(userCustomConnectors)
     .where(
@@ -262,19 +321,20 @@ async function queryZeroRunExecutionScopeSnapshot(
     );
   const workflowQuery = db
     .select({
-      kind: sql<ExecutionScopeSnapshotRowKind>`'workflow'`.as("kind"),
+      kind: sql`'workflow'`
+        .mapWith(executionScopeSnapshotRowKindDecoder)
+        .as("kind"),
       ...emptyExecutionScopeSnapshotFields(),
-      id: sql<string | null>`${zeroWorkflows.id}::text`.as("id"),
-      name: sql<string | null>`${zeroWorkflows.name}`.as("name"),
-      visibility:
-        sql<ZeroWorkflowVisibility | null>`${zeroWorkflows.visibility}`.as(
-          "visibility",
-        ),
-      ownerUserId: sql<string | null>`${zeroWorkflows.ownerUserId}`.as(
-        "owner_user_id",
-      ),
-      createdAt: sql<Date | null>`${zeroWorkflows.createdAt}`
-        .mapWith(zeroWorkflows.createdAt)
+      id: sql`${zeroWorkflows.id}::text`.mapWith(nullableTextDecoder).as("id"),
+      name: sql`${zeroWorkflows.name}`.mapWith(nullableTextDecoder).as("name"),
+      visibility: sql`${zeroWorkflows.visibility}`
+        .mapWith(nullableWorkflowVisibilityDecoder)
+        .as("visibility"),
+      ownerUserId: sql`${zeroWorkflows.ownerUserId}`
+        .mapWith(nullableTextDecoder)
+        .as("owner_user_id"),
+      createdAt: sql`${zeroWorkflows.createdAt}`
+        .mapWith(nullableTimestampDecoder)
         .as("created_at"),
     })
     .from(zeroWorkflows)
@@ -290,16 +350,19 @@ async function queryZeroRunExecutionScopeSnapshot(
     );
   const permissionGrantQuery = db
     .select({
-      kind: sql<ExecutionScopeSnapshotRowKind>`'permission_grant'`.as("kind"),
+      kind: sql`'permission_grant'`
+        .mapWith(executionScopeSnapshotRowKindDecoder)
+        .as("kind"),
       ...emptyExecutionScopeSnapshotFields(),
-      name: sql<string | null>`${userPermissionGrants.connectorRef}`.as("name"),
-      detail: sql<string | null>`${userPermissionGrants.permission}`.as(
-        "detail",
-      ),
-      action:
-        sql<FirewallPermissionGrantAction | null>`${userPermissionGrants.action}`.as(
-          "action",
-        ),
+      name: sql`${userPermissionGrants.connectorRef}`
+        .mapWith(nullableTextDecoder)
+        .as("name"),
+      detail: sql`${userPermissionGrants.permission}`
+        .mapWith(nullableTextDecoder)
+        .as("detail"),
+      action: sql`${userPermissionGrants.action}`
+        .mapWith(nullablePermissionGrantActionDecoder)
+        .as("action"),
     })
     .from(userPermissionGrants)
     .where(
@@ -312,9 +375,13 @@ async function queryZeroRunExecutionScopeSnapshot(
     );
   const triggerAgentQuery = db
     .select({
-      kind: sql<ExecutionScopeSnapshotRowKind>`'trigger_agent'`.as("kind"),
+      kind: sql`'trigger_agent'`
+        .mapWith(executionScopeSnapshotRowKindDecoder)
+        .as("kind"),
       ...emptyExecutionScopeSnapshotFields(),
-      id: sql<string | null>`${agentSessions.agentComposeId}::text`.as("id"),
+      id: sql`${agentSessions.agentComposeId}::text`
+        .mapWith(nullableTextDecoder)
+        .as("id"),
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))

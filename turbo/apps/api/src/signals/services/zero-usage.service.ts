@@ -83,11 +83,11 @@ export const zeroUsageMembers$ = command(
       return {
         userId: row.userId,
         email: emailMap.get(row.userId) ?? "unknown",
-        inputTokens: Number(row.inputTokens),
-        outputTokens: Number(row.outputTokens),
-        cacheReadInputTokens: Number(row.cacheReadInputTokens),
-        cacheCreationInputTokens: Number(row.cacheCreationInputTokens),
-        creditsCharged: Number(row.creditsCharged),
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        cacheReadInputTokens: row.cacheReadInputTokens,
+        cacheCreationInputTokens: row.cacheCreationInputTokens,
+        creditsCharged: row.creditsCharged,
       };
     });
 
@@ -222,10 +222,10 @@ export const zeroUsageRuns$ = command(
           startedAt,
           completedAt,
           durationMs,
-          inputTokens: Number(row.inputTokens),
-          outputTokens: Number(row.outputTokens),
-          cacheTokens: Number(row.cacheTokens),
-          creditsCharged: Number(row.creditsCharged),
+          inputTokens: row.inputTokens,
+          outputTokens: row.outputTokens,
+          cacheTokens: row.cacheTokens,
+          creditsCharged: row.creditsCharged,
           createdAt: row.createdAt.toISOString(),
         };
       }),

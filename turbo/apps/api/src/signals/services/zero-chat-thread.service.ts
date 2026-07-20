@@ -12,7 +12,10 @@ import {
   type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import {
+  triggerSourceSchema,
+  type TriggerSource,
+} from "@vm0/api-contracts/contracts/logs";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -65,6 +68,13 @@ import {
   pgInt8ToSafeIntegerSchema,
   pgTimestampWithoutTimezoneToDateSchema,
 } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgBooleanDecoder,
+  pgIntegerDecoder,
+  pgTextDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { type Db, db$, writeDb$ } from "../external/db";
 import {
   inferMimetype,
@@ -83,6 +93,14 @@ import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation
 export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
+const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
+  zodEnumDriverValueDecoder(triggerSourceSchema),
+);
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
+const nullableIntegerDecoder = nullableDriverValueDecoder(pgIntegerDecoder);
+const nullableTimestampDecoder = nullableDriverValueDecoder(
+  zeroWorkflowAutomations.atTime,
+);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
@@ -210,18 +228,18 @@ const messageColumns = {
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
-  triggerSource: sql<TriggerSource | null>`(
+  triggerSource: sql`(
     SELECT "zero_runs"."trigger_source"
     FROM "zero_runs"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  isGoalRun: sql<boolean>`EXISTS (
+  )`.mapWith(nullableTriggerSourceDecoder),
+  isGoalRun: sql`EXISTS (
     SELECT 1
     FROM ${zeroRuns}
     WHERE ${zeroRuns.id} = ${chatMessages.runId}
       AND ${zeroRuns.goalId} IS NOT NULL
-  )`,
+  )`.mapWith(pgBooleanDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
@@ -236,7 +254,7 @@ const messageColumns = {
   recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  workflowId: sql<string | null>`(
+  workflowId: sql`(
     SELECT "zero_workflows"."id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -245,8 +263,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAgentId: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAgentId: sql`(
     SELECT "zero_workflows"."agent_id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -255,8 +273,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowName: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowName: sql`(
     SELECT "zero_workflows"."name"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -265,8 +283,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowDisplayName: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowDisplayName: sql`(
     SELECT "zero_workflows"."display_name"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -275,8 +293,8 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowDescription: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowDescription: sql`(
     SELECT "zero_workflows"."description"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -285,16 +303,16 @@ const messageColumns = {
       ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationId: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationId: sql`(
     SELECT "zero_workflow_automations"."id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationBrief: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationBrief: sql`(
     SELECT COALESCE(
       "zero_runs"."trigger_brief",
       CASE
@@ -324,56 +342,56 @@ const messageColumns = {
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationKind: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationKind: sql`(
     SELECT "zero_workflow_automations"."kind"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationScheduleType: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationScheduleType: sql`(
     SELECT "zero_workflow_automations"."schedule_type"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationCronExpression: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationCronExpression: sql`(
     SELECT "zero_workflow_automations"."cron_expression"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationIntervalSeconds: sql<number | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationIntervalSeconds: sql`(
     SELECT "zero_workflow_automations"."interval_seconds"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationAtTime: sql<Date | null>`(
+  )`.mapWith(nullableIntegerDecoder),
+  workflowAutomationAtTime: sql`(
     SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`.mapWith(zeroWorkflowAutomations.atTime),
-  workflowAutomationTimezone: sql<string | null>`(
+  )`.mapWith(nullableTimestampDecoder),
+  workflowAutomationTimezone: sql`(
     SELECT "zero_workflow_automations"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
-  workflowAutomationUserTimezone: sql<string | null>`(
+  )`.mapWith(nullableTextDecoder),
+  workflowAutomationUserTimezone: sql`(
     SELECT "org_members_metadata"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -383,7 +401,7 @@ const messageColumns = {
       AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
+  )`.mapWith(nullableTextDecoder),
 } as const;
 
 const searchMessageColumns = {

@@ -7,6 +7,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -139,7 +140,7 @@ export async function loadConnectorCredentialConnection(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
-      stateRevision: sql<string>`${connectors.updatedAt}::text`,
+      stateRevision: sql`${connectors.updatedAt}::text`.mapWith(pgTextDecoder),
       storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
@@ -344,7 +345,9 @@ async function persistConnectorRefresh(args: {
         externalId: connectors.externalId,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
-        stateRevision: sql<string>`${connectors.updatedAt}::text`,
+        stateRevision: sql`${connectors.updatedAt}::text`.mapWith(
+          pgTextDecoder,
+        ),
         storageVersion: connectors.storageVersion,
       })
       .from(connectors)
