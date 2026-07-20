@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.610.0](https://github.com/vm0-ai/vm0/compare/app-v0.609.5...app-v0.610.0) (2026-07-20)
+
+
+### Features
+
+* add composer attachment references ([#22208](https://github.com/vm0-ai/vm0/issues/22208)) ([5e241ab](https://github.com/vm0-ai/vm0/commit/5e241abbfe591505b4b8ad9fae969254fedb3c1a))
+* add per-connector permission config entry in composer connector popover ([#21849](https://github.com/vm0-ai/vm0/issues/21849)) ([00ce45e](https://github.com/vm0-ai/vm0/commit/00ce45ed93a1238fcc0769dd7f960f2b185e1a7b))
+* split chat list section menu into new chat action and unread view items ([#21854](https://github.com/vm0-ai/vm0/issues/21854)) ([e83db07](https://github.com/vm0-ai/vm0/commit/e83db072e1b30bb5872e7cc2743d4c5a23d19c40))
+
+
+### Bug Fixes
+
+* preserve chat selection when feedback pill closes ([#22223](https://github.com/vm0-ai/vm0/issues/22223)) ([0dc28a6](https://github.com/vm0-ai/vm0/commit/0dc28a6004d06adf479bc67e2b0c11e870850318))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.5
+    * @vm0/connectors bumped to 1.173.0
+    * @vm0/core bumped to 8.443.0
+
 ## [0.609.5](https://github.com/vm0-ai/vm0/compare/app-v0.609.4...app-v0.609.5) (2026-07-20)
 
 

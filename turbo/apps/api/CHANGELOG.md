@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.288.0](https://github.com/vm0-ai/vm0/compare/api-v1.287.0...api-v1.288.0) (2026-07-20)
+
+
+### Features
+
+* gate refreshed website template packages ([#22222](https://github.com/vm0-ai/vm0/issues/22222)) ([d1059c0](https://github.com/vm0-ai/vm0/commit/d1059c0b51a98376509587161183d207b8f8952e))
+
+
+### Refactoring
+
+* **runner:** remove claim resource telemetry ([#22230](https://github.com/vm0-ai/vm0/issues/22230)) ([cbb2bf1](https://github.com/vm0-ai/vm0/commit/cbb2bf1b10c9b2364d7f13b2b8d7409f35c2f360))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.5
+    * @vm0/connectors bumped to 1.173.0
+    * @vm0/core bumped to 8.443.0
+    * @vm0/db bumped to 1.121.5
+
 ## [1.287.0](https://github.com/vm0-ai/vm0/compare/api-v1.286.4...api-v1.287.0) (2026-07-20)
 
 
