@@ -456,6 +456,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "Trailing hyphen bad-.com",
         "Invalid prefix bad-.com.notatld",
         "Invalid A-label xn--a.com",
+        "Invalid uppercase A-label XN--A.com",
     ],
 )
 def test_tweet_create_url_like_non_links_downgrade_to_content_create(
