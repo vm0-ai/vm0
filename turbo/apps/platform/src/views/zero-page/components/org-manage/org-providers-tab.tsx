@@ -1,11 +1,13 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useSet, useLoadable } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { setClaudeCodeDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
+import { openClaudeCodeDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 import {
   ClaudeCodeDeviceAuthDialog,
   PersonalClaudeCodeDeviceAuthDialog,
@@ -56,8 +58,9 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
-  const setClaudeCodeDeviceDialog = useSet(setClaudeCodeDeviceAuthDialogState$);
-  const setDeviceDialog = useSet(setCodexDeviceAuthDialogState$);
+  const openClaudeCodeDeviceDialog = useSet(openClaudeCodeDeviceAuthDialog$);
+  const openDeviceDialog = useSet(openCodexDeviceAuthDialog$);
+  const pageSignal = useGet(pageSignal$);
   const stale = providers.find((p) => {
     return (
       (p.type === "claude-code-oauth-token" ||
@@ -88,9 +91,13 @@ function StaleProviderBanner({
         type="button"
         onClick={() => {
           if (isClaudeCode) {
-            return setClaudeCodeDeviceDialog({ open: true, mode: "reconnect" });
+            detach(
+              openClaudeCodeDeviceDialog("reconnect", pageSignal),
+              Reason.DomCallback,
+            );
+            return;
           }
-          return setDeviceDialog({ open: true, mode: "reconnect" });
+          detach(openDeviceDialog("reconnect", pageSignal), Reason.DomCallback);
         }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
