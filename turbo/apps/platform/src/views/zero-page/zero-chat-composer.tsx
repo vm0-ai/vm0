@@ -94,6 +94,7 @@ import type {
   WorkflowComposerSignals,
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
+import { hasSubmittableInlinePromptContent } from "../../signals/zero-page/composer-inline-prompt-items.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -425,6 +426,20 @@ function resolveComposerModelForSelection(
     return selection;
   }
   return null;
+}
+
+function createAttachmentReferenceClientIds<T extends { clientId: string }>(
+  inlineAttachmentReferences: boolean,
+  visibleAttachments: readonly T[],
+): ReadonlySet<string> | null {
+  if (!inlineAttachmentReferences) {
+    return null;
+  }
+  return new Set(
+    visibleAttachments.map((attachment) => {
+      return attachment.clientId;
+    }),
+  );
 }
 
 interface VisualAttachmentUnsupportedState {
@@ -6336,6 +6351,7 @@ function ComposerSendButton({
 
 function ComposerSendControl({
   draft,
+  attachmentReferenceClientIds,
   visibleAttachmentCount,
   uploadsReady,
   submitBlocked,
@@ -6348,6 +6364,7 @@ function ComposerSendControl({
   onSend,
 }: {
   draft: DraftSignals;
+  attachmentReferenceClientIds: ReadonlySet<string> | null;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
   submitBlocked: boolean;
@@ -6359,7 +6376,11 @@ function ComposerSendControl({
   submissionLoading: boolean;
   onSend: () => void;
 }) {
-  const hasInput = useGet(draft.hasInput$);
+  const input = useGet(draft.input$);
+  const hasInput = hasSubmittableInlinePromptContent(
+    input,
+    attachmentReferenceClientIds,
+  );
   const canSend = resolveComposerCanSend({
     hasInput,
     visibleAttachmentCount,
@@ -6564,6 +6585,10 @@ export function useZeroChatComposer({
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
+  );
+  const attachmentReferenceClientIds = createAttachmentReferenceClientIds(
+    inlineAttachmentReferences,
+    visibleAttachments,
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
@@ -6862,13 +6887,17 @@ export function useZeroChatComposer({
 
   const handleSend = () => {
     const input = readInput();
+    const hasInput = hasSubmittableInlinePromptContent(
+      input,
+      attachmentReferenceClientIds,
+    );
     const sendAction = resolveKeyboardSendAction({
       canSend:
         !actionsLoading &&
         !submissionLoading &&
         inputForSubmissionLoadable.state !== "loading" &&
         uploadsReady &&
-        (input.trim().length > 0 || visibleAttachments.length > 0) &&
+        (hasInput || visibleAttachments.length > 0) &&
         !submitBlocker,
       sending,
       queueWhileSending,
@@ -6882,13 +6911,6 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const attachmentReferenceClientIds = inlineAttachmentReferences
-        ? new Set(
-            visibleAttachments.map((attachment) => {
-              return attachment.clientId;
-            }),
-          )
-        : null;
       const currentInput = await readInputForSubmission(
         attachmentReferenceClientIds,
         pageSignal,
@@ -7107,6 +7129,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerSendControl
                     draft={draft}
+                    attachmentReferenceClientIds={attachmentReferenceClientIds}
                     visibleAttachmentCount={visibleAttachments.length}
                     uploadsReady={uploadsReady}
                     submitBlocked={submitBlocker !== undefined}

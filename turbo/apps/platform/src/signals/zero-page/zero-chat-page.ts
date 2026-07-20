@@ -37,10 +37,12 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
 });
 
 export const chatPageWorkflowComposer$ = computed((get) => {
+  const features = get(featureSwitch$);
   return createWorkflowComposerSignals(
     get(talkDraft$),
     undefined,
-    composerInlinePromptItemsEnabled(get(featureSwitch$)),
+    composerInlinePromptItemsEnabled(features),
+    features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false,
   );
 });
 

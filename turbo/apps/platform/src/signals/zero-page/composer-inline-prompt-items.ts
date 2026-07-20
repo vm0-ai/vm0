@@ -393,3 +393,37 @@ export function splitInlinePromptLine(
   appendTemplateFreeSegments(segments, line.slice(lastIndex));
   return segments;
 }
+
+export function hasSubmittableInlinePromptContent(
+  value: string,
+  attachmentReferenceClientIds: ReadonlySet<string> | null,
+): boolean {
+  for (const line of value.split("\n")) {
+    for (const segment of splitInlinePromptLine(line)) {
+      switch (segment.type) {
+        case "text": {
+          if (segment.text.trim().length > 0) {
+            return true;
+          }
+          break;
+        }
+        case "file": {
+          if (
+            segment.promptReference === undefined ||
+            attachmentReferenceClientIds === null ||
+            (segment.clientId !== undefined &&
+              attachmentReferenceClientIds.has(segment.clientId))
+          ) {
+            return true;
+          }
+          break;
+        }
+        case "template":
+        case "thread": {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}

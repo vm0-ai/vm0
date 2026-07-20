@@ -612,6 +612,108 @@ describe("chat drafts", () => {
     ]);
   });
 
+  it.each([
+    {
+      name: "structured attachment mode",
+      threadId: "b1000000-0000-4000-a000-000000000107",
+      inlinePromptItems: false,
+      expectedPrompt: "Review image1",
+      expectedAttachmentId: "rollback-reference-image",
+      expectedInlineFileCount: 0,
+      expectedAttachmentChip: true,
+    },
+    {
+      name: "legacy inline prompt mode",
+      threadId: "b1000000-0000-4000-a000-000000000108",
+      inlinePromptItems: true,
+      expectedPrompt:
+        "Review [image1](https://cdn.vm7.io/artifacts/test/drafts/rollback-reference.png)",
+      expectedAttachmentId: undefined,
+      expectedInlineFileCount: 1,
+      expectedAttachmentChip: false,
+    },
+  ])(
+    "normalizes restored references when the switch is off in $name",
+    async ({
+      threadId,
+      inlinePromptItems,
+      expectedPrompt,
+      expectedAttachmentId,
+      expectedInlineFileCount,
+      expectedAttachmentChip,
+    }) => {
+      const user = userEvent.setup({ delay: null });
+      const imageUrl =
+        "https://cdn.vm7.io/artifacts/test/drafts/rollback-reference.png";
+      const imageClientId = "33333333-3333-4333-8333-333333333333";
+      let submitted:
+        | {
+            prompt?: string;
+            attachFiles?: readonly { id?: string }[];
+          }
+        | undefined;
+      mockChatLifecycle(context, {
+        threadId,
+        onRunCreate: (body) => {
+          submitted = body;
+        },
+      });
+      context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+        return respond(200, {
+          draftContent: `Review [image1](${imageUrl}#vm0-attachment-reference=${imageClientId})`,
+          draftAttachments: [
+            {
+              id: "rollback-reference-image",
+              filename: "rollback-reference.png",
+              contentType: "image/png",
+              size: 10,
+              url: imageUrl,
+            },
+          ],
+        });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ComposerInlinePromptItems]: inlinePromptItems,
+          [FeatureSwitchKey.ComposerInlineAttachmentReferences]: false,
+        },
+      });
+
+      await waitFor(() => {
+        expect(textarea()).toHaveTextContent("Review image1");
+        expect(
+          textarea().querySelectorAll("[data-composer-inline-file]"),
+        ).toHaveLength(expectedInlineFileCount);
+        const attachmentChip = screen.queryByLabelText(
+          "Remove rollback-reference.png",
+        );
+        if (expectedAttachmentChip) {
+          expect(attachmentChip).toBeInTheDocument();
+        } else {
+          expect(attachmentChip).not.toBeInTheDocument();
+        }
+        expect(screen.getByLabelText("Send")).toBeEnabled();
+      });
+      await user.click(screen.getByLabelText("Send"));
+
+      await waitFor(() => {
+        expect(submitted).toBeDefined();
+      });
+      expect(submitted?.prompt).toBe(expectedPrompt);
+      expect(submitted?.prompt).not.toContain("vm0-attachment-reference");
+      if (expectedAttachmentId === undefined) {
+        expect(submitted?.attachFiles).toBeUndefined();
+      } else {
+        expect(submitted?.attachFiles).toStrictEqual([
+          expect.objectContaining({ id: expectedAttachmentId }),
+        ]);
+      }
+    },
+  );
+
   it("keeps a legacy inline attachment named like a numbered reference", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000106";

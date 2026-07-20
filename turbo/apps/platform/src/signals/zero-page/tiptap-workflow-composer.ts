@@ -1384,6 +1384,7 @@ function removeInlineFile(editor: Editor, clientId: string): void {
 
 function inlinePromptSegmentToJson(
   segment: ReturnType<typeof splitInlinePromptLine>[number],
+  featureModes: WorkflowComposerFeatureModes,
 ): JSONContent {
   switch (segment.type) {
     case "text": {
@@ -1396,6 +1397,26 @@ function inlinePromptSegmentToJson(
       };
     }
     case "file": {
+      if (
+        segment.promptReference !== undefined &&
+        !featureModes.inlineAttachmentReferences
+      ) {
+        if (!featureModes.inlinePromptItems) {
+          return { type: "text", text: segment.promptReference };
+        }
+        return {
+          type: INLINE_FILE_NODE_NAME,
+          attrs: {
+            clientId: segment.clientId ?? segment.url,
+            filename: segment.promptReference,
+            contentType: "application/octet-stream",
+            size: 0,
+            fileId: null,
+            url: segment.url,
+            promptReference: null,
+          },
+        };
+      }
       return {
         type: INLINE_FILE_NODE_NAME,
         attrs: {
@@ -1426,14 +1447,25 @@ function inlinePromptSegmentToJson(
   }
 }
 
-function valueToWorkflowComposerDoc(value: string): JSONContent {
+interface WorkflowComposerFeatureModes {
+  readonly inlinePromptItems: boolean;
+  readonly inlineAttachmentReferences: boolean;
+}
+
+function valueToWorkflowComposerDoc(
+  value: string,
+  featureModes: WorkflowComposerFeatureModes = {
+    inlinePromptItems: false,
+    inlineAttachmentReferences: false,
+  },
+): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
     if (line.length === 0) {
       return { type: "paragraph" };
     }
-    const inlineContent = splitInlinePromptLine(line).map(
-      inlinePromptSegmentToJson,
-    );
+    const inlineContent = splitInlinePromptLine(line).map((segment) => {
+      return inlinePromptSegmentToJson(segment, featureModes);
+    });
     return { type: "paragraph", content: inlineContent };
   });
   return { type: "doc", content };
@@ -1924,9 +1956,10 @@ function setWorkflowComposerDocument(
 function workflowComposerDocumentForValue(
   editor: Editor,
   value: string,
+  featureModes: WorkflowComposerFeatureModes,
 ): ProseMirrorNode {
   const textDocument = editor.schema.nodeFromJSON(
-    valueToWorkflowComposerDoc(value),
+    valueToWorkflowComposerDoc(value, featureModes),
   );
   const templateAttachment = locateTemplateAttachment(editor.state.doc)?.node;
   if (!templateAttachment) {
@@ -1985,6 +2018,7 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$,
   feedback,
   compositionGate,
+  featureModes,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -1996,6 +2030,7 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
+  featureModes: WorkflowComposerFeatureModes;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
@@ -2039,7 +2074,7 @@ function createMountEditorCommand({
       if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
           editor,
-          workflowComposerDocumentForValue(editor, input),
+          workflowComposerDocumentForValue(editor, input, featureModes),
         );
       }
       editor.mount(element);
@@ -2060,7 +2095,7 @@ function createMountEditorCommand({
           }
           const changed = setWorkflowComposerDocument(
             editor,
-            workflowComposerDocumentForValue(editor, value),
+            workflowComposerDocumentForValue(editor, value, featureModes),
           );
           if (changed) {
             runtime.replaceFeedbackItems(
@@ -2160,12 +2195,17 @@ function createInsertChatThreadCommand(
   });
 }
 
-function createInsertTextCommands(editor: Editor) {
+function createInsertTextCommands(
+  editor: Editor,
+  featureModes: WorkflowComposerFeatureModes,
+) {
   const insertText$ = command((_context, value: string) => {
     editor.chain().focus().insertContent(value).run();
   });
   const insertPromptMarkdown$ = command((_context, value: string) => {
-    const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
+    const doc = editor.schema.nodeFromJSON(
+      valueToWorkflowComposerDoc(value, featureModes),
+    );
     const slice = Slice.maxOpen(doc.content, true);
     editor
       .chain()
@@ -2342,6 +2382,7 @@ export function createWorkflowComposerSignals(
   draft: DraftSignals,
   threadId?: string,
   inlinePromptItems = false,
+  inlineAttachmentReferences = false,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2349,6 +2390,7 @@ export function createWorkflowComposerSignals(
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
+  const featureModes = { inlinePromptItems, inlineAttachmentReferences };
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
@@ -2415,6 +2457,7 @@ export function createWorkflowComposerSignals(
       selectedSuggestionIndexState$,
       feedback,
       compositionGate,
+      featureModes,
       autoFocus,
       singleLineOnMobile,
     });
@@ -2428,7 +2471,7 @@ export function createWorkflowComposerSignals(
     activeChatThreadSuggestionRange$,
   );
   const { insertText$, insertPromptMarkdown$, appendText$ } =
-    createInsertTextCommands(editor);
+    createInsertTextCommands(editor, featureModes);
   const inlinePromptItemCommands = createInlinePromptItemCommands(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,

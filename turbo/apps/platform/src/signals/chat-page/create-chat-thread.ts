@@ -4108,15 +4108,23 @@ function publicChatThreadMessageSignals(
   };
 }
 
+interface ChatThreadComposerFeatureModes {
+  inlinePromptItems?: boolean;
+  inlineAttachmentReferences?: boolean;
+}
+
 function createThreadComposer(
   draft: DraftSignals,
   threadId: string,
-  inlinePromptItems: boolean,
+  featureModes: ChatThreadComposerFeatureModes,
 ) {
+  const { inlinePromptItems = false, inlineAttachmentReferences = false } =
+    featureModes;
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     threadId,
     inlinePromptItems,
+    inlineAttachmentReferences,
   );
   return { workflowComposer, focusInput$: workflowComposer.focus$ };
 }
@@ -4126,7 +4134,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
-  inlinePromptItems = false,
+  composerFeatureModes: ChatThreadComposerFeatureModes = {},
 ): ChatThreadSignals {
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
@@ -4199,7 +4207,7 @@ export function createChatThreadSignals(
     appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const composer = createThreadComposer(draft, threadId, inlinePromptItems);
+  const composer = createThreadComposer(draft, threadId, composerFeatureModes);
   return {
     threadId,
     remoteThreadDetail$,

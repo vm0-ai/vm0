@@ -3397,6 +3397,64 @@ describe("chat composer models", () => {
     expect(submitted?.attachFiles).toBeUndefined();
   });
 
+  it("disables send when only a hidden visual attachment reference remains", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submitted = false;
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockChatLifecycle(context, {
+      onRunCreate: () => {
+        submitted = true;
+      },
+    });
+    context.mocks.upload.success({
+      id: "visual-only-model-switch",
+      filename: "visual-only.png",
+      contentType: "image/png",
+      size: 128,
+      url: "https://cdn.vm0.io/artifacts/user_1/visual-only-model-switch/visual-only.png",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    await expectComposerModel("Claude Sonnet 4.6");
+    const editor = await findComposerEditor();
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "visual-only.png", { type: "image/png" }),
+    );
+
+    await expect(
+      screen.findByLabelText("Open image preview for visual-only.png"),
+    ).resolves.toBeInTheDocument();
+    expect(editor).toHaveTextContent("image1");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Open image preview for visual-only.png"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
+    });
+    await user.click(editor);
+    await user.keyboard("{Enter}");
+    expect(submitted).toBeFalsy();
+  });
+
   it("shows agent connector access from the composer", async () => {
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
