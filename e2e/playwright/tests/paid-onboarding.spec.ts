@@ -41,6 +41,7 @@ test("paid onboarding completes through the video workflow", async ({
     await fillStripeCheckout(page);
     const handoffUrl = await waitForPaidOnboardingAppHandoff(page, {
       appUrl,
+      onboardingUrl,
       auth: { email, activeOrganizationId: orgId },
     });
 

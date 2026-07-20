@@ -273,14 +273,19 @@ jobs:
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
           PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
+          CF_PAGES_PREVIEW_DOMAIN="${{ vars.CF_PAGES_PREVIEW_DOMAIN }}"
 
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
+            APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
+              "$JOB_REF" \
+              "$PREVIEW_DOMAIN" \
+              "$CF_PAGES_PREVIEW_DOMAIN")"
             {
-              echo "app-url=https://${JOB_REF}-app.${PREVIEW_DOMAIN}"
+              echo "app-url=${APP_URL}"
               echo "api-url=https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
               echo "www-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
-            echo "Preview URLs set for app, api, and www on ${PREVIEW_DOMAIN}"
+            echo "App preview URL set to ${APP_URL}; API and WWW previews use ${PREVIEW_DOMAIN}"
           else
             {
               echo "app-url="
@@ -1579,7 +1584,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app]
+    needs: [prepare, deploy-api, deploy-app, build-app-cf]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1591,7 +1596,10 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
-      needs.deploy-app.result == 'success'
+      (
+        (startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.build-app-cf.result == 'success') ||
+        (!startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.deploy-app.result == 'success')
+      )
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1607,8 +1615,8 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
+          VM0_AUTH_URL: ${{ needs.prepare.outputs.app-preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.prepare.outputs.app-preview-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -1633,6 +1641,7 @@ jobs:
       - alias-onboarding-www
       - deploy-api
       - deploy-app
+      - build-app-cf
       - deploy-stripe-listener
     if: |
       always() &&
@@ -1646,7 +1655,10 @@ jobs:
       ) &&
       needs.deploy-api.result == 'success' &&
       (github.event_name == 'push' || needs.alias-onboarding-www.result == 'success') &&
-      needs.deploy-app.result == 'success' &&
+      (
+        (startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.build-app-cf.result == 'success') ||
+        (!startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.deploy-app.result == 'success')
+      ) &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
       - uses: actions/checkout@v7
@@ -1714,7 +1726,7 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VM0_ONBOARDING_URL: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -2659,6 +2671,7 @@ jobs:
       - alias-onboarding-www
       - deploy-api
       - deploy-app
+      - build-app-cf
       - deploy-stripe-listener
       - build-cli
       - build-e2b-template
@@ -2693,10 +2706,15 @@ jobs:
           if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
             RUNNER_E2E_SKIP_ALLOWED=""
           fi
+          CF_APP_SKIP_ALLOWED=""
           if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             # External fork PRs cannot access runner infra secrets, so their
             # runner deployment and runner E2E jobs are expected to skip.
             RUNNER_E2E_SKIP_ALLOWED="true"
+            CF_APP_SKIP_ALLOWED="true"
+          fi
+          if [ "${{ github.actor == 'dependabot[bot]' }}" = "true" ]; then
+            CF_APP_SKIP_ALLOWED="true"
           fi
 
           check_result() {
@@ -2743,6 +2761,7 @@ jobs:
           check_result "alias-onboarding-www" "${{ needs.alias-onboarding-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
+          check_result "build-app-cf" "${{ needs.build-app-cf.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
