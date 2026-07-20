@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.609.3](https://github.com/vm0-ai/vm0/compare/app-v0.609.2...app-v0.609.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* let chat composer grow with content instead of scrolling internally ([#21979](https://github.com/vm0-ai/vm0/issues/21979)) ([671b5d5](https://github.com/vm0-ai/vm0/commit/671b5d55f8db4b24e5a619651c3b3944cee90a98)), closes [#21978](https://github.com/vm0-ai/vm0/issues/21978)
+
+
+### Refactoring
+
+* decouple device auth startup from dialog mount ([#22165](https://github.com/vm0-ai/vm0/issues/22165)) ([993b408](https://github.com/vm0-ai/vm0/commit/993b408abde34a57dc992ed8eb8807c4b1623229))
+* make accepted HTTP errors explicit ([#22167](https://github.com/vm0-ai/vm0/issues/22167)) ([d3c33f7](https://github.com/vm0-ai/vm0/commit/d3c33f79565121b534d9665eec3fdadcfd144cf5))
+* **platform:** route connector auth failures through accept ([#22166](https://github.com/vm0-ai/vm0/issues/22166)) ([ed7467d](https://github.com/vm0-ai/vm0/commit/ed7467dd7999436ec4537a8fa1dcefe85a61ff33))
+
+
+### Performance Improvements
+
+* **platform:** render branded skeleton before app bundle loads ([#22163](https://github.com/vm0-ai/vm0/issues/22163)) ([9a03b2b](https://github.com/vm0-ai/vm0/commit/9a03b2b18b64bc1c5ca7e3a2142c791ddcb01640))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.3
+    * @vm0/connectors bumped to 1.172.1
+    * @vm0/core bumped to 8.442.2
+
 ## [0.609.2](https://github.com/vm0-ai/vm0/compare/app-v0.609.1...app-v0.609.2) (2026-07-19)
 
 
