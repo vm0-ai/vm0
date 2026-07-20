@@ -13,8 +13,6 @@ import { IconLoader2 } from "@tabler/icons-react";
 import {
   closeCodexDeviceAuthDialog$,
   closeCodexDeviceAuthDialogPersonal$,
-  codexDeviceAuthAutoStartRef$,
-  codexDeviceAuthAutoStartRefPersonal$,
   codexDeviceAuthDialogState$,
   codexDeviceAuthDialogStatePersonal$,
   codexDeviceAuthFlowState$,
@@ -23,8 +21,6 @@ import {
   openCodexDeviceAuthApprovalPagePersonal$,
   runCodexDeviceAuth$,
   runCodexDeviceAuthPersonal$,
-  setCodexDeviceAuthDialogState$,
-  setCodexDeviceAuthDialogStatePersonal$,
   type CodexDeviceAuthFlowState,
 } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -36,13 +32,9 @@ type CodexDeviceAuthDialogState = {
   mode: "connect" | "reconnect";
 };
 
-type AutoStartRef = (element: HTMLDivElement | null) => void;
-
 interface CodexDeviceAuthScopeBundle {
   dialog: CodexDeviceAuthDialogState;
   flow: CodexDeviceAuthFlowState;
-  autoStartRef: AutoStartRef;
-  setDialog: (next: CodexDeviceAuthDialogState) => void;
   close: (signal: AbortSignal) => Promise<void>;
   openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
   run: (signal: AbortSignal) => Promise<boolean>;
@@ -61,16 +53,12 @@ export function PersonalCodexDeviceAuthDialog() {
 function useOrgCodexDeviceAuthBundle(): CodexDeviceAuthScopeBundle {
   const dialog = useGet(codexDeviceAuthDialogState$);
   const flow = useGet(codexDeviceAuthFlowState$);
-  const autoStartRef = useSet(codexDeviceAuthAutoStartRef$);
-  const setDialog = useSet(setCodexDeviceAuthDialogState$);
   const close = useSet(closeCodexDeviceAuthDialog$);
   const openApprovalPage = useSet(openCodexDeviceAuthApprovalPage$);
   const [, run] = useLoadableSet(runCodexDeviceAuth$);
   return {
     dialog,
     flow,
-    autoStartRef,
-    setDialog,
     close,
     openApprovalPage,
     run,
@@ -80,16 +68,12 @@ function useOrgCodexDeviceAuthBundle(): CodexDeviceAuthScopeBundle {
 function usePersonalCodexDeviceAuthBundle(): CodexDeviceAuthScopeBundle {
   const dialog = useGet(codexDeviceAuthDialogStatePersonal$);
   const flow = useGet(codexDeviceAuthFlowStatePersonal$);
-  const autoStartRef = useSet(codexDeviceAuthAutoStartRefPersonal$);
-  const setDialog = useSet(setCodexDeviceAuthDialogStatePersonal$);
   const close = useSet(closeCodexDeviceAuthDialogPersonal$);
   const openApprovalPage = useSet(openCodexDeviceAuthApprovalPagePersonal$);
   const [, run] = useLoadableSet(runCodexDeviceAuthPersonal$);
   return {
     dialog,
     flow,
-    autoStartRef,
-    setDialog,
     close,
     openApprovalPage,
     run,
@@ -102,21 +86,12 @@ function CodexDeviceAuthDialogView({
   bundle: CodexDeviceAuthScopeBundle;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const {
-    dialog,
-    flow,
-    autoStartRef,
-    setDialog,
-    close,
-    openApprovalPage,
-    run,
-  } = bundle;
+  const { dialog, flow, close, openApprovalPage, run } = bundle;
   const title =
     dialog.mode === "reconnect" ? "Re-connect Codex" : "Connect Codex";
 
   function handleOpenChange(nextOpen: boolean): void {
     if (nextOpen) {
-      setDialog({ ...dialog, open: true });
       return;
     }
     detach(close(pageSignal), Reason.DomCallback);
@@ -129,24 +104,22 @@ function CodexDeviceAuthDialogView({
   return (
     <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md" aria-describedby={undefined}>
-        <div ref={autoStartRef} className="contents">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-                <ProviderIcon type="codex-oauth-token" size={20} />
-              </div>
-              <DialogTitle>{title}</DialogTitle>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <ProviderIcon type="codex-oauth-token" size={20} />
             </div>
-          </DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </div>
+        </DialogHeader>
 
-          <CodexDeviceAuthBody
-            flow={flow}
-            mode={dialog.mode}
-            onStart={handleStart}
-            openApprovalPage={openApprovalPage}
-            pageSignal={pageSignal}
-          />
-        </div>
+        <CodexDeviceAuthBody
+          flow={flow}
+          mode={dialog.mode}
+          onStart={handleStart}
+          openApprovalPage={openApprovalPage}
+          pageSignal={pageSignal}
+        />
       </DialogContent>
     </Dialog>
   );
