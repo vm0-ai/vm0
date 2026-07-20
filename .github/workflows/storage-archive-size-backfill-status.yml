@@ -89,6 +89,12 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
           set -euo pipefail
 
@@ -98,6 +104,22 @@ jobs:
           fi
           if [[ -z "${NEON_PROJECT_ID}" ]]; then
             echo "::error::NEON_PROJECT_ID is not configured"
+            exit 1
+          fi
+          if [[ -z "${AWS_ACCESS_KEY_ID}" ]]; then
+            echo "::error::R2_ACCESS_KEY_ID is not configured"
+            exit 1
+          fi
+          if [[ -z "${AWS_SECRET_ACCESS_KEY}" ]]; then
+            echo "::error::R2_SECRET_ACCESS_KEY is not configured"
+            exit 1
+          fi
+          if [[ -z "${R2_ACCOUNT_ID}" ]]; then
+            echo "::error::R2_ACCOUNT_ID is not configured"
+            exit 1
+          fi
+          if [[ -z "${R2_USER_STORAGES_BUCKET_NAME}" ]]; then
+            echo "::error::R2_USER_STORAGES_BUCKET_NAME is not configured"
             exit 1
           fi
 
@@ -110,7 +132,11 @@ jobs:
           echo "::add-mask::${database_url}"
 
           diagnostics_path="${RUNNER_TEMP}/storage-archive-size-backfill-diagnostics.json"
-          trap 'rm -f "${diagnostics_path}"' EXIT
+          candidates_path="${RUNNER_TEMP}/storage-archive-size-backfill-candidates.tsv"
+          objects_path="${RUNNER_TEMP}/storage-archive-size-backfill-objects.json"
+          manifest_path="${RUNNER_TEMP}/storage-archive-size-backfill-manifest.json"
+          r2_error_path="${RUNNER_TEMP}/storage-archive-size-backfill-r2-error.txt"
+          trap 'rm -f "${diagnostics_path}" "${candidates_path}" "${objects_path}" "${manifest_path}" "${r2_error_path}"' EXIT
 
           PGOPTIONS="-c default_transaction_read_only=on" \
             psql "${database_url}" \
@@ -140,5 +166,272 @@ jobs:
             echo
             echo '```json'
             jq . "${diagnostics_path}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          PGOPTIONS="-c default_transaction_read_only=on" \
+            psql "${database_url}" \
+              --no-psqlrc \
+              --quiet \
+              --tuples-only \
+              --no-align \
+              --field-separator $'\t' \
+              --set ON_ERROR_STOP=1 \
+              --command "
+                SELECT
+                  CASE
+                    WHEN storage_versions.created_at <
+                      TIMESTAMP '2025-11-30 10:44:11'
+                      THEN 'beforeArchiveCutover'
+                    ELSE 'archiveBeforeObjectVerification'
+                  END,
+                  storage_versions.s3_key,
+                  storage_versions.file_count,
+                  storage_versions.size
+                FROM storage_versions
+                WHERE storage_versions.archive_size IS NULL
+                  AND storage_versions.file_count > 0
+                  AND storage_versions.created_at <
+                    TIMESTAMP '2025-12-22 07:33:04'
+                ORDER BY storage_versions.id
+              " > "${candidates_path}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          total=0
+          archive_present=0
+          empty_prefix=0
+          with_manifest=0
+          matching_manifest=0
+          with_other_objects=0
+          complete_legacy_file_set=0
+          before_total=0
+          before_empty_prefix=0
+          before_complete_legacy_file_set=0
+          archive_era_total=0
+          archive_era_empty_prefix=0
+          archive_era_complete_legacy_file_set=0
+          archive_era_with_manifest=0
+          archive_era_matching_manifest=0
+
+          while IFS=$'\t' read -r era s3_key file_count logical_size; do
+            total=$((total + 1))
+            manifest_matches=0
+            prefix="${s3_key%/}/"
+            archive_key="${prefix}archive.tar.gz"
+            manifest_key="${prefix}manifest.json"
+
+            if ! aws s3api list-objects-v2 \
+              --endpoint-url "${r2_endpoint}" \
+              --bucket "${R2_USER_STORAGES_BUCKET_NAME}" \
+              --prefix "${prefix}" \
+              --output json \
+              > "${objects_path}" 2> "${r2_error_path}"; then
+              echo "::error::Failed to inspect an unresolved storage version prefix"
+              exit 1
+            fi
+
+            object_count="$(
+              jq '(.Contents // []) | length' "${objects_path}"
+            )"
+            archive_count="$(
+              jq \
+                --arg key "${archive_key}" \
+                '[.Contents[]? | select(.Key == $key)] | length' \
+                "${objects_path}"
+            )"
+            if [[ "${era}" == "beforeArchiveCutover" ]]; then
+              manifest_count=0
+              other_count="$(
+                jq \
+                  --arg archive "${archive_key}" \
+                  '[.Contents[]? | select(.Key != $archive)] | length' \
+                  "${objects_path}"
+              )"
+              other_bytes="$(
+                jq \
+                  --arg archive "${archive_key}" \
+                  '[
+                    .Contents[]?
+                    | select(.Key != $archive)
+                    | (.Size // 0)
+                  ] | add // 0' \
+                  "${objects_path}"
+              )"
+            else
+              manifest_count="$(
+                jq \
+                  --arg key "${manifest_key}" \
+                  '[.Contents[]? | select(.Key == $key)] | length' \
+                  "${objects_path}"
+              )"
+              other_count="$(
+                jq \
+                  --arg archive "${archive_key}" \
+                  --arg manifest "${manifest_key}" \
+                  '[
+                    .Contents[]?
+                    | select(.Key != $archive and .Key != $manifest)
+                  ] | length' \
+                  "${objects_path}"
+              )"
+              other_bytes="$(
+                jq \
+                  --arg archive "${archive_key}" \
+                  --arg manifest "${manifest_key}" \
+                  '[
+                    .Contents[]?
+                    | select(.Key != $archive and .Key != $manifest)
+                    | (.Size // 0)
+                  ] | add // 0' \
+                  "${objects_path}"
+              )"
+            fi
+
+            if (( archive_count > 0 )); then
+              archive_present=$((archive_present + 1))
+            fi
+            if (( object_count == 0 )); then
+              empty_prefix=$((empty_prefix + 1))
+            fi
+            if (( manifest_count > 0 )); then
+              with_manifest=$((with_manifest + 1))
+              if ! aws s3api get-object \
+                --endpoint-url "${r2_endpoint}" \
+                --bucket "${R2_USER_STORAGES_BUCKET_NAME}" \
+                --key "${manifest_key}" \
+                "${manifest_path}" \
+                > /dev/null 2> "${r2_error_path}"; then
+                echo "::error::Failed to read an unresolved storage version manifest"
+                exit 1
+              fi
+              if jq -e \
+                --argjson file_count "${file_count}" \
+                --argjson logical_size "${logical_size}" \
+                '
+                  .fileCount == $file_count
+                  and .totalSize == $logical_size
+                  and (.files | type == "array")
+                  and (.files | length == $file_count)
+                  and all(
+                    .files[];
+                    (.path | type == "string")
+                    and (.hash | type == "string")
+                    and (.hash | test("^[a-f0-9]{64}$"))
+                    and (.size | type == "number")
+                  )
+                ' "${manifest_path}" > /dev/null; then
+                manifest_matches=1
+                matching_manifest=$((matching_manifest + 1))
+              fi
+            fi
+            if (( other_count > 0 )); then
+              with_other_objects=$((with_other_objects + 1))
+            fi
+            if
+              (( other_count == file_count )) &&
+                (( other_bytes == logical_size ))
+            then
+              complete_legacy_file_set=$((complete_legacy_file_set + 1))
+            fi
+
+            if [[ "${era}" == "beforeArchiveCutover" ]]; then
+              before_total=$((before_total + 1))
+              if (( object_count == 0 )); then
+                before_empty_prefix=$((before_empty_prefix + 1))
+              fi
+              if
+                (( other_count == file_count )) &&
+                  (( other_bytes == logical_size ))
+              then
+                before_complete_legacy_file_set=$((before_complete_legacy_file_set + 1))
+              fi
+            else
+              archive_era_total=$((archive_era_total + 1))
+              if (( object_count == 0 )); then
+                archive_era_empty_prefix=$((archive_era_empty_prefix + 1))
+              fi
+              if (( manifest_count > 0 )); then
+                archive_era_with_manifest=$((archive_era_with_manifest + 1))
+                if (( manifest_matches == 1 )); then
+                  archive_era_matching_manifest=$((archive_era_matching_manifest + 1))
+                fi
+              fi
+              if
+                (( other_count == file_count )) &&
+                  (( other_bytes == logical_size ))
+              then
+                archive_era_complete_legacy_file_set=$((archive_era_complete_legacy_file_set + 1))
+              fi
+            fi
+          done < "${candidates_path}"
+
+          expected_total="$(jq -r '.candidates.total' "${diagnostics_path}")"
+          if (( total != expected_total )); then
+            echo "::error::R2 recovery-source candidates do not cover every unresolved version"
+            exit 1
+          fi
+
+          jq -n \
+            --argjson total "${total}" \
+            --argjson archive_present "${archive_present}" \
+            --argjson empty_prefix "${empty_prefix}" \
+            --argjson with_manifest "${with_manifest}" \
+            --argjson matching_manifest "${matching_manifest}" \
+            --argjson with_other_objects "${with_other_objects}" \
+            --argjson complete_legacy_file_set "${complete_legacy_file_set}" \
+            --argjson before_total "${before_total}" \
+            --argjson before_empty_prefix "${before_empty_prefix}" \
+            --argjson before_complete_legacy_file_set \
+              "${before_complete_legacy_file_set}" \
+            --argjson archive_era_total "${archive_era_total}" \
+            --argjson archive_era_empty_prefix "${archive_era_empty_prefix}" \
+            --argjson archive_era_complete_legacy_file_set \
+              "${archive_era_complete_legacy_file_set}" \
+            --argjson archive_era_with_manifest \
+              "${archive_era_with_manifest}" \
+            --argjson archive_era_matching_manifest \
+              "${archive_era_matching_manifest}" \
+            '{
+              total: $total,
+              archiveUnexpectedlyPresent: $archive_present,
+              emptyPrefixes: $empty_prefix,
+              withManifest: $with_manifest,
+              matchingManifestMetadata: $matching_manifest,
+              withOtherVersionObjects: $with_other_objects,
+              completeLegacyFileSets: $complete_legacy_file_set,
+              eras: {
+                beforeArchiveCutover: {
+                  total: $before_total,
+                  emptyPrefixes: $before_empty_prefix,
+                  completeLegacyFileSets: $before_complete_legacy_file_set
+                },
+                archiveBeforeObjectVerification: {
+                  total: $archive_era_total,
+                  emptyPrefixes: $archive_era_empty_prefix,
+                  withManifest: $archive_era_with_manifest,
+                  matchingManifestMetadata:
+                    $archive_era_matching_manifest,
+                  completeLegacyFileSets:
+                    $archive_era_complete_legacy_file_set
+                }
+              }
+            }' > "${objects_path}"
+
+          if ! jq -e \
+            '.total == (
+              .eras.beforeArchiveCutover.total
+              + .eras.archiveBeforeObjectVerification.total
+            )' "${objects_path}" > /dev/null; then
+            echo "::error::R2 recovery-source classification is inconsistent"
+            exit 1
+          fi
+
+          jq . "${objects_path}"
+          {
+            echo
+            echo "## Unresolved archive recovery sources"
+            echo
+            echo '```json'
+            jq . "${objects_path}"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
