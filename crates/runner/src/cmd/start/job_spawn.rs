@@ -40,6 +40,7 @@ use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
+use crate::proxy::MitmTcpSealHandle;
 use crate::resource_budget::BudgetLease;
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::StatusTracker;
@@ -248,6 +249,7 @@ struct FinalizationPhase {
     held_session_snapshot: HeldSessionStateSnapshot,
     parking_gate: ParkingGate,
     network_log_drain: NetworkLogDrainCoordinator,
+    mitm_tcp_seal: Option<MitmTcpSealHandle>,
     cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
     #[cfg(test)]
@@ -281,6 +283,7 @@ impl FinalizationPhase {
             held_session_snapshot,
             parking_gate,
             network_log_drain,
+            mitm_tcp_seal,
             cancel,
             cleanup_state,
             #[cfg(test)]
@@ -330,6 +333,7 @@ impl FinalizationPhase {
                 restored_session_identity,
                 source_ip,
                 network_log_session,
+                mitm_tcp_seal,
                 workspace_image,
                 workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
                 storage_fingerprints,
@@ -440,6 +444,16 @@ impl DeferredUploadPhase {
         // defensive no-op for any accepted writes still finishing.
         let network_log_path = exec_config.log_paths.network_log(run_id);
         let network_log_upload = async {
+            if let Some(mitm_tcp_seal) = exec_config.mitm_tcp_seal.as_ref() {
+                let sealed = mitm_tcp_seal.seal_path(&network_log_path).await;
+                if !sealed {
+                    warn!(
+                        run_id = %run_id,
+                        path = %network_log_path.display(),
+                        "proxy TCP network-log fallback seal did not complete before upload"
+                    );
+                }
+            }
             exec_config
                 .network_log_manager
                 .flush_path(&network_log_path)
@@ -614,6 +628,7 @@ pub(super) fn spawn_job(
         held_session_snapshot,
         parking_gate,
         network_log_drain: exec_config.network_log_drain.clone(),
+        mitm_tcp_seal: exec_config.mitm_tcp_seal.clone(),
         cancel: job_cancel.clone(),
         cleanup_state: cleanup_state_for_body.clone(),
         #[cfg(test)]
@@ -1196,6 +1211,7 @@ mod tests {
                 held_session_snapshot: HeldSessionStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
+                mitm_tcp_seal: None,
                 cancel: RunCancellationHandle::new(),
                 cleanup_state,
                 outer_job_panic: None,

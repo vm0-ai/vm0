@@ -10,7 +10,8 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tracing::{error, info, warn};
 
 use super::flush::{
-    MitmJsonlFlushHandle, UsageFlushTarget, new_usage_state_id, usage_flush_state_guard,
+    MitmJsonlFlushHandle, MitmTcpSealHandle, UsageFlushTarget, new_usage_state_id,
+    usage_flush_state_guard,
 };
 use super::registry::{ProxyRegistryHandle, VmRegistration, write_empty_registry};
 use super::stderr::log_mitmdump_stderr_line;
@@ -72,6 +73,7 @@ pub struct MitmProxy {
     usage_state_started_at_ms: u64,
     usage_flush_state: Arc<Mutex<UsageFlushTarget>>,
     jsonl_flush_request_lock: Arc<AsyncMutex<()>>,
+    tcp_seal_request_lock: Arc<AsyncMutex<()>>,
 }
 
 impl MitmProxy {
@@ -126,6 +128,7 @@ impl MitmProxy {
             usage_state_started_at_ms,
         }));
         let jsonl_flush_request_lock = Arc::new(AsyncMutex::new(()));
+        let tcp_seal_request_lock = Arc::new(AsyncMutex::new(()));
 
         Ok((
             Self {
@@ -138,6 +141,7 @@ impl MitmProxy {
                 usage_state_started_at_ms,
                 usage_flush_state,
                 jsonl_flush_request_lock,
+                tcp_seal_request_lock,
             },
             crash_rx,
         ))
@@ -180,6 +184,16 @@ impl MitmProxy {
             addon_dir: self.config.addon_dir.clone(),
             usage_state: Arc::clone(&self.usage_flush_state),
             request_lock: Arc::clone(&self.jsonl_flush_request_lock),
+            request_flush_tx,
+        }
+    }
+
+    /// Create a cloneable handle for sealing active TCP logs for one path.
+    pub fn tcp_seal_handle(&self, request_flush_tx: mpsc::Sender<()>) -> MitmTcpSealHandle {
+        MitmTcpSealHandle {
+            addon_dir: self.config.addon_dir.clone(),
+            usage_state: Arc::clone(&self.usage_flush_state),
+            request_lock: Arc::clone(&self.tcp_seal_request_lock),
             request_flush_tx,
         }
     }
@@ -450,6 +464,7 @@ impl MitmProxy {
                     usage_state_started_at_ms: super::flush::now_millis(),
                 })),
                 jsonl_flush_request_lock: Arc::new(AsyncMutex::new(())),
+                tcp_seal_request_lock: Arc::new(AsyncMutex::new(())),
             },
             crash_rx,
         )

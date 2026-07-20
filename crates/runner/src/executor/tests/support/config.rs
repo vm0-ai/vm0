@@ -36,6 +36,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         network_log_manager: NetworkLogManager::new(),
         network_log_drain: NetworkLogDrainCoordinator::noop(),
         mitm_jsonl_flush: None,
+        mitm_tcp_seal: None,
         network_policy_refresh: None,
         session_history_cpu: super::super::super::SessionHistoryCpuPool::with_capacity(1),
         session_history_probe: super::super::super::SessionHistoryProbe::default(),

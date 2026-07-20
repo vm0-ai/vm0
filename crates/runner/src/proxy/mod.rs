@@ -23,13 +23,16 @@
 //! - `jsonl-flush-request` is written by Rust for one network log path before
 //!   upload. The addon acknowledges in `jsonl-flush-state` after accepted
 //!   writes for that path are visible.
+//! - `tcp-seal-request` is written after sandbox quiescence and again before
+//!   JSONL flush. The addon acknowledges in `tcp-seal-state` after active TCP
+//!   rows for that path enter the writer queue.
 //!
 //! On supported Unix runner hosts, registry writes are target-path atomic so
 //! the addon never consumes partial JSON. Flush acknowledgements must match the
 //! active usage state and request id; missing, stale, invalid, or mismatched
 //! addon state is treated as "not ready" until the bounded wait times out.
-//! Usage drain is a shutdown path for billing and usage reports, while JSONL
-//! flush is a per-upload network-log path.
+//! Usage drain is a shutdown path for billing and usage reports, TCP seal
+//! closes per-run producer attribution, and JSONL flush drains one upload path.
 //!
 //! `MitmProxy::new` prepares addon files, an empty registry, crash channel, and
 //! initial usage state. `start` spawns `mitmdump` and monitor tasks. Unexpected
@@ -43,6 +46,8 @@
 //! (mitmproxy hook orchestration),
 //! `crates/runner/mitm-addon/src/runner_flush_lifecycle.py` (SIGUSR1 worker and
 //! request handling),
+//! `crates/runner/mitm-addon/src/tcp_seal_lifecycle.py` (independent TCP seal
+//! worker and request handling),
 //! `crates/runner/mitm-addon/src/usage/counters.py` (`usage-pending`),
 //! `crates/runner/mitm-addon/src/registry.py` (registry loading), and
 //! `crates/runner/mitm-addon/src/jsonl_writer.py` (accepted-write flush
@@ -54,7 +59,7 @@ mod registry;
 mod stderr;
 
 pub use flush::{
-    MitmJsonlFlushHandle, USAGE_FLUSH_TIMEOUT, wait_usage_flush_requesting,
+    MitmJsonlFlushHandle, MitmTcpSealHandle, USAGE_FLUSH_TIMEOUT, wait_usage_flush_requesting,
     write_usage_flush_request,
 };
 pub use process::{MitmProxy, ProxyConfig};

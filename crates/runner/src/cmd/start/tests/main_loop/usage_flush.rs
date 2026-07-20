@@ -56,6 +56,10 @@ request="$base_dir/mitm-addon/usage-flush-request"
 pending="$base_dir/mitm-addon/usage-pending"
 jsonl_request="$base_dir/mitm-addon/jsonl-flush-request"
 jsonl_state="$base_dir/mitm-addon/jsonl-flush-state"
+tcp_seal_request="$base_dir/mitm-addon/tcp-seal-request"
+tcp_seal_state="$base_dir/mitm-addon/tcp-seal-state"
+tcp_seal_observed="$base_dir/mitm-addon/tcp-seal-observed"
+last_tcp_seal_id=""
 write_pending_snapshot() {
   [[ -f "$request" ]] || return 0
   flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$request")"
@@ -73,8 +77,21 @@ write_jsonl_flush_state() {
   now_ms="$(date +%s%3N)"
   printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flushRequestId":"%s","path":"%s","pending":0}' "$$" "$state_id" "$now_ms" "$flush_id" "$path" > "$jsonl_state"
 }
+write_tcp_seal_state() {
+  [[ -f "$tcp_seal_request" ]] || return 0
+  seal_id="$(sed -n 's/.*"sealRequestId":"\([^"]*\)".*/\1/p' "$tcp_seal_request")"
+  state_id="$(sed -n 's/.*"usageStateId":"\([^"]*\)".*/\1/p' "$tcp_seal_request")"
+  path="$(sed -n 's/.*"path":"\([^"]*\)".*/\1/p' "$tcp_seal_request")"
+  [[ -n "$seal_id" && -n "$state_id" && -n "$path" ]] || return 0
+  [[ "$seal_id" != "$last_tcp_seal_id" ]] || return 0
+  now_ms="$(date +%s%3N)"
+  printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"sealRequestId":"%s","path":"%s","pending":0}' "$$" "$state_id" "$now_ms" "$seal_id" "$path" > "$tcp_seal_state"
+  printf '%s\n' "$seal_id" >> "$tcp_seal_observed"
+  last_tcp_seal_id="$seal_id"
+}
 handle_flush_request() {
   write_pending_snapshot
+  write_tcp_seal_state
   write_jsonl_flush_state
 }
 mkfifo "$fifo"
@@ -178,6 +195,10 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
         .proxy
         .mitm
         .jsonl_flush_handle(config.usage_flush_tx.clone());
+    let mitm_tcp_seal = config
+        .proxy
+        .mitm
+        .tcp_seal_handle(config.usage_flush_tx.clone());
     let write_started = Arc::new(tokio::sync::Notify::new());
     let release_write = Arc::new(tokio::sync::Semaphore::new(0));
     let network_log_manager =
@@ -186,6 +207,7 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
         .expect("test config should not share exec_config before run starts");
     exec_config.network_log_manager = network_log_manager.clone();
     exec_config.mitm_jsonl_flush = Some(mitm_jsonl_flush);
+    exec_config.mitm_tcp_seal = Some(mitm_tcp_seal);
 
     // Seed a network log file so `upload_network_logs` has a payload to POST
     // (otherwise it early-returns on NotFound and the assertion below would
@@ -256,6 +278,28 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
     );
     assert_eq!(jsonl_state["path"], network_log_path_string);
     assert_eq!(jsonl_state["pending"], 0);
+    let tcp_seal_request: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(addon_dir.join("tcp-seal-request")).unwrap())
+            .unwrap();
+    let tcp_seal_state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(addon_dir.join("tcp-seal-state")).unwrap())
+            .unwrap();
+    assert_eq!(tcp_seal_request["path"], network_log_path_string);
+    assert_eq!(
+        tcp_seal_state["sealRequestId"],
+        tcp_seal_request["sealRequestId"]
+    );
+    let observed_seal_ids: Vec<_> = std::fs::read_to_string(addon_dir.join("tcp-seal-observed"))
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        observed_seal_ids.len(),
+        2,
+        "finalization and deferred upload must use distinct seal requests"
+    );
+    assert_ne!(observed_seal_ids[0], observed_seal_ids[1]);
 
     // Stronger invariant: drain must actually WAIT for the deferred work.
     // With a 400 ms mock delay, a well-behaved drain takes ≥ the delay;

@@ -31,6 +31,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
+use crate::proxy::MitmTcpSealHandle;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
@@ -88,6 +89,7 @@ pub(super) struct FinalizeContext {
     pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
+    pub(super) mitm_tcp_seal: Option<MitmTcpSealHandle>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
     pub(super) workspace_image_size_bytes: u64,
     pub(super) storage_fingerprints: StorageFingerprints,
@@ -112,9 +114,16 @@ pub(super) async fn finalize_sandbox_for_completion(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
     completion_payload: CompletionPayload,
-    ctx: FinalizeContext,
+    mut ctx: FinalizeContext,
 ) -> CompletionReady {
     let Some(sandbox) = sandbox else {
+        close_network_log_session(
+            ctx.run_id,
+            ctx.network_log_session.take(),
+            &ctx.network_log_drain,
+            ctx.mitm_tcp_seal.as_ref(),
+        )
+        .await;
         return CompletionReady::new(completion_payload, BudgetOwnership::active(active_lease));
     };
 
@@ -127,6 +136,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         restored_session_identity,
         source_ip,
         mut network_log_session,
+        mitm_tcp_seal,
         workspace_image,
         workspace_image_size_bytes,
         storage_fingerprints,
@@ -230,6 +240,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         reason: failure.reason,
                         network_log_session: network_log_session.take(),
                         network_log_drain: network_log_drain.clone(),
+                        mitm_tcp_seal: mitm_tcp_seal.clone(),
                     },
                 )
                 .await;
@@ -255,7 +266,13 @@ pub(super) async fn finalize_sandbox_for_completion(
         let (candidate, non_reusable_reason) = park_outcome.into_parts();
         if cancel.is_cancelled() {
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
-            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            close_network_log_session(
+                run_id,
+                network_log_session.take(),
+                &network_log_drain,
+                mitm_tcp_seal.as_ref(),
+            )
+            .await;
             info!(
                 run_id = %run_id,
                 session_id = %cli_agent_session_id,
@@ -277,7 +294,13 @@ pub(super) async fn finalize_sandbox_for_completion(
             );
             destroy_result.budget
         } else if let Some(reason) = non_reusable_reason {
-            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            close_network_log_session(
+                run_id,
+                network_log_session.take(),
+                &network_log_drain,
+                mitm_tcp_seal.as_ref(),
+            )
+            .await;
             info!(
                 run_id = %run_id,
                 session_id = %cli_agent_session_id,
@@ -302,7 +325,13 @@ pub(super) async fn finalize_sandbox_for_completion(
             );
             destroy_result.budget
         } else {
-            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            close_network_log_session(
+                run_id,
+                network_log_session.take(),
+                &network_log_drain,
+                mitm_tcp_seal.as_ref(),
+            )
+            .await;
             #[cfg(test)]
             test_observer.notify_before_idle_pool_ownership_transfer(run_id);
             loop {
@@ -481,6 +510,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 reason: cleanup_reason,
                 network_log_session: network_log_session.take(),
                 network_log_drain: network_log_drain.clone(),
+                mitm_tcp_seal,
             },
         )
         .await;
@@ -550,9 +580,20 @@ async fn close_network_log_session(
     run_id: RunId,
     session: Option<NetworkLogSession>,
     drain: &NetworkLogDrainCoordinator,
+    mitm_tcp_seal: Option<&MitmTcpSealHandle>,
 ) {
     if let Some(session) = session {
+        let path = session.path().to_path_buf();
         session.close_for_upload(run_id, drain).await;
+        if let Some(mitm_tcp_seal) = mitm_tcp_seal
+            && !mitm_tcp_seal.seal_path(&path).await
+        {
+            warn!(
+                run_id = %run_id,
+                path = %path.display(),
+                "proxy TCP network-log seal did not complete before sandbox release"
+            );
+        }
     }
 }
 
@@ -593,6 +634,7 @@ struct ActiveCleanupContext<'a> {
     reason: &'static str,
     network_log_session: Option<NetworkLogSession>,
     network_log_drain: NetworkLogDrainCoordinator,
+    mitm_tcp_seal: Option<MitmTcpSealHandle>,
 }
 
 /// Stop a sandbox and destroy it via its factory.
@@ -649,6 +691,7 @@ async fn stop_and_destroy_sandbox(
         context.run_id,
         context.network_log_session.take(),
         &context.network_log_drain,
+        context.mitm_tcp_seal.as_ref(),
     )
     .await;
     if AssertUnwindSafe(factory.destroy(sandbox))
@@ -799,6 +842,7 @@ mod tests {
                 restored_session_identity: None,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
+                mitm_tcp_seal: None,
                 workspace_image: None,
                 workspace_image_size_bytes: 0,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
@@ -941,6 +985,77 @@ mod tests {
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_waits_for_tcp_seal_after_park_before_idle_pool_transfer() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let addon_dir = fixture.dir.path().join("mitm-addon");
+        std::fs::create_dir_all(&addon_dir).unwrap();
+        let (mut proxy, _crash_rx) = crate::proxy::MitmProxy::noop();
+        proxy.set_addon_dir_for_test(addon_dir.clone());
+        let (signal_tx, mut signal_rx) = tokio::sync::mpsc::channel(1);
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-network-log-seal",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.mitm_tcp_seal = Some(proxy.tcp_seal_handle(signal_tx));
+
+        let idle_pool = Arc::clone(&fixture.idle_pool);
+        let finalizer = tokio::spawn(finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), signal_rx.recv())
+            .await
+            .expect("TCP seal request signal timed out")
+            .expect("TCP seal request signal channel closed");
+        assert_eq!(overrides.park_call_count(), 1);
+        assert!(!finalizer.is_finished());
+        assert_eq!(idle_pool.lock().await.len(), 0);
+
+        let marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(addon_dir.join("tcp-seal-request")).unwrap(),
+        )
+        .unwrap();
+        let updated_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let state = serde_json::json!({
+            "pid": std::process::id(),
+            "usageStateId": marker["usageStateId"],
+            "updatedAtMs": updated_at_ms,
+            "sealRequestId": marker["sealRequestId"],
+            "path": marker["path"],
+            "pending": 0,
+        });
+        std::fs::write(addon_dir.join("tcp-seal-state"), state.to_string()).unwrap();
+
+        let _completion_ready = finalizer.await.unwrap();
+        assert_eq!(idle_pool.lock().await.len(), 1);
     }
 
     #[tokio::test]

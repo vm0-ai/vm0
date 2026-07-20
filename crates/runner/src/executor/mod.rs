@@ -163,6 +163,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
+    pub mitm_tcp_seal: Option<crate::proxy::MitmTcpSealHandle>,
     pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
     pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,

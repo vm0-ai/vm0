@@ -33,6 +33,8 @@ import mitm_addon
 import platform_api
 import registry
 import runner_flush_lifecycle
+import tcp_logging
+import tcp_seal_lifecycle
 import upstream_admission
 import upstream_destination_binding
 import usage
@@ -58,6 +60,8 @@ def _reset_module_state() -> Iterator[None]:
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
     runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
+    tcp_seal_lifecycle.reset_runner_tcp_seal_state_for_tests()
+    tcp_logging.reset_for_tests()
     upstream_admission.reset_tls_admission_state_for_tests()
     platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
@@ -67,6 +71,8 @@ def _reset_module_state() -> Iterator[None]:
     usage.reset_usage_buffer_for_tests()
     logging_utils.reset_log_writer_for_tests()
     yield
+    tcp_seal_lifecycle.reset_runner_tcp_seal_state_for_tests()
+    tcp_logging.reset_for_tests()
     runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
     usage.reset_usage_buffer_for_tests()
     logging_utils.reset_log_writer_for_tests()

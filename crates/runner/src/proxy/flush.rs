@@ -23,6 +23,9 @@ pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum time to wait for mitmproxy JSONL writes to become visible before upload.
 pub const JSONL_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Maximum time to wait for active TCP rows to enter the JSONL writer queue.
+pub const TCP_SEAL_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
 
@@ -35,6 +38,12 @@ const JSONL_FLUSH_POLL: Duration = Duration::from_millis(50);
 
 /// Minimum interval between repeated JSONL flush signals while the addon is not ready.
 const JSONL_FLUSH_REQUEST_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Poll interval when waiting for one active TCP path seal.
+const TCP_SEAL_POLL: Duration = Duration::from_millis(10);
+
+/// Minimum interval between repeated TCP seal signals while the addon is not ready.
+const TCP_SEAL_REQUEST_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Tolerated wall-clock skew when validating addon timestamps.
 const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
@@ -153,6 +162,55 @@ impl From<&JsonlFlushState> for JsonlFlushSnapshot {
     }
 }
 
+#[derive(Debug, Clone)]
+struct TcpSealRequest {
+    core: FlushRequestCore,
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TcpSealRequestMarker<'a> {
+    usage_state_id: &'a str,
+    seal_request_id: &'a str,
+    requested_at_ms: u64,
+    path: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TcpSealState {
+    pid: u32,
+    usage_state_id: String,
+    updated_at_ms: u64,
+    seal_request_id: String,
+    path: String,
+    pending: u32,
+}
+
+#[derive(Debug, Clone)]
+struct TcpSealSnapshot {
+    pid: u32,
+    usage_state_id: String,
+    updated_at_ms: u64,
+    seal_request_id: String,
+    path: String,
+    pending: u32,
+}
+
+impl From<&TcpSealState> for TcpSealSnapshot {
+    fn from(state: &TcpSealState) -> Self {
+        Self {
+            pid: state.pid,
+            usage_state_id: state.usage_state_id.clone(),
+            updated_at_ms: state.updated_at_ms,
+            seal_request_id: state.seal_request_id.clone(),
+            path: state.path.clone(),
+            pending: state.pending,
+        }
+    }
+}
+
 enum FlushReadiness<S> {
     Ready,
     NotReady {
@@ -173,6 +231,14 @@ enum FlushWaitFailure<S> {
 
 #[derive(Clone)]
 pub struct MitmJsonlFlushHandle {
+    pub(super) addon_dir: PathBuf,
+    pub(super) usage_state: Arc<Mutex<UsageFlushTarget>>,
+    pub(super) request_lock: Arc<AsyncMutex<()>>,
+    pub(super) request_flush_tx: mpsc::Sender<()>,
+}
+
+#[derive(Clone)]
+pub struct MitmTcpSealHandle {
     pub(super) addon_dir: PathBuf,
     pub(super) usage_state: Arc<Mutex<UsageFlushTarget>>,
     pub(super) request_lock: Arc<AsyncMutex<()>>,
@@ -230,6 +296,15 @@ impl JsonlFlushRequest {
     }
 }
 
+impl TcpSealRequest {
+    fn new(target: &UsageFlushTarget, path: &Path) -> Self {
+        Self {
+            core: FlushRequestCore::new(target),
+            path: path.to_string_lossy().into_owned(),
+        }
+    }
+}
+
 impl MitmJsonlFlushHandle {
     pub async fn flush_path(&self, path: &Path) -> bool {
         let _request_guard = self.request_lock.lock().await;
@@ -246,6 +321,35 @@ impl MitmJsonlFlushHandle {
             return false;
         }
         wait_jsonl_flush_requesting(&self.addon_dir, JSONL_FLUSH_TIMEOUT, &request, || {
+            self.request_flush()
+        })
+        .await
+    }
+
+    fn request_flush(&self) -> bool {
+        match self.request_flush_tx.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(())) => true,
+            Err(mpsc::error::TrySendError::Closed(())) => false,
+        }
+    }
+}
+
+impl MitmTcpSealHandle {
+    pub async fn seal_path(&self, path: &Path) -> bool {
+        let _request_guard = self.request_lock.lock().await;
+        let target = usage_flush_state_guard(&self.usage_state).clone();
+        let request = match write_tcp_seal_request(&self.addon_dir, &target, path).await {
+            Ok(request) => request,
+            Err(e) => {
+                warn!(error = %e, path = %path.display(), "failed to create TCP seal request");
+                return false;
+            }
+        };
+        if !self.request_flush() {
+            warn!(path = %path.display(), "failed to request TCP network-log seal");
+            return false;
+        }
+        wait_tcp_seal_requesting(&self.addon_dir, TCP_SEAL_TIMEOUT, &request, || {
             self.request_flush()
         })
         .await
@@ -298,6 +402,22 @@ async fn write_jsonl_flush_request(
         "JSONL flush request",
     )
     .await?;
+    Ok(request)
+}
+
+async fn write_tcp_seal_request(
+    addon_dir: &Path,
+    target: &UsageFlushTarget,
+    log_path: &Path,
+) -> RunnerResult<TcpSealRequest> {
+    let request = TcpSealRequest::new(target, log_path);
+    let marker = TcpSealRequestMarker {
+        usage_state_id: &request.core.expected_usage_state_id,
+        seal_request_id: &request.core.flush_request_id,
+        requested_at_ms: request.core.requested_at_ms,
+        path: &request.path,
+    };
+    write_flush_request_marker(addon_dir, "tcp-seal-request", &marker, "TCP seal request").await?;
     Ok(request)
 }
 
@@ -363,6 +483,36 @@ fn validate_jsonl_flush_state(
     )?;
     if state.path != request.path {
         return Err("JSONL flush path does not match current request".to_string());
+    }
+
+    Ok(())
+}
+
+fn parse_tcp_seal_state(content: &str) -> Result<TcpSealState, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err("state file is empty".to_string());
+    }
+    serde_json::from_str::<TcpSealState>(trimmed)
+        .map_err(|e| format!("state file is not valid TCP seal JSON: {e}"))
+}
+
+fn validate_tcp_seal_state(
+    state: &TcpSealState,
+    request: &TcpSealRequest,
+    now_ms: u64,
+) -> Result<(), String> {
+    validate_flush_state_core(
+        &state.usage_state_id,
+        state.updated_at_ms,
+        Some(&state.seal_request_id),
+        &request.core,
+        "TCP seal request id does not match current request",
+        "TCP seal request id is missing",
+        now_ms,
+    )?;
+    if state.path != request.path {
+        return Err("TCP seal path does not match current request".to_string());
     }
 
     Ok(())
@@ -646,6 +796,86 @@ async fn wait_jsonl_flush_requesting(
     }
 }
 
+#[cfg(test)]
+async fn wait_tcp_seal(addon_dir: &Path, timeout: Duration, request: &TcpSealRequest) -> bool {
+    wait_tcp_seal_requesting(addon_dir, timeout, request, || true).await
+}
+
+async fn wait_tcp_seal_requesting(
+    addon_dir: &Path,
+    timeout: Duration,
+    request: &TcpSealRequest,
+    request_flush: impl FnMut() -> bool,
+) -> bool {
+    match wait_flush_requesting(
+        addon_dir,
+        "tcp-seal-state",
+        timeout,
+        TCP_SEAL_POLL,
+        TCP_SEAL_REQUEST_INTERVAL,
+        |content| match parse_tcp_seal_state(content) {
+            Ok(state) => {
+                let snapshot = Some(TcpSealSnapshot::from(&state));
+                match validate_tcp_seal_state(&state, request, now_millis()) {
+                    Ok(()) if state.pending == 0 => FlushReadiness::Ready,
+                    Ok(()) => FlushReadiness::NotReady {
+                        not_ready: format!("pending TCP seals={}", state.pending),
+                        snapshot,
+                    },
+                    Err(not_ready) => FlushReadiness::NotReady {
+                        not_ready,
+                        snapshot,
+                    },
+                }
+            }
+            Err(not_ready) => FlushReadiness::NotReady {
+                not_ready,
+                snapshot: None,
+            },
+        },
+        request_flush,
+    )
+    .await
+    {
+        Ok(()) => true,
+        Err(FlushWaitFailure::RequestFailed { not_ready }) => {
+            warn!(
+                reason = %not_ready,
+                "TCP seal request failed, proceeding with sandbox finalization"
+            );
+            false
+        }
+        Err(FlushWaitFailure::TimedOut {
+            not_ready,
+            snapshot,
+        }) => {
+            match snapshot {
+                Some(snapshot) => {
+                    warn!(
+                        timeout_secs = timeout.as_secs(),
+                        reason = %not_ready,
+                        pid = snapshot.pid,
+                        usage_state_id = %snapshot.usage_state_id,
+                        updated_at_ms = snapshot.updated_at_ms,
+                        seal_request_id = %snapshot.seal_request_id,
+                        path = %snapshot.path,
+                        pending = snapshot.pending,
+                        "TCP seal timed out, proceeding with sandbox finalization"
+                    );
+                }
+                None => {
+                    warn!(
+                        timeout_secs = timeout.as_secs(),
+                        reason = %not_ready,
+                        "TCP seal timed out, proceeding with sandbox finalization"
+                    );
+                }
+            }
+            false
+        }
+    }
+}
+
 async fn read_addon_state_file(path: &Path) -> RunnerResult<Option<String>> {
     crate::state_file::read_to_string(
         path,
@@ -726,12 +956,36 @@ mod tests {
         }
     }
 
+    fn tcp_seal_request(path: &Path) -> TcpSealRequest {
+        TcpSealRequest {
+            core: FlushRequestCore {
+                expected_usage_state_id: "state-test".to_string(),
+                usage_state_started_at_ms: 1_770_000_000_000,
+                flush_request_id: "tcp-seal-request-test".to_string(),
+                requested_at_ms: 1_770_000_000_000,
+            },
+            path: path.to_string_lossy().into_owned(),
+        }
+    }
+
     fn jsonl_state(path: &Path, pending: u32) -> String {
         serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flushRequestId": "jsonl-request-test",
+            "path": path.to_string_lossy().to_string(),
+            "pending": pending,
+        })
+        .to_string()
+    }
+
+    fn tcp_seal_state(path: &Path, pending: u32) -> String {
+        serde_json::json!({
+            "pid": 1234,
+            "usageStateId": "state-test",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "sealRequestId": "tcp-seal-request-test",
             "path": path.to_string_lossy().to_string(),
             "pending": pending,
         })
@@ -835,6 +1089,27 @@ mod tests {
         assert!(!leaked_tmp, "JSONL flush request tmp file leaked");
     }
 
+    #[tokio::test]
+    async fn write_tcp_seal_request_writes_independent_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let log_path = dir.path().join("network.jsonl");
+
+        let request = write_tcp_seal_request(dir.path(), &target, &log_path)
+            .await
+            .unwrap();
+
+        let marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("tcp-seal-request")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(marker["usageStateId"], "state-test");
+        assert_eq!(marker["sealRequestId"], request.core.flush_request_id);
+        assert_eq!(marker["requestedAtMs"], request.core.requested_at_ms);
+        assert_eq!(marker["path"], log_path.to_string_lossy().to_string());
+        assert!(marker.get("flushRequestId").is_none());
+    }
+
     fn usage_state_without_request(flows: u32, buffered: u32, reports: u32) -> String {
         serde_json::json!({
             "pid": 1234,
@@ -860,6 +1135,34 @@ mod tests {
         )
         .unwrap();
         assert!(wait_jsonl_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_tcp_seal_returns_true_when_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let request = tcp_seal_request(&log_path);
+        std::fs::write(
+            dir.path().join("tcp-seal-state"),
+            tcp_seal_state(&log_path, 0),
+        )
+        .unwrap();
+
+        assert!(wait_tcp_seal(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_tcp_seal_rejects_wrong_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let request = tcp_seal_request(&log_path);
+        std::fs::write(
+            dir.path().join("tcp-seal-state"),
+            tcp_seal_state(&dir.path().join("other.jsonl"), 0),
+        )
+        .unwrap();
+
+        assert!(!wait_tcp_seal(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1277,6 +1580,63 @@ mod tests {
         )
         .unwrap();
         assert!(second.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn tcp_seal_from_same_proxy_is_not_blocked_by_jsonl_request_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let jsonl_path = dir.path().join("network-jsonl.jsonl");
+        let seal_path = dir.path().join("network-seal.jsonl");
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        proxy.set_addon_dir_for_test(dir.path().to_path_buf());
+        let (tx, mut rx) = mpsc::channel(1);
+        let jsonl_handle = proxy.jsonl_flush_handle(tx.clone());
+        let seal_handle = proxy.tcp_seal_handle(tx);
+
+        let jsonl_task_path = jsonl_path.clone();
+        let jsonl_task =
+            tokio::spawn(async move { jsonl_handle.flush_path(&jsonl_task_path).await });
+        rx.recv().await.unwrap();
+        let jsonl_marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
+        )
+        .unwrap();
+
+        let seal_task_path = seal_path.clone();
+        let seal_task = tokio::spawn(async move { seal_handle.seal_path(&seal_task_path).await });
+        rx.recv()
+            .await
+            .expect("TCP seal must signal while JSONL request is still pending");
+        let seal_marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("tcp-seal-request")).unwrap(),
+        )
+        .unwrap();
+        let seal_state = serde_json::json!({
+            "pid": 1234,
+            "usageStateId": seal_marker["usageStateId"],
+            "updatedAtMs": now_millis(),
+            "sealRequestId": seal_marker["sealRequestId"],
+            "path": seal_path.to_string_lossy().to_string(),
+            "pending": 0,
+        });
+        std::fs::write(dir.path().join("tcp-seal-state"), seal_state.to_string()).unwrap();
+        assert!(seal_task.await.unwrap());
+        assert!(!jsonl_task.is_finished());
+
+        let jsonl_state = serde_json::json!({
+            "pid": 1234,
+            "usageStateId": jsonl_marker["usageStateId"],
+            "updatedAtMs": now_millis(),
+            "flushRequestId": jsonl_marker["flushRequestId"],
+            "path": jsonl_path.to_string_lossy().to_string(),
+            "pending": 0,
+        });
+        std::fs::write(
+            dir.path().join("jsonl-flush-state"),
+            jsonl_state.to_string(),
+        )
+        .unwrap();
+        assert!(jsonl_task.await.unwrap());
     }
 
     #[tokio::test(start_paused = true)]

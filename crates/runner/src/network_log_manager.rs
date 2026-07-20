@@ -71,6 +71,10 @@ pub struct NetworkLogSession {
 }
 
 impl NetworkLogSession {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// Close local Rust-side network logs for this run before upload reads the file.
     ///
     /// The barrier only covers rows observable to the runner reader tasks. It

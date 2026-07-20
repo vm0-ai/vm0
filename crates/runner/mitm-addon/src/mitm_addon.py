@@ -27,8 +27,9 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
-# response_encoding_negotiation/response_streaming/runner_flush_lifecycle/terminal_usage/
-# upstream_admission/usage are imported by module (not selective `from X import ...`) so that:
+# response_encoding_negotiation/response_streaming/runner_flush_lifecycle/tcp_logging/
+# tcp_seal_lifecycle/terminal_usage/upstream_admission/usage are imported by module (not
+# selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
@@ -59,6 +60,7 @@ import response_encoding_negotiation
 import response_streaming
 import runner_flush_lifecycle
 import tcp_logging
+import tcp_seal_lifecycle
 import terminal_usage
 import upstream_admission
 import upstream_destination_binding
@@ -127,10 +129,7 @@ class _AuthBaseBodyCheck:
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
     mitmproxy_compat.install_request_end_stream_bridge()
-    signal.signal(
-        runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
-        runner_flush_lifecycle.handle_runner_usage_flush_signal,
-    )
+    signal.signal(runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL, handle_runner_flush_signal)
     loader.add_option(
         name="vm0_api_url",
         typespec=str,
@@ -217,6 +216,17 @@ def get_api_url() -> str:
 def get_registry_path() -> str:
     """Get registry path from options."""
     return ctx.options.vm0_proxy_registry_path
+
+
+def handle_runner_flush_signal(signum: int, frame: object) -> None:
+    """Wake independent runner-requested lifecycle workers."""
+    tcp_seal_lifecycle.handle_runner_tcp_seal_signal(signum, frame)
+    runner_flush_lifecycle.handle_runner_usage_flush_signal(signum, frame)
+
+
+def running() -> None:
+    """Capture the mitmproxy event loop that owns TCP flow state."""
+    tcp_logging.set_event_loop(asyncio.get_running_loop())
 
 
 def _request_headers_probe_metadata_keys() -> tuple[str, ...]:
@@ -1419,27 +1429,33 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
-    The runner flush lifecycle waits for any active SIGUSR1 worker, drains
-    accepted requests, and closes admission before this hook shuts down the
-    usage executor. Any retryable outcome retained by those completed workers
-    is then retried synchronously before the remaining workers and JSONL writer
-    stop. Auth.base forwarding does not need to finish running work
-    during shutdown, so its worker shutdown stops new forwards and best-effort
-    closes active upstream sockets without waiting for slow upstream responses.
-    JSONL writer shutdown is also bounded and best-effort; if it times out,
-    process shutdown continues with accepted log entries possibly still pending.
+    TCP seal admission closes without joining a worker that may be waiting on
+    this event loop. Remaining active TCP rows are admitted directly before the
+    runner flush lifecycle waits for its independent SIGUSR1 worker, drains
+    accepted requests, and closes admission. Any retryable usage outcome
+    retained by those completed workers is retried synchronously before the
+    remaining workers and JSONL writer stop. Auth.base forwarding does not need
+    to finish running work during shutdown, so its worker shutdown stops new
+    forwards and best-effort closes active upstream sockets without waiting for
+    slow upstream responses. JSONL writer shutdown is also bounded and
+    best-effort; if it times out, process shutdown continues with accepted log
+    entries possibly still pending.
     """
+    tcp_seal_lifecycle.close_admission()
     try:
-        runner_flush_lifecycle.drain_and_close()
+        tcp_logging.shutdown()
     finally:
         try:
-            try:
-                usage.webhook.usage_executor.shutdown(wait=True)
-                usage.drain_usage_events_after_executor_shutdown()
-            finally:
-                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+            runner_flush_lifecycle.drain_and_close()
         finally:
-            shutdown_log_writer()
+            try:
+                try:
+                    usage.webhook.usage_executor.shutdown(wait=True)
+                    usage.drain_usage_events_after_executor_shutdown()
+                finally:
+                    auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+            finally:
+                shutdown_log_writer()
 
 
 # ============================================================================
@@ -1473,6 +1489,7 @@ def tcp_error(flow: tcp.TCPFlow) -> None:
 
 # mitmproxy addon registration
 addons = [
+    running,
     server_connect,
     server_disconnected,
     server_connect_error,
