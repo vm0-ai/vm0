@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
 import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -7,10 +13,15 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockOptionalEnv } from "../../../lib/env";
+import {
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../../../lib/secret-kms-client";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { createDeferredPromise, settle } from "../../utils";
 import {
   basicTemplate,
   createFirewallApi,
@@ -22,7 +33,11 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  awsVerificationCode,
+  createConnectorBddApi,
+  mockAwsExternalCodeProvider,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -31,6 +46,7 @@ import {
 } from "./helpers/connector-credential-storage-state";
 
 const ORG_SENTINEL_USER_ID = "__org__";
+const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 /**
  * HOOK-02 / FW: firewall auth template resolution and connector refresh
@@ -81,6 +97,54 @@ async function firewallRun(): Promise<{
     runId: run.runId,
     headers: fw.sandboxHeaders(actor, run.runId),
   };
+}
+
+function gateFirstStoredSecretDecrypt(): {
+  readonly started: Promise<void>;
+  readonly release: () => void;
+} {
+  const started = createDeferredPromise<void>(context.signal);
+  const resume = createDeferredPromise<void>(context.signal);
+  let decryptCalls = 0;
+  const release = (): void => {
+    if (!resume.settled()) {
+      resume.resolve(undefined);
+    }
+  };
+  onTestFinished(release);
+
+  async function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  async function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  async function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      return {
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: TEST_DATA_KEY,
+      };
+    }
+
+    decryptCalls += 1;
+    // The encrypted request payload is first. The second decrypt starts after
+    // the connector credential SELECT has captured its statement snapshot.
+    if (decryptCalls === 2) {
+      started.resolve(undefined);
+      await resume.promise;
+    }
+    return { $metadata: {}, Plaintext: TEST_DATA_KEY };
+  }
+
+  const client: SecretKmsClient = { send };
+  setSecretKmsClientForTests(client);
+  return { started: started.promise, release };
 }
 
 describe("FW-1: firewall auth boundaries", () => {
@@ -560,7 +624,7 @@ describe("FW-3: billable firewall lease", () => {
   });
 });
 
-describe("FW-4: test-oauth connector refresh", () => {
+describe("FW-4: connector refresh and replacement snapshots", () => {
   it("fails closed before the provider for a null storage version", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
@@ -758,6 +822,78 @@ describe("FW-4: test-oauth connector refresh", () => {
     }
     expect(synced.body.headers.Authorization).toBe("Bearer db-access");
     expect(synced.body.refreshedConnectors).toStrictEqual([]);
+  });
+
+  it("keeps multi-secret connector auth on one replacement snapshot", async () => {
+    const fw = createFirewallApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, headers } = await firewallRun();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.AwsConnector]: true,
+    });
+    const oldCredentials = {
+      accessKeyId: "old-aws-access-key-id",
+      secretAccessKey: "old-aws-secret-access-key",
+      sessionToken: "old-aws-session-token",
+    };
+    const newCredentials = {
+      accessKeyId: "new-aws-access-key-id",
+      secretAccessKey: "new-aws-secret-access-key",
+      sessionToken: "new-aws-session-token",
+    };
+    const provider = mockAwsExternalCodeProvider({
+      credentialsByRequest: [oldCredentials, newCredentials],
+    });
+
+    async function connectAws(): Promise<void> {
+      const session = await connectors.startExternalCode(actor, "aws", "cli");
+      await connectors.completeExternalCode(actor, "aws", {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: awsVerificationCode(session.authorizationUrl),
+      });
+    }
+
+    await connectAws();
+    const decryptGate = gateFirstStoredSecretDecrypt();
+    const pendingAuth = fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "X-AWS-Access-Key-ID": secretTemplate("AWS_ACCESS_KEY_ID"),
+          "X-AWS-Secret-Access-Key": secretTemplate("AWS_SECRET_ACCESS_KEY"),
+          "X-AWS-Session-Token": secretTemplate("AWS_SESSION_TOKEN"),
+        },
+        secretConnectorMap: {
+          AWS_ACCESS_KEY_ID: "aws",
+          AWS_SECRET_ACCESS_KEY: "aws",
+          AWS_SESSION_TOKEN: "aws",
+        },
+      },
+      [200],
+    );
+    await decryptGate.started;
+    const replacement = await settle(connectAws());
+    decryptGate.release();
+    const resolved = await pendingAuth;
+    if (!replacement.ok) {
+      throw replacement.error;
+    }
+    if (resolved.status !== 200) {
+      throw new Error("Expected AWS firewall auth to resolve");
+    }
+
+    expect(provider.tokenRequests).toHaveLength(2);
+    expect(resolved.body.headers).toStrictEqual({
+      "X-AWS-Access-Key-ID": oldCredentials.accessKeyId,
+      "X-AWS-Secret-Access-Key": oldCredentials.secretAccessKey,
+      "X-AWS-Session-Token": oldCredentials.sessionToken,
+    });
+
+    await connectors.deleteConnectorByType(actor, "aws");
+    await connectors.deleteFeatureSwitches(actor);
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {

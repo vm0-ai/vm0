@@ -962,12 +962,22 @@ export function awsVerificationCode(
   );
 }
 
-function awsTokenEndpointResponseBody() {
+function awsTokenEndpointResponseBody(
+  credentials: {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: string;
+    readonly sessionToken: string;
+  } = {
+    accessKeyId: "aws-external-code-credential-id",
+    secretAccessKey: "aws-secret-access-key",
+    sessionToken: "aws-session-token",
+  },
+) {
   return {
     accessToken: {
-      accessKeyId: "aws-external-code-credential-id",
-      secretAccessKey: "aws-secret-access-key",
-      sessionToken: "aws-session-token",
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      sessionToken: credentials.sessionToken,
     },
     expiresIn: 900,
     refreshToken: "aws-login-refresh-token",
@@ -996,7 +1006,14 @@ function awsStsCallerIdentityXml(): string {
  * HTTP 500 when stsFailure is set.
  */
 export function mockAwsExternalCodeProvider(
-  options: { readonly stsFailure?: boolean } = {},
+  options: {
+    readonly stsFailure?: boolean;
+    readonly credentialsByRequest?: readonly {
+      readonly accessKeyId: string;
+      readonly secretAccessKey: string;
+      readonly sessionToken: string;
+    }[];
+  } = {},
 ): AwsExternalCodeProviderRecorder {
   const recorded: AwsExternalCodeProviderRecorder = { tokenRequests: [] };
 
@@ -1022,7 +1039,14 @@ export function mockAwsExternalCodeProvider(
           { status: 400 },
         );
       }
-      return HttpResponse.json({ tokenOutput: awsTokenEndpointResponseBody() });
+      const credentials =
+        options.credentialsByRequest?.[recorded.tokenRequests.length - 1];
+      if (options.credentialsByRequest && !credentials) {
+        throw new Error("Missing AWS credentials for token request");
+      }
+      return HttpResponse.json({
+        tokenOutput: awsTokenEndpointResponseBody(credentials),
+      });
     }),
     http.get(AWS_STS_URL, () => {
       if (options.stsFailure) {
