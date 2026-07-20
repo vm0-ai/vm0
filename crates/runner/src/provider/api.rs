@@ -286,6 +286,8 @@ impl ApiProvider {
                 .request_deferred_poll_after(retry_after)
                 .await;
         } else if polled_with_exclusions {
+            // Every exclusion expired while the HTTP poll was in flight.
+            // Re-poll once without the stale exclusions instead of waiting for the normal cadence.
             self.poll_wakeups.request_immediate_poll().await;
         }
     }
