@@ -120,6 +120,7 @@ interface ConstModuleNode {
 
 interface RenderTypeContext {
   readonly label: string;
+  readonly moduleIndentWidth: number;
   readonly fieldTypeOverrides: Readonly<Record<string, string>>;
   readonly declarationDocs: ReadonlyMap<string, NormalizedTypeDeclarationDoc>;
   readonly declarations: RustDeclaration[];
@@ -1022,6 +1023,7 @@ function renderTypeBinding(
   const declarations: RustDeclaration[] = [];
   const context: RenderTypeContext = {
     label: rustTypeName(binding),
+    moduleIndentWidth: binding.rustModulePath.length * 4,
     fieldTypeOverrides: binding.fieldTypeOverrides,
     declarationDocs: binding.declarationDocs,
     declarations,
@@ -1309,7 +1311,7 @@ function renderStruct(
     for (const attribute of attributes) {
       lines.push(`    ${attribute}`);
     }
-    lines.push(`    pub ${rustName}: ${rustType},`);
+    lines.push(...renderStructField(rustName, rustType, context));
   }
 
   lines.push("}");
@@ -1319,6 +1321,29 @@ function renderStruct(
   });
 
   return typeName;
+}
+
+function renderStructField(
+  rustName: string,
+  rustType: string,
+  context: RenderTypeContext,
+): string[] {
+  const indent = "    ";
+  const singleLine = `${indent}pub ${rustName}: ${rustType},`;
+  if (context.moduleIndentWidth + singleLine.length <= 100) {
+    return [singleLine];
+  }
+
+  if (rustType.startsWith("Option<") && rustType.endsWith(">")) {
+    const innerType = rustType.slice("Option<".length, -1);
+    return [
+      `${indent}pub ${rustName}: Option<`,
+      `${indent}    ${innerType},`,
+      `${indent}>,`,
+    ];
+  }
+
+  return [`${indent}pub ${rustName}:`, `${indent}    ${rustType},`];
 }
 
 function renderStringEnum(
