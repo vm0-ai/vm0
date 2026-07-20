@@ -140,7 +140,7 @@ function parseModelRankingPeriod(
 
 function modelUsageObservationModelExpression() {
   const modelColumn = sql.raw('"model_usage_observation"."model"');
-  return sql<string>`CASE ${sql.join(
+  return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
       return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
     }),
@@ -150,7 +150,7 @@ function modelUsageObservationModelExpression() {
 
 function modelStatModelExpression() {
   const modelColumn = sql.raw('"model_stat"."model"');
-  return sql<string>`CASE ${sql.join(
+  return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
       return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
     }),

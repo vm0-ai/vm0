@@ -1669,7 +1669,7 @@ async function claimNotionPendingEvent(args: {
     .update(notionWorkflowPendingEvents)
     .set({
       status: "running",
-      attempts: sql<number>`${notionWorkflowPendingEvents.attempts} + 1`,
+      attempts: sql`${notionWorkflowPendingEvents.attempts} + 1`,
       updatedAt: args.currentTime,
     })
     .where(

@@ -64,6 +64,110 @@ Pure data transforms that only touch the database should use regular SQL migrati
 - **Excluded from CI**: completed scripts that reference deleted schemas are excluded
   from `tsconfig.json` and `eslint.config.js` to avoid build errors
 
+## Database Result Boundaries
+
+Drizzle's `sql<T>`, `SQL<T>`, generic `.as<T>()`, `execute<Row>`, and TypeScript
+assertions only change compile-time types. They do not validate or decode
+PostgreSQL driver values. Never use them to declare a database result contract.
+
+### Structured Selections
+
+For every raw expression selected by `select`, `selectDistinct`,
+`selectDistinctOn`, `returning`, or relational-query `extras`, choose the first
+applicable runtime boundary:
+
+1. Prefer a schema column or a Drizzle helper such as `count()` that already
+   owns the correct decoder.
+2. Use `.mapWith(column)` when the expression has exactly the same PostgreSQL
+   runtime representation as that column.
+3. Use `.mapWith(decoder)` for a dedicated runtime contract. Shared decoders
+   live in `turbo/apps/api/src/lib/db-structured-result.ts`.
+4. If the expression can return SQL `NULL`, wrap the column or decoder with
+   `nullableDriverValueDecoder(...)`. Drizzle preserves `null` and applies the
+   wrapped decoder only to non-null values.
+
+```typescript
+// Correct: LOWER(text) has the same driver representation as the text column.
+const normalizedEmail =
+  sql`LOWER(${users.email})`.mapWith(users.email).as("normalized_email");
+
+// Correct: the explicit decoder owns the runtime number contract.
+const total = sql`COUNT(*)::int`.mapWith(pgIntegerDecoder).as("total");
+
+// Correct: nullable SQL result with the column's non-null decoder.
+const latestName = sql`MAX(${users.name})`
+  .mapWith(nullableDriverValueDecoder(users.name))
+  .as("latest_name");
+
+// Incorrect: these only restate a TypeScript type.
+const unsafeEmail = sql<string>`LOWER(${users.email})`;
+const unsafeAlias = sql`LOWER(${users.email})`.as<string>("email");
+```
+
+Apply `.mapWith(...)` before `.as("alias")`; aliasing names a SQL field but does
+not add or replace its decoder. A PostgreSQL cast such as `::int` changes the
+server-side value representation, while `.mapWith(...)` defines the client-side
+runtime decoder. A TypeScript assertion changes neither one.
+
+The same rule applies to `db.query.<table>.findMany(...)` and
+`findFirst(...)`, including callback-form `extras` and `extras` nested below
+`with`. Keep relational configs inline or in inspectable local variables so
+lint can follow every selected extra. Call `select`, `selectDistinct`,
+`selectDistinctOn`, `returning`, `findMany`, and `findFirst` directly; do not
+alias, destructure, or bind these methods, and do not spread their invocation
+arguments, because those forms hide the result boundary from static
+enforcement.
+
+For set operations, every branch must expose a compatible, concretely mapped
+output. Drizzle uses the leftmost branch's decoder for returned rows, so the
+leftmost expression owns the runtime contract; mapping later branches does not
+repair an unmapped leftmost branch.
+
+PostgreSQL `int8` and `numeric` commonly arrive from `pg` as strings to avoid
+precision loss. Use `pgInt8ToSafeIntegerDecoder` only when the value is required
+to fit a JavaScript safe integer, and `pgInt8ToBigIntDecoder` when lossless
+integer precision is required. Do not coerce arbitrary `numeric` values with
+`Number` unless the domain contract explicitly permits the resulting precision;
+use a dedicated decoder that preserves or validates the required representation.
+
+Raw SQL used only as a predicate, join condition, ordering or grouping
+expression, write value, discarded command, or `rowCount` command result does
+not produce a structured field and needs no result decoder. Leave those
+expressions as unparameterized `sql` and `SQL`. If a write query adds
+`.returning({...})`, map raw SQL in the returned fields independently of
+`.set({...})`. Likewise, raw SQL passed to `insert(...).select(...)` is the
+write source rather than a returned field; only a subsequent `returning(...)`
+introduces a result-mapping boundary.
+
+### Raw Execute Rows
+
+Prefer structured Drizzle selections whenever they can express the query.
+Direct `db.execute(...)` is allowed when rows are discarded or only `rowCount`
+is consumed. When an irreducible raw query returns rows, use
+`executeRawRows(executor, query, rowSchema)` from
+`turbo/apps/api/src/lib/db-raw-rows.ts`:
+
+```typescript
+const rowSchema = z.object({
+  id: z.string().uuid(),
+  size_bytes: pgInt8ToSafeIntegerSchema,
+});
+
+const rows = await executeRawRows(
+  db,
+  sql`SELECT id, size_bytes FROM artifacts`,
+  rowSchema,
+);
+```
+
+`executeRawRows` executes without a row generic and parses every returned driver
+row with the supplied schema; its TypeScript output is inferred from that schema.
+Use schema transforms such as `pgInt8ToSafeIntegerSchema`,
+`pgInt8ToBigIntSchema`, and `pgTimestampWithoutTimezoneToDateSchema` when the
+driver representation differs from the application value. Never replace this
+boundary with `execute<Row>`, a typed wrapper around `db.execute`, or a
+downstream assertion.
+
 ## Checklist
 
 Before committing:

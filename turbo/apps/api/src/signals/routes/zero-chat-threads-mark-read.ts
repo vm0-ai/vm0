@@ -14,7 +14,7 @@ import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
 function latestRunFinishCreatedAtSql() {
-  return sql<Date>`(
+  return sql`(
     SELECT ${chatMessages.createdAt}
     FROM ${chatMessages}
     WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
