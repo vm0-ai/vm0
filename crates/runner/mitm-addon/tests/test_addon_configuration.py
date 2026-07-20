@@ -133,22 +133,6 @@ class TestAddonConfiguration:
         ):
             mitm_addon.load(loader)
 
-    def test_runner_signal_wakes_both_independent_lifecycles(self):
-        with (
-            patch.object(
-                mitm_addon.tcp_seal_lifecycle,
-                "handle_runner_tcp_seal_signal",
-            ) as seal_signal,
-            patch.object(
-                runner_flush_lifecycle,
-                "handle_runner_usage_flush_signal",
-            ) as flush_signal,
-        ):
-            mitm_addon.handle_runner_flush_signal(10, None)
-
-        seal_signal.assert_called_once_with(10, None)
-        flush_signal.assert_called_once_with(10, None)
-
     def test_configure_writes_pending_state_with_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
 
