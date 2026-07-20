@@ -121,8 +121,8 @@ import {
   personalModelProvider$,
   selectedModelAvailable$,
 } from "../zero-page/model-first-personal-oauth.ts";
-import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
@@ -711,13 +711,10 @@ function createModelSelection(
       const mode =
         status.status === "needs_reconnect" ? "reconnect" : "connect";
       if (status.providerType === "claude-code-oauth-token") {
-        set(setClaudeCodeDeviceAuthDialogStatePersonal$, {
-          open: true,
-          mode,
-        });
+        await set(openClaudeCodeDeviceAuthDialogPersonal$, mode, signal);
         return;
       }
-      set(setCodexDeviceAuthDialogStatePersonal$, { open: true, mode });
+      await set(openCodexDeviceAuthDialogPersonal$, mode, signal);
     },
   );
 
