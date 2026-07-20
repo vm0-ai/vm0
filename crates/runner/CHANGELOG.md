@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.14...runner-rs-v0.146.15) (2026-07-20)
+
+
+### Refactoring
+
+* **runner:** remove sidecar allocated bytes ([#22153](https://github.com/vm0-ai/vm0/issues/22153)) ([a1262bf](https://github.com/vm0-ai/vm0/commit/a1262bf971717df6bbdd719bae8d8730f92557d4))
+
 ## [0.146.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.13...runner-rs-v0.146.14) (2026-07-19)
 
 

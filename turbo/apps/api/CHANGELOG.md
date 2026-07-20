@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.286.3](https://github.com/vm0-ai/vm0/compare/api-v1.286.2...api-v1.286.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* stop user-deletion s3 cleanup from deleting other users' storage objects via shared prefixes ([#22152](https://github.com/vm0-ai/vm0/issues/22152)) ([9c839c8](https://github.com/vm0-ai/vm0/commit/9c839c85ac9e4cf6ddc95a7f9f10d29d9d200672))
+
+
+### Refactoring
+
+* **api:** validate raw execute result rows ([#22143](https://github.com/vm0-ai/vm0/issues/22143)) ([1a9a8dc](https://github.com/vm0-ai/vm0/commit/1a9a8dc2224d8a794d3471b1d7584894e404a170))
+* prepare connector credential storage persistence ([#22141](https://github.com/vm0-ai/vm0/issues/22141)) ([9f9587c](https://github.com/vm0-ai/vm0/commit/9f9587c3aa888d2365b1f47f7695bc8355d2d0c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.3
+    * @vm0/connectors bumped to 1.172.1
+    * @vm0/core bumped to 8.442.2
+    * @vm0/db bumped to 1.121.3
+
 ## [1.286.2](https://github.com/vm0-ai/vm0/compare/api-v1.286.1...api-v1.286.2) (2026-07-19)
 
 
