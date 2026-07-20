@@ -9,6 +9,7 @@ import { storageVersions } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
 import { and, asc, count, eq, isNull, lte, sql } from "drizzle-orm";
 
+import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -500,35 +501,35 @@ const readStorageArchiveSizeStatusCounts$ = command(
     const [counts] = await db
       .select({
         totalVersions: count(),
-        positiveArchives: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} > 0
-        )::int`,
-        intentionalEmptyArchives: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} = 0
-            AND ${storageVersions.fileCount} = 0
-        )::int`,
-        remaining: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} IS NULL
-        )::int`,
-        negativeArchives: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} < 0
-        )::int`,
-        nonEmptyZeroArchives: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} = 0
-            AND ${storageVersions.fileCount} <> 0
-        )::int`,
-        missing: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} IS NULL
-            AND ${storageArchiveSizeBackfillWork.outcome} = 'missing'
-        )::int`,
-        invalid: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} IS NULL
-            AND ${storageArchiveSizeBackfillWork.outcome} = 'invalid'
-        )::int`,
-        failed: sql<number>`COUNT(*) FILTER (
-          WHERE ${storageVersions.archiveSize} IS NULL
-            AND ${storageArchiveSizeBackfillWork.outcome} = 'failed'
-        )::int`,
+        positiveArchives: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} > 0
+          )::int`.mapWith(pgIntegerDecoder),
+        intentionalEmptyArchives: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} = 0
+              AND ${storageVersions.fileCount} = 0
+          )::int`.mapWith(pgIntegerDecoder),
+        remaining: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} IS NULL
+          )::int`.mapWith(pgIntegerDecoder),
+        negativeArchives: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} < 0
+          )::int`.mapWith(pgIntegerDecoder),
+        nonEmptyZeroArchives: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} = 0
+              AND ${storageVersions.fileCount} <> 0
+          )::int`.mapWith(pgIntegerDecoder),
+        missing: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} IS NULL
+              AND ${storageArchiveSizeBackfillWork.outcome} = 'missing'
+          )::int`.mapWith(pgIntegerDecoder),
+        invalid: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} IS NULL
+              AND ${storageArchiveSizeBackfillWork.outcome} = 'invalid'
+          )::int`.mapWith(pgIntegerDecoder),
+        failed: sql`COUNT(*) FILTER (
+            WHERE ${storageVersions.archiveSize} IS NULL
+              AND ${storageArchiveSizeBackfillWork.outcome} = 'failed'
+          )::int`.mapWith(pgIntegerDecoder),
       })
       .from(storageVersions)
       .leftJoin(
