@@ -15,7 +15,9 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias, unionAll } from "drizzle-orm/pg-core";
+import { z } from "zod";
 
+import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 
@@ -34,12 +36,17 @@ interface BridgeContractRow {
   readonly storageVersion: number;
 }
 
-type ReadinessCountKind =
-  | "bridge-secrets"
-  | "bridge-variables"
-  | "missing-connector-versions"
-  | "unowned-connector-secrets"
-  | "unowned-connector-variables";
+const readinessCountKindSchema = z.enum([
+  "bridge-secrets",
+  "bridge-variables",
+  "missing-connector-versions",
+  "unowned-connector-secrets",
+  "unowned-connector-variables",
+]);
+type ReadinessCountKind = z.output<typeof readinessCountKindSchema>;
+const readinessCountKindDecoder = zodEnumDriverValueDecoder(
+  readinessCountKindSchema,
+);
 
 function ambiguousNamesByKind(snapshot: ConnectorRuntimeSnapshot): {
   readonly secret: ReadonlySet<string>;
@@ -146,7 +153,7 @@ function bridgeContractTable(rows: readonly BridgeContractRow[]): SQL {
 }
 
 function readinessCountKind(kind: ReadinessCountKind) {
-  return sql<ReadinessCountKind>`${kind}::text`.as("kind");
+  return sql`${kind}::text`.mapWith(readinessCountKindDecoder).as("kind");
 }
 
 function bridgeResolvableSecretsQuery(
