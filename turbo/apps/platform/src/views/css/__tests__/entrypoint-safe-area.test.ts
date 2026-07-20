@@ -51,7 +51,7 @@ describe("platform entrypoint safe area behavior", () => {
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);
     expect(indexHtml).toMatch(
-      /\.sk\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);/,
+      /#app-bootstrap-skeleton\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);/,
     );
   });
 

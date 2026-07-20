@@ -41,4 +41,21 @@ describe("app skeleton", () => {
     });
     expect(skeletonMountedAtDispatch).toBeTruthy();
   });
+
+  it("removes the inline loading surface after the page is ready", async () => {
+    const bootstrapSkeleton = document.createElement("div");
+    bootstrapSkeleton.id = "app-bootstrap-skeleton";
+    document.body.append(bootstrapSkeleton);
+
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
+    });
+    expect(bootstrapSkeleton).toHaveAttribute("aria-hidden", "true");
+
+    bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
+
+    expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
 });
