@@ -454,7 +454,7 @@ describe("personal model providers settings", () => {
     await waitFor(() => {
       expect(submit).toBeEnabled();
     });
-  }, 10_000);
+  });
 
   it("shows available subscription details in the connected status", async () => {
     mockBrowserTimeZone("America/New_York");

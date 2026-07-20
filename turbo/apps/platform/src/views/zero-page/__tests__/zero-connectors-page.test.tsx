@@ -1267,7 +1267,7 @@ describe("connectors page", () => {
     expect(
       within(dialog).queryByText("Loading agents..."),
     ).not.toBeInTheDocument();
-  }, 10_000);
+  });
 
   it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
@@ -2006,7 +2006,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
     });
-  }, 10_000);
+  });
 
   it("connects a manual token connector", async () => {
     mockConnectors([]);
@@ -2775,7 +2775,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
-  }, 10_000);
+  });
 
   it("toasts external-code transport errors and restores a retryable state", async () => {
     context.mocks.http.post(
@@ -2793,7 +2793,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
-  }, 10_000);
+  });
 
   it("uses auth method help text for PlayStation external-code connection", async () => {
     mockConnectors([]);
