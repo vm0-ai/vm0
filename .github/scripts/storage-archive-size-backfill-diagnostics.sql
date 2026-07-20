@@ -12,6 +12,8 @@ WITH
       storage_versions.file_count,
       storages.type,
       storages.org_id,
+      storages.user_id,
+      storages.name,
       storages.s3_prefix,
       storages.head_version_id,
       storage_archive_size_backfill_work.outcome,
@@ -29,87 +31,190 @@ WITH
     FROM unresolved
     WHERE file_count > 0
   ),
-  session_artifact_refs AS (
-    SELECT DISTINCT artifact.value ->> 'version' AS version_id
+  candidate_volume_orgs AS MATERIALIZED (
+    SELECT DISTINCT org_id
+    FROM candidates
+    WHERE type = 'volume'
+  ),
+  candidate_artifact_owners AS MATERIALIZED (
+    SELECT DISTINCT org_id, user_id
+    FROM candidates
+    WHERE type = 'artifact'
+  ),
+  relevant_sessions AS MATERIALIZED (
+    SELECT
+      agent_sessions.org_id,
+      agent_sessions.user_id,
+      agent_sessions.artifacts
     FROM agent_sessions
+    INNER JOIN candidate_artifact_owners
+      ON candidate_artifact_owners.org_id = agent_sessions.org_id
+      AND candidate_artifact_owners.user_id = agent_sessions.user_id
+    WHERE jsonb_typeof(agent_sessions.artifacts) = 'array'
+  ),
+  session_artifact_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM relevant_sessions
     CROSS JOIN LATERAL jsonb_array_elements(
-      CASE
-        WHEN jsonb_typeof(agent_sessions.artifacts) = 'array'
-          THEN agent_sessions.artifacts
-        ELSE '[]'::jsonb
-      END
+      relevant_sessions.artifacts
     ) AS artifact(value)
+    INNER JOIN candidates
+      ON candidates.type = 'artifact'
+      AND candidates.org_id = relevant_sessions.org_id
+      AND candidates.user_id = relevant_sessions.user_id
+      AND candidates.name = artifact.value ->> 'name'
+      AND left(
+        candidates.id,
+        length(artifact.value ->> 'version')
+      ) = lower(artifact.value ->> 'version')
     WHERE NULLIF(artifact.value ->> 'version', '') IS NOT NULL
   ),
-  checkpoint_artifact_refs AS (
-    SELECT DISTINCT artifact.value ->> 'version' AS version_id
+  relevant_runs AS MATERIALIZED (
+    SELECT
+      agent_runs.id,
+      agent_runs.org_id,
+      agent_runs.user_id,
+      agent_runs.additional_volumes
+    FROM agent_runs
+    INNER JOIN candidate_artifact_owners
+      ON candidate_artifact_owners.org_id = agent_runs.org_id
+      AND candidate_artifact_owners.user_id = agent_runs.user_id
+
+    UNION
+
+    SELECT
+      agent_runs.id,
+      agent_runs.org_id,
+      agent_runs.user_id,
+      agent_runs.additional_volumes
+    FROM agent_runs
+    INNER JOIN candidate_volume_orgs
+      ON candidate_volume_orgs.org_id = agent_runs.org_id
+  ),
+  relevant_checkpoints AS MATERIALIZED (
+    SELECT
+      relevant_runs.org_id,
+      relevant_runs.user_id,
+      checkpoints.artifact_snapshots,
+      checkpoints.volume_versions_snapshot
     FROM checkpoints
+    INNER JOIN relevant_runs
+      ON relevant_runs.id = checkpoints.run_id
+  ),
+  checkpoint_artifact_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM relevant_checkpoints
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
-        WHEN jsonb_typeof(checkpoints.artifact_snapshots) = 'array'
-          THEN checkpoints.artifact_snapshots
+        WHEN jsonb_typeof(relevant_checkpoints.artifact_snapshots) = 'array'
+          THEN relevant_checkpoints.artifact_snapshots
         ELSE '[]'::jsonb
       END
     ) AS artifact(value)
+    INNER JOIN candidates
+      ON candidates.type = 'artifact'
+      AND candidates.org_id = relevant_checkpoints.org_id
+      AND candidates.user_id = relevant_checkpoints.user_id
+      AND candidates.name = artifact.value ->> 'name'
+      AND left(
+        candidates.id,
+        length(artifact.value ->> 'version')
+      ) = lower(artifact.value ->> 'version')
     WHERE NULLIF(artifact.value ->> 'version', '') IS NOT NULL
 
     UNION
 
-    SELECT DISTINCT artifact.value AS version_id
-    FROM checkpoints
+    SELECT DISTINCT candidates.id
+    FROM relevant_checkpoints
     CROSS JOIN LATERAL jsonb_each_text(
       CASE
-        WHEN jsonb_typeof(checkpoints.artifact_snapshots) = 'object'
-          THEN checkpoints.artifact_snapshots
+        WHEN jsonb_typeof(relevant_checkpoints.artifact_snapshots) = 'object'
+          THEN relevant_checkpoints.artifact_snapshots
         ELSE '{}'::jsonb
       END
     ) AS artifact(key, value)
+    INNER JOIN candidates
+      ON candidates.type = 'artifact'
+      AND candidates.org_id = relevant_checkpoints.org_id
+      AND candidates.user_id = relevant_checkpoints.user_id
+      AND candidates.name = artifact.key
+      AND left(
+        candidates.id,
+        length(artifact.value)
+      ) = lower(artifact.value)
     WHERE artifact.value <> ''
   ),
-  checkpoint_volume_refs AS (
-    SELECT DISTINCT version.value AS version_id
-    FROM checkpoints
+  checkpoint_volume_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM relevant_checkpoints
     CROSS JOIN LATERAL jsonb_each_text(
       CASE
         WHEN jsonb_typeof(
-          checkpoints.volume_versions_snapshot -> 'versions'
+          relevant_checkpoints.volume_versions_snapshot -> 'versions'
         ) = 'object'
-          THEN checkpoints.volume_versions_snapshot -> 'versions'
+          THEN relevant_checkpoints.volume_versions_snapshot -> 'versions'
         ELSE '{}'::jsonb
       END
     ) AS version(key, value)
+    INNER JOIN candidates
+      ON candidates.type = 'volume'
+      AND candidates.org_id = relevant_checkpoints.org_id
+      AND candidates.name = version.key
+      AND left(
+        candidates.id,
+        length(version.value)
+      ) = lower(version.value)
     WHERE version.value <> ''
 
     UNION
 
-    SELECT DISTINCT volume.value ->> 'versionId' AS version_id
-    FROM checkpoints
+    SELECT DISTINCT candidates.id
+    FROM relevant_checkpoints
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
         WHEN jsonb_typeof(
-          checkpoints.volume_versions_snapshot -> 'additionalVolumes'
+          relevant_checkpoints.volume_versions_snapshot -> 'additionalVolumes'
         ) = 'array'
-          THEN checkpoints.volume_versions_snapshot -> 'additionalVolumes'
+          THEN relevant_checkpoints.volume_versions_snapshot
+            -> 'additionalVolumes'
         ELSE '[]'::jsonb
       END
     ) AS volume(value)
+    INNER JOIN candidates
+      ON candidates.type = 'volume'
+      AND candidates.org_id = relevant_checkpoints.org_id
+      AND candidates.name = volume.value ->> 'name'
+      AND left(
+        candidates.id,
+        length(volume.value ->> 'versionId')
+      ) = lower(volume.value ->> 'versionId')
     WHERE NULLIF(volume.value ->> 'versionId', '') IS NOT NULL
   ),
-  run_additional_volume_refs AS (
-    SELECT DISTINCT volume.value ->> 'version' AS version_id
-    FROM agent_runs
+  run_additional_volume_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM relevant_runs
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
-        WHEN jsonb_typeof(agent_runs.additional_volumes) = 'array'
-          THEN agent_runs.additional_volumes
+        WHEN jsonb_typeof(relevant_runs.additional_volumes) = 'array'
+          THEN relevant_runs.additional_volumes
         ELSE '[]'::jsonb
       END
     ) AS volume(value)
+    INNER JOIN candidates
+      ON candidates.type = 'volume'
+      AND candidates.org_id = relevant_runs.org_id
+      AND candidates.name = volume.value ->> 'name'
+      AND left(
+        candidates.id,
+        length(volume.value ->> 'version')
+      ) = lower(volume.value ->> 'version')
     WHERE NULLIF(volume.value ->> 'version', '') IS NOT NULL
   ),
-  active_queue_refs AS (
-    SELECT DISTINCT storage.value ->> 'vasVersionId' AS version_id
+  active_queue_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
     FROM runner_job_queue
+    INNER JOIN relevant_runs
+      ON relevant_runs.id = runner_job_queue.run_id
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
         WHEN jsonb_typeof(
@@ -123,13 +228,23 @@ WITH
         ELSE '[]'::jsonb
       END
     ) AS storage(value)
+    INNER JOIN candidates
+      ON candidates.type = 'volume'
+      AND candidates.org_id = relevant_runs.org_id
+      AND candidates.name = storage.value ->> 'vasStorageName'
+      AND left(
+        candidates.id,
+        length(storage.value ->> 'vasVersionId')
+      ) = lower(storage.value ->> 'vasVersionId')
     WHERE runner_job_queue.expires_at > transaction_timestamp()
       AND NULLIF(storage.value ->> 'vasVersionId', '') IS NOT NULL
 
     UNION
 
-    SELECT DISTINCT artifact.value ->> 'vasVersionId' AS version_id
+    SELECT DISTINCT candidates.id
     FROM runner_job_queue
+    INNER JOIN relevant_runs
+      ON relevant_runs.id = runner_job_queue.run_id
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
         WHEN jsonb_typeof(
@@ -143,8 +258,44 @@ WITH
         ELSE '[]'::jsonb
       END
     ) AS artifact(value)
+    INNER JOIN candidates
+      ON candidates.type = 'artifact'
+      AND candidates.storage_id::text =
+        artifact.value ->> 'vasStorageId'
+      AND left(
+        candidates.id,
+        length(artifact.value ->> 'vasVersionId')
+      ) = lower(artifact.value ->> 'vasVersionId')
     WHERE runner_job_queue.expires_at > transaction_timestamp()
       AND NULLIF(artifact.value ->> 'vasVersionId', '') IS NOT NULL
+  ),
+  lineage_version_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM candidates
+    INNER JOIN storage_version_lineage
+      ON storage_version_lineage.storage_id = candidates.storage_id
+      AND storage_version_lineage.version_id = candidates.id
+  ),
+  lineage_parent_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM candidates
+    INNER JOIN storage_version_lineage
+      ON storage_version_lineage.storage_id = candidates.storage_id
+      AND storage_version_lineage.parent_version_id = candidates.id
+  ),
+  system_url_cache_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM candidates
+    INNER JOIN system_storage_presigned_url_cache
+      ON system_storage_presigned_url_cache.storage_version_id =
+        candidates.id
+  ),
+  shared_prefix_matches AS MATERIALIZED (
+    SELECT DISTINCT candidates.id
+    FROM candidates
+    INNER JOIN storages AS other_storage
+      ON other_storage.s3_prefix = candidates.s3_prefix
+      AND other_storage.id <> candidates.storage_id
   ),
   reference_flags AS (
     SELECT
@@ -152,67 +303,48 @@ WITH
       candidates.head_version_id = candidates.id AS current_head,
       EXISTS (
         SELECT 1
-        FROM session_artifact_refs
-        WHERE left(
-          candidates.id,
-          length(session_artifact_refs.version_id)
-        ) = lower(session_artifact_refs.version_id)
+        FROM session_artifact_matches
+        WHERE session_artifact_matches.id = candidates.id
       ) AS session_artifact_ref,
       EXISTS (
         SELECT 1
-        FROM checkpoint_artifact_refs
-        WHERE left(
-          candidates.id,
-          length(checkpoint_artifact_refs.version_id)
-        ) = lower(checkpoint_artifact_refs.version_id)
+        FROM checkpoint_artifact_matches
+        WHERE checkpoint_artifact_matches.id = candidates.id
       ) AS checkpoint_artifact_ref,
       EXISTS (
         SELECT 1
-        FROM checkpoint_volume_refs
-        WHERE left(
-          candidates.id,
-          length(checkpoint_volume_refs.version_id)
-        ) = lower(checkpoint_volume_refs.version_id)
+        FROM checkpoint_volume_matches
+        WHERE checkpoint_volume_matches.id = candidates.id
       ) AS checkpoint_volume_ref,
       EXISTS (
         SELECT 1
-        FROM run_additional_volume_refs
-        WHERE left(
-          candidates.id,
-          length(run_additional_volume_refs.version_id)
-        ) = lower(run_additional_volume_refs.version_id)
+        FROM run_additional_volume_matches
+        WHERE run_additional_volume_matches.id = candidates.id
       ) AS run_additional_volume_ref,
       EXISTS (
         SELECT 1
-        FROM active_queue_refs
-        WHERE left(
-          candidates.id,
-          length(active_queue_refs.version_id)
-        ) = lower(active_queue_refs.version_id)
+        FROM active_queue_matches
+        WHERE active_queue_matches.id = candidates.id
       ) AS active_queue_ref,
       EXISTS (
         SELECT 1
-        FROM storage_version_lineage
-        WHERE storage_version_lineage.storage_id = candidates.storage_id
-          AND storage_version_lineage.version_id = candidates.id
+        FROM lineage_version_matches
+        WHERE lineage_version_matches.id = candidates.id
       ) AS lineage_version_ref,
       EXISTS (
         SELECT 1
-        FROM storage_version_lineage
-        WHERE storage_version_lineage.storage_id = candidates.storage_id
-          AND storage_version_lineage.parent_version_id = candidates.id
+        FROM lineage_parent_matches
+        WHERE lineage_parent_matches.id = candidates.id
       ) AS lineage_parent_ref,
       EXISTS (
         SELECT 1
-        FROM system_storage_presigned_url_cache
-        WHERE system_storage_presigned_url_cache.storage_version_id =
-          candidates.id
+        FROM system_url_cache_matches
+        WHERE system_url_cache_matches.id = candidates.id
       ) AS system_url_cache_ref,
       EXISTS (
         SELECT 1
-        FROM storages AS other_storage
-        WHERE other_storage.s3_prefix = candidates.s3_prefix
-          AND other_storage.id <> candidates.storage_id
+        FROM shared_prefix_matches
+        WHERE shared_prefix_matches.id = candidates.id
       ) AS shared_prefix,
       candidates.s3_prefix =
         candidates.org_id || '/' || candidates.storage_id::text
