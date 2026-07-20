@@ -568,6 +568,7 @@ mod tests {
     #[tokio::test]
     async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit()
     -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = &*SNAPSHOT_MOCK_SERVER;
 
@@ -690,6 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_uploads_archive_manifest_and_commits_new_version() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
 
@@ -788,6 +790,7 @@ mod tests {
 
     #[tokio::test]
     async fn uploaded_snapshot_fails_when_commit_reports_failure() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
 
@@ -890,6 +893,7 @@ mod tests {
 
     #[tokio::test]
     async fn dedup_snapshot_fails_when_commit_response_is_malformed() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
 
@@ -958,6 +962,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_requires_upload_urls_for_new_version() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
 

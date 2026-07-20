@@ -22,6 +22,8 @@ pub mod control;
 pub mod env;
 pub mod error;
 pub mod events;
+pub mod failure_diagnostics;
+mod failure_patterns;
 pub mod heartbeat;
 pub mod http;
 pub mod masker;
@@ -36,3 +38,16 @@ pub mod session_metadata;
 pub mod telemetry;
 pub mod timing;
 mod urls;
+
+#[cfg(test)]
+static SYSTEM_LOG_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(test)]
+pub(crate) fn lock_system_log_test_state() -> tokio::sync::MutexGuard<'static, ()> {
+    SYSTEM_LOG_TEST_MUTEX.blocking_lock()
+}
+
+#[cfg(test)]
+pub(crate) async fn lock_system_log_test_state_async() -> tokio::sync::MutexGuard<'static, ()> {
+    SYSTEM_LOG_TEST_MUTEX.lock().await
+}

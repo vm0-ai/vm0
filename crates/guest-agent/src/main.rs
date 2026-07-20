@@ -6,7 +6,7 @@ use guest_agent::cli;
 use guest_agent::complete;
 use guest_agent::control;
 use guest_agent::env;
-use guest_agent::events;
+use guest_agent::failure_diagnostics;
 use guest_agent::heartbeat;
 use guest_agent::http::HttpClient;
 use guest_agent::masker;
@@ -15,32 +15,22 @@ use guest_agent::paths;
 use guest_agent::reuse_preparation;
 use guest_agent::run_context::GuestRuntime;
 use guest_agent::session_history_identity;
-use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
-use guest_contracts::diagnostics::{
-    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
-    FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata,
-    SessionHistoryStatus,
-};
+use guest_contracts::diagnostics::{CliTerminationReason, FailureClass, FailureDiagnostic};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
 };
-use serde_json::Value;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
-const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
-const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[tokio::main]
 async fn main() {
@@ -346,10 +336,13 @@ async fn execute(
     if let Err(e) = setup_working_dir(paths::CANONICAL_WORKING_DIR) {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
-        write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
-        write_guest_failure_diagnostic(
+        failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+        failure_diagnostics::write_guest_failure_diagnostic(
             runtime_paths.failure_diagnostic_file(),
-            &base_failure_diagnostic_for_config(config, FailureClass::WorkingDirSetupFailed),
+            &failure_diagnostics::base_failure_diagnostic_for_config(
+                config,
+                FailureClass::WorkingDirSetupFailed,
+            ),
         );
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
         return 1;
@@ -364,10 +357,13 @@ async fn execute(
     {
         let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
-        write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
-        write_guest_failure_diagnostic(
+        failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+        failure_diagnostics::write_guest_failure_diagnostic(
             runtime_paths.failure_diagnostic_file(),
-            &base_failure_diagnostic_for_config(config, FailureClass::CliExecutionError),
+            &failure_diagnostics::base_failure_diagnostic_for_config(
+                config,
+                FailureClass::CliExecutionError,
+            ),
         );
         return 1;
     }
@@ -409,48 +405,36 @@ async fn execute(
             let cli_exit_code = cli_result.exit_code;
             if let Some(control_error) = cli_result.control_error.as_ref() {
                 let msg = control_error.to_string();
-                let diagnostic = cli_result_failure_diagnostic_for_config(
+                let diagnostic = failure_diagnostics::cli_control_failure_for_config(
                     config,
                     runtime_paths,
-                    FailureClass::CliExecutionError,
-                    cli_exit_code,
-                    cli_result.claude_result,
+                    &cli_result,
                 );
-                let diagnostic = with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
-                let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 (cli_exit_code, 1, msg, false, Some(diagnostic), false)
             } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
                 (cli_exit_code, 0, String::new(), false, None, true)
             } else if cli_exit_code != 0 {
-                let failure_message = cli_failure_message(
-                    cli_exit_code,
-                    &cli_result.stderr_lines,
-                    cli_result.failure_diagnostic.as_ref(),
-                );
-                let diagnostic = cli_result_failure_diagnostic_for_config(
+                let failure = failure_diagnostics::cli_nonzero_failure_for_config(
                     config,
                     runtime_paths,
-                    FailureClass::CliNonzero,
-                    cli_exit_code,
-                    cli_result.claude_result,
-                )
-                .with_failure_detail_source(failure_message.source);
-                let diagnostic = with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
-                let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
-                let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+                    &cli_result,
+                );
                 (
                     cli_exit_code,
                     cli_exit_code,
-                    failure_message.message,
+                    failure.message,
                     false,
-                    Some(diagnostic),
+                    Some(failure.diagnostic),
                     false,
                 )
             } else if http.has_api() && is_claude_zero_turn_result(config.framework, &cli_result) {
                 let history_check_start = Instant::now();
                 let session_history_status =
-                    claude_history_target_status_for_config(config, runtime_paths);
-                if session_history_unavailable(session_history_status) {
+                    failure_diagnostics::claude_history_target_status_for_config(
+                        config,
+                        runtime_paths,
+                    );
+                if failure_diagnostics::session_history_unavailable(session_history_status) {
                     let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
                     record_sandbox_op(
                         "session_history_available",
@@ -459,15 +443,11 @@ async fn execute(
                         Some(msg),
                     );
                     log_info!(LOG_TAG, "{msg}");
-                    let diagnostic = base_failure_diagnostic_for_config(
+                    let diagnostic = failure_diagnostics::claude_zero_turn_failure_for_config(
                         config,
-                        FailureClass::ClaudeZeroTurnNoHistory,
-                    )
-                    .with_cli_exit_code(cli_exit_code)
-                    .with_claude_num_turns(Some(0))
-                    .with_session_history_status(session_history_status);
-                    let diagnostic =
-                        with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
+                        &cli_result,
+                        session_history_status,
+                    );
                     (
                         cli_exit_code,
                         1,
@@ -491,7 +471,7 @@ async fn execute(
                 1,
                 msg,
                 false,
-                Some(base_failure_diagnostic_for_config(
+                Some(failure_diagnostics::base_failure_diagnostic_for_config(
                     config,
                     FailureClass::CliExecutionError,
                 )),
@@ -557,527 +537,6 @@ fn preserves_successful_post_result_cleanup(
             })
 }
 
-fn with_cli_termination(
-    diagnostic: FailureDiagnostic,
-    cli_termination: Option<CliTerminationDiagnostic>,
-) -> FailureDiagnostic {
-    if let Some(cli_termination) = cli_termination {
-        diagnostic.with_cli_termination(cli_termination)
-    } else {
-        diagnostic
-    }
-}
-
-fn with_cli_observed_exit(
-    diagnostic: FailureDiagnostic,
-    cli_observed_exit: Option<CliObservedExitDiagnostic>,
-) -> FailureDiagnostic {
-    if let Some(cli_observed_exit) = cli_observed_exit {
-        diagnostic.with_cli_observed_exit(cli_observed_exit)
-    } else {
-        diagnostic
-    }
-}
-
-fn cli_result_failure_diagnostic_for_config(
-    config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
-    failure_class: FailureClass,
-    cli_exit_code: i32,
-    claude_result: Option<cli::ClaudeResultSummary>,
-) -> FailureDiagnostic {
-    let mut diagnostic = base_failure_diagnostic_for_config(config, failure_class)
-        .with_cli_exit_code(cli_exit_code)
-        .with_session_history_status(diagnostic_session_history_status_for_config(
-            config,
-            runtime_paths,
-        ));
-    if let Some(result) = claude_result {
-        diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
-    }
-    diagnostic
-}
-
-fn base_failure_diagnostic_for_config(
-    config: &env::GuestConfig,
-    failure_class: FailureClass,
-) -> FailureDiagnostic {
-    base_failure_diagnostic_from_parts(failure_class, config.framework, &config.prompt)
-}
-
-fn base_failure_diagnostic_from_parts(
-    failure_class: FailureClass,
-    framework: env::Framework,
-    prompt: &str,
-) -> FailureDiagnostic {
-    FailureDiagnostic::new(
-        failure_class,
-        diagnostic_framework_from_framework(framework),
-        PromptMetadata::from_prompt(prompt),
-    )
-}
-
-fn diagnostic_framework_from_framework(framework: env::Framework) -> AgentFramework {
-    match framework {
-        env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
-        env::Framework::Codex => AgentFramework::Codex,
-    }
-}
-
-fn with_cli_failure_reason(
-    diagnostic: FailureDiagnostic,
-    failure_message: &CliFailureMessage,
-) -> FailureDiagnostic {
-    if let Some(reason) = classify_cli_failure_reason(
-        diagnostic.framework,
-        failure_message.source,
-        failure_message.message.as_str(),
-    )
-    .or(failure_message.failure_reason)
-    {
-        diagnostic.with_failure_reason(reason)
-    } else {
-        diagnostic
-    }
-}
-
-fn classify_cli_failure_reason(
-    framework: AgentFramework,
-    source: FailureDetailSource,
-    failure_message: &str,
-) -> Option<FailureReason> {
-    let normalized = failure_message.to_ascii_lowercase();
-    if is_insufficient_credits_error(&normalized) {
-        return Some(FailureReason::InsufficientCredits);
-    }
-    if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_invalid_credentials_error(&normalized)
-    {
-        return Some(FailureReason::InvalidCredentials);
-    }
-    if matches!(framework, AgentFramework::ClaudeCode)
-        && (is_claude_provider_overloaded_error(&normalized)
-            || is_claude_result_simple_provider_overloaded_error(source, &normalized))
-    {
-        return Some(FailureReason::ProviderOverloaded);
-    }
-    if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_result_provider_stream_timeout(source, &normalized)
-    {
-        return Some(FailureReason::ProviderStreamTimeout);
-    }
-    if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_provider_server_error(source, &normalized)
-    {
-        return Some(FailureReason::ProviderServerError);
-    }
-    if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_output_token_limit_error(&normalized)
-    {
-        return Some(FailureReason::OutputTokenLimit);
-    }
-    if matches!(framework, AgentFramework::Codex)
-        && (normalized.contains("invalid_api_key")
-            || normalized.contains("incorrect api key provided"))
-    {
-        return Some(FailureReason::InvalidApiKey);
-    }
-    if matches!(framework, AgentFramework::Codex)
-        && is_codex_oauth_reconnect_required_run_error(failure_message)
-    {
-        return Some(FailureReason::ReconnectRequired);
-    }
-    if matches!(framework, AgentFramework::Codex)
-        && guest_agent::events::is_codex_model_capacity_message(failure_message)
-    {
-        return Some(FailureReason::ProviderOverloaded);
-    }
-    if matches!(framework, AgentFramework::Codex)
-        && guest_agent::events::is_codex_context_window_exceeded_message(failure_message)
-    {
-        return Some(FailureReason::ContextWindowExceeded);
-    }
-    // Subscription/usage limits are an expected quota state for both Codex
-    // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
-    // "weekly limit" / org monthly spend limit), so classify them regardless of
-    // framework where the wording is shared. This lets the runner log these
-    // expected outcomes at info instead of error.
-    if normalized.contains("usage limit")
-        || normalized.contains("session limit")
-        || normalized.contains("weekly limit")
-        || (matches!(framework, AgentFramework::ClaudeCode)
-            && (is_claude_subscription_access_disabled_error(&normalized)
-                || is_claude_monthly_spend_limit_error(&normalized)))
-    {
-        return Some(FailureReason::UsageLimit);
-    }
-    None
-}
-
-fn is_insufficient_credits_error(normalized: &str) -> bool {
-    normalized.contains("402 insufficient credits")
-        || (normalized.contains("api error: 402")
-            && normalized.contains("requires more credits")
-            && normalized.contains("can only afford"))
-}
-
-fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
-    normalized.contains("failed to authenticate")
-        && normalized.contains("api error: 401 invalid authentication credentials")
-}
-
-fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
-    const MARKER: &str = "api error:";
-    normalized.match_indices(MARKER).any(|(index, _)| {
-        claude_529_error_detail(&normalized[index + MARKER.len()..]).is_some_and(|detail| {
-            starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
-        })
-    })
-}
-
-fn is_claude_result_simple_provider_overloaded_error(
-    source: FailureDetailSource,
-    normalized: &str,
-) -> bool {
-    source == FailureDetailSource::ClaudeResult && normalized.trim() == "api error: overloaded"
-}
-
-fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normalized: &str) -> bool {
-    let trimmed = normalized.trim();
-    source == FailureDetailSource::ClaudeResult
-        && (is_claude_result_stream_idle_timeout(trimmed)
-            || is_claude_result_stalled_mid_stream(trimmed))
-}
-
-fn is_claude_result_stream_idle_timeout(trimmed: &str) -> bool {
-    trimmed.starts_with("api error: stream idle timeout")
-        && trimmed.contains("partial response received")
-}
-
-fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {
-    trimmed.starts_with("api error: response stalled mid-stream")
-        && trimmed.contains("response above may be incomplete")
-}
-
-fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
-    source == FailureDetailSource::ClaudeResult
-        && has_claude_api_status(normalized, "500")
-        && normalized.contains("internal server error")
-        && normalized.contains("server-side issue")
-}
-
-fn is_claude_output_token_limit_error(normalized: &str) -> bool {
-    let response_exceeded = normalized.contains("response exceeded")
-        || normalized.contains("response has exceeded")
-        || normalized.contains("response exceeds");
-    let output_token_limit = normalized.contains("output token maximum")
-        || normalized.contains("output token limit")
-        || normalized.contains("maximum output token")
-        || normalized.contains("max output token")
-        || normalized.contains("claude_code_max_output_tokens");
-    response_exceeded && output_token_limit
-}
-
-fn claude_529_error_detail(detail: &str) -> Option<&str> {
-    let detail = trim_error_detail_start(detail);
-    let detail = if let Some(remaining) = strip_word_prefix(detail, "repeated") {
-        trim_error_detail_start(remaining)
-    } else {
-        detail
-    };
-    let detail = detail.strip_prefix("529")?;
-    if detail.chars().next().is_some_and(is_error_type_char) {
-        return None;
-    }
-    Some(trim_error_detail_start(detail))
-}
-
-fn has_claude_api_status(normalized: &str, status: &str) -> bool {
-    const MARKER: &str = "api error:";
-    normalized.match_indices(MARKER).any(|(index, _)| {
-        let detail = trim_error_detail_start(&normalized[index + MARKER.len()..]);
-        let Some(remaining) = detail.strip_prefix(status) else {
-            return false;
-        };
-        !remaining.chars().next().is_some_and(is_error_type_char)
-    })
-}
-
-fn trim_error_detail_start(detail: &str) -> &str {
-    detail.trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
-}
-
-fn starts_with_overloaded_word(detail: &str) -> bool {
-    strip_word_prefix(detail, "overloaded").is_some()
-}
-
-fn contains_overloaded_error_type(detail: &str) -> bool {
-    const TOKEN: &str = "overloaded_error";
-    detail.match_indices(TOKEN).any(|(index, _)| {
-        let before = detail[..index].chars().next_back();
-        let after = detail[index + TOKEN.len()..].chars().next();
-        !before.is_some_and(is_error_type_char) && !after.is_some_and(is_error_type_char)
-    })
-}
-
-fn strip_word_prefix<'a>(text: &'a str, token: &str) -> Option<&'a str> {
-    text.strip_prefix(token).filter(|remaining| {
-        remaining
-            .chars()
-            .next()
-            .is_none_or(|c| !is_error_type_char(c))
-    })
-}
-
-fn is_error_type_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '_' | '-')
-}
-
-fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
-    normalized.contains("disabled claude subscription access") && normalized.contains("claude code")
-}
-
-fn is_claude_monthly_spend_limit_error(normalized: &str) -> bool {
-    normalized.contains("org's monthly spend limit")
-        && normalized.contains("claude.ai/settings/usage")
-}
-
-fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
-    if !error_message.contains("TOKEN_REFRESH_FAILED")
-        || !error_message.contains(CODEX_OAUTH_TOKEN_CONNECTOR)
-        || !error_message.contains("reconnect_required")
-    {
-        return false;
-    }
-
-    let mut search_start = 0;
-    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
-        if value
-            .as_ref()
-            .is_some_and(is_codex_oauth_reconnect_required_value)
-        {
-            return true;
-        }
-        search_start = end_index;
-    }
-    false
-}
-
-fn parse_next_json_object(message: &str, search_start: usize) -> Option<(Option<Value>, usize)> {
-    let body_start = message[search_start.min(message.len())..]
-        .find('{')
-        .map(|offset| search_start + offset)?;
-    let mut stream = serde_json::Deserializer::from_str(&message[body_start..]).into_iter();
-
-    match stream.next() {
-        Some(Ok(value)) => Some((Some(value), body_start + stream.byte_offset())),
-        Some(Err(_)) | None => Some((None, body_start + 1)),
-    }
-}
-
-fn is_codex_oauth_reconnect_required_value(value: &Value) -> bool {
-    is_codex_oauth_reconnect_required_body(value)
-        || value
-            .get("error")
-            .is_some_and(is_codex_oauth_reconnect_required_envelope)
-}
-
-fn is_codex_oauth_reconnect_required_body(value: &Value) -> bool {
-    value.get("error").and_then(Value::as_str) == Some("TOKEN_REFRESH_FAILED")
-        && has_reconnect_required_payload(value)
-}
-
-fn is_codex_oauth_reconnect_required_envelope(value: &Value) -> bool {
-    value.get("code").and_then(Value::as_str) == Some("TOKEN_REFRESH_FAILED")
-        && has_reconnect_required_payload(value)
-}
-
-fn has_reconnect_required_payload(value: &Value) -> bool {
-    value.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
-        && has_exact_codex_oauth_connector(value)
-}
-
-fn has_exact_codex_oauth_connector(value: &Value) -> bool {
-    value
-        .get("connectors")
-        .and_then(Value::as_array)
-        .is_some_and(|connectors| {
-            connectors.len() == 1
-                && connectors.first().and_then(Value::as_str) == Some(CODEX_OAUTH_TOKEN_CONNECTOR)
-        })
-}
-
-fn diagnostic_session_history_status_for_config(
-    config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
-) -> SessionHistoryStatus {
-    match config.framework {
-        env::Framework::ClaudeCode => {
-            claude_history_target_status_for_config(config, runtime_paths)
-        }
-        env::Framework::Codex => SessionHistoryStatus::NotApplicable,
-    }
-}
-
-fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
-    matches!(
-        status,
-        SessionHistoryStatus::Missing | SessionHistoryStatus::Empty
-    )
-}
-
-fn claude_history_target_status_for_config(
-    config: &env::GuestConfig,
-    runtime_paths: &paths::GuestPaths,
-) -> SessionHistoryStatus {
-    let marker = match session_metadata::resolve_history_marker_payload_for_diagnostics_from(
-        config.framework,
-        &config.home_dir,
-        runtime_paths.session_id_file(),
-        runtime_paths.session_history_path_file(),
-    ) {
-        Ok(Some(marker)) => marker,
-        Ok(None) => return SessionHistoryStatus::Missing,
-        Err(_) => return SessionHistoryStatus::Unknown,
-    };
-    history_target_status(Path::new(&marker))
-}
-
-#[cfg(test)]
-fn history_target_unavailable(path: &Path) -> bool {
-    session_history_unavailable(history_target_status(path))
-}
-
-fn history_target_status(path: &Path) -> SessionHistoryStatus {
-    match path.metadata() {
-        Ok(metadata) if metadata.is_file() && metadata.len() == 0 => SessionHistoryStatus::Empty,
-        Ok(_) => SessionHistoryStatus::Present,
-        Err(e) if e.kind() == ErrorKind::NotFound => SessionHistoryStatus::Missing,
-        Err(_) => SessionHistoryStatus::Unknown,
-    }
-}
-
-fn write_guest_error_file(checkpoint_error_file: &str, message: &str) {
-    let message = message.trim();
-    if message.is_empty() {
-        return;
-    }
-
-    if let Err(e) = paths::write_private(checkpoint_error_file, message) {
-        log_warn!(LOG_TAG, "Failed to write guest error file: {e}");
-    }
-}
-
-fn write_guest_failure_diagnostic(failure_diagnostic_file: &str, diagnostic: &FailureDiagnostic) {
-    let bytes = match serde_json::to_vec(diagnostic) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            log_warn!(LOG_TAG, "Failed to serialize guest failure diagnostic: {e}");
-            return;
-        }
-    };
-
-    if let Err(e) = paths::write_private(failure_diagnostic_file, bytes) {
-        log_warn!(
-            LOG_TAG,
-            "Failed to write guest failure diagnostic file: {e}"
-        );
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CliFailureMessage {
-    message: String,
-    source: FailureDetailSource,
-    failure_reason: Option<FailureReason>,
-}
-
-fn cli_failure_message(
-    code: i32,
-    stderr_lines: &[String],
-    failure_diagnostic: Option<&cli::CliFailureDiagnostic>,
-) -> CliFailureMessage {
-    let stdout_failure_reason = failure_diagnostic.and_then(|diagnostic| diagnostic.failure_reason);
-    if let Some((message, source, failure_reason)) = failure_diagnostic.and_then(|diagnostic| {
-        let message = diagnostic.message.trim();
-        if message.is_empty() {
-            None
-        } else {
-            Some((message, diagnostic.source, diagnostic.failure_reason))
-        }
-    }) && (!is_generic_stdout_failure_diagnostic(source, message) || stderr_lines.is_empty())
-    {
-        return CliFailureMessage {
-            message: message.to_string(),
-            source,
-            failure_reason,
-        };
-    }
-
-    if stderr_lines.is_empty() {
-        return CliFailureMessage {
-            message: format!("Agent exited with code {code}"),
-            source: FailureDetailSource::FallbackExitCode,
-            failure_reason: None,
-        };
-    }
-
-    log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-    let omitted_lines = stderr_lines
-        .len()
-        .saturating_sub(MAX_LOGGED_CLI_STDERR_LINES);
-    let mut message_lines = Vec::with_capacity(
-        stderr_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
-    );
-    if omitted_lines > 0 {
-        log_warn!(
-            LOG_TAG,
-            "CLI stderr: omitted {} earlier line(s)",
-            omitted_lines
-        );
-        message_lines.push(format!(
-            "...[omitted {omitted_lines} earlier stderr line(s)]"
-        ));
-    }
-    for line in stderr_lines.iter().skip(omitted_lines) {
-        let line = truncate_cli_stderr_line(line);
-        log_warn!(LOG_TAG, "CLI stderr: {line}");
-        message_lines.push(line.into_owned());
-    }
-    CliFailureMessage {
-        message: message_lines.join(" "),
-        source: FailureDetailSource::Stderr,
-        failure_reason: stdout_failure_reason,
-    }
-}
-
-fn is_generic_stdout_failure_diagnostic(source: FailureDetailSource, message: &str) -> bool {
-    if source == FailureDetailSource::CodexJsonl {
-        return events::is_generic_codex_failure_diagnostic(message);
-    }
-
-    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
-}
-
-fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
-    if line.len() <= MAX_LOGGED_CLI_STDERR_LINE_BYTES {
-        return std::borrow::Cow::Borrowed(line);
-    }
-
-    let mut cut = 0;
-    for (idx, ch) in line.char_indices() {
-        let next = idx + ch.len_utf8();
-        if next > MAX_LOGGED_CLI_STDERR_LINE_BYTES {
-            break;
-        }
-        cut = next;
-    }
-
-    let mut truncated = line[..cut].to_string();
-    truncated.push_str("...[truncated]");
-    std::borrow::Cow::Owned(truncated)
-}
-
 struct CompletionState<'a> {
     last_event_sequence: Option<u32>,
     failure_message: Option<&'a str>,
@@ -1100,11 +559,14 @@ async fn complete_execution(
         .failure_message
         .is_some_and(|message| !message.trim().is_empty());
     if let Some(message) = state.failure_message {
-        write_guest_error_file(runtime_paths.checkpoint_error_file(), message);
+        failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), message);
     }
     let mut wrote_failure_diagnostic = false;
     if let Some(diagnostic) = &state.failure_diagnostic {
-        write_guest_failure_diagnostic(runtime_paths.failure_diagnostic_file(), diagnostic);
+        failure_diagnostics::write_guest_failure_diagnostic(
+            runtime_paths.failure_diagnostic_file(),
+            diagnostic,
+        );
         wrote_failure_diagnostic = true;
     }
 
@@ -1113,17 +575,24 @@ async fn complete_execution(
         let msg = "Some events failed to send, marking run as failed";
         log_error!(LOG_TAG, "{msg}");
         if !has_failure_message {
-            write_guest_error_file(runtime_paths.checkpoint_error_file(), msg);
+            failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), msg);
         }
         if !wrote_failure_diagnostic {
-            let diagnostic =
-                base_failure_diagnostic_for_config(config, FailureClass::EventUploadFailed)
-                    .with_cli_exit_code(cli_exit_code)
-                    .with_session_history_status(diagnostic_session_history_status_for_config(
-                        config,
-                        runtime_paths,
-                    ));
-            write_guest_failure_diagnostic(runtime_paths.failure_diagnostic_file(), &diagnostic);
+            let diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
+                config,
+                FailureClass::EventUploadFailed,
+            )
+            .with_cli_exit_code(cli_exit_code)
+            .with_session_history_status(
+                failure_diagnostics::diagnostic_session_history_status_for_config(
+                    config,
+                    runtime_paths,
+                ),
+            );
+            failure_diagnostics::write_guest_failure_diagnostic(
+                runtime_paths.failure_diagnostic_file(),
+                &diagnostic,
+            );
             wrote_failure_diagnostic = true;
         }
         exit_code = 1;
@@ -1189,15 +658,23 @@ async fn complete_execution(
                     "✗ Checkpoint failed ({}s)",
                     cp_start.elapsed().as_secs()
                 );
-                write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+                failure_diagnostics::write_guest_error_file(
+                    runtime_paths.checkpoint_error_file(),
+                    &msg,
+                );
                 if !wrote_failure_diagnostic {
-                    let diagnostic =
-                        base_failure_diagnostic_for_config(config, FailureClass::CheckpointFailed)
-                            .with_cli_exit_code(cli_exit_code)
-                            .with_session_history_status(
-                                diagnostic_session_history_status_for_config(config, runtime_paths),
-                            );
-                    write_guest_failure_diagnostic(
+                    let diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
+                        config,
+                        FailureClass::CheckpointFailed,
+                    )
+                    .with_cli_exit_code(cli_exit_code)
+                    .with_session_history_status(
+                        failure_diagnostics::diagnostic_session_history_status_for_config(
+                            config,
+                            runtime_paths,
+                        ),
+                    );
+                    failure_diagnostics::write_guest_failure_diagnostic(
                         runtime_paths.failure_diagnostic_file(),
                         &diagnostic,
                     );
@@ -1325,7 +802,10 @@ async fn final_telemetry(telemetry: Telemetry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use guest_contracts::diagnostics::CliTerminationSignal;
+    use guest_contracts::diagnostics::{
+        AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationSignal,
+        PromptMetadata, SessionHistoryStatus,
+    };
     use httpmock::prelude::*;
     use serde_json::json;
     use std::sync::LazyLock;
@@ -1575,1230 +1055,6 @@ mod tests {
         }
     }
 
-    fn cli_diagnostic(message: &str, source: FailureDetailSource) -> cli::CliFailureDiagnostic {
-        cli::CliFailureDiagnostic {
-            message: message.to_string(),
-            source,
-            failure_reason: None,
-        }
-    }
-
-    fn selected_failure_message(
-        message: &str,
-        source: FailureDetailSource,
-        failure_reason: Option<FailureReason>,
-    ) -> CliFailureMessage {
-        CliFailureMessage {
-            message: message.to_string(),
-            source,
-            failure_reason,
-        }
-    }
-
-    fn classify_cli_failure_reason(
-        framework: AgentFramework,
-        failure_message: &str,
-    ) -> Option<FailureReason> {
-        // Existing direct classifier tests model messages selected from stderr.
-        super::classify_cli_failure_reason(framework, FailureDetailSource::Stderr, failure_message)
-    }
-
-    const CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
-
-    #[test]
-    fn cli_failure_message_logs_stderr_to_system_log() {
-        let _test_state_guard = lock_test_state();
-        let tmp = tempfile::tempdir().unwrap();
-        let system_log_path = tmp.path().join("system.log");
-        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
-
-        let long_line = format!("{}tail", "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES + 1));
-        let stderr_lines = ["prefix line 0".to_string(), "prefix line 1".to_string()]
-            .into_iter()
-            .chain(std::iter::once("codex stderr includes ***".to_string()))
-            .chain(std::iter::once(long_line.clone()))
-            .chain((0..(MAX_LOGGED_CLI_STDERR_LINES - 2)).map(|i| format!("extra line {i}")))
-            .collect::<Vec<_>>();
-        let msg = cli_failure_message(1, &stderr_lines, None);
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert!(
-            !msg.message.contains("prefix line"),
-            "returned error message should omit older stderr lines"
-        );
-        assert!(
-            msg.message.contains("codex stderr includes ***"),
-            "returned error message should preserve stderr"
-        );
-        assert!(
-            msg.message.contains("...[truncated]"),
-            "returned error message should truncate long stderr lines"
-        );
-        assert!(
-            !msg.message.contains("tail"),
-            "returned error message should not include bytes after the truncation boundary"
-        );
-        assert!(
-            msg.message
-                .contains("...[omitted 2 earlier stderr line(s)]"),
-            "returned error message should report omitted earlier stderr lines"
-        );
-
-        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
-        assert!(
-            system_log.contains("Captured 22 stderr lines"),
-            "system log should include stderr count, got: {system_log}"
-        );
-        assert!(
-            !system_log.contains("prefix line"),
-            "system log should omit older stderr lines"
-        );
-        assert!(
-            system_log.contains("CLI stderr: codex stderr includes ***"),
-            "system log should include CLI stderr, got: {system_log}"
-        );
-        assert!(
-            system_log.contains("...[truncated]"),
-            "system log should truncate long stderr lines, got: {system_log}"
-        );
-        assert!(
-            !system_log.contains("tail"),
-            "system log should not include bytes after the truncation boundary"
-        );
-        assert!(
-            system_log.contains("CLI stderr: omitted 2 earlier line(s)"),
-            "system log should report omitted earlier stderr lines, got: {system_log}"
-        );
-    }
-
-    #[test]
-    fn cli_failure_message_preserves_exact_limits_without_omission() {
-        let _test_state_guard = lock_test_state();
-        let tmp = tempfile::tempdir().unwrap();
-        let system_log_path = tmp.path().join("system.log");
-        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
-
-        let exact_limit_line = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES);
-        let stderr_lines = std::iter::once(exact_limit_line.clone())
-            .chain((1..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("line {i}")))
-            .collect::<Vec<_>>();
-
-        let msg = cli_failure_message(1, &stderr_lines, None);
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert!(
-            msg.message.contains(&exact_limit_line),
-            "returned error message should preserve line at exact size limit"
-        );
-        assert!(
-            !msg.message.contains("...[truncated]"),
-            "returned error message should not truncate line at exact size limit"
-        );
-        assert!(
-            !msg.message.contains("omitted"),
-            "returned error message should not report omitted lines at exact line limit"
-        );
-
-        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
-        assert!(
-            system_log.contains("Captured 20 stderr lines"),
-            "system log should include stderr count, got: {system_log}"
-        );
-        assert!(
-            !system_log.contains("omitted"),
-            "system log should not report omitted lines at exact line limit"
-        );
-    }
-
-    #[test]
-    fn cli_failure_message_truncates_on_utf8_boundary() {
-        let _test_state_guard = lock_test_state();
-        let tmp = tempfile::tempdir().unwrap();
-        let system_log_path = tmp.path().join("system.log");
-        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
-
-        let prefix = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES - 1);
-        let stderr_line = format!("{prefix}é-tail");
-        let msg = cli_failure_message(1, &[stderr_line], None);
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-
-        assert!(
-            msg.message.contains(&prefix),
-            "returned error message should preserve bytes before the truncation boundary"
-        );
-        assert!(
-            msg.message.contains("...[truncated]"),
-            "returned error message should indicate truncation"
-        );
-        assert!(
-            !msg.message.contains("é-tail"),
-            "returned error message should not split or include the over-boundary character"
-        );
-
-        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
-        assert!(
-            system_log.contains("...[truncated]"),
-            "system log should indicate truncation, got: {system_log}"
-        );
-        assert!(
-            !system_log.contains("é-tail"),
-            "system log should not split or include the over-boundary character"
-        );
-    }
-
-    #[test]
-    fn cli_failure_message_prefers_codex_failure_diagnostic() {
-        let stderr_lines = vec!["background task noise".to_string()];
-        let msg = cli_failure_message(
-            1,
-            &stderr_lines,
-            Some(&cli_diagnostic(
-                "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
-                FailureDetailSource::CodexJsonl,
-            )),
-        );
-
-        assert_eq!(msg.source, FailureDetailSource::CodexJsonl);
-        assert_eq!(
-            msg.message,
-            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
-        );
-    }
-
-    #[test]
-    fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
-        let stderr_lines = vec!["specific stderr failure".to_string()];
-        for diagnostic_message in [
-            "turn failed",
-            "Turn failed.",
-            "Unknown error",
-            "codex error",
-        ] {
-            let diagnostic = cli_diagnostic(diagnostic_message, FailureDetailSource::CodexJsonl);
-            let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
-
-            assert_eq!(
-                msg.source,
-                FailureDetailSource::Stderr,
-                "diagnostic message: {diagnostic_message}"
-            );
-            assert_eq!(msg.message, "specific stderr failure");
-        }
-    }
-
-    #[test]
-    fn cli_failure_message_preserves_structured_reason_with_stderr_message() {
-        let stderr_lines = vec!["specific stderr failure".to_string()];
-        let diagnostic = cli::CliFailureDiagnostic {
-            message: "turn failed".to_string(),
-            source: FailureDetailSource::CodexJsonl,
-            failure_reason: Some(FailureReason::InvalidApiKey),
-        };
-        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
-
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert_eq!(msg.message, "specific stderr failure");
-        assert_eq!(msg.failure_reason, Some(FailureReason::InvalidApiKey));
-    }
-
-    #[test]
-    fn cli_failure_reason_uses_selected_stderr_over_generic_diagnostic() {
-        let _test_state_guard = lock_test_state();
-        let tmp = tempfile::tempdir().unwrap();
-        let system_log_path = tmp.path().join("system.log");
-        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
-        let stderr_lines = vec![
-            "API Error: 402 Insufficient credits. Add credits or configure your own API key to continue."
-                .to_string(),
-        ];
-        let generic_diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
-        let msg = cli_failure_message(1, &stderr_lines, Some(&generic_diagnostic));
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::InsufficientCredits)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::Stderr)
-        );
-    }
-
-    #[test]
-    fn cli_failure_message_uses_generic_codex_failure_diagnostic_without_stderr() {
-        let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
-        let msg = cli_failure_message(1, &[], Some(&diagnostic));
-
-        assert_eq!(msg.source, FailureDetailSource::CodexJsonl);
-        assert_eq!(msg.message, "turn failed");
-    }
-
-    #[test]
-    fn cli_failure_message_prefers_claude_result_diagnostic() {
-        let stderr_lines = vec!["background task noise".to_string()];
-        let diagnostic = cli_diagnostic(
-            "permission denied while running command",
-            FailureDetailSource::ClaudeResult,
-        );
-        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(msg.message, "permission denied while running command");
-    }
-
-    #[test]
-    fn cli_failure_message_uses_stderr_over_generic_claude_result() {
-        let stderr_lines = vec!["specific stderr failure".to_string()];
-        let diagnostic = cli_diagnostic("error", FailureDetailSource::ClaudeResult);
-        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
-
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert_eq!(msg.message, "specific stderr failure");
-    }
-
-    #[test]
-    fn cli_failure_message_does_not_apply_codex_generic_messages_to_claude_result() {
-        let stderr_lines = vec!["background task noise".to_string()];
-        let diagnostic = cli_diagnostic("Unknown error", FailureDetailSource::ClaudeResult);
-        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(msg.message, "Unknown error");
-    }
-
-    #[test]
-    fn cli_failure_message_marks_exit_code_fallback_source() {
-        let msg = cli_failure_message(7, &[], None);
-
-        assert_eq!(msg.source, FailureDetailSource::FallbackExitCode);
-        assert_eq!(msg.message, "Agent exited with code 7");
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_insufficient_credits() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 402 Insufficient credits. Add credits or configure your own API key to continue.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::InsufficientCredits));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_provider_credit_affordability_error() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
-        );
-
-        assert_eq!(reason, Some(FailureReason::InsufficientCredits));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_credit_affordability_diagnostic() {
-        let message = "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::InsufficientCredits)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_generic_402_error() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 402 Payment Required",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_invalid_credentials() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "Failed to authenticate. API Error: 401 Invalid authentication credentials",
-        );
-
-        assert_eq!(reason, Some(FailureReason::InvalidCredentials));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_generic_claude_401() {
-        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, "401 unauthorized");
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_provider_overloaded() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_repeated_529_provider_overloaded() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: Repeated 529 Overloaded errors. The API is at capacity - this is usually temporary.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_provider_overloaded_diagnostic() {
-        let message = "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::ProviderOverloaded)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_repeated_529_provider_overloaded_diagnostic() {
-        let message = "API Error: Repeated 529 Overloaded errors. The API is at capacity - this is usually temporary.";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::ProviderOverloaded)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_simple_provider_overloaded() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            "API Error: Overloaded",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_simple_provider_overloaded_diagnostic() {
-        let message = "API Error: Overloaded";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::ProviderOverloaded)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_simple_claude_overloaded_from_stderr() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::Stderr,
-            "API Error: Overloaded",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_stream_idle_timeout() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            "API Error: Stream idle timeout - partial response received",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            "API Error: Response stalled mid-stream. The response above may be incomplete.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_stalled_mid_stream_diagnostic() {
-        let message =
-            "API Error: Response stalled mid-stream. The response above may be incomplete.";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::ProviderStreamTimeout)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr() {
-        for message in [
-            "API Error: Stream idle timeout - partial response received",
-            "API Error: Response stalled mid-stream. The response above may be incomplete.",
-        ] {
-            let reason = super::classify_cli_failure_reason(
-                AgentFramework::ClaudeCode,
-                FailureDetailSource::Stderr,
-                message,
-            );
-
-            assert_eq!(reason, None, "message: {message}");
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
-        for message in [
-            "API Error: Stream idle timeout - partial response received",
-            "API Error: Response stalled mid-stream. The response above may be incomplete.",
-        ] {
-            let reason = super::classify_cli_failure_reason(
-                AgentFramework::Codex,
-                FailureDetailSource::ClaudeResult,
-                message,
-            );
-
-            assert_eq!(reason, None, "message: {message}");
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_generic_claude_timeout() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            "API Error: request timed out",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_explanatory_stream_timeout_text() {
-        for message in [
-            "Observed API Error: Stream idle timeout - partial response received in an earlier run",
-            "Observed API Error: Response stalled mid-stream. The response above may be incomplete in an earlier run",
-        ] {
-            let reason = super::classify_cli_failure_reason(
-                AgentFramework::ClaudeCode,
-                FailureDetailSource::ClaudeResult,
-                message,
-            );
-
-            assert_eq!(reason, None, "message: {message}");
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_provider_server_error() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderServerError));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_claude_provider_server_error_from_stderr() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::Stderr,
-            CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_claude_provider_server_error_status_prefix() {
-        let reason = super::classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            FailureDetailSource::ClaudeResult,
-            "API Error: 5000 Internal server error. This is a server-side issue, usually temporary - try again in a moment.",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_provider_server_error_diagnostic() {
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(
-                CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
-                FailureDetailSource::ClaudeResult,
-            )),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::ProviderServerError)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_output_token_limit() {
-        for message in [
-            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
-            "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
-            "API Error: Claude's response exceeded the maximum output tokens for this model.",
-            "API Error: Claude's response exceeded the maximum output token limit for this model.",
-            "API Error: Claude's response exceeds the output token limit for this model.",
-            "API Error: Claude's response has exceeded the max output token budget.",
-        ] {
-            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
-
-            assert_eq!(
-                reason,
-                Some(FailureReason::OutputTokenLimit),
-                "message: {message}"
-            );
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_result_output_token_limit_diagnostic() {
-        let message = "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.";
-        let msg = cli_failure_message(
-            1,
-            &["background stderr noise".to_string()],
-            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-        );
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
-
-        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-        assert_eq!(
-            diagnostic.failure_reason,
-            Some(FailureReason::OutputTokenLimit)
-        );
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_claude_output_token_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_unrelated_claude_output_token_limit_text() {
-        for message in [
-            "API Error: Claude's context window exceeded the available token budget.",
-            "API Error: Claude's response used 32000 tokens before the request completed.",
-            "Set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable to configure responses.",
-        ] {
-            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
-
-            assert_eq!(reason, None, "message: {message}");
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_model_capacity() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "Selected model is at capacity. Please try a different model.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_wrapped_codex_model_capacity() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "Codex failed: Selected model is at capacity. Please try a different model.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_codex_model_capacity() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "Selected model is at capacity. Please try a different model.",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_context_window_exceeded() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ContextWindowExceeded));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_codex_context_window_exceeded() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_generic_claude_529() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 529 upstream failed",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_later_claude_provider_overloaded() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 529 upstream failed. Background retry failed: API Error: 529 Overloaded.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_provider_overloaded_error_type() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            r#"API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"The service is overloaded"}}"#,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_negated_claude_overloaded_text() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 529 not overloaded",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_prefixed_claude_overloaded_error_type() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            r#"API Error: 529 {"type":"error","error":{"type":"not_overloaded_error"}}"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_claude_overloaded_prefix_word() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "API Error: 529 overloadedness check failed",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_repeated_claude_529_false_overloaded_text() {
-        for message in [
-            "API Error: Repeated 529 not overloaded errors.",
-            "API Error: Repeated 529 overloadedness check failed.",
-        ] {
-            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
-
-            assert_eq!(reason, None, "message: {message}");
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_claude_overloaded_without_529() {
-        let reason =
-            classify_cli_failure_reason(AgentFramework::ClaudeCode, "API Error: 503 Overloaded");
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_usage_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_session_limit() {
-        for message in [
-            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits. Resets 12:50pm (Asia/Shanghai).",
-            "SESSION LIMIT reached. Please try again after the reset window.",
-        ] {
-            let reason = classify_cli_failure_reason(AgentFramework::Codex, message);
-
-            assert_eq!(
-                reason,
-                Some(FailureReason::UsageLimit),
-                "message: {message}"
-            );
-        }
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_invalid_api_key_code() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "OpenAI API request failed: invalid_api_key",
-        );
-
-        assert_eq!(reason, Some(FailureReason::InvalidApiKey));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_incorrect_api_key_message() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "Incorrect API key provided: sk-...",
-        );
-
-        assert_eq!(reason, Some(FailureReason::InvalidApiKey));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_generic_codex_401() {
-        let reason = classify_cli_failure_reason(AgentFramework::Codex, "401 unauthorized");
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_oauth_reconnect_required() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token. The connector may need to be reconnected.","permission":"model-provider:codex-oauth-token","base":"https://chatgpt.com/backend-api/codex","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_envelope() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":{"message":"Access token expired and refresh failed for: codex-oauth-token.","code":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}"#,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_metadata() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"request metadata {"traceId":"abc","status":502}: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_template_brace() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"request template {response_id: {"error":"TOKEN_REFRESH_FAILED","message":"Refresh failed for {codex} token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_codex_oauth_upstream_provider() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token after reconnect_required state.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"upstream_provider"}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_codex_oauth_refresh_without_failure_reason() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"]}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_codex_oauth_reconnect_required() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: zendesk.","permission":"connector:zendesk","connectors":["zendesk"],"failureReason":"reconnect_required"}, url: https://example.zendesk.com/api/v2/tickets"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_codex_oauth_multi_connector_reconnect_required() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: notion, codex-oauth-token.","connectors":["notion","codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_nested_codex_oauth_reconnect_required_payload() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            r#"unexpected status 502 Bad Gateway: {"debug":{"error":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}"#,
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("debug failure"),
-        )
-        .with_cli_exit_code(1);
-        let failure_message = selected_failure_message(
-            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
-            FailureDetailSource::Stderr,
-            Some(FailureReason::InvalidApiKey),
-        );
-        let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
-
-        assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_non_codex_invalid_api_key_text() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "OpenAI API request failed: invalid_api_key",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_usage_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_subscription_access_disabled_as_usage_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead, or ask your admin to enable access",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_session_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "You've hit your session limit · resets 12:50pm (Asia/Shanghai)",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_weekly_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "You've hit your weekly limit · resets 10am (Asia/Shanghai)",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_classifies_claude_monthly_spend_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::ClaudeCode,
-            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
-        );
-
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_codex_monthly_spend_limit_text() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_ignores_unrelated_failures() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
-            "permission denied while running command",
-        );
-
-        assert_eq!(reason, None);
-    }
-
-    #[test]
-    fn cli_failure_reason_leaves_unrelated_diagnostic_unchanged() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(2)
-        .with_failure_detail_source(FailureDetailSource::Stderr);
-        let failure_message = selected_failure_message(
-            "permission denied while running command",
-            FailureDetailSource::Stderr,
-            None,
-        );
-        let unchanged = with_cli_failure_reason(diagnostic.clone(), &failure_message);
-
-        assert_eq!(unchanged, diagnostic);
-    }
-
-    #[test]
-    fn cli_failure_reason_is_attached_without_changing_failure_class() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(1)
-        .with_failure_detail_source(FailureDetailSource::CodexJsonl);
-        let failure_message = selected_failure_message(
-            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
-            FailureDetailSource::CodexJsonl,
-            None,
-        );
-        let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
-
-        assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
-        assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::CodexJsonl)
-        );
-    }
-
-    #[test]
-    fn cli_termination_is_attached_without_changing_failure_reason() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(143)
-        .with_failure_reason(FailureReason::ProviderOverloaded);
-        let termination = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
-            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
-            .with_observed_exit_code(143);
-
-        let with_termination = with_cli_termination(diagnostic.clone(), Some(termination));
-        let unchanged = with_cli_termination(diagnostic.clone(), None);
-
-        assert_eq!(with_termination.failure_class, FailureClass::CliNonzero);
-        assert_eq!(
-            with_termination.failure_reason,
-            Some(FailureReason::ProviderOverloaded)
-        );
-        assert_eq!(with_termination.cli_termination, Some(termination));
-        assert_eq!(unchanged, diagnostic);
-    }
-
-    #[test]
-    fn cli_observed_exit_is_attached_without_changing_failure_reason() {
-        let diagnostic = FailureDiagnostic::new(
-            FailureClass::CliNonzero,
-            AgentFramework::ClaudeCode,
-            PromptMetadata::from_prompt("plain prompt"),
-        )
-        .with_cli_exit_code(137)
-        .with_failure_reason(FailureReason::ProviderOverloaded);
-        let observed_exit = CliObservedExitDiagnostic::from_signal(libc::SIGKILL);
-
-        let with_observed_exit =
-            with_cli_observed_exit(diagnostic.clone(), Some(observed_exit.clone()));
-        let unchanged = with_cli_observed_exit(diagnostic.clone(), None);
-
-        assert_eq!(with_observed_exit.failure_class, FailureClass::CliNonzero);
-        assert_eq!(
-            with_observed_exit.failure_reason,
-            Some(FailureReason::ProviderOverloaded)
-        );
-        assert_eq!(with_observed_exit.cli_observed_exit, Some(observed_exit));
-        assert_eq!(unchanged, diagnostic);
-    }
-
     #[test]
     fn is_claude_zero_turn_result_requires_all_guards() {
         let zero_turn = cli::CliExecutionResult {
@@ -2954,23 +1210,6 @@ mod tests {
             env::Framework::ClaudeCode,
             &stronger_termination,
         ));
-    }
-
-    #[test]
-    fn history_target_unavailable_detects_missing_and_empty_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let missing = tmp.path().join("missing.jsonl");
-        assert!(history_target_unavailable(&missing));
-
-        let empty = tmp.path().join("empty.jsonl");
-        std::fs::write(&empty, "").unwrap();
-        assert!(history_target_unavailable(&empty));
-
-        let non_empty = tmp.path().join("history.jsonl");
-        std::fs::write(&non_empty, r#"{"type":"system"}"#).unwrap();
-        assert!(!history_target_unavailable(&non_empty));
-
-        assert!(!history_target_unavailable(tmp.path()));
     }
 
     #[test]

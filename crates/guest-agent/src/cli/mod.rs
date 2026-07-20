@@ -41,6 +41,7 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
+use crate::failure_patterns;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
@@ -1422,7 +1423,7 @@ fn has_specific_failure_diagnostic(diagnostic: &CliFailureDiagnostic) -> bool {
 }
 
 fn has_specific_failure_message(diagnostic: &CliFailureDiagnostic) -> bool {
-    !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
+    !failure_patterns::is_generic_codex_failure_diagnostic(&diagnostic.message)
 }
 
 fn with_carried_failure_reason(
