@@ -6,7 +6,9 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { imageArtifactEditSnapshots } from "@vm0/db/schema/image-artifact-edit-snapshot";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -20,6 +22,8 @@ import {
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+
+const artifactAccessRowSchema = z.object({ canAccess: z.boolean() });
 
 interface UserArtifactUrlAccessArgs {
   readonly artifactUrl: string;
@@ -87,14 +91,18 @@ async function userCanAccessArtifactUrl(
   db: Db,
   args: UserArtifactUrlAccessArgs,
 ): Promise<boolean> {
-  const result = await db.execute<{ readonly canAccess: boolean }>(sql`
-    SELECT (
-      ${uploadedArtifactAccessCondition(args)}
-      OR ${attachedArtifactAccessCondition(args)}
-    ) AS "canAccess"
-  `);
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT (
+        ${uploadedArtifactAccessCondition(args)}
+        OR ${attachedArtifactAccessCondition(args)}
+      ) AS "canAccess"
+    `,
+    artifactAccessRowSchema,
+  );
 
-  return result.rows[0]?.canAccess === true;
+  return rows[0]?.canAccess === true;
 }
 
 async function deleteImageEditSnapshotRow(

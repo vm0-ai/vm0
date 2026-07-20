@@ -11,6 +11,12 @@ import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
+import {
+  readConnectorCredentialStorageState,
+  seedConnectorStorageRow,
+  seedLegacyConnectorSecret,
+  seedOwnedConnectorSecret,
+} from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -29,6 +35,7 @@ const CONNECTOR_TYPES_TO_CLEAN_UP = [
   "test-oauth",
   "gitlab",
   "bentoml",
+  "github",
 ] as const;
 
 function authHeaders() {
@@ -310,6 +317,164 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     });
     const stored = await readConnector(fixture, "zendesk");
     expect(stored.body.authMethod).toBe("api-token");
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "zendesk",
+      secretNames: ["ZENDESK_API_TOKEN"],
+      variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
+    });
+    expect(storageState.connector).toStrictEqual({
+      id: response.body.id,
+      storage_version: 1,
+    });
+    expect(storageState.secrets).toStrictEqual([
+      expect.objectContaining({
+        name: "ZENDESK_API_TOKEN",
+        connector_id: response.body.id,
+      }),
+    ]);
+    expect(storageState.variables).toStrictEqual(
+      expect.arrayContaining([
+        { name: "ZENDESK_EMAIL", connector_id: response.body.id },
+        { name: "ZENDESK_SUBDOMAIN", connector_id: response.body.id },
+      ]),
+    );
+  });
+
+  it("deletes connector-owned secret and variable state on disconnect", async () => {
+    const fixture = await seedFixture();
+    await accept(
+      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+        params: { type: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            ZENDESK_API_TOKEN: "zendesk-token",
+            ZENDESK_EMAIL: "support@example.com",
+            ZENDESK_SUBDOMAIN: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    await deleteConnector(fixture, "zendesk");
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "zendesk",
+      secretNames: ["ZENDESK_API_TOKEN"],
+      variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
+    });
+    expect(storageState.connector).toBeNull();
+    expect(storageState.secrets).toStrictEqual([]);
+    expect(storageState.variables).toStrictEqual([]);
+  });
+
+  it("claims a legacy null-owner credential during manual connection", async () => {
+    const fixture = await seedFixture();
+    await seedLegacyConnectorSecret(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "OPENAI_TOKEN",
+      encryptedValue: "legacy-value",
+      description: "legacy description",
+    });
+
+    const response = await accept(
+      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+        params: { type: "openai" },
+        body: {
+          authMethod: "api-token",
+          values: { OPENAI_TOKEN: "replacement" },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "openai",
+      secretNames: ["OPENAI_TOKEN"],
+    });
+    expect(storageState.secrets?.[0]).toMatchObject({
+      connector_id: response.body.id,
+      description: null,
+    });
+  });
+
+  it("preserves a foreign-owned credential when reconnecting an existing connector", async () => {
+    const fixture = await seedFixture();
+    const ownerId = await seedOwnedConnectorSecret(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "github",
+      authMethod: "oauth",
+      storageVersion: 1,
+      name: "OPENAI_TOKEN",
+      encryptedValue: "owner-value",
+      description: "owner description",
+    });
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "openai",
+      authMethod: "api-token",
+      storageVersion: 1,
+    });
+
+    const response = await createApp({ signal: context.signal }).request(
+      "/api/zero/connectors/openai/manual-grant",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          authMethod: "api-token",
+          values: { OPENAI_TOKEN: "replacement" },
+        }),
+      },
+    );
+    expect(response.status).toBe(500);
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "openai",
+      secretNames: ["OPENAI_TOKEN"],
+    });
+    expect(storageState.secrets?.[0]).toStrictEqual({
+      name: "OPENAI_TOKEN",
+      connector_id: ownerId,
+      encrypted_value: "owner-value",
+      description: "owner description",
+    });
+    expect(storageState.connector?.storage_version).toBe(1);
+
+    await deleteConnector(fixture, "openai");
+    const stateAfterDelete = await readConnectorCredentialStorageState(
+      context,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorRef: "github",
+        secretNames: ["OPENAI_TOKEN"],
+      },
+    );
+    expect(stateAfterDelete.secrets?.[0]).toStrictEqual({
+      name: "OPENAI_TOKEN",
+      connector_id: ownerId,
+      encrypted_value: "owner-value",
+      description: "owner description",
+    });
   });
 
   it("connects Zendesk manual grant fields using public field ids", async () => {

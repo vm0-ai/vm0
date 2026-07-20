@@ -19,6 +19,7 @@ export const mercury = {
           clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["MERCURY_ACCESS_TOKEN", "MERCURY_REFRESH_TOKEN"],
           variables: [],
         },
@@ -51,6 +52,7 @@ export const mercury = {
         helpText:
           "1. Log in to your [Mercury Dashboard](https://mercury.com)\n2. Go to **Settings → Tokens**\n3. Generate a new API token\n4. Copy the token",
         storage: {
+          version: 1,
           secrets: ["MERCURY_TOKEN"],
           variables: [],
         },

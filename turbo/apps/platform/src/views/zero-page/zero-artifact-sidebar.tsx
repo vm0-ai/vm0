@@ -1665,7 +1665,6 @@ function ArtifactBody({
           onEditRequestStarted={onHtmlEditRequestStarted}
           pageSignal={pageSignal}
           status={htmlEditStatus}
-          url={url}
         />
       );
     }

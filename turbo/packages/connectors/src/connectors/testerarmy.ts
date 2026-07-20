@@ -12,6 +12,7 @@ export const testerarmy = {
         helpText:
           "1. Sign in to your TesterArmy account\n2. Follow the [TesterArmy API docs](https://docs.tester.army/api-reference/) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["TESTERARMY_API_KEY"],
           variables: [],
         },

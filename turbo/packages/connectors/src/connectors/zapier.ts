@@ -12,6 +12,7 @@ export const zapier = {
         featureFlag: FeatureSwitchKey.ZapierConnector,
         label: "API Key",
         storage: {
+          version: 1,
           secrets: ["ZAPIER_TOKEN"],
           variables: [],
         },

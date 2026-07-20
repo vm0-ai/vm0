@@ -14,6 +14,7 @@ export const groq = {
         helpText:
           "1. Sign up at [console.groq.com](https://console.groq.com)\n2. Click **API Keys** in the left sidebar\n3. Click **Create API Key**, name it, and copy it immediately — it is shown only once\n4. Paste it here. Free tier available; the key is org-bound.",
         storage: {
+          version: 1,
           secrets: ["GROQ_TOKEN"],
           variables: [],
         },

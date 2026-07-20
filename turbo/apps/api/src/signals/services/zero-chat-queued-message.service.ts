@@ -8,6 +8,7 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 
+import { pgNullDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
   deleteChatMessage,
@@ -46,9 +47,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
-      modelProviderId: sql<null>`NULL`,
-      modelProviderType: sql<null>`NULL`,
-      modelProviderCredentialScope: sql<null>`NULL`,
+      modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
+      modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
+      modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
     })
     .from(chatMessageQueue)
@@ -201,13 +202,12 @@ export async function claimQueuedUserMessage(
   },
 ): Promise<ClaimedUserMessage | null> {
   return await db.transaction(async (tx) => {
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR UPDATE
-    `);
-    if (!threadRows.rows[0]) {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("update");
+    if (!thread) {
       return null;
     }
     return await appendClaimedUserMessage(tx, args);

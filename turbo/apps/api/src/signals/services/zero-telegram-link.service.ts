@@ -16,6 +16,7 @@ import { putS3Object } from "../external/s3";
 import { bestEffort } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const PENDING_TELEGRAM_USER_ID = "pending";
@@ -240,13 +241,15 @@ export const ensureTelegramArtifactStorage$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    const location = newStorageS3Location(args.orgId);
     const [storage] = await writeDb
       .insert(storages)
       .values({
+        id: location.storageId,
         name: "artifact",
         type: "artifact",
         userId: args.userId,
-        s3Prefix: `${args.orgId}/artifact/artifact`,
+        s3Prefix: location.s3Prefix,
         size: 0,
         fileCount: 0,
         orgId: args.orgId,

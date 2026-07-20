@@ -3,6 +3,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { and, eq, gt, sql, type SQL } from "drizzle-orm";
 
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 
 const RUNNER_SESSION_AFFINITY_PROTECTION_MS = 2000;
@@ -239,9 +240,18 @@ async function runnerSessionAffinityHolders(args: {
     : sql<boolean>`false`;
   const [holders] = await args.db
     .select({
-      hasReusableHolder: sql<boolean>`coalesce(bool_or(${reusableCondition}), false)`,
-      hasWorkspaceHolder: sql<boolean>`coalesce(bool_or(${workspaceCondition}), false)`,
-      hasExactGenerationHolder: sql<boolean>`coalesce(bool_or(${exactGenerationCondition}), false)`,
+      hasReusableHolder:
+        sql`coalesce(bool_or(${reusableCondition}), false)`.mapWith(
+          pgBooleanDecoder,
+        ),
+      hasWorkspaceHolder:
+        sql`coalesce(bool_or(${workspaceCondition}), false)`.mapWith(
+          pgBooleanDecoder,
+        ),
+      hasExactGenerationHolder:
+        sql`coalesce(bool_or(${exactGenerationCondition}), false)`.mapWith(
+          pgBooleanDecoder,
+        ),
     })
     .from(runnerState)
     .where(

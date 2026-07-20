@@ -17,6 +17,7 @@ export const asana = {
           clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["ASANA_ACCESS_TOKEN", "ASANA_REFRESH_TOKEN"],
           variables: [],
         },

@@ -13,6 +13,7 @@ export const langfuse = {
         helpText:
           "1. Sign up at [cloud.langfuse.com](https://cloud.langfuse.com)\n2. Create an organization and a project\n3. In project **Settings → API Keys**, click **Create new API keys**\n4. Copy both the **Public Key** (`pk-lf-...`) and the **Secret Key** (`sk-lf-...`) — the secret is shown only once\n5. Paste both values into the fields below",
         storage: {
+          version: 1,
           secrets: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
           variables: [],
         },

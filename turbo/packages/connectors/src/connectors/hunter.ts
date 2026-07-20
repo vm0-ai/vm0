@@ -12,6 +12,7 @@ export const hunter = {
         helpText:
           "1. Log in to [Hunter](https://hunter.io/api-keys)\n2. Open the **API keys** page under your account\n3. Copy your existing key or click **Generate a new key**\n4. Pass it as the `api_key` query parameter on every request",
         storage: {
+          version: 1,
           secrets: ["HUNTER_TOKEN"],
           variables: [],
         },

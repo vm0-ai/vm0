@@ -12,6 +12,7 @@ export const instagram = {
         helpText:
           "1. Create a Meta app of type **Business** at [Meta for Developers](https://developers.facebook.com/apps)\n2. In your app dashboard, click **Instagram > API setup with Instagram business login** in the left side menu\n3. Click **Generate token** next to the Instagram account you want to access\n4. Log into Instagram when prompted\n5. Copy the access token",
         storage: {
+          version: 1,
           secrets: ["INSTAGRAM_TOKEN"],
           variables: ["INSTAGRAM_BUSINESS_ACCOUNT_ID"],
         },

@@ -36,7 +36,7 @@ ruleTester.run("require-accept", rule, {
       code: `
         const createClient = get(zeroClient$);
         const client = createClient(someContract);
-        const result = await accept(client.create({ body }), [201], { toast: false });
+        const result = await accept(client.create({ body }), [201]);
       `,
     },
     // Test file — rule not applied

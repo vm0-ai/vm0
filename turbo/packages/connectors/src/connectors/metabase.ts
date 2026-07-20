@@ -12,6 +12,7 @@ export const metabase = {
         helpText:
           "1. Log in to your Metabase instance as an admin\n2. Go to **Admin** → **Settings** → **Authentication** → **API Keys**\n3. Click **Create API Key**\n4. Enter a name and select a group for the key\n5. Copy the generated API key",
         storage: {
+          version: 1,
           secrets: ["METABASE_TOKEN"],
           variables: ["METABASE_BASE_URL"],
         },

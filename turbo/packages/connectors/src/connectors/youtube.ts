@@ -17,6 +17,7 @@ export const youtube = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["YOUTUBE_ACCESS_TOKEN", "YOUTUBE_REFRESH_TOKEN"],
           variables: [],
         },

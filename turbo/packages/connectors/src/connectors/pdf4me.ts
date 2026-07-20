@@ -13,6 +13,7 @@ export const pdf4me = {
         helpText:
           "1. Register for an account at [PDF4me](https://portal.pdf4me.com) using email/password or via Google, Microsoft, Apple, or Facebook\n2. Go to the **Billing Info** section and select **Start Free Trial**\n3. After activation, you will be redirected to the **Dashboard**\n4. Find and copy your API Key from the Dashboard",
         storage: {
+          version: 1,
           secrets: ["PDF4ME_TOKEN"],
           variables: [],
         },

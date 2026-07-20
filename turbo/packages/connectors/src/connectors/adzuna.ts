@@ -13,6 +13,7 @@ export const adzuna = {
         helpText:
           "1. Register at the [Adzuna Developer Portal](https://developer.adzuna.com)\n2. Copy your **app_id** and **app_key**\n3. Pass them as the `app_id` and `app_key` query parameters on Adzuna API requests",
         storage: {
+          version: 1,
           secrets: ["ADZUNA_APP_KEY"],
           variables: ["ADZUNA_APP_ID"],
         },

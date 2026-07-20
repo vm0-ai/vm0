@@ -12,6 +12,7 @@ export const coingecko = {
         helpText:
           "1. Sign up or log in to [CoinGecko](https://www.coingecko.com/en/api)\n2. Open the **Developer Dashboard**\n3. Click **Add New Key** to create a Demo or Pro API key\n4. Copy the API key",
         storage: {
+          version: 1,
           secrets: ["COINGECKO_TOKEN"],
           variables: [],
         },

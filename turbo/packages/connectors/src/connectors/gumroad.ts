@@ -18,6 +18,7 @@ export const gumroad = {
           clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GUMROAD_ACCESS_TOKEN", "GUMROAD_REFRESH_TOKEN"],
           variables: [],
         },
@@ -56,6 +57,7 @@ export const gumroad = {
         helpText:
           "1. Log in to [Gumroad](https://app.gumroad.com/settings/advanced)\n2. Scroll to the **Applications** section\n3. Click **Generate access token**\n4. Copy the token and paste it here",
         storage: {
+          version: 1,
           secrets: ["GUMROAD_TOKEN"],
           variables: [],
         },

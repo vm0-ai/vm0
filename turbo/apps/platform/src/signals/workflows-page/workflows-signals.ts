@@ -25,7 +25,7 @@ import {
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
 import {
@@ -43,7 +43,6 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { currentAgentId$ } from "../agent.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
-import { onRejection } from "../utils.ts";
 import {
   reloadWorkflowData$,
   workflowReloadVersion$,
@@ -734,38 +733,29 @@ export const checkWorkflowConnectorReadiness$ = command(
       status: "pending",
     });
     const client = get(zeroClient$)(zeroWorkflowsDetailContract);
-    const result = await onRejection(
-      accept(
-        client.connectorReadiness({
-          params: { workflowId },
-          fetchOptions: { signal },
-        }),
-        [200],
-        { toast: false },
-      ),
-      (error) => {
-        if (
-          !signal.aborted &&
-          get(internalWorkflowConnectorReadiness$)?.requestId === requestId
-        ) {
-          set(internalWorkflowConnectorReadiness$, {
-            workflowId,
-            requestId,
-            status: "error",
-            errorKind:
-              error instanceof ApiError &&
-              (error.status === 413 || error.code === "PAYLOAD_TOO_LARGE")
-                ? "input-too-long"
-                : error instanceof ApiError &&
-                    error.code === "CONNECTOR_READINESS_TIMEOUT"
-                  ? "timeout"
-                  : "retry",
-          });
-        }
-      },
+    const result = await accept(
+      client.connectorReadiness({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [200, 413, 503],
     );
     signal.throwIfAborted();
     if (get(internalWorkflowConnectorReadiness$)?.requestId !== requestId) {
+      return;
+    }
+    if (result.status !== 200) {
+      set(internalWorkflowConnectorReadiness$, {
+        workflowId,
+        requestId,
+        status: "error",
+        errorKind:
+          result.status === 413
+            ? "input-too-long"
+            : result.body.error.code === "CONNECTOR_READINESS_TIMEOUT"
+              ? "timeout"
+              : "retry",
+      });
       return;
     }
     set(internalWorkflowConnectorReadiness$, {

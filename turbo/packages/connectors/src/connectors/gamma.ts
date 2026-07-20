@@ -13,6 +13,7 @@ export const gamma = {
         helpText:
           "1. Log in to [Gamma](https://gamma.app)\n2. Go to [API Keys](https://gamma.app/settings/api-keys) (Settings > API Keys)\n3. Click **Create API key**\n4. Copy the key (it is only shown once)",
         storage: {
+          version: 1,
           secrets: ["GAMMA_TOKEN"],
           variables: [],
         },

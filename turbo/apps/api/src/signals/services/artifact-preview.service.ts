@@ -4,6 +4,10 @@ import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
@@ -38,6 +42,7 @@ const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
 const PREVIEW_IMAGE_BASENAME = "preview-v2";
 const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 const browserSnapshotSchema = z.object({
   meta: z.object({
@@ -377,9 +382,10 @@ export const generateArtifactPreviews$ = command(
           url: runUploadedFiles.url,
           contentType: runUploadedFiles.contentType,
           createdAt: runUploadedFiles.createdAt,
-          deploymentId: sql<
-            string | null
-          >`${runUploadedFiles.metadata}->>'deploymentId'`,
+          deploymentId:
+            sql`${runUploadedFiles.metadata}->>'deploymentId'`.mapWith(
+              nullableTextDecoder,
+            ),
         })
         .from(runUploadedFiles)
         .where(previewCandidateWhere(cursor))

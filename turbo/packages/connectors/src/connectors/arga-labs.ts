@@ -12,6 +12,7 @@ export const argaLabs = {
         helpText:
           "1. Sign in to your Arga Labs account\n2. Follow the [Arga Labs API docs](https://argalabs.com/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["ARGA_LABS_API_KEY"],
           variables: [],
         },

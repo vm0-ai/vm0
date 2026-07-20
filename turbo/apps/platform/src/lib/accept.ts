@@ -1,4 +1,5 @@
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { isAbortError, onRejection } from "../signals/utils.ts";
 
 class ApiError extends Error {
   readonly code: string;
@@ -34,33 +35,28 @@ function extractError(
   return { message: `HTTP ${status}`, code: "UNKNOWN" };
 }
 
+function requestErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Request failed";
+}
+
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise shows a toast and throws an `ApiError`.
- *
- * Toast behavior:
- * - Write-path commands (mutations): omit `options` or pass `{}` — the toast
- *   fires automatically. The thrown `ApiError` is swallowed by `detach()`, so
- *   there is no double-notification.
- * - Use `{ toast: false }` only when the caller deliberately handles the error
- *   in a non-toast UI flow or in a non-user-facing integration callback.
  */
 async function accept<
   T extends { status: number; body: unknown },
   S extends number,
->(
-  promise: Promise<T>,
-  codes: S[],
-  options?: { toast?: boolean },
-): Promise<Extract<T, { status: S }>> {
-  const result = await promise;
+>(promise: Promise<T>, codes: S[]): Promise<Extract<T, { status: S }>> {
+  const result = await onRejection(promise, (error) => {
+    if (!isAbortError(error)) {
+      toast.error(requestErrorMessage(error));
+    }
+  });
   if ((codes as number[]).includes(result.status)) {
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  if (options?.toast !== false) {
-    toast.error(message);
-  }
+  toast.error(message);
   throw new ApiError(message, code, result.status);
 }
 

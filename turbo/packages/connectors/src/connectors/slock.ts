@@ -15,6 +15,7 @@ export const slock = {
           clientType: "public",
         },
         storage: {
+          version: 1,
           secrets: [
             "SLOCK_ACCESS_TOKEN",
             "SLOCK_SERVER_ID",

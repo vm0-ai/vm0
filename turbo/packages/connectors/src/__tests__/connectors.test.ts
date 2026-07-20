@@ -294,6 +294,7 @@ const manualAuthMethodConfig = {
   label: "API Token",
   helpText: "Enter an API token.",
   storage: {
+    version: 1,
     secrets: ["API_TOKEN"],
     variables: [],
   },
@@ -561,6 +562,7 @@ describe("connector auth method config", () => {
       label: "API Token",
       helpText: "Enter an API token.",
       storage: {
+        version: 1,
         secrets: ["GITHUB_API_TOKEN"],
         variables: ["GITHUB_API_HOST"],
       },
@@ -593,6 +595,7 @@ describe("connector auth method config", () => {
       label: "Secondary API Token",
       helpText: "Enter a secondary API token.",
       storage: {
+        version: 1,
         secrets: ["GITHUB_SECONDARY_TOKEN"],
         variables: ["GITHUB_SECONDARY_HOST"],
       },
@@ -799,6 +802,17 @@ describe("connector auth method config", () => {
 
     expect(duplicateSecrets).toStrictEqual([]);
     expect(duplicateVariables).toStrictEqual([]);
+  });
+
+  it("authors storage version 1 for every static auth method", () => {
+    for (const type of CONNECTOR_TYPE_KEYS) {
+      for (const authMethod of Object.keys(CONNECTOR_TYPES[type].authMethods)) {
+        expect(
+          getConnectorAuthMethod(type, authMethod)?.storage.version,
+          `${type}:${authMethod}`,
+        ).toBe(1);
+      }
+    }
   });
 
   it("keeps runtime env aliases unique across connector types", () => {
@@ -3280,6 +3294,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("github", "oauth"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["GITHUB_ACCESS_TOKEN"],
         variables: [],
       },
@@ -3308,6 +3323,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("youtube", "oauth"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["YOUTUBE_ACCESS_TOKEN", "YOUTUBE_REFRESH_TOKEN"],
         variables: [],
       },
@@ -3330,6 +3346,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("openai", "api-token"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["OPENAI_TOKEN"],
         variables: [],
       },
@@ -3352,6 +3369,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("slock", "oauth"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: [
           "SLOCK_ACCESS_TOKEN",
           "SLOCK_SERVER_ID",
@@ -3392,6 +3410,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
     }
     expect(metadata).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
         variables: [],
       },
@@ -3435,6 +3454,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("meta-ads", "oauth"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["META_ADS_ACCESS_TOKEN", "META_ADS_REFRESH_TOKEN"],
         variables: [],
       },
@@ -3457,6 +3477,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
       getConnectorAuthMethodRuntimeMetadata("tiktok-ads", "oauth"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: ["TIKTOK_ADS_ACCESS_TOKEN", "TIKTOK_ADS_REFRESH_TOKEN"],
         variables: [],
       },
@@ -4420,6 +4441,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodRuntimeMetadata("steam", "openid"),
     ).toStrictEqual({
       storage: {
+        version: 1,
         secrets: [],
         variables: ["STEAM_ID"],
       },

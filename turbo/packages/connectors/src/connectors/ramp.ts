@@ -15,6 +15,7 @@ export const ramp = {
         helpText:
           "1. Open the Ramp Developer Console\n2. Create an app with the Client Credentials grant enabled\n3. Copy the client ID and client secret",
         storage: {
+          version: 1,
           secrets: ["RAMP_CLIENT_SECRET", "RAMP_ACCESS_TOKEN"],
           variables: ["RAMP_CLIENT_ID", "RAMP_SCOPE"],
         },

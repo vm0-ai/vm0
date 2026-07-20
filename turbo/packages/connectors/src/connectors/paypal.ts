@@ -15,6 +15,7 @@ export const paypal = {
         helpText:
           "1. Open the [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/applications/live)\n2. Create or select a live REST app\n3. Copy the client ID and client secret",
         storage: {
+          version: 1,
           secrets: ["PAYPAL_CLIENT_SECRET", "PAYPAL_ACCESS_TOKEN"],
           variables: ["PAYPAL_CLIENT_ID"],
         },

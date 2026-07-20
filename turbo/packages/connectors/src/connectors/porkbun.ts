@@ -12,6 +12,7 @@ export const porkbun = {
         helpText:
           "1. Log in to [Porkbun](https://porkbun.com)\n2. Open **Account > API Access**\n3. Create an API key and save both the **API Key** and **Secret Key**\n4. Enable API access for each domain you want to manage",
         storage: {
+          version: 1,
           secrets: ["PORKBUN_API_KEY", "PORKBUN_SECRET_API_KEY"],
           variables: [],
         },

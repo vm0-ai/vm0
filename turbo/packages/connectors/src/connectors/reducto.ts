@@ -12,6 +12,7 @@ export const reducto = {
         helpText:
           "1. Sign in to the [Reducto Platform](https://platform.reducto.ai)\n2. Open **Settings → API Keys**\n3. Click **Create Key**, name it, and copy the value\n4. Use it as a Bearer token on requests to `https://platform.reducto.ai`",
         storage: {
+          version: 1,
           secrets: ["REDUCTO_TOKEN"],
           variables: [],
         },

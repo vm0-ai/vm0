@@ -12,6 +12,7 @@ export const cronlytic = {
         helpText:
           "1. Log in to the [Cronlytic dashboard](https://www.cronlytic.com/dashboard)\n2. Go to the **API Keys** section\n3. Click **Generate New API Key**\n4. Copy your **API Key** and **User ID** (both are required for authentication via `X-API-Key` and `X-User-ID` headers)",
         storage: {
+          version: 1,
           secrets: ["CRONLYTIC_API_KEY"],
           variables: ["CRONLYTIC_USER_ID"],
         },

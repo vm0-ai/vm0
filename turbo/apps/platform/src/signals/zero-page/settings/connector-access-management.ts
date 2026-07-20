@@ -5,13 +5,13 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
-import { ApiError, accept } from "../../../lib/accept.ts";
-import { userPermissionGrantsByAgent } from "../../permission-allow/permission-allow-signals.ts";
+import { accept } from "../../../lib/accept.ts";
+import { userPermissionGrantsByAgentIfExists } from "../../permission-allow/permission-allow-signals.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
 } from "../agent-connector-authorizations.ts";
-import { settle, withCleanup } from "../../utils.ts";
+import { withCleanup } from "../../utils.ts";
 import { firewallPermissionMetadataByConnector } from "../../firewall-permission-metadata.ts";
 
 export interface ConnectorAgentAccessRow {
@@ -146,19 +146,13 @@ export const managedConnectorAgentAccessRows$ = computed(
           const authorized = enabledTypes.includes(connectorType);
           let grants: readonly UserPermissionGrantResponse[] = [];
           if (authorized) {
-            const grantsResult = await settle(
-              get(userPermissionGrantsByAgent({ agentId: agent.id })),
+            const loadedGrants = await get(
+              userPermissionGrantsByAgentIfExists({ agentId: agent.id }),
             );
-            if (!grantsResult.ok) {
-              if (
-                grantsResult.error instanceof ApiError &&
-                grantsResult.error.status === 404
-              ) {
-                return null;
-              }
-              throw grantsResult.error;
+            if (loadedGrants === null) {
+              return null;
             }
-            grants = grantsResult.value;
+            grants = loadedGrants;
           }
           return {
             agent,

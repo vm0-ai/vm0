@@ -1,5 +1,5 @@
 {
-  "id": "d7f73faf-d2cc-434e-8744-3f51c91ffaa9",
+  "id": "73b3fd5f-9c6f-49b2-ba92-526087919ba3",
   "prevId": "ee770b5f-fc36-4270-a53f-99fba557ae39",
   "version": "7",
   "dialect": "postgresql",
@@ -2589,12 +2589,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "automation_id": {
-          "name": "automation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "trigger_id": {
           "name": "trigger_id",
           "type": "uuid",
@@ -2649,22 +2643,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chat_message_queue_automation": {
-          "name": "idx_chat_message_queue_automation",
-          "columns": [
-            {
-              "expression": "automation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"chat_message_queue\".\"automation_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_chat_message_queue_trigger": {
           "name": "idx_chat_message_queue_trigger",
           "columns": [
@@ -2702,19 +2680,6 @@
           "tableTo": "chat_messages",
           "columnsFrom": [
             "chat_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "chat_message_queue_automation_id_zero_workflow_automations_id_fk": {
-          "name": "chat_message_queue_automation_id_zero_workflow_automations_id_fk",
-          "tableFrom": "chat_message_queue",
-          "tableTo": "zero_workflow_automations",
-          "columnsFrom": [
-            "automation_id"
           ],
           "columnsTo": [
             "id"
@@ -5573,6 +5538,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "storage_version": {
+          "name": "storage_version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "external_id": {
           "name": "external_id",
           "type": "varchar(255)",
@@ -5691,7 +5662,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_connectors_storage_version_positive": {
+          "name": "chk_connectors_storage_version_positive",
+          "value": "\"connectors\".\"storage_version\" IS NULL OR \"connectors\".\"storage_version\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.credit_expires_record": {
@@ -13439,6 +13415,12 @@
           "notNull": true,
           "default": "'user'"
         },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "user_id": {
           "name": "user_id",
           "type": "text",
@@ -13497,6 +13479,22 @@
           "method": "btree",
           "with": {}
         },
+        "idx_secrets_connector": {
+          "name": "idx_secrets_connector",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"secrets\".\"connector_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_secrets_org_user_name_type": {
           "name": "idx_secrets_org_user_name_type",
           "columns": [
@@ -13531,11 +13529,30 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "secrets_connector_id_connectors_id_fk": {
+          "name": "secrets_connector_id_connectors_id_fk",
+          "tableFrom": "secrets",
+          "tableTo": "connectors",
+          "columnsFrom": [
+            "connector_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_secrets_connector_owner_type": {
+          "name": "chk_secrets_connector_owner_type",
+          "value": "\"secrets\".\"connector_id\" IS NULL OR \"secrets\".\"type\" = 'connector'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.skills": {
@@ -17514,6 +17531,12 @@
           "notNull": true,
           "default": "'user'"
         },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "user_id": {
           "name": "user_id",
           "type": "text",
@@ -17557,6 +17580,22 @@
           "method": "btree",
           "with": {}
         },
+        "idx_variables_connector": {
+          "name": "idx_variables_connector",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"variables\".\"connector_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_variables_org_user_type_name": {
           "name": "idx_variables_org_user_type_name",
           "columns": [
@@ -17591,11 +17630,30 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "variables_connector_id_connectors_id_fk": {
+          "name": "variables_connector_id_connectors_id_fk",
+          "tableFrom": "variables",
+          "tableTo": "connectors",
+          "columnsFrom": [
+            "connector_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_variables_connector_owner_type": {
+          "name": "chk_variables_connector_owner_type",
+          "value": "\"variables\".\"connector_id\" IS NULL OR \"variables\".\"type\" = 'connector'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.vm0_api_keys": {

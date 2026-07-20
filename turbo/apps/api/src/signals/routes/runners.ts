@@ -28,6 +28,7 @@ import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -49,6 +50,11 @@ import { now, nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { executeRawRows } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
@@ -587,9 +593,10 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
-      historyGenerationRunId: sql<
-        string | null
-      >`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`,
+      historyGenerationRunId:
+        sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
+          nullableDriverValueDecoder(pgTextDecoder),
+        ),
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
@@ -871,11 +878,6 @@ type FailedClaimTransitionResult = Exclude<
   { readonly status: "claimed" }
 >;
 
-interface LockedClaimRunRow extends Record<string, unknown> {
-  readonly id: string;
-  readonly status: string;
-}
-
 function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
@@ -883,44 +885,53 @@ function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
   return notFound("Run not found");
 }
 
-interface LockedRunnerJobRow extends Record<string, unknown> {
-  readonly runId: string;
-  readonly isExpired: boolean;
-}
+const lockedRunnerJobRowSchema = z.object({
+  runId: z.string(),
+  isExpired: z.boolean(),
+});
 
-interface ClaimTransitionSqlRow extends Record<string, unknown> {
-  readonly status: ClaimTransitionResult["status"] | "invariant-error";
-  readonly claimedAtMs: number | null;
-}
+const claimTransitionSqlRowSchema = z.object({
+  status: z.enum([
+    "claimed",
+    "job-not-found",
+    "run-not-found",
+    "invariant-error",
+  ]),
+  claimedAtMs: z.number().nullable(),
+});
 
 async function lockClaimRun(
-  db: Pick<Db, "execute">,
+  db: Pick<Db, "select">,
   runId: string,
-): Promise<LockedClaimRunRow | undefined> {
-  const rows = await db.execute<LockedClaimRunRow>(sql`
-    SELECT
-      ${agentRuns.id} AS "id",
-      ${agentRuns.status} AS "status"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  return rows.rows[0];
+): Promise<{ readonly id: string; readonly status: string } | undefined> {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      status: agentRuns.status,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
+  return run;
 }
 
 async function lockRunnerJob(
   db: Pick<Db, "execute">,
   runId: string,
-): Promise<LockedRunnerJobRow | undefined> {
-  const rows = await db.execute<LockedRunnerJobRow>(sql`
-    SELECT
-      ${runnerJobQueue.runId} AS "runId",
-      ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
-    FROM ${runnerJobQueue}
-    WHERE ${runnerJobQueue.runId} = ${runId}
-    FOR UPDATE
-  `);
-  return rows.rows[0];
+): Promise<z.output<typeof lockedRunnerJobRowSchema> | undefined> {
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT
+        ${runnerJobQueue.runId} AS "runId",
+        ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+      FROM ${runnerJobQueue}
+      WHERE ${runnerJobQueue.runId} = ${runId}
+      FOR UPDATE
+    `,
+    lockedRunnerJobRowSchema,
+  );
+  return rows[0];
 }
 
 async function transitionClaimedJobToRunning(
@@ -935,7 +946,9 @@ async function transitionClaimedJobToRunning(
       "nested",
       async () => {
         // Materialized outputs make the row locks depend on run, then queue.
-        return await tx.execute<ClaimTransitionSqlRow>(sql`
+        return await executeRawRows(
+          tx,
+          sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -1028,11 +1041,13 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-        `);
+          `,
+          claimTransitionSqlRowSchema,
+        );
       },
     );
     signal.throwIfAborted();
-    const row = result.rows[0];
+    const row = result[0];
     if (!row || row.status === "invariant-error") {
       throw new Error("Runner job claim transition violated its invariant");
     }

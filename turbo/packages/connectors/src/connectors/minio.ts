@@ -12,6 +12,7 @@ export const minio = {
         helpText:
           "1. Log in to the MinIO Console\n2. Navigate to the **Access Keys** section under Security and Access\n3. Click **Create Access Key**\n4. The system automatically generates an access key and secret key\n5. Optionally override the auto-generated values or toggle **Restrict beyond user policy** to limit permissions\n6. Save the secret key in a secure location (you cannot retrieve or reset it after creation)\n7. Click **Create** to finalize",
         storage: {
+          version: 1,
           secrets: ["MINIO_TOKEN", "MINIO_SECRET_TOKEN"],
           variables: ["MINIO_ENDPOINT"],
         },

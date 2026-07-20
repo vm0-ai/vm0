@@ -12,6 +12,7 @@ export const railway = {
         helpText:
           "1. Log in to [Railway](https://railway.com)\n2. Open your account or workspace **Settings → Tokens**\n3. Click **Create New Token**, name it, and (for workspace tokens) pick the workspace\n4. Copy the token (UUID v4 format)\n\nUse this connector for cross-project automation. For a single project, use the **Railway Project** connector instead.",
         storage: {
+          version: 1,
           secrets: ["RAILWAY_TOKEN"],
           variables: [],
         },

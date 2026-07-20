@@ -18,6 +18,7 @@ export const github = {
           clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GITHUB_ACCESS_TOKEN"],
           variables: [],
         },

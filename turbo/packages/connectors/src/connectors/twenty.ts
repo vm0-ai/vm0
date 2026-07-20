@@ -12,6 +12,7 @@ export const twenty = {
         helpText:
           "1. Log in to your [Twenty](https://twenty.com) workspace\n2. Go to **Settings > APIs & Webhooks**\n3. Click **+ Create key**\n4. Enter a descriptive **Name** and set an **Expiration Date**\n5. Click **Save**\n6. Copy the key immediately — it is only shown once",
         storage: {
+          version: 1,
           secrets: ["TWENTY_TOKEN"],
           variables: [],
         },

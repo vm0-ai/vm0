@@ -11,6 +11,7 @@ export const discordWebhook = {
         helpText:
           "1. Open your Discord server and navigate to **Server Settings**\n2. Select the **Integrations** tab\n3. Click the **Create Webhook** button\n4. Configure the webhook name and select the target text channel from the dropdown menu\n5. Click the **Copy Webhook URL** button to copy the webhook URL",
         storage: {
+          version: 1,
           secrets: ["DISCORD_WEBHOOK_URL"],
           variables: [],
         },

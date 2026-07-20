@@ -373,6 +373,7 @@ export const cloudflare = {
           clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["CLOUDFLARE_ACCESS_TOKEN", "CLOUDFLARE_REFRESH_TOKEN"],
           variables: [],
         },
@@ -412,6 +413,7 @@ export const cloudflare = {
         helpText:
           "1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com)\n2. Go to **My Profile** → **API Tokens**\n3. Click **Create Token** and configure the required permissions\n4. Copy the generated token",
         storage: {
+          version: 1,
           secrets: ["CLOUDFLARE_TOKEN"],
           variables: [],
         },

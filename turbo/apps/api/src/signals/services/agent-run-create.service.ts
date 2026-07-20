@@ -114,9 +114,13 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, inArray, or, sql } from "drizzle-orm";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import {
+  pgNullDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import {
   badRequestMessage,
   notFound,
@@ -408,11 +412,6 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
-interface LockedRunPersistenceRow extends Record<string, unknown> {
-  readonly status: string;
-  readonly sandboxId: string | null;
-}
-
 interface DerivedPersistenceResult {
   readonly status: RunStatus;
   readonly sandboxId?: string;
@@ -650,7 +649,9 @@ interface PersistedRunEnvironmentSnapshot {
   readonly variables: readonly PersistedRunEnvironmentVariable[];
 }
 
-type PersistedRunEnvironmentRowKind = "variable" | "secret";
+const persistedRunEnvironmentRowKindDecoder = zodEnumDriverValueDecoder(
+  z.enum(["variable", "secret"]),
+);
 
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
@@ -1683,7 +1684,7 @@ async function multiAuthModelProviderEnvironment(
     .select({
       name: secretsTable.name,
       encryptedValue: hasFirewallAuth
-        ? sql<string | null>`NULL`
+        ? sql`NULL`.mapWith(pgNullDecoder)
         : secretsTable.encryptedValue,
     })
     .from(secretsTable)
@@ -2063,7 +2064,9 @@ async function loadPersistedRunEnvironmentSnapshot(
   const secretNamesToLoad = [...new Set(referencedSecretNames)];
   const variableQuery = db
     .select({
-      kind: sql<PersistedRunEnvironmentRowKind>`'variable'`.as("kind"),
+      kind: sql`'variable'`
+        .mapWith(persistedRunEnvironmentRowKindDecoder)
+        .as("kind"),
       name: variables.name,
       value: variables.value,
       userId: variables.userId,
@@ -2084,7 +2087,9 @@ async function loadPersistedRunEnvironmentSnapshot(
       ? await variableQuery.unionAll(
           db
             .select({
-              kind: sql<PersistedRunEnvironmentRowKind>`'secret'`.as("kind"),
+              kind: sql`'secret'`
+                .mapWith(persistedRunEnvironmentRowKindDecoder)
+                .as("kind"),
               name: secretsTable.name,
               value: secretsTable.encryptedValue,
               userId: secretsTable.userId,
@@ -5433,15 +5438,14 @@ async function lockRunForDerivedPersistence(
   tx: DbTransaction,
   runId: string,
 ): Promise<DerivedPersistenceResult | null> {
-  const rows = await tx.execute<LockedRunPersistenceRow>(sql`
-    SELECT
-      ${agentRuns.status} AS "status",
-      ${agentRuns.sandboxId} AS "sandboxId"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  const row = rows.rows[0];
+  const [row] = await tx
+    .select({
+      status: agentRuns.status,
+      sandboxId: agentRuns.sandboxId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
   if (!row) {
     return null;
   }

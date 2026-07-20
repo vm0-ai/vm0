@@ -13,6 +13,7 @@ export const novita = {
         helpText:
           "1. Sign in at [novita.ai](https://novita.ai)\n2. Open **Settings → Key Management**\n3. Click **+ Add New Key**\n4. Copy the key (it begins with `sk_`). Paste it here.",
         storage: {
+          version: 1,
           secrets: ["NOVITA_TOKEN"],
           variables: [],
         },

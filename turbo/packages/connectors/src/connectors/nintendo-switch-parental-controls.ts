@@ -55,6 +55,7 @@ export const nintendoSwitchParentalControls = {
           clientId: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.clientId,
         },
         storage: {
+          version: 1,
           secrets: [
             "NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN",
             "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCESS_TOKEN",

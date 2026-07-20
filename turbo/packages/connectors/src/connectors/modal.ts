@@ -13,6 +13,7 @@ export const modal = {
         helpText:
           "1. Open [Modal workspace token settings](https://modal.com/settings/tokens)\n2. Click **New Service User** or create a token for automation\n3. Copy the `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` values\n4. Optionally enter a Modal environment name.",
         storage: {
+          version: 1,
           secrets: ["MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"],
           variables: ["MODAL_ENVIRONMENT"],
         },

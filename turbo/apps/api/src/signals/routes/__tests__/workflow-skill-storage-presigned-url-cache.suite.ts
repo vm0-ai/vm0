@@ -5,7 +5,10 @@ import type {
   TestWorkflowSkillStoragePresignedUrlCacheStateActionBody,
   TestWorkflowSkillStoragePresignedUrlCacheStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import {
+  getCustomSkillStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -13,6 +16,7 @@ import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, nowDate } from "../../../lib/time";
+import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -253,6 +257,12 @@ async function createWorkflowSkillRunFixture(): Promise<{
   if (!actor.orgId) {
     throw new Error("Expected workflow cache test actor to have an org");
   }
+  const objectKeyPrefix = await readStorageS3PrefixFixture({
+    orgId: actor.orgId,
+    userId: VOLUME_ORG_USER_ID,
+    name: storageName,
+    type: "volume",
+  });
   return {
     actor,
     agentId,
@@ -260,7 +270,7 @@ async function createWorkflowSkillRunFixture(): Promise<{
     workflowId,
     workflowName,
     storageName,
-    objectKeyPrefix: `${actor.orgId}/volume/${storageName}`,
+    objectKeyPrefix,
   };
 }
 

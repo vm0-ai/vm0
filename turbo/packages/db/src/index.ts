@@ -8,6 +8,7 @@ import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
+import * as storageArchiveSizeBackfillSchema from "./schema/storage-archive-size-backfill";
 import * as systemStoragePresignedUrlCacheSchema from "./schema/system-storage-presigned-url-cache";
 import * as blobSchema from "./schema/blob";
 
@@ -117,6 +118,7 @@ export const schema = {
   ...checkpointSchema,
   ...agentSessionSchema,
   ...storageSchema,
+  ...storageArchiveSizeBackfillSchema,
   ...systemStoragePresignedUrlCacheSchema,
   ...blobSchema,
 

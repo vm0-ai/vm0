@@ -18,6 +18,7 @@ export const playstation = {
           clientId: "09515159-7237-4370-9b40-3806e67c0891",
         },
         storage: {
+          version: 1,
           secrets: [
             "PLAYSTATION_ACCESS_TOKEN",
             "PLAYSTATION_REFRESH_TOKEN",

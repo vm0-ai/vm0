@@ -13,6 +13,7 @@ export const render = {
         helpText:
           "1. Log in to [Render](https://dashboard.render.com)\n2. Open **Account Settings > API Keys**\n3. Create a new API key\n4. Copy the API key immediately; Render only displays it in full when it is created\n\nRender API keys can access every workspace and service available to your Render account.",
         storage: {
+          version: 1,
           secrets: ["RENDER_API_KEY"],
           variables: [],
         },

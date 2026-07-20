@@ -12,6 +12,7 @@ export const plausible = {
         helpText:
           "1. Log in to [Plausible Analytics](https://plausible.io)\n2. Go to **Account Settings** → **API Keys**\n3. Click **New API Key** and choose **Stats API**\n4. Copy the key (it is only shown once)",
         storage: {
+          version: 1,
           secrets: ["PLAUSIBLE_TOKEN"],
           variables: [],
         },

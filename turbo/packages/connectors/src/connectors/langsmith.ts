@@ -12,6 +12,7 @@ export const langsmith = {
         helpText:
           "Go to [smith.langchain.com](https://smith.langchain.com) → Settings → API Keys → Create API Key.",
         storage: {
+          version: 1,
           secrets: ["LANGSMITH_TOKEN"],
           variables: [],
         },

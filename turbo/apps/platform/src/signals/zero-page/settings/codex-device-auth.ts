@@ -6,18 +6,11 @@ import {
   type CodexDeviceAuthScope,
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 
-import { ApiError, accept } from "../../../lib/accept.ts";
+import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import {
-  bestEffort,
-  onRef,
-  resetSignal,
-  settle,
-  setLoop,
-  tapError,
-} from "../../utils.ts";
+import { bestEffort, resetSignal, setLoop, tapError } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
@@ -69,17 +62,17 @@ function secondsToMilliseconds(seconds: number): number {
   return seconds * 1000;
 }
 
-function codexDeviceAuthErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
-      return "Codex produced a login token format vm0 does not recognize. Update Codex and try again.";
-    }
-    if (error.code === "CODEX_FREE_PLAN_REJECTED") {
-      return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.";
-    }
-    return error.message;
+function codexDeviceAuthErrorMessage(error: {
+  readonly code: string;
+  readonly message: string;
+}): string {
+  if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
+    return "Codex produced a login token format vm0 does not recognize. Update Codex and try again.";
   }
-  return error instanceof Error ? error.message : "Codex connection failed";
+  if (error.code === "CODEX_FREE_PLAN_REJECTED") {
+    return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.";
+  }
+  return error.message;
 }
 
 function openApprovalPage(browserUrl: string): boolean {
@@ -173,11 +166,10 @@ const completeCodexDeviceAuth$ = command(
         body: { sessionToken },
         fetchOptions: { signal },
       }),
-      [200],
-      { toast: false },
+      [200, 400, 404, 503],
     );
     signal.throwIfAborted();
-    return result.body;
+    return result;
   },
 );
 
@@ -192,7 +184,6 @@ const cancelCodexDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
@@ -205,16 +196,6 @@ interface CodexDeviceAuthSignalContext {
   internalDialogState$: State<CodexDeviceAuthDialogState>;
   internalFlowState$: State<CodexDeviceAuthFlowState>;
   resetFlowSignal$: ReturnType<typeof resetSignal>;
-}
-
-function createCodexSetDialogState$(ctx: CodexDeviceAuthSignalContext) {
-  return command(({ set }, next: CodexDeviceAuthDialogState) => {
-    set(ctx.internalDialogState$, next);
-    if (!next.open) {
-      set(ctx.resetFlowSignal$);
-      set(ctx.internalFlowState$, createIdleFlowState());
-    }
-  });
 }
 
 function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
@@ -238,8 +219,9 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
           }
 
           set(ctx.internalFlowState$, { ...current, status: "polling" });
-          const completion = await settle(
-            set(completeCodexDeviceAuth$, current.sessionToken, loopSignal),
+          const completion = await set(
+            completeCodexDeviceAuth$,
+            current.sessionToken,
             loopSignal,
           );
           loopSignal.throwIfAborted();
@@ -249,15 +231,15 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
             return true;
           }
 
-          if (!completion.ok) {
+          if (completion.status !== 200) {
             set(ctx.internalFlowState$, {
               status: "error",
-              message: codexDeviceAuthErrorMessage(completion.error),
+              message: codexDeviceAuthErrorMessage(completion.body.error),
             });
             return true;
           }
 
-          if (completion.value.status === "complete") {
+          if (completion.body.status === "complete") {
             set(ctx.reloadProviders$);
             toast.success("ChatGPT connected");
             set(ctx.internalDialogState$, createInitialDialogState());
@@ -269,7 +251,7 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
           set(ctx.internalFlowState$, {
             ...latest,
             status: "pending",
-            errorMessage: completion.value.errorMessage,
+            errorMessage: completion.body.errorMessage,
           });
 
           const nextRemainingMs = latest.expiresAtMs - now();
@@ -352,10 +334,37 @@ function createCodexRun$(
   ctx: CodexDeviceAuthSignalContext,
   runFlow$: ReturnType<typeof createCodexRunFlow$>,
 ) {
-  return command(async ({ set }, signal: AbortSignal): Promise<boolean> => {
-    const flowSignal = set(ctx.resetFlowSignal$, signal);
-    return await set(runFlow$, flowSignal);
-  });
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      const flowSignal = set(ctx.resetFlowSignal$, signal);
+      flowSignal.addEventListener(
+        "abort",
+        () => {
+          if (get(ctx.internalFlowState$).status === "starting") {
+            set(ctx.internalFlowState$, createIdleFlowState());
+          }
+        },
+        { once: true },
+      );
+      return await set(runFlow$, flowSignal);
+    },
+  );
+}
+
+function createCodexOpen$(
+  ctx: CodexDeviceAuthSignalContext,
+  run$: ReturnType<typeof createCodexRun$>,
+) {
+  return command(
+    async (
+      { set },
+      mode: CodexDeviceAuthDialogMode,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      set(ctx.internalDialogState$, { open: true, mode });
+      return await set(run$, signal);
+    },
+  );
 }
 
 function createCodexOpenApprovalPage$(ctx: CodexDeviceAuthSignalContext) {
@@ -399,31 +408,6 @@ function createCodexClose$(ctx: CodexDeviceAuthSignalContext) {
   });
 }
 
-function createCodexAutoStartRef(
-  ctx: CodexDeviceAuthSignalContext,
-  runFlow$: ReturnType<typeof createCodexRunFlow$>,
-) {
-  const autoStart$ = command(
-    async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-      if (get(ctx.internalFlowState$).status !== "idle") {
-        return;
-      }
-      const flowSignal = set(ctx.resetFlowSignal$, signal);
-      signal.addEventListener(
-        "abort",
-        () => {
-          if (get(ctx.internalFlowState$).status === "starting") {
-            set(ctx.internalFlowState$, createIdleFlowState());
-          }
-        },
-        { once: true },
-      );
-      await set(runFlow$, flowSignal);
-    },
-  );
-  return onRef(autoStart$);
-}
-
 function createCodexDeviceAuthSignals(
   scope: CodexDeviceAuthScope,
   reloadProviders$: Command<void, []>,
@@ -437,6 +421,7 @@ function createCodexDeviceAuthSignals(
   };
   const pollFlow$ = createCodexPollFlow$(ctx);
   const runFlow$ = createCodexRunFlow$(ctx, pollFlow$);
+  const run$ = createCodexRun$(ctx, runFlow$);
 
   return {
     dialogState$: computed((get) => {
@@ -445,32 +430,29 @@ function createCodexDeviceAuthSignals(
     flowState$: computed((get) => {
       return get(ctx.internalFlowState$);
     }),
-    setDialogState$: createCodexSetDialogState$(ctx),
+    open$: createCodexOpen$(ctx, run$),
     openApprovalPage$: createCodexOpenApprovalPage$(ctx),
     close$: createCodexClose$(ctx),
-    run$: createCodexRun$(ctx, runFlow$),
-    autoStartRef$: createCodexAutoStartRef(ctx, runFlow$),
+    run$,
   };
 }
 
 export const {
   dialogState$: codexDeviceAuthDialogState$,
   flowState$: codexDeviceAuthFlowState$,
-  setDialogState$: setCodexDeviceAuthDialogState$,
+  open$: openCodexDeviceAuthDialog$,
   openApprovalPage$: openCodexDeviceAuthApprovalPage$,
   close$: closeCodexDeviceAuthDialog$,
   run$: runCodexDeviceAuth$,
-  autoStartRef$: codexDeviceAuthAutoStartRef$,
 } = createCodexDeviceAuthSignals("org", reloadOrgModelProviders$);
 
 export const {
   dialogState$: codexDeviceAuthDialogStatePersonal$,
   flowState$: codexDeviceAuthFlowStatePersonal$,
-  setDialogState$: setCodexDeviceAuthDialogStatePersonal$,
+  open$: openCodexDeviceAuthDialogPersonal$,
   openApprovalPage$: openCodexDeviceAuthApprovalPagePersonal$,
   close$: closeCodexDeviceAuthDialogPersonal$,
   run$: runCodexDeviceAuthPersonal$,
-  autoStartRef$: codexDeviceAuthAutoStartRefPersonal$,
 } = createCodexDeviceAuthSignals("personal", reloadPersonalModelProvider$);
 
 export type { CodexDeviceAuthFlowState };

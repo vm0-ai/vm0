@@ -35,6 +35,10 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
+import {
+  pgIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -153,7 +157,9 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       triggerSource: zeroRuns.triggerSource,
       userId: agentRuns.userId,
       error: agentRuns.error,
-      promptPreview: sql<string>`substring(${agentRuns.prompt}, 1, 200)`,
+      promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
+        pgTextDecoder,
+      ),
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -237,7 +243,7 @@ async function loadComposeVersion(
 
 async function countMessages(db: ReadonlyDb, botId: string): Promise<number> {
   const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql`count(*)::int`.mapWith(pgIntegerDecoder) })
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, botId));
   return row?.count ?? 0;

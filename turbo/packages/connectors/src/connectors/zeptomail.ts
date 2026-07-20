@@ -12,6 +12,7 @@ export const zeptomail = {
         helpText:
           "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Select the Mail Agent for which you want to generate the API key\n3. Go to the **SMTP/API** tab\n4. In the **API** section, copy the **Agent alias** (agentkey)\n5. Submit a POST request to `https://api.zeptomail.com/v1.1/agents/{agentkey}/apikeys` with an `Authorization: Zoho-oauthtoken [your-token]` header\n6. The response will contain your send mail token (username and password)",
         storage: {
+          version: 1,
           secrets: ["ZEPTOMAIL_TOKEN"],
           variables: [],
         },

@@ -18,6 +18,7 @@ export const testOauthDevice = {
           clientId: "test-oauth-device-client",
         },
         storage: {
+          version: 1,
           secrets: ["TEST_OAUTH_DEVICE_ACCESS_TOKEN"],
           variables: [],
         },
@@ -47,6 +48,7 @@ export const testOauthDevice = {
           clientId: "test-oauth-device-api-client",
         },
         storage: {
+          version: 1,
           secrets: ["TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"],
           variables: [],
         },

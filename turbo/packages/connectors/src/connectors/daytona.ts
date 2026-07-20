@@ -13,6 +13,7 @@ export const daytona = {
         helpText:
           "1. Sign in at [app.daytona.io](https://app.daytona.io)\n2. Open **API Keys**\n3. Click **Create API Key**\n4. Copy the generated key and paste it here.",
         storage: {
+          version: 1,
           secrets: ["DAYTONA_API_KEY"],
           variables: [],
         },

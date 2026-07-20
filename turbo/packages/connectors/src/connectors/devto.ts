@@ -12,6 +12,7 @@ export const devto = {
         helpText:
           "1. Log in to [DEV.to](https://dev.to)\n2. Go to **Settings > Extensions** (or visit [dev.to/settings/extensions](https://dev.to/settings/extensions))\n3. Generate a new API key from the settings page\n4. Copy the API key and use it in the `api-key` request header",
         storage: {
+          version: 1,
           secrets: ["DEVTO_TOKEN"],
           variables: [],
         },

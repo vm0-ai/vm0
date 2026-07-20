@@ -19,6 +19,7 @@ export const stripe = {
           clientSecretEnv: "STRIPE_SECRET_KEY",
         },
         storage: {
+          version: 1,
           secrets: ["STRIPE_ACCESS_TOKEN", "STRIPE_REFRESH_TOKEN"],
           variables: [],
         },
@@ -51,6 +52,7 @@ export const stripe = {
         helpText:
           "1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/apikeys)\n2. Go to **Developers > API keys**\n3. Reveal the **Secret key** (starts with `sk_live_` or `sk_test_`) or create a **Restricted key** (`rk_live_...`) with the scopes you need\n4. Copy the key",
         storage: {
+          version: 1,
           secrets: ["STRIPE_TOKEN"],
           variables: [],
         },
@@ -82,6 +84,7 @@ export const stripe = {
           clientType: "public",
         },
         storage: {
+          version: 1,
           secrets: ["STRIPE_TOKEN"],
           variables: [],
         },

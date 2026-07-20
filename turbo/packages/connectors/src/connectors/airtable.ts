@@ -17,6 +17,7 @@ export const airtable = {
           clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["AIRTABLE_ACCESS_TOKEN", "AIRTABLE_REFRESH_TOKEN"],
           variables: [],
         },

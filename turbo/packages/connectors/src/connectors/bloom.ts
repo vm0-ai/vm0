@@ -12,6 +12,7 @@ export const bloom = {
         helpText:
           "1. Sign in to your Bloom account\n2. Follow the [Bloom API docs](https://www.trybloom.ai/docs/api) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["BLOOM_API_KEY"],
           variables: [],
         },

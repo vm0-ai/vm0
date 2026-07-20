@@ -12,6 +12,7 @@ export const prismaPostgres = {
         helpText:
           "1. Log in to the [Prisma Console](https://console.prisma.io)\n2. Go to your workspace **Settings** page\n3. Select **Service Tokens**\n4. Click **New Service Token**\n5. Copy and save the generated service token securely",
         storage: {
+          version: 1,
           secrets: ["PRISMA_POSTGRES_TOKEN"],
           variables: [],
         },

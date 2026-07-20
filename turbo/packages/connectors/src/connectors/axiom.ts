@@ -12,6 +12,7 @@ export const axiom = {
         helpText:
           "1. Log in to [Axiom](https://app.axiom.co)\n2. Go to **Settings > API Tokens**\n3. Create a new API token with the required permissions\n4. Copy the token",
         storage: {
+          version: 1,
           secrets: ["AXIOM_TOKEN"],
           variables: [],
         },

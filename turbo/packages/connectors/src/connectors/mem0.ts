@@ -12,6 +12,7 @@ export const mem0 = {
         helpText:
           "Go to [app.mem0.ai](https://app.mem0.ai) → **API Keys** → create or copy your key.",
         storage: {
+          version: 1,
           secrets: ["MEM0_TOKEN"],
           variables: [],
         },

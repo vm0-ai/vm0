@@ -39,6 +39,7 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   createBddApi,
   expectApiError,
@@ -1276,11 +1277,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const memoryPrefix = await readStorageS3PrefixFixture({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      name: "memory",
+      type: "artifact",
+    });
     const emptyArtifactPutCount = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
         return (
           s3CommandName(command) === "PutObjectCommand" &&
-          s3CommandKey(command)?.includes("/artifact/memory/")
+          s3CommandKey(command)?.startsWith(`${memoryPrefix}/`)
         );
       },
     ).length;
@@ -1667,13 +1677,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
       files: [artifactFile],
     });
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const memoryPrefix = await readStorageS3PrefixFixture({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      name: "memory",
+      type: "artifact",
+    });
     const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
         return (
           s3CommandName(command) === "GetObjectCommand" &&
-          s3CommandKey(command)?.includes(
-            `/artifact/memory/${initialMemoryVersionId}/manifest.json`,
-          ) === true
+          s3CommandKey(command) ===
+            `${memoryPrefix}/${initialMemoryVersionId}/manifest.json`
         );
       },
     );

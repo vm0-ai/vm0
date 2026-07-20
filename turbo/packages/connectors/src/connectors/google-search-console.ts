@@ -26,6 +26,7 @@ export const googleSearchConsole = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN",
             "GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN",

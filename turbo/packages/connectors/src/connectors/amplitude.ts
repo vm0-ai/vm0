@@ -13,6 +13,7 @@ export const amplitude = {
         helpText:
           "1. In Amplitude, open **Organization Settings** (top right nav) → **Projects** and click the project you want to connect\n2. Copy the **API Key** from the project table (Manager role required)\n3. Click **Generate Secret Key**, name it, and copy it immediately (the secret is only shown once)\n4. Paste both values into the fields below",
         storage: {
+          version: 1,
           secrets: ["AMPLITUDE_API_KEY", "AMPLITUDE_SECRET_KEY"],
           variables: [],
         },

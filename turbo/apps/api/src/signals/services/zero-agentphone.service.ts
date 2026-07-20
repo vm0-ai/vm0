@@ -50,6 +50,7 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
 } from "./agentphone-shared.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -324,13 +325,15 @@ export const ensureAgentPhoneArtifactStorage$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    const location = newStorageS3Location(args.orgId);
     const [storage] = await writeDb
       .insert(storages)
       .values({
+        id: location.storageId,
         name: "artifact",
         type: "artifact",
         userId: args.userId,
-        s3Prefix: `${args.orgId}/artifact/artifact`,
+        s3Prefix: location.s3Prefix,
         size: 0,
         fileCount: 0,
         orgId: args.orgId,

@@ -16,6 +16,7 @@ export const googleSheets = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GOOGLE_SHEETS_ACCESS_TOKEN",
             "GOOGLE_SHEETS_REFRESH_TOKEN",

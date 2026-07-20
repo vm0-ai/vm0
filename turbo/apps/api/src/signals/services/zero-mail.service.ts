@@ -21,6 +21,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { convert } from "html-to-text";
 import { z } from "zod";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -267,7 +268,8 @@ async function loadMailConnections(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
-      stateRevision: sql<string>`${connectors.updatedAt}::text`,
+      stateRevision: sql`${connectors.updatedAt}::text`.mapWith(pgTextDecoder),
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(userConnectors)
@@ -315,6 +317,7 @@ async function loadMailConnections(args: {
         needsReconnect: row.needsReconnect,
         oauthScopes,
         stateRevision: row.stateRevision,
+        storageVersion: row.storageVersion,
         scopesReady: connectorAuthMethodHasRequiredScopes(
           runtimeMethod.method,
           oauthScopes,

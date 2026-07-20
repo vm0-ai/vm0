@@ -7,6 +7,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -22,6 +23,10 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import {
+  upsertConnectorOwnedSecret,
+  upsertConnectorOwnedVariable,
+} from "./connector-credential-storage-write.service";
 
 const log = logger("api:connector-credential-runtime");
 const oauthScopesSchema = z.array(z.string());
@@ -35,6 +40,7 @@ export interface ConnectorCredentialConnection {
   readonly oauthScopes: readonly string[] | null;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly stateRevision: string;
+  readonly storageVersion: number | null;
   readonly tokenExpiresAt: Date | null;
 }
 
@@ -134,7 +140,8 @@ export async function loadConnectorCredentialConnection(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
-      stateRevision: sql<string>`${connectors.updatedAt}::text`,
+      stateRevision: sql`${connectors.updatedAt}::text`.mapWith(pgTextDecoder),
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(connectors)
@@ -163,6 +170,7 @@ export async function loadConnectorCredentialConnection(args: {
       oauthScopes: parseOauthScopes(row.oauthScopes),
       runtimeMethod,
       stateRevision: row.stateRevision,
+      storageVersion: row.storageVersion,
       tokenExpiresAt: row.tokenExpiresAt,
     },
   };
@@ -244,65 +252,6 @@ export async function loadConnectorCredentialValues(args: {
   return values;
 }
 
-async function upsertConnectorSecret(args: {
-  readonly db: Db;
-  readonly description: string;
-  readonly name: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly value: string;
-}): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(args.value);
-  await args.db
-    .insert(secrets)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      encryptedValue,
-      description: args.description,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-      set: {
-        encryptedValue,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    });
-}
-
-async function upsertConnectorVariable(args: {
-  readonly db: Db;
-  readonly name: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly value: string;
-}): Promise<void> {
-  await args.db
-    .insert(variables)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      value: args.value,
-      description: null,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [
-        variables.orgId,
-        variables.userId,
-        variables.name,
-        variables.type,
-      ],
-      set: {
-        value: args.value,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    });
-}
-
 function refreshTokenExpiresAt(
   expiresIn: number | undefined,
   defaultExpiresInMs: number | undefined,
@@ -313,6 +262,50 @@ function refreshTokenExpiresAt(
   return defaultExpiresInMs === undefined
     ? null
     : new Date(nowDate().getTime() + defaultExpiresInMs);
+}
+
+async function persistConnectorRefreshOutputs(args: {
+  readonly access: ConnectorRefreshTokenAccess;
+  readonly connection: ConnectorCredentialConnection;
+  readonly db: Db;
+  readonly orgId: string;
+  readonly outputs: Readonly<Record<string, string | undefined>>;
+  readonly signal: AbortSignal;
+  readonly userId: string;
+}): Promise<void> {
+  for (const [outputName, value] of Object.entries(args.outputs)) {
+    if (value === undefined) {
+      continue;
+    }
+    const valueRef = args.access.outputs[outputName];
+    if (valueRef === undefined) {
+      throw new Error("Connector refresh returned an undeclared output");
+    }
+    const target = connectorStoredValueRef(valueRef);
+    if (target.kind === "secret") {
+      const encryptedValue = await encryptStoredSecretValue(value);
+      await upsertConnectorOwnedSecret(args.db, {
+        connectorId: args.connection.connectorId,
+        method: args.connection.runtimeMethod.method,
+        description: `Connector token output for ${args.connection.connectorRef}: ${target.name}`,
+        encryptedValue,
+        name: target.name,
+        orgId: args.orgId,
+        userId: args.userId,
+      });
+    } else {
+      await upsertConnectorOwnedVariable(args.db, {
+        connectorId: args.connection.connectorId,
+        method: args.connection.runtimeMethod.method,
+        description: null,
+        name: target.name,
+        orgId: args.orgId,
+        userId: args.userId,
+        value,
+      });
+    }
+    args.signal.throwIfAborted();
+  }
 }
 
 async function persistConnectorRefresh(args: {
@@ -352,7 +345,10 @@ async function persistConnectorRefresh(args: {
         externalId: connectors.externalId,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
-        stateRevision: sql<string>`${connectors.updatedAt}::text`,
+        stateRevision: sql`${connectors.updatedAt}::text`.mapWith(
+          pgTextDecoder,
+        ),
+        storageVersion: connectors.storageVersion,
       })
       .from(connectors)
       .where(
@@ -375,6 +371,9 @@ async function persistConnectorRefresh(args: {
         args.connection.runtimeMethod.authMethodId ||
       currentConnector.externalEmail !== args.connection.externalEmail ||
       currentConnector.externalId !== args.connection.externalId ||
+      (currentConnector.storageVersion !== null &&
+        currentConnector.storageVersion !==
+          args.connection.runtimeMethod.method.storage.version) ||
       !currentRevisionCanAcceptRefresh
     ) {
       return { kind: "connection-changed" } as const;
@@ -393,39 +392,20 @@ async function persistConnectorRefresh(args: {
         return { kind: "connection-changed" } as const;
       }
     }
-    for (const [outputName, value] of Object.entries(args.outputs)) {
-      if (value === undefined) {
-        continue;
-      }
-      const valueRef = access.outputs[outputName];
-      if (valueRef === undefined) {
-        throw new Error("Connector refresh returned an undeclared output");
-      }
-      const target = connectorStoredValueRef(valueRef);
-      if (target.kind === "secret") {
-        await upsertConnectorSecret({
-          db: tx,
-          description: `Connector token output for ${args.connection.connectorRef}: ${target.name}`,
-          name: target.name,
-          orgId: args.orgId,
-          userId: args.userId,
-          value,
-        });
-      } else {
-        await upsertConnectorVariable({
-          db: tx,
-          name: target.name,
-          orgId: args.orgId,
-          userId: args.userId,
-          value,
-        });
-      }
-      args.signal.throwIfAborted();
-    }
+    await persistConnectorRefreshOutputs({
+      access,
+      connection: args.connection,
+      db: tx,
+      orgId: args.orgId,
+      outputs: args.outputs,
+      signal: args.signal,
+      userId: args.userId,
+    });
     await tx
       .update(connectors)
       .set({
         tokenExpiresAt,
+        storageVersion: args.connection.runtimeMethod.method.storage.version,
         needsReconnect: false,
         reconnectReason: null,
         updatedAt: sql`clock_timestamp()`,
@@ -541,6 +521,13 @@ function connectorRefreshAccessToken(args: {
 export async function refreshConnectorCredentialAccess(
   args: ConnectorCredentialRefreshArgs,
 ): Promise<ConnectorCredentialRefreshResult> {
+  if (
+    args.connection.storageVersion !== null &&
+    args.connection.storageVersion !==
+      args.connection.runtimeMethod.method.storage.version
+  ) {
+    return { kind: "connection-changed" };
+  }
   const access = args.connection.runtimeMethod.method.access;
   if (access.kind !== "refresh-token") {
     return await connectorCredentialRefreshFailure(args, "not-refreshable");

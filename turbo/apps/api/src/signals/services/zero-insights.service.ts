@@ -8,6 +8,11 @@ import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 
+import {
+  nullableDriverValueDecoder,
+  pgIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
@@ -15,6 +20,7 @@ import { tapError } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 interface StoredTeamUsageEntry {
   readonly userId?: string;
@@ -198,9 +204,15 @@ export function zeroInsightsRange(args: {
   return computed(async (get): Promise<InsightsRangeResponse> => {
     const [row] = await get(db$)
       .select({
-        minDate: sql<string | null>`MIN(${insightsDaily.date})`.as("min_date"),
-        maxDate: sql<string | null>`MAX(${insightsDaily.date})`.as("max_date"),
-        totalDays: sql<number>`COUNT(*)::int`.as("total_days"),
+        minDate: sql`MIN(${insightsDaily.date})`
+          .mapWith(nullableTextDecoder)
+          .as("min_date"),
+        maxDate: sql`MAX(${insightsDaily.date})`
+          .mapWith(nullableTextDecoder)
+          .as("max_date"),
+        totalDays: sql`COUNT(*)::int`
+          .mapWith(pgIntegerDecoder)
+          .as("total_days"),
       })
       .from(insightsDaily)
       .where(

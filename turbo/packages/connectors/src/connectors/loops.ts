@@ -12,6 +12,7 @@ export const loops = {
         helpText:
           "1. Log in to [Loops](https://app.loops.so)\n2. Go to **Settings** → **API**\n3. Click **Generate key**\n4. Copy the generated API key",
         storage: {
+          version: 1,
           secrets: ["LOOPS_TOKEN"],
           variables: [],
         },

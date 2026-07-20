@@ -18,6 +18,7 @@ export const googleCalendar = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GOOGLE_CALENDAR_ACCESS_TOKEN",
             "GOOGLE_CALENDAR_REFRESH_TOKEN",

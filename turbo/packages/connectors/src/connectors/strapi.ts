@@ -12,6 +12,7 @@ export const strapi = {
         helpText:
           "1. Log in to your Strapi admin panel\n2. Go to **Settings → API Tokens**\n3. Click **Create new API Token**\n4. Enter a name, select a token duration, and choose a token type (Full Access or Custom)\n5. Click **Save** and copy the generated token",
         storage: {
+          version: 1,
           secrets: ["STRAPI_TOKEN"],
           variables: ["STRAPI_BASE_URL"],
         },

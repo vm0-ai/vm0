@@ -31,6 +31,8 @@ import { z } from "zod";
 
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import { executeRawRows } from "../../lib/db-raw-rows";
+import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -89,6 +91,7 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
+const idRowSchema = z.object({ id: z.string() });
 
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
@@ -771,7 +774,9 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+        nullableDriverValueDecoder(chatMessages.createdAt),
+      ),
     })
     .from(chatMessages)
     .where(
@@ -785,14 +790,13 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     return;
   }
 
-  const lastEventMs =
-    message.lastEventAt instanceof Date
-      ? message.lastEventAt.getTime()
-      : new Date(message.lastEventAt).getTime();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "last_event_to_complete",
-    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
+    durationMs: Math.max(
+      0,
+      run.completedAt.getTime() - message.lastEventAt.getTime(),
+    ),
     success: true,
     runId,
   });
@@ -1575,30 +1579,34 @@ async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const runs = await db.execute<{ readonly id: string }>(sql`
-    SELECT ${zeroRuns.id} AS "id"
-    FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-    WHERE ${zeroRuns.chatThreadId} = ${threadId}
-      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      AND (
-        NOT EXISTS (
-          SELECT 1
-          FROM ${agentRunCallbacks}
-          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-            AND ${agentRunCallbacks.internalKind} = 'chat'
-            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+  const runs = await executeRawRows(
+    db,
+    sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
         )
-        OR EXISTS (
-          SELECT 1
-          FROM ${chatMessages}
-          WHERE ${chatMessages.runId} = ${zeroRuns.id}
-            AND ${chatMessages.role} = 'user'
-        )
-      )
-    LIMIT 1
-  `);
-  return runs.rows[0] !== undefined;
+      LIMIT 1
+    `,
+    idRowSchema,
+  );
+  return runs[0] !== undefined;
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1809,29 +1817,24 @@ async function claimQueuedUserMessageForDispatch(args: {
     // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
     // callbacks can insert candidate runs, each see the other as active, and
     // both cancel before either claims the queued message.
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR UPDATE
-    `);
-    if (!threadRows.rows[0]) {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("update");
+    if (!thread) {
       return null;
     }
 
-    const rows = await tx.execute<{
-      readonly status: string;
-      readonly chatThreadId: string | null;
-    }>(sql`
-      SELECT
-        ${agentRuns.status} AS "status",
-        ${zeroRuns.chatThreadId} AS "chatThreadId"
-      FROM ${agentRuns}
-      INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
-      WHERE ${agentRuns.id} = ${args.runId}
-      FOR UPDATE OF ${agentRuns}
-    `);
-    const run = rows.rows[0];
+    const [run] = await tx
+      .select({
+        status: agentRuns.status,
+        chatThreadId: zeroRuns.chatThreadId,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.id, args.runId))
+      .for("update", { of: agentRuns });
     if (
       !run ||
       run.chatThreadId !== args.threadId ||
@@ -1844,31 +1847,35 @@ async function claimQueuedUserMessageForDispatch(args: {
     // message. Concurrent drains may insert more than one candidate before
     // reaching this serialized gate; ignoring those unclaimed candidates lets
     // one claim win while the others cancel before dispatch.
-    const competingRuns = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${zeroRuns.id} AS "id"
-      FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
-        AND ${zeroRuns.id} <> ${args.runId}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-              AND ${agentRunCallbacks.internalKind} = 'chat'
-              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+    const competingRuns = await executeRawRows(
+      tx,
+      sql`
+        SELECT ${zeroRuns.id} AS "id"
+        FROM ${zeroRuns}
+        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+        WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
+          AND ${zeroRuns.id} <> ${args.runId}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM ${agentRunCallbacks}
+              WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+                AND ${agentRunCallbacks.internalKind} = 'chat'
+                AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+                AND ${chatMessages.role} = 'user'
+            )
           )
-          OR EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
-              AND ${chatMessages.role} = 'user'
-          )
-        )
-      LIMIT 1
-    `);
-    if (competingRuns.rows[0]) {
+        LIMIT 1
+      `,
+      idRowSchema,
+    );
+    if (competingRuns[0]) {
       return null;
     }
 
@@ -1889,13 +1896,12 @@ async function appendAutoSentQueuedRunMarker(args: {
   readonly threadId: string;
 }): Promise<void> {
   await args.db.transaction(async (tx) => {
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR KEY SHARE
-    `);
-    if (!threadRows.rows[0]) {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("key share");
+    if (!thread) {
       return;
     }
 

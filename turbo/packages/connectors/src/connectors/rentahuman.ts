@@ -12,6 +12,7 @@ export const rentahuman = {
         helpText:
           "1. Sign in to your RentAHuman account\n2. Follow the [RentAHuman API docs](https://rentahuman.ai/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["RENTAHUMAN_API_KEY"],
           variables: [],
         },

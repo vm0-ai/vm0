@@ -17,6 +17,7 @@ export const todoist = {
           clientSecretEnv: "TODOIST_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["TODOIST_ACCESS_TOKEN"],
           variables: [],
         },

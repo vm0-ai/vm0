@@ -12,6 +12,7 @@ export const bentolabsAi = {
         helpText:
           "1. Sign in to your BentoLabs AI account\n2. Follow the [BentoLabs AI API docs](https://docs.bentolabs.ai/llms.txt) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["BENTOLABS_AI_API_KEY"],
           variables: [],
         },

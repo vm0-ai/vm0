@@ -8,7 +8,9 @@
 //!
 //! ```sh
 //! sudo modprobe nbd nbds_max=4096
-//! cargo test -p nbd-cow --test integration -- --ignored --test-threads=1
+//! cargo test \
+//!   --config 'target."cfg(target_os = \"linux\")".runner = "sudo"' \
+//!   -p nbd-cow --test integration -- --ignored --test-threads=1
 //! ```
 
 use std::fs;

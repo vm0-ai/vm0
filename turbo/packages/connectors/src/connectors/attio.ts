@@ -12,6 +12,7 @@ export const attio = {
         helpText:
           "1. Open [Attio](https://app.attio.com) and sign in\n2. Open **Workspace settings** from the dropdown beside your workspace name\n3. Click the **Developers** tab\n4. Click **+ New access token**, give it a name, and select the scopes you need\n5. Click **Create**, then copy the token (shown once)",
         storage: {
+          version: 1,
           secrets: ["ATTIO_TOKEN"],
           variables: [],
         },

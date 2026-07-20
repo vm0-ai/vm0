@@ -12,6 +12,7 @@ export const archer = {
         helpText:
           "1. Sign in to your Archer account\n2. Follow the [Archer API docs](https://docs.archermoney.com) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["ARCHER_API_KEY"],
           variables: [],
         },

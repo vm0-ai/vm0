@@ -9,7 +9,7 @@ import { db } from "../lib/db";
 export async function seedInvalidLegacyGoalMessages(
   threadId: string,
 ): Promise<void> {
-  const insertedInvalidActiveMarker = await db().execute(sql`
+  const { rowCount: insertedInvalidActiveMarkerCount } = await db().execute(sql`
     INSERT INTO chat_messages (
       chat_thread_id,
       role,
@@ -23,11 +23,11 @@ export async function seedInvalidLegacyGoalMessages(
       '{"objectiveBrief":{"bad":true}}'::jsonb
     )
   `);
-  if (insertedInvalidActiveMarker.rowCount !== 1) {
+  if (insertedInvalidActiveMarkerCount !== 1) {
     throw new Error("Expected one invalid active goal marker fixture");
   }
 
-  const inserted = await db().execute(sql`
+  const { rowCount: insertedCount } = await db().execute(sql`
     INSERT INTO chat_messages (
       chat_thread_id,
       role,
@@ -41,11 +41,12 @@ export async function seedInvalidLegacyGoalMessages(
       '{"objectiveBrief":{"bad":true}}'::jsonb
     )
   `);
-  if (inserted.rowCount !== 1) {
+  if (insertedCount !== 1) {
     throw new Error("Expected one legacy goal marker fixture");
   }
 
-  const insertedMissingSnapshotBrief = await db().execute(sql`
+  const { rowCount: insertedMissingSnapshotBriefCount } = await db().execute(
+    sql`
     INSERT INTO chat_messages (
       chat_thread_id,
       role,
@@ -58,8 +59,9 @@ export async function seedInvalidLegacyGoalMessages(
       'legacy snapshot without objective brief',
       '{"bad":true}'::jsonb
     )
-  `);
-  if (insertedMissingSnapshotBrief.rowCount !== 1) {
+    `,
+  );
+  if (insertedMissingSnapshotBriefCount !== 1) {
     throw new Error("Expected one legacy goal snapshot fixture");
   }
 }

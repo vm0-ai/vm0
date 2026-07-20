@@ -12,6 +12,7 @@ export const stablebrowse = {
         helpText:
           "1. Sign in to your StableBrowse account\n2. Follow the [StableBrowse API docs](https://docs.stablebrowse.com/introduction) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["STABLEBROWSE_API_KEY"],
           variables: [],
         },

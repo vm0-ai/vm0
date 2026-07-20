@@ -144,6 +144,19 @@ export function userPermissionGrantsByAgent(
   });
 }
 
+export function userPermissionGrantsByAgentIfExists(
+  params: UserPermissionGrantsByAgentParams,
+): Computed<Promise<readonly UserPermissionGrantResponse[] | null>> {
+  return computed(async (get) => {
+    get(internalUserPermissionGrantsReload$);
+    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    const result = await retryTransientLoad(() => {
+      return accept(client.list({ query: params }), [200, 404]);
+    });
+    return result.status === 404 ? null : result.body;
+  });
+}
+
 export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
   const agentId = get(permissionAllowAgentId$);
   if (!agentId) {

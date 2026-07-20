@@ -12,6 +12,7 @@ export const mathpix = {
         helpText:
           "1. Sign in to the [Mathpix Console](https://console.mathpix.com)\n2. Open **API Keys** under your account\n3. Copy your **app_id** and create / copy an **app_key**\n4. Mathpix authenticates with both values sent as the `app_id` and `app_key` request headers",
         storage: {
+          version: 1,
           secrets: ["MATHPIX_APP_KEY"],
           variables: ["MATHPIX_APP_ID"],
         },

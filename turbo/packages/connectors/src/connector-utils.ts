@@ -569,6 +569,7 @@ export interface ConnectorRuntimeBindingEntry {
 
 export interface ConnectorAuthMethodRuntimeMetadata {
   readonly storage: {
+    readonly version: number;
     readonly secrets: readonly string[];
     readonly variables: readonly string[];
   };
@@ -946,6 +947,7 @@ export function connectorAuthMethodRuntimeMetadata(
   const platformSecrets = connectorAccessPlatformSecrets(method.access);
   return {
     storage: {
+      version: method.storage.version,
       secrets: [...method.storage.secrets],
       variables: [...method.storage.variables],
     },

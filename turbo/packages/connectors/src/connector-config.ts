@@ -213,6 +213,14 @@ export type ConnectorRevokeInputBindings = Record<
 >;
 
 export interface ConnectorStorageConfig {
+  /**
+   * Positive safe-integer compatibility generation for persisted credentials.
+   *
+   * Increase this when a storage name or class changes, or when existing
+   * values change meaning, format, or validity. Presentation, rollout, skill,
+   * icon, and firewall changes do not require an increase by themselves.
+   */
+  readonly version: number;
   readonly secrets: readonly string[];
   readonly variables: readonly string[];
 }

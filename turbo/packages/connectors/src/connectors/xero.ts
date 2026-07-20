@@ -17,6 +17,7 @@ export const xero = {
           clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["XERO_ACCESS_TOKEN", "XERO_REFRESH_TOKEN"],
           variables: [],
         },

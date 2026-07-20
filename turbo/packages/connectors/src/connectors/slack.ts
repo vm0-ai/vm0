@@ -17,6 +17,7 @@ export const slack = {
           clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["SLACK_ACCESS_TOKEN"],
           variables: [],
         },
