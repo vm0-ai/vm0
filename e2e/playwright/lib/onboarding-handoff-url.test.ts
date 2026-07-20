@@ -61,12 +61,12 @@ test("keeps an unrelated app origin unchanged", () => {
   assert.equal(rewrittenUrl, null);
 });
 
-test("keeps a non-preview onboarding handoff unchanged", () => {
+test("rewrites the staging app handoff to the Cloudflare staging app", () => {
   const rewrittenUrl = rewritePreviewAppFallbackUrl(
     new URL("https://staging-app.vm6.ai/prompt"),
-    "https://staging-app.vm6.ai",
+    "https://staging-app.omby.ai",
     "https://staging-www.vm6.ai",
   );
 
-  assert.equal(rewrittenUrl, null);
+  assert.equal(rewrittenUrl, "https://staging-app.omby.ai/prompt");
 });

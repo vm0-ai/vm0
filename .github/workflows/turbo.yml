@@ -1358,14 +1358,9 @@ jobs:
           {
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
-            if [[ "$PAGES_BRANCH" == pr-*-app ]]; then
-              : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-              echo "custom-domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
-              echo "custom-url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
-            else
-              echo "custom-domain="
-              echo "custom-url="
-            fi
+            : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+            echo "custom-domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
+            echo "custom-url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
@@ -1584,7 +1579,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app, build-app-cf]
+    needs: [prepare, deploy-api, build-app-cf]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1596,10 +1591,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
-      (
-        (startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.build-app-cf.result == 'success') ||
-        (!startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.deploy-app.result == 'success')
-      )
+      needs.build-app-cf.result == 'success'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1617,7 +1609,7 @@ jobs:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_AUTH_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VM0_AUTH_REDIRECT_URL: ${{ needs.prepare.outputs.app-preview-url }}/_/skeleton
-          VM0_AUTH_DOMAIN: ${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
+          VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
@@ -1640,7 +1632,6 @@ jobs:
       - prepare
       - alias-onboarding-www
       - deploy-api
-      - deploy-app
       - build-app-cf
       - deploy-stripe-listener
     if: |
@@ -1655,10 +1646,7 @@ jobs:
       ) &&
       needs.deploy-api.result == 'success' &&
       (github.event_name == 'push' || needs.alias-onboarding-www.result == 'success') &&
-      (
-        (startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.build-app-cf.result == 'success') ||
-        (!startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.deploy-app.result == 'success')
-      ) &&
+      needs.build-app-cf.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
       - uses: actions/checkout@v7
