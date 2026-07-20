@@ -17,7 +17,7 @@ import {
   IconTrash,
   IconUpload,
 } from "@tabler/icons-react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
   createDeferredPromise,
   detach,
@@ -36,6 +36,7 @@ import {
   deleteHtmlDomComment$,
   discardHtmlDomComments$,
   focusHtmlDomComment$,
+  currentHtmlDomEditDocument$,
   htmlDomCommentEditorModel$,
   sendHtmlDomEditRequest$,
   setHtmlDomColorPopoverOffset$,
@@ -53,6 +54,7 @@ import {
   type HtmlDomImageLayout,
   type HtmlDomStyleProperty,
   type HtmlDomCommentEditorModel,
+  type HtmlDomEditDocument,
   type HtmlDomSelectedImage,
 } from "../../signals/zero-page/html-dom-comment-editor.ts";
 import type {
@@ -71,7 +73,6 @@ interface HtmlDomCommentEditorProps {
   readonly onSubmitEditRequest?: (payload: HtmlDomEditPayload) => Promise<void>;
   readonly pageSignal: AbortSignal;
   readonly status?: "working";
-  readonly url: string;
 }
 
 function waitForIframePaint(
@@ -127,6 +128,7 @@ function waitForIframePaint(
 }
 
 function HtmlDomCommentStage({
+  editDocument,
   filename,
   model,
   onApplyEditDraft,
@@ -136,8 +138,8 @@ function HtmlDomCommentStage({
   onSubmitEditRequest,
   pageSignal,
   status,
-  url,
 }: {
+  readonly editDocument: HtmlDomEditDocument;
   readonly filename: string;
   readonly model: HtmlDomCommentEditorModel;
   readonly onApplyEditDraft?: (draft: HtmlDomEditDraft) => void | Promise<void>;
@@ -147,77 +149,60 @@ function HtmlDomCommentStage({
   readonly onSubmitEditRequest?: (payload: HtmlDomEditPayload) => Promise<void>;
   readonly pageSignal: AbortSignal;
   readonly status?: "working";
-  readonly url: string;
 }) {
   const bindFrame = useSet(bindHtmlDomCommentFrame$);
   const activatePendingFrame = useSet(activatePendingHtmlDomCommentFrame$);
   const setIframeRef = useSet(setHtmlDomCommentIframeRef$);
   const setStageRef = useSet(setHtmlDomCommentStageRef$);
-  const loadState = model.loadState;
   const working = status === "working" || model.submitting;
   const frameKeys =
-    loadState.status === "ready"
-      ? model.pendingFrameKey === null
-        ? [model.activeFrameKey]
-        : [model.activeFrameKey, model.pendingFrameKey]
-      : [];
+    model.pendingFrameKey === null
+      ? [model.activeFrameKey]
+      : [model.activeFrameKey, model.pendingFrameKey];
 
   return (
     <div
       ref={setStageRef}
       className="relative min-h-[260px] flex-1 overflow-hidden bg-muted/20"
-      data-html-dom-comment-url={url}
     >
-      {loadState.status === "loading" && (
-        <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-          <IconLoader2 size={16} className="animate-spin" />
-          Loading page
-        </div>
-      )}
-      {loadState.status === "error" && (
-        <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          {loadState.message}
-        </div>
-      )}
-      {loadState.status === "ready" &&
-        frameKeys.map((frameKey) => {
-          const active = frameKey === model.activeFrameKey;
-          return (
-            <iframe
-              key={frameKey}
-              ref={active ? setIframeRef : undefined}
-              srcDoc={loadState.html}
-              title={`${filename} comment preview`}
-              sandbox="allow-same-origin allow-scripts"
-              className={
-                active
-                  ? "block h-full w-full border-0 bg-background"
-                  : "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0"
+      {frameKeys.map((frameKey) => {
+        const active = frameKey === model.activeFrameKey;
+        return (
+          <iframe
+            key={frameKey}
+            ref={active ? setIframeRef : undefined}
+            srcDoc={editDocument.html}
+            title={`${filename} comment preview`}
+            sandbox="allow-same-origin allow-scripts"
+            className={
+              active
+                ? "block h-full w-full border-0 bg-background"
+                : "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0"
+            }
+            aria-hidden={active ? undefined : true}
+            data-testid={
+              active
+                ? "html-dom-comment-frame"
+                : "html-dom-comment-frame-pending"
+            }
+            onLoad={(event) => {
+              const iframe = event.currentTarget;
+              if (active) {
+                bindFrame(iframe);
+                return;
               }
-              aria-hidden={active ? undefined : true}
-              data-testid={
-                active
-                  ? "html-dom-comment-frame"
-                  : "html-dom-comment-frame-pending"
-              }
-              onLoad={(event) => {
-                const iframe = event.currentTarget;
-                if (active) {
-                  bindFrame(iframe);
-                  return;
-                }
-                detach(
-                  (async () => {
-                    await waitForIframePaint(iframe, pageSignal);
-                    activatePendingFrame({ frameKey, iframe });
-                  })(),
-                  Reason.DomCallback,
-                  "activatePendingHtmlDomCommentFrame",
-                );
-              }}
-            />
-          );
-        })}
+              detach(
+                (async () => {
+                  await waitForIframePaint(iframe, pageSignal);
+                  activatePendingFrame({ frameKey, iframe });
+                })(),
+                Reason.DomCallback,
+                "activatePendingHtmlDomCommentFrame",
+              );
+            }}
+          />
+        );
+      })}
       {!working && (
         <HtmlDomCommentPopover model={model} pageSignal={pageSignal} />
       )}
@@ -1440,8 +1425,8 @@ export function HtmlDomCommentEditor({
   onSubmitEditRequest,
   pageSignal,
   status,
-  url,
 }: HtmlDomCommentEditorProps) {
+  const editDocument = useLoadable(currentHtmlDomEditDocument$);
   const model = useGet(htmlDomCommentEditorModel$);
 
   return (
@@ -1449,18 +1434,33 @@ export function HtmlDomCommentEditor({
       className="flex h-full min-h-0 flex-col bg-background"
       data-testid="html-dom-comment-editor"
     >
-      <HtmlDomCommentStage
-        filename={filename}
-        model={model}
-        onApplyEditDraft={onApplyEditDraft}
-        onEditRequestFailed={onEditRequestFailed}
-        onEditRequestStarted={onEditRequestStarted}
-        onSubmitEditRequest={onSubmitEditRequest}
-        pageSignal={pageSignal}
-        status={status}
-        url={url}
-        onApplyStyleEdits={onApplyStyleEdits}
-      />
+      {editDocument.state === "loading" && (
+        <div className="relative flex min-h-[260px] flex-1 items-center justify-center gap-2 overflow-hidden bg-muted/20 text-sm text-muted-foreground">
+          <IconLoader2 size={16} className="animate-spin" />
+          Loading page
+        </div>
+      )}
+      {editDocument.state === "hasError" && (
+        <div className="relative flex min-h-[260px] flex-1 items-center justify-center overflow-hidden bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+          {editDocument.error instanceof Error
+            ? editDocument.error.message
+            : "Failed to load HTML"}
+        </div>
+      )}
+      {editDocument.state === "hasData" && (
+        <HtmlDomCommentStage
+          editDocument={editDocument.data}
+          filename={filename}
+          model={model}
+          onApplyEditDraft={onApplyEditDraft}
+          onEditRequestFailed={onEditRequestFailed}
+          onEditRequestStarted={onEditRequestStarted}
+          onSubmitEditRequest={onSubmitEditRequest}
+          pageSignal={pageSignal}
+          status={status}
+          onApplyStyleEdits={onApplyStyleEdits}
+        />
+      )}
     </div>
   );
 }
