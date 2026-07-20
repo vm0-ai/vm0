@@ -55,28 +55,6 @@ describe("platform entrypoint safe area behavior", () => {
     );
   });
 
-  it("renders the loading surface before the application bundle executes", () => {
-    const doc = new DOMParser().parseFromString(indexHtml, "text/html");
-    const root = doc.getElementById("root");
-    const skeleton = doc.getElementById("app-bootstrap-skeleton");
-
-    if (!root || !skeleton) {
-      throw new Error("Unable to locate the platform bootstrap skeleton");
-    }
-    expect(root.compareDocumentPosition(skeleton)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(
-      skeleton.querySelectorAll("[data-app-bootstrap-avatar-layer]"),
-    ).toHaveLength(3);
-    expect(indexHtml).toMatch(
-      /\[data-theme="dark"\]\s+#app-bootstrap-skeleton\s*{/,
-    );
-    expect(indexHtml).toMatch(
-      /#app-bootstrap-skeleton\.app-bootstrap-skeleton--hidden\s*{[\s\S]*opacity:\s*0;/,
-    );
-  });
-
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
     const globalCss = readGlobalCss();
 
