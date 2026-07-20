@@ -238,6 +238,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly websiteTemplateV2Enabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1125,6 +1126,10 @@ async function resolveNormalSendFeatureSwitches(
   return {
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
+      context,
+    ),
+    websiteTemplateV2Enabled: isFeatureEnabled(
+      FeatureSwitchKey.WebsiteTemplateV2,
       context,
     ),
   };
@@ -2338,6 +2343,7 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
+      websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);

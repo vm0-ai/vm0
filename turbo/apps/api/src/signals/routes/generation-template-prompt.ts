@@ -68,8 +68,17 @@ type GenerationTemplatePromptResult =
       readonly message: string;
     };
 
+interface BuildGenerationTemplatePromptOptions {
+  /**
+   * When true, website templates use their refreshed self-contained v2
+   * packages. When false, the existing package resources remain unchanged.
+   */
+  readonly websiteTemplateV2Enabled?: boolean;
+}
+
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
+  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -85,7 +94,7 @@ export function buildGenerationTemplatePrompt(
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "website") {
-    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
+    return buildWebsiteGenerationTemplatePrompt(generationTemplate, options);
   }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
@@ -168,6 +177,7 @@ function buildPresentationRunbookPrompt(
 
 function buildWebsiteGenerationTemplatePrompt(
   generationTemplate: WebsiteGenerationTemplateInput,
+  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const item = findWebsiteTemplateItem(
     generationTemplate.selection.websiteTemplateId,
@@ -176,7 +186,10 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const pkg = findWebsiteTemplatePackage(item.templateId);
+  const packageId = options?.websiteTemplateV2Enabled
+    ? `${item.templateId}-v2`
+    : item.templateId;
+  const pkg = findWebsiteTemplatePackage(packageId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }

@@ -151,6 +151,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
       true,
@@ -193,6 +194,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
       false,
