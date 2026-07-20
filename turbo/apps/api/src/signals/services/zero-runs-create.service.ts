@@ -38,12 +38,15 @@ import {
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
   type ApiDispatchTimingDimensions,
+  type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
-  loadZeroRunExecutionScopeSnapshot,
-  loadZeroRunPromptContextSnapshot,
+  loadZeroRunBootstrapSnapshotRows,
+  materializeZeroRunBootstrapContext,
   type UserInfo,
+  type ZeroRunBootstrapContext,
+  type ZeroRunBootstrapSnapshotRows,
 } from "./zero-run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./zero-workflow-data.service";
 
@@ -519,6 +522,59 @@ function zeroRunTimingDimensions(args: {
   };
 }
 
+type ZeroBootstrapCountBucket = "0" | "1" | "2_4" | "5_8" | "9_16" | "17_plus";
+
+function zeroBootstrapCountBucket(count: number): ZeroBootstrapCountBucket {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+function zeroBootstrapLoadTimingDimensions(
+  rows: ZeroRunBootstrapSnapshotRows | undefined,
+): ApiDispatchTimingDimensions | undefined {
+  if (!rows) {
+    return undefined;
+  }
+  return {
+    zero_bootstrap_total_row_count_bucket: zeroBootstrapCountBucket(
+      rows.metadataRows.length + rows.workflowRows.length,
+    ),
+    zero_bootstrap_workflow_candidate_count_bucket: zeroBootstrapCountBucket(
+      rows.workflowRows.length,
+    ),
+  };
+}
+
+function zeroBootstrapMaterializeTimingDimensions(
+  rows: ZeroRunBootstrapSnapshotRows,
+  context: ZeroRunBootstrapContext | undefined,
+): ApiDispatchTimingDimensions {
+  return {
+    ...zeroBootstrapLoadTimingDimensions(rows),
+    ...(context
+      ? {
+          zero_bootstrap_workflow_winner_count_bucket: zeroBootstrapCountBucket(
+            context.workflows.length,
+          ),
+        }
+      : {}),
+  };
+}
+
 function zeroRunOrigin(args: {
   readonly command: CreateZeroRunCommandArgs;
 }): ZeroRunOrigin {
@@ -632,8 +688,15 @@ function measureZeroPreCreate<T>(
   timing: ApiDispatchTimingCollector | undefined,
   actionType: ApiDispatchTimingActionType,
   operation: () => T | Promise<T>,
+  dimensions?: ApiDispatchTimingDimensionsInput,
 ): Promise<T> {
-  return measureApiDispatchTiming(timing, actionType, "nested", operation);
+  return measureApiDispatchTiming(
+    timing,
+    actionType,
+    "nested",
+    operation,
+    dimensions,
+  );
 }
 
 function zeroServiceEntryTiming(args: {
@@ -679,31 +742,46 @@ async function loadZeroRunPostAuthorizationContext(
   },
   signal: AbortSignal,
 ) {
-  const [promptContext, executionScope] = await Promise.all([
-    measureZeroPreCreate(
-      args.timing,
-      "api_dispatch_pre_create_zero_load_prompt_snapshot",
-      async () => {
-        return await loadZeroRunPromptContextSnapshot(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-        });
-      },
-    ),
-    measureZeroPreCreate(
-      args.timing,
-      "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
-      async () => {
-        return await loadZeroRunExecutionScopeSnapshot(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-          agentId: args.agentId,
-          triggerRunId: args.triggerRunId,
-          checkedAt: new Date(args.apiStartTime),
-        });
-      },
-    ),
-  ]);
+  let measuredSnapshotRows: ZeroRunBootstrapSnapshotRows | undefined;
+  const snapshotRows = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+    async () => {
+      const loadedRows = await loadZeroRunBootstrapSnapshotRows(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: args.agentId,
+        triggerRunId: args.triggerRunId,
+        checkedAt: new Date(args.apiStartTime),
+      });
+      measuredSnapshotRows = loadedRows;
+      return loadedRows;
+    },
+    () => {
+      return zeroBootstrapLoadTimingDimensions(measuredSnapshotRows);
+    },
+  );
+  signal.throwIfAborted();
+
+  let measuredBootstrapContext: ZeroRunBootstrapContext | undefined;
+  const bootstrapContext = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+    () => {
+      const context = materializeZeroRunBootstrapContext(snapshotRows, {
+        userId: args.userId,
+        orgId: args.orgId,
+      });
+      measuredBootstrapContext = context;
+      return context;
+    },
+    () => {
+      return zeroBootstrapMaterializeTimingDimensions(
+        snapshotRows,
+        measuredBootstrapContext,
+      );
+    },
+  );
   signal.throwIfAborted();
 
   const runPermissionPolicies = await measureZeroPreCreate(
@@ -711,16 +789,15 @@ async function loadZeroRunPostAuthorizationContext(
     "api_dispatch_pre_create_zero_resolve_firewall_metadata",
     async () => {
       return await resolveFirewallServerMetadataPolicies(
-        permissionGrantsToFirewallPolicies(executionScope.permissionGrants),
-        [...executionScope.allowedConnectorTypes],
+        permissionGrantsToFirewallPolicies(bootstrapContext.permissionGrants),
+        [...bootstrapContext.allowedConnectorTypes],
       );
     },
   );
   signal.throwIfAborted();
 
   return {
-    ...promptContext,
-    ...executionScope,
+    ...bootstrapContext,
     runPermissionPolicies,
   };
 }

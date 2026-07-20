@@ -552,7 +552,10 @@ export function workflowsForRunFromRows(
     if (leftPrivateOwner !== rightPrivateOwner) {
       return leftPrivateOwner ? -1 : 1;
     }
-    return left.createdAt.getTime() - right.createdAt.getTime();
+    return (
+      left.createdAt.getTime() - right.createdAt.getTime() ||
+      left.id.localeCompare(right.id)
+    );
   });
 
   const bySlug = new Map<string, RunWorkflowRef>();
