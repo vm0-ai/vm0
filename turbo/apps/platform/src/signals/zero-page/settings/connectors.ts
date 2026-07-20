@@ -1425,19 +1425,14 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
           status: "polling",
         });
 
-        const pollResponse = await tapError(
-          accept(
-            client.poll({
-              params: { type, sessionId: current.sessionId },
-              body: { sessionToken: current.sessionToken },
-              fetchOptions: { signal },
-            }),
-            [200],
-          ),
+        const pollResponse = await accept(
+          client.poll({
+            params: { type, sessionId: current.sessionId },
+            body: { sessionToken: current.sessionToken },
+            fetchOptions: { signal },
+          }),
+          [200],
         );
-        if (!pollResponse) {
-          return { stop: true };
-        }
         const pollResult = pollResponse.body;
         if (pollResult.status === "complete") {
           connectorStateChanged = true;
@@ -1553,6 +1548,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
       },
       0,
       signal,
+      { retryTransientErrors: false },
     );
     signal.throwIfAborted();
 

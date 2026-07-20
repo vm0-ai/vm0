@@ -1,4 +1,5 @@
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { isAbortError, onRejection } from "../signals/utils.ts";
 
 class ApiError extends Error {
   readonly code: string;
@@ -34,6 +35,10 @@ function extractError(
   return { message: `HTTP ${status}`, code: "UNKNOWN" };
 }
 
+function requestErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Request failed";
+}
+
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise shows a toast and throws an `ApiError`.
@@ -53,7 +58,11 @@ async function accept<
   codes: S[],
   options?: { toast?: boolean },
 ): Promise<Extract<T, { status: S }>> {
-  const result = await promise;
+  const result = await onRejection(promise, (error) => {
+    if (!isAbortError(error) && options?.toast !== false) {
+      toast.error(requestErrorMessage(error));
+    }
+  });
   if ((codes as number[]).includes(result.status)) {
     return result as Extract<T, { status: S }>;
   }
