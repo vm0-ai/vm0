@@ -130,14 +130,16 @@ integer precision is required. Do not coerce arbitrary `numeric` values with
 `Number` unless the domain contract explicitly permits the resulting precision;
 use a dedicated decoder that preserves or validates the required representation.
 
-Raw SQL used only as a predicate, join condition, ordering or grouping
-expression, write value, discarded command, or `rowCount` command result does
-not produce a structured field and needs no result decoder. Leave those
-expressions as unparameterized `sql` and `SQL`. If a write query adds
-`.returning({...})`, map raw SQL in the returned fields independently of
-`.set({...})`. Likewise, raw SQL passed to `insert(...).select(...)` is the
-write source rather than a returned field; only a subsequent `returning(...)`
-introduces a result-mapping boundary.
+Prefer schema-aware Drizzle builders and operators when they preserve the
+intended SQL semantics. Use the `sql` tag or `SQL` type without a compile-time
+result generic for constructs they cannot express cleanly. Raw SQL used only as
+a predicate, join condition, ordering or grouping expression, write value,
+discarded command, or `rowCount` command result does not produce a structured
+field and needs no result decoder. If a write query adds `.returning({...})`,
+map raw SQL in the returned fields independently of `.set({...})`. Likewise,
+raw SQL passed to `insert(...).select(...)` is the write source rather than a
+returned field; only a subsequent `returning(...)` introduces a result-mapping
+boundary.
 
 ### Raw Execute Rows
 
