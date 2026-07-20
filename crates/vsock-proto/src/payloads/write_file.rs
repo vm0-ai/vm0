@@ -116,8 +116,12 @@ pub fn encode_private_write_file_frame_into(
 /// Encode write_files payload:
 /// `[2B file_count]` followed by `[2B path_len][path][4B content_len][content]` for each file.
 ///
-/// Returns `Err` if the batch is empty, any path exceeds 65535 bytes, or the
-/// payload cannot fit in one protocol frame.
+/// # Errors
+///
+/// Returns [`ProtocolError`] if the batch is empty, contains more than 65,535
+/// entries because `file_count` is encoded as `u16`, any path exceeds the
+/// `u16` length-field limit, any content exceeds the `u32` length-field limit,
+/// or the encoded payload cannot fit in one protocol frame.
 pub fn encode_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<Vec<u8>, ProtocolError> {
     let encoded = validate_write_files_payload(files)?;
 
@@ -128,6 +132,8 @@ pub fn encode_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<Vec<u8>, 
 }
 
 /// Validate a write_files payload without encoding it.
+///
+/// This applies the same input constraints documented by [`encode_write_files`].
 pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), ProtocolError> {
     validate_write_files_payload(files).map(|_| ())
 }
@@ -137,6 +143,8 @@ pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), Pro
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_WRITE_FILES, seq, &encode_write_files(...))` without allocating
 /// separate payload and frame vectors.
+///
+/// This applies the same input constraints documented by [`encode_write_files`].
 pub fn encode_write_files_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
