@@ -13,7 +13,7 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
@@ -224,11 +224,10 @@ export const loadPersistedEditableImageCanvasSnapshot$ = command(
         query: { url: args.url },
         fetchOptions: { signal },
       }),
-      [200, 404],
-      { toast: false },
+      [200],
     );
     signal.throwIfAborted();
-    if (loaded.status === 404 || loaded.body.snapshot === null) {
+    if (loaded.body.snapshot === null) {
       set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
         return { ...current, [args.key]: false };
       });
@@ -305,8 +304,7 @@ export const persistEditableImageCanvasSnapshot$ = command(
           query: { url: args.url },
           fetchOptions: { signal },
         }),
-        [204, 404],
-        { toast: false },
+        [204],
       );
       signal.throwIfAborted();
       set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
@@ -315,7 +313,7 @@ export const persistEditableImageCanvasSnapshot$ = command(
       return;
     }
 
-    const saved = await accept(
+    await accept(
       client.upsertImageEditSnapshot({
         body: {
           snapshot: {
@@ -328,19 +326,12 @@ export const persistEditableImageCanvasSnapshot$ = command(
         },
         fetchOptions: { signal },
       }),
-      [200, 204, 404],
-      { toast: false },
+      [200],
     );
     signal.throwIfAborted();
-    if (saved.status === 200) {
-      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
-        return { ...current, [args.key]: true };
-      });
-    } else if (saved.status === 204) {
-      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
-        return { ...current, [args.key]: false };
-      });
-    }
+    set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+      return { ...current, [args.key]: true };
+    });
   },
 );
 
@@ -685,9 +676,6 @@ async function interpretRegionMarks({
       fetchOptions: { signal: requestSignal(signal) },
     }),
     [200],
-    // run() surfaces a single generic toast via tapError; suppress accept's own
-    // toast so an interpret failure isn't reported twice.
-    { toast: false },
   );
   signal.throwIfAborted();
 
@@ -956,8 +944,10 @@ export const runImageEdit$ = command(
     };
 
     await withCleanup(
-      tapError(run(), () => {
-        toast.error("Couldn't edit the image, try again");
+      tapError(run(), (error) => {
+        if (!(error instanceof ApiError)) {
+          toast.error("Couldn't edit the image, try again");
+        }
         // A thrown run (e.g. the source-image load timed out mid-sequence) also
         // has to release the region toggle so it isn't left stuck on.
         if (editRegion) {

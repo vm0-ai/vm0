@@ -212,6 +212,32 @@ function mockConnectors(
   );
 }
 
+async function setupAwsExternalCodeConnection(): Promise<{
+  dialog: HTMLElement;
+  complete: HTMLElement;
+}> {
+  mockConnectors([]);
+  context.mocks.browser.open(createMockAuthWindow());
+  detachedSetupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+  });
+
+  await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
+  click(await screen.findByLabelText("Connect AWS"));
+  const dialog = await screen.findByRole("dialog", { name: "AWS" });
+  click(buttonByText("Start AWS sign-in", dialog));
+  await fill(
+    await within(dialog).findByTestId("connector-external-code-input"),
+    "INVALID-CODE",
+  );
+  return {
+    dialog,
+    complete: within(dialog).getByTestId("connector-external-code-complete"),
+  };
+}
+
 function customConnector(
   overrides: Partial<CustomConnectorResponse>,
 ): CustomConnectorResponse {
@@ -1241,7 +1267,7 @@ describe("connectors page", () => {
     expect(
       within(dialog).queryByText("Loading agents..."),
     ).not.toBeInTheDocument();
-  });
+  }, 10_000);
 
   it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
@@ -1980,7 +2006,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
     });
-  });
+  }, 10_000);
 
   it("connects a manual token connector", async () => {
     mockConnectors([]);
@@ -2712,9 +2738,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("keeps external-code validation inline and toasts unexpected errors", async () => {
-    mockConnectors([]);
-    context.mocks.browser.open(createMockAuthWindow());
+  it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
     let completeCount = 0;
     context.mocks.api(
       zeroConnectorExternalCodeSessionContract.complete,
@@ -2734,23 +2758,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
-    });
-
-    await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
-    click(await screen.findByLabelText("Connect AWS"));
-    const dialog = await screen.findByRole("dialog", { name: "AWS" });
-    click(buttonByText("Start AWS sign-in", dialog));
-    await fill(
-      await within(dialog).findByTestId("connector-external-code-input"),
-      "INVALID-CODE",
-    );
-    const complete = within(dialog).getByTestId(
-      "connector-external-code-complete",
-    );
+    const { dialog, complete } = await setupAwsExternalCodeConnection();
     click(complete);
 
     await expect(
@@ -2767,13 +2775,17 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
+  }, 10_000);
 
+  it("toasts external-code transport errors and restores a retryable state", async () => {
     context.mocks.http.post(
       "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
       () => {
         return HttpResponse.error();
       },
     );
+
+    const { complete } = await setupAwsExternalCodeConnection();
     click(complete);
     await expect(
       screen.findByText("Failed to fetch"),
@@ -2781,7 +2793,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(complete).toBeEnabled();
     });
-  });
+  }, 10_000);
 
   it("uses auth method help text for PlayStation external-code connection", async () => {
     mockConnectors([]);

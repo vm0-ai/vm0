@@ -138,7 +138,6 @@ const cancelClaudeCodeDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
