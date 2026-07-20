@@ -2,10 +2,13 @@ import {
   AST_NODE_TYPES,
   ESLintUtils,
   type TSESTree,
+  type TSESLint,
 } from "@typescript-eslint/utils";
 import {
   IndexKind,
   isVariableDeclaration,
+  isVariableDeclarationList,
+  NodeFlags,
   SymbolFlags,
   TypeFlags,
   type Declaration,
@@ -14,6 +17,7 @@ import {
   type Symbol as TypeScriptSymbol,
   type Type,
   type TypeChecker,
+  type VariableDeclaration,
 } from "typescript";
 
 import { createRule } from "../utils.ts";
@@ -26,6 +30,16 @@ const RESULT_FIELD_ARGUMENT = new Map<string, number>([
 ]);
 
 const RELATIONAL_RESULT_METHODS = new Set(["findFirst", "findMany"]);
+
+const RESULT_METHOD_NAMES = [
+  ...RESULT_FIELD_ARGUMENT.keys(),
+  ...RELATIONAL_RESULT_METHODS,
+];
+const RESULT_METHOD_HINTS = RESULT_METHOD_NAMES.map((name) => {
+  return name.toLowerCase();
+});
+
+type SelectionTypeStatus = "safe" | "unmapped" | "uninspectable";
 
 const TERMINAL_TYPE_FLAGS =
   TypeFlags.Any |
@@ -228,36 +242,123 @@ function containsUntrustedSql(
   );
 }
 
-function containsUntrustedSqlResult(
+function combineSelectionTypeStatus(
+  current: SelectionTypeStatus,
+  next: SelectionTypeStatus,
+): SelectionTypeStatus {
+  if (current === "unmapped" || next === "unmapped") {
+    return "unmapped";
+  }
+  if (current === "uninspectable" || next === "uninspectable") {
+    return "uninspectable";
+  }
+  return "safe";
+}
+
+function selectionTypeStatus(
   checker: TypeChecker,
   type: Type,
   location: Node,
   visited: Set<Type>,
-): boolean {
+): SelectionTypeStatus {
   if (visited.has(type)) {
-    return false;
+    return "safe";
   }
   visited.add(type);
 
-  if (type.isUnionOrIntersection()) {
-    return type.types.some((member) => {
-      return containsUntrustedSqlResult(checker, member, location, visited);
-    });
+  if (type.isUnion()) {
+    return type.types.reduce<SelectionTypeStatus>((status, member) => {
+      return combineSelectionTypeStatus(
+        status,
+        selectionTypeStatus(checker, member, location, visited),
+      );
+    }, "safe");
   }
 
+  const outputType = sqlOutputType(checker, type, location);
+  if (outputType !== null) {
+    return isUntrustedOutput(outputType) ? "unmapped" : "safe";
+  }
+  if (hasUntrustedSqlMetadata(checker, type, location)) {
+    return "unmapped";
+  }
+  if (isDrizzleWrapper(checker, type)) {
+    return "safe";
+  }
+
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return "uninspectable";
+  }
+  if ((type.flags & TERMINAL_TYPE_FLAGS) !== 0) {
+    return "safe";
+  }
+
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined
+      ? "uninspectable"
+      : selectionTypeStatus(checker, constraint, location, visited);
+  }
+
+  if (
+    checker.isArrayType(type) ||
+    checker.isTupleType(type) ||
+    type.getCallSignatures().length > 0
+  ) {
+    return "uninspectable";
+  }
+
+  let status: SelectionTypeStatus = "safe";
+  let inspectedMember = false;
+  for (const property of checker.getPropertiesOfType(type)) {
+    inspectedMember = true;
+    const propertyType = checker.getTypeOfSymbolAtLocation(property, location);
+    status = combineSelectionTypeStatus(
+      status,
+      selectionTypeStatus(checker, propertyType, location, visited),
+    );
+  }
+
+  const stringValueType = checker.getIndexTypeOfType(type, IndexKind.String);
+  if (stringValueType !== undefined) {
+    inspectedMember = true;
+    status = combineSelectionTypeStatus(
+      status,
+      selectionTypeStatus(checker, stringValueType, location, visited),
+    );
+  }
+  const numberValueType = checker.getIndexTypeOfType(type, IndexKind.Number);
+  if (numberValueType !== undefined) {
+    inspectedMember = true;
+    status = combineSelectionTypeStatus(
+      status,
+      selectionTypeStatus(checker, numberValueType, location, visited),
+    );
+  }
+
+  return inspectedMember ? status : "uninspectable";
+}
+
+function selectionResultTypeStatus(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): SelectionTypeStatus {
   const signatures = type.getCallSignatures();
-  if (signatures.length > 0) {
-    return signatures.some((signature) => {
-      return containsUntrustedSql(
+  if (signatures.length === 0) {
+    return selectionTypeStatus(checker, type, location, new Set<Type>());
+  }
+  return signatures.reduce<SelectionTypeStatus>((status, signature) => {
+    return combineSelectionTypeStatus(
+      status,
+      selectionTypeStatus(
         checker,
         checker.getReturnTypeOfSignature(signature),
         location,
         new Set<Type>(),
-      );
-    });
-  }
-
-  return containsUntrustedSql(checker, type, location, new Set<Type>());
+      ),
+    );
+  }, "safe");
 }
 
 export const requireSqlResultMapping = createRule({
@@ -285,6 +386,8 @@ export const requireSqlResultMapping = createRule({
         "Do not alias or bind a Drizzle structured-result method. Call it directly so raw SQL result mapping can be enforced.",
       uninspectableResultArguments:
         "Do not spread arguments into a Drizzle structured-result method. Pass them explicitly so raw SQL result mapping can be enforced.",
+      uninspectableResultSelection:
+        "Structured-result fields must be inspectable so raw SQL runtime mapping can be enforced. Use an inline object, a local const selection, or a type with concrete selected-field members.",
       uninspectableRelationalConfig:
         "Relational query config must be an inline object or a local variable so raw SQL extras can be inspected.",
       unmappedResult:
@@ -294,6 +397,10 @@ export const requireSqlResultMapping = createRule({
   create(context) {
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
+    const resultMethodNameByType = new Map<Type, string | null>();
+    const resultMethodHintVariables = new Set<TSESLint.Scope.Variable>();
+    const resultMethodHintVariablesInProgress =
+      new Set<TSESLint.Scope.Variable>();
 
     function symbolAt(node: TSESTree.Node): TypeScriptSymbol | undefined {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -322,9 +429,9 @@ export const requireSqlResultMapping = createRule({
       );
     }
 
-    function localVariableInitializer(
+    function localVariableDeclaration(
       node: TSESTree.Node,
-    ): TSESTree.Node | null {
+    ): VariableDeclaration | null {
       if (node.type !== AST_NODE_TYPES.Identifier) {
         return null;
       }
@@ -336,12 +443,57 @@ export const requireSqlResultMapping = createRule({
       if (
         declaration === undefined ||
         !isVariableDeclaration(declaration) ||
-        declaration.initializer === undefined ||
         declaration.getSourceFile() !== tsNode.getSourceFile()
       ) {
         return null;
       }
+      return declaration;
+    }
+
+    function isConstVariable(declaration: VariableDeclaration): boolean {
+      return (
+        isVariableDeclarationList(declaration.parent) &&
+        (declaration.parent.flags & NodeFlags.Const) !== 0
+      );
+    }
+
+    function localVariableInitializer(
+      node: TSESTree.Node,
+    ): TSESTree.Node | null {
+      const declaration = localVariableDeclaration(node);
+      if (
+        declaration === null ||
+        !isConstVariable(declaration) ||
+        declaration.initializer === undefined
+      ) {
+        return null;
+      }
       return services.tsNodeToESTreeNodeMap.get(declaration.initializer);
+    }
+
+    function isSelectionContainerType(type: Type, location: Node): boolean {
+      if (type.isUnionOrIntersection()) {
+        return type.types.some((member) => {
+          return isSelectionContainerType(member, location);
+        });
+      }
+      return (
+        (type.flags & TypeFlags.Object) !== 0 &&
+        sqlOutputType(checker, type, location) === null &&
+        !isDrizzleWrapper(checker, type)
+      );
+    }
+
+    function isMutableLocalSelectionContainer(node: TSESTree.Node): boolean {
+      const declaration = localVariableDeclaration(node);
+      if (declaration === null || isConstVariable(declaration)) {
+        return false;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return isSelectionContainerType(
+        checker.getTypeAtLocation(tsNode),
+        tsNode,
+      );
     }
 
     function isDrizzleSqlTag(node: TSESTree.Expression): boolean {
@@ -403,9 +555,9 @@ export const requireSqlResultMapping = createRule({
       );
     }
 
-    function nodeContainsUntrustedSqlResult(node: TSESTree.Node): boolean {
+    function nodeSelectionTypeStatus(node: TSESTree.Node): SelectionTypeStatus {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return containsUntrustedSqlResult(
+      return selectionTypeStatus(
         checker,
         checker.getTypeAtLocation(tsNode),
         tsNode,
@@ -413,27 +565,121 @@ export const requireSqlResultMapping = createRule({
       );
     }
 
+    function nodeSelectionResultTypeStatus(
+      node: TSESTree.Node,
+    ): SelectionTypeStatus {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return selectionResultTypeStatus(
+        checker,
+        checker.getTypeAtLocation(tsNode),
+        tsNode,
+      );
+    }
+
     function collectUnmappedSelections(
       node: TSESTree.Node,
       unmapped: TSESTree.Node[],
+      uninspectable: TSESTree.Node[],
+      visited: Set<TSESTree.Node>,
     ): void {
+      if (visited.has(node)) {
+        return;
+      }
+      visited.add(node);
+
+      if (
+        (node.type === AST_NODE_TYPES.TSAsExpression ||
+          node.type === AST_NODE_TYPES.TSTypeAssertion) &&
+        isUnsafeSqlAssertion(node)
+      ) {
+        return;
+      }
+
+      const initializer = localVariableInitializer(node);
+      if (initializer !== null) {
+        collectUnmappedSelections(
+          initializer,
+          unmapped,
+          uninspectable,
+          visited,
+        );
+        return;
+      }
+      const expression = transparentExpression(node);
+      if (expression !== null) {
+        collectUnmappedSelections(expression, unmapped, uninspectable, visited);
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.ConditionalExpression) {
+        collectUnmappedSelections(
+          node.consequent,
+          unmapped,
+          uninspectable,
+          visited,
+        );
+        collectUnmappedSelections(
+          node.alternate,
+          unmapped,
+          uninspectable,
+          visited,
+        );
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.LogicalExpression) {
+        collectUnmappedSelections(node.left, unmapped, uninspectable, visited);
+        collectUnmappedSelections(node.right, unmapped, uninspectable, visited);
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.SequenceExpression) {
+        const selectedExpression = node.expressions.at(-1);
+        if (selectedExpression !== undefined) {
+          collectUnmappedSelections(
+            selectedExpression,
+            unmapped,
+            uninspectable,
+            visited,
+          );
+        }
+        return;
+      }
       if (node.type === AST_NODE_TYPES.ObjectExpression) {
         for (const property of node.properties) {
           if (property.type === AST_NODE_TYPES.SpreadElement) {
-            collectUnmappedSelections(property.argument, unmapped);
-          } else if (
-            property.kind === "get" &&
-            nodeContainsUntrustedSqlResult(property.value)
-          ) {
-            unmapped.push(property.value);
+            collectUnmappedSelections(
+              property.argument,
+              unmapped,
+              uninspectable,
+              visited,
+            );
+          } else if (property.kind === "get") {
+            const status = nodeSelectionResultTypeStatus(property.value);
+            if (status === "unmapped") {
+              unmapped.push(property.value);
+            } else if (status === "uninspectable") {
+              uninspectable.push(property.value);
+            }
           } else {
-            collectUnmappedSelections(property.value, unmapped);
+            collectUnmappedSelections(
+              property.value,
+              unmapped,
+              uninspectable,
+              visited,
+            );
           }
         }
         return;
       }
-      if (nodeContainsUntrustedSql(node)) {
+
+      if (isMutableLocalSelectionContainer(node)) {
+        uninspectable.push(node);
+        return;
+      }
+
+      const status = nodeSelectionTypeStatus(node);
+      if (status === "unmapped") {
         unmapped.push(node);
+      } else if (status === "uninspectable") {
+        uninspectable.push(node);
       }
     }
 
@@ -472,6 +718,7 @@ export const requireSqlResultMapping = createRule({
     function collectUnmappedExtras(
       node: TSESTree.Node,
       unmapped: TSESTree.Node[],
+      uninspectable: TSESTree.Node[],
       visited: Set<TSESTree.Node>,
     ): void {
       if (visited.has(node)) {
@@ -481,32 +728,66 @@ export const requireSqlResultMapping = createRule({
 
       const initializer = localVariableInitializer(node);
       if (initializer !== null) {
-        collectUnmappedExtras(initializer, unmapped, visited);
+        collectUnmappedExtras(initializer, unmapped, uninspectable, visited);
         return;
       }
       const expression = transparentExpression(node);
       if (expression !== null) {
-        collectUnmappedExtras(expression, unmapped, visited);
+        collectUnmappedExtras(expression, unmapped, uninspectable, visited);
         return;
       }
       if (node.type === AST_NODE_TYPES.ConditionalExpression) {
-        collectUnmappedExtras(node.consequent, unmapped, visited);
-        collectUnmappedExtras(node.alternate, unmapped, visited);
+        collectUnmappedExtras(
+          node.consequent,
+          unmapped,
+          uninspectable,
+          visited,
+        );
+        collectUnmappedExtras(node.alternate, unmapped, uninspectable, visited);
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.LogicalExpression) {
+        collectUnmappedExtras(node.left, unmapped, uninspectable, visited);
+        collectUnmappedExtras(node.right, unmapped, uninspectable, visited);
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.SequenceExpression) {
+        const selectedExpression = node.expressions.at(-1);
+        if (selectedExpression !== undefined) {
+          collectUnmappedExtras(
+            selectedExpression,
+            unmapped,
+            uninspectable,
+            visited,
+          );
+        }
         return;
       }
       if (node.type === AST_NODE_TYPES.ObjectExpression) {
-        collectUnmappedSelections(node, unmapped);
+        collectUnmappedSelections(
+          node,
+          unmapped,
+          uninspectable,
+          new Set<TSESTree.Node>(),
+        );
         return;
       }
       if (
         node.type === AST_NODE_TYPES.ArrowFunctionExpression &&
         node.body.type !== AST_NODE_TYPES.BlockStatement
       ) {
-        collectUnmappedExtras(node.body, unmapped, visited);
+        collectUnmappedExtras(node.body, unmapped, uninspectable, visited);
         return;
       }
-      if (nodeContainsUntrustedSqlResult(node)) {
+      if (isMutableLocalSelectionContainer(node)) {
+        uninspectable.push(node);
+        return;
+      }
+      const status = nodeSelectionResultTypeStatus(node);
+      if (status === "unmapped") {
         unmapped.push(node);
+      } else if (status === "uninspectable") {
+        uninspectable.push(node);
       }
     }
 
@@ -598,7 +879,12 @@ export const requireSqlResultMapping = createRule({
 
         const name = resolvedPropertyName(property);
         if (name === "extras") {
-          collectUnmappedExtras(property.value, unmapped, visited.extras);
+          collectUnmappedExtras(
+            property.value,
+            unmapped,
+            uninspectable,
+            visited.extras,
+          );
         } else if (name === "with") {
           collectUnmappedRelationalNode(
             property.value,
@@ -613,14 +899,8 @@ export const requireSqlResultMapping = createRule({
 
     function resultFieldArgument(
       node: TSESTree.CallExpression,
+      name: string,
     ): TSESTree.Expression | null {
-      if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
-        return null;
-      }
-      const name = resolvedMemberName(node.callee);
-      if (name === null) {
-        return null;
-      }
       const argumentIndex = RESULT_FIELD_ARGUMENT.get(name);
       if (argumentIndex === undefined) {
         return null;
@@ -674,23 +954,200 @@ export const requireSqlResultMapping = createRule({
       );
     }
 
-    function isResultMethodMember(node: TSESTree.MemberExpression): boolean {
-      const name = resolvedMemberName(node);
+    function isResultMethod(
+      name: string,
+      symbol: TypeScriptSymbol | undefined,
+      type: Type,
+    ): boolean {
+      return (
+        isRelationalResultMethod(name, symbol, type) ||
+        isStructuredSelectionMethod(name, symbol, type)
+      );
+    }
+
+    function hasResultMethodHint(text: string): boolean {
+      const normalizedText = text.toLowerCase();
+      return RESULT_METHOD_HINTS.some((hint) => {
+        return normalizedText.includes(hint);
+      });
+    }
+
+    function isReflectedResultMethod(node: TSESTree.Node): boolean {
       if (
-        name === null ||
-        (!RESULT_FIELD_ARGUMENT.has(name) &&
-          !RELATIONAL_RESULT_METHODS.has(name))
+        node.type !== AST_NODE_TYPES.CallExpression ||
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+        node.callee.object.name !== "Reflect" ||
+        resolvedMemberName(node.callee) !== "get"
       ) {
         return false;
       }
+      const key = node.arguments[1];
+      if (key === undefined || key.type === AST_NODE_TYPES.SpreadElement) {
+        return false;
+      }
+      const name =
+        key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
+          ? key.value
+          : staticStringValue(key);
+      return (
+        name !== null &&
+        (RESULT_FIELD_ARGUMENT.has(name) || RELATIONAL_RESULT_METHODS.has(name))
+      );
+    }
 
-      const symbol = symbolAt(node.property);
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const type = checker.getTypeAtLocation(tsNode);
-      if (isRelationalResultMethod(name, symbol, type)) {
+    function variableInScope(
+      node: TSESTree.Node,
+      name: string,
+    ): TSESLint.Scope.Variable | null {
+      let scope: TSESLint.Scope.Scope | null =
+        context.sourceCode.getScope(node);
+      while (scope !== null) {
+        const variable = scope.variables.find((candidate) => {
+          return candidate.name === name;
+        });
+        if (variable !== undefined) {
+          return variable;
+        }
+        scope = scope.upper;
+      }
+      return null;
+    }
+
+    function variableHasResultMethodHint(
+      variable: TSESLint.Scope.Variable,
+    ): boolean {
+      if (resultMethodHintVariables.has(variable)) {
         return true;
       }
-      return isStructuredSelectionMethod(name, symbol, type);
+      if (resultMethodHintVariablesInProgress.has(variable)) {
+        return false;
+      }
+      resultMethodHintVariablesInProgress.add(variable);
+
+      for (const definition of variable.defs) {
+        if (
+          definition.node.type !== AST_NODE_TYPES.TSTypeAliasDeclaration &&
+          definition.node.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
+          definition.node.type !== AST_NODE_TYPES.VariableDeclarator
+        ) {
+          continue;
+        }
+        if (hasResultMethodHint(context.sourceCode.getText(definition.node))) {
+          resultMethodHintVariables.add(variable);
+          resultMethodHintVariablesInProgress.delete(variable);
+          return true;
+        }
+        for (const token of context.sourceCode.getTokens(definition.node)) {
+          const referencedVariable = variableInScope(
+            definition.node,
+            token.value,
+          );
+          if (
+            referencedVariable !== null &&
+            variableHasResultMethodHint(referencedVariable)
+          ) {
+            resultMethodHintVariables.add(variable);
+            resultMethodHintVariablesInProgress.delete(variable);
+            return true;
+          }
+        }
+      }
+      resultMethodHintVariablesInProgress.delete(variable);
+      return false;
+    }
+
+    function typeAnnotationHasResultMethodHint(node: TSESTree.Node): boolean {
+      if (hasResultMethodHint(context.sourceCode.getText(node))) {
+        return true;
+      }
+      return context.sourceCode.getTokens(node).some((token) => {
+        const variable = variableInScope(node, token.value);
+        return variable !== null && variableHasResultMethodHint(variable);
+      });
+    }
+
+    function identifierCanBeResultMethodAlias(
+      node: TSESTree.Identifier,
+    ): boolean {
+      const variable = variableInScope(node, node.name);
+      if (variable === null) {
+        return false;
+      }
+      return variable.defs.some((definition) => {
+        const typeAnnotation =
+          "typeAnnotation" in definition.name
+            ? definition.name.typeAnnotation
+            : undefined;
+        if (
+          typeAnnotation !== undefined &&
+          typeAnnotationHasResultMethodHint(typeAnnotation)
+        ) {
+          return true;
+        }
+        return (
+          definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init !== null &&
+          isReflectedResultMethod(definition.node.init)
+        );
+      });
+    }
+
+    function canBeResultMethodAlias(node: TSESTree.Expression): boolean {
+      if (node.type === AST_NODE_TYPES.MemberExpression) {
+        return (
+          node.object.type === AST_NODE_TYPES.Identifier &&
+          identifierCanBeResultMethodAlias(node.object)
+        );
+      }
+      if (node.type !== AST_NODE_TYPES.Identifier) {
+        return isReflectedResultMethod(node);
+      }
+      return identifierCanBeResultMethodAlias(node);
+    }
+
+    function resultMethodName(node: TSESTree.Expression): string | null {
+      if (node.type === AST_NODE_TYPES.MemberExpression) {
+        const name = resolvedMemberName(node);
+        if (
+          name !== null &&
+          (RESULT_FIELD_ARGUMENT.has(name) ||
+            RELATIONAL_RESULT_METHODS.has(name))
+        ) {
+          const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+          const type = checker.getTypeAtLocation(tsNode);
+          return isResultMethod(name, symbolAt(node.property), type)
+            ? name
+            : null;
+        }
+      }
+      if (!canBeResultMethodAlias(node)) {
+        return null;
+      }
+
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      const type = checker.getTypeAtLocation(tsNode);
+      const cachedName = resultMethodNameByType.get(type);
+      if (cachedName !== undefined) {
+        return cachedName;
+      }
+      for (const name of RESULT_METHOD_NAMES) {
+        if (
+          type.getCallSignatures().some((signature) => {
+            return isNamedDrizzleSignature(signature, name);
+          }) &&
+          isResultMethod(name, undefined, type)
+        ) {
+          resultMethodNameByType.set(type, name);
+          return name;
+        }
+      }
+      resultMethodNameByType.set(type, null);
+      return null;
+    }
+
+    function isResultMethodMember(node: TSESTree.MemberExpression): boolean {
+      return resultMethodName(node) !== null;
     }
 
     function destructuresResultMethod(node: TSESTree.Property): boolean {
@@ -772,15 +1229,86 @@ export const requireSqlResultMapping = createRule({
       }
     }
 
+    function isUnsafeSqlAssertion(
+      node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
+    ): boolean {
+      return (
+        nodeContainsUntrustedSql(node.expression) &&
+        !nodeContainsUntrustedSql(node)
+      );
+    }
+
     function checkAssertion(
       node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
     ): void {
-      if (
-        nodeContainsUntrustedSql(node.expression) &&
-        !nodeContainsUntrustedSql(node)
-      ) {
+      if (isUnsafeSqlAssertion(node)) {
         context.report({ node, messageId: "sqlAssertion" });
       }
+    }
+
+    function containsReportedResultMethodReference(
+      node: TSESTree.Node,
+      visited: Set<TSESTree.Node>,
+    ): boolean {
+      if (visited.has(node)) {
+        return false;
+      }
+      visited.add(node);
+
+      const initializer = localVariableInitializer(node);
+      if (initializer !== null) {
+        return containsReportedResultMethodReference(initializer, visited);
+      }
+      const expression = transparentExpression(node);
+      if (expression !== null) {
+        return containsReportedResultMethodReference(expression, visited);
+      }
+      if (node.type === AST_NODE_TYPES.MemberExpression) {
+        return (
+          isResultMethodMember(node) ||
+          containsReportedResultMethodReference(node.object, visited) ||
+          (node.computed &&
+            containsReportedResultMethodReference(node.property, visited))
+        );
+      }
+      if (node.type === AST_NODE_TYPES.CallExpression) {
+        if (containsReportedResultMethodReference(node.callee, visited)) {
+          return true;
+        }
+        return node.arguments.some((argument) => {
+          return containsReportedResultMethodReference(
+            argument.type === AST_NODE_TYPES.SpreadElement
+              ? argument.argument
+              : argument,
+            visited,
+          );
+        });
+      }
+      if (
+        node.type === AST_NODE_TYPES.ConditionalExpression ||
+        node.type === AST_NODE_TYPES.LogicalExpression
+      ) {
+        return (
+          containsReportedResultMethodReference(
+            node.type === AST_NODE_TYPES.ConditionalExpression
+              ? node.consequent
+              : node.left,
+            visited,
+          ) ||
+          containsReportedResultMethodReference(
+            node.type === AST_NODE_TYPES.ConditionalExpression
+              ? node.alternate
+              : node.right,
+            visited,
+          )
+        );
+      }
+      if (node.type === AST_NODE_TYPES.SequenceExpression) {
+        return node.expressions.some((item) => {
+          return containsReportedResultMethodReference(item, visited);
+        });
+      }
+      return false;
     }
 
     function checkResultMethodReference(node: TSESTree.MemberExpression): void {
@@ -831,6 +1359,14 @@ export const requireSqlResultMapping = createRule({
           context.report({ node, messageId: "sqlTypeReference" });
         }
       },
+      TSClassImplements(node: TSESTree.TSClassImplements): void {
+        if (
+          node.typeArguments?.params.length &&
+          isDrizzleSqlTypeName(node.expression)
+        ) {
+          context.report({ node, messageId: "sqlTypeReference" });
+        }
+      },
       TSInstantiationExpression(
         node: TSESTree.TSInstantiationExpression,
       ): void {
@@ -855,14 +1391,54 @@ export const requireSqlResultMapping = createRule({
           context.report({ node, messageId: "sqlAliasTypeArgument" });
         }
 
+        let methodName: string;
+        if (node.callee.type === AST_NODE_TYPES.MemberExpression) {
+          const directName = resolvedMemberName(node.callee);
+          if (
+            directName !== null &&
+            (RESULT_FIELD_ARGUMENT.has(directName) ||
+              RELATIONAL_RESULT_METHODS.has(directName))
+          ) {
+            methodName = directName;
+          } else {
+            const aliasName = resultMethodName(node.callee);
+            if (aliasName === null) {
+              return;
+            }
+            context.report({
+              node: node.callee,
+              messageId: "resultMethodReference",
+            });
+            return;
+          }
+        } else {
+          const aliasName = resultMethodName(node.callee);
+          if (aliasName === null) {
+            return;
+          }
+          const initializer = localVariableInitializer(node.callee);
+          if (
+            initializer === null ||
+            !containsReportedResultMethodReference(
+              initializer,
+              new Set<TSESTree.Node>(),
+            )
+          ) {
+            context.report({
+              node: node.callee,
+              messageId: "resultMethodReference",
+            });
+          }
+          return;
+        }
+
         const hasSpreadArgument = node.arguments.some(
           (argument) => argument.type === AST_NODE_TYPES.SpreadElement,
         );
-        if (
-          hasSpreadArgument &&
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          isResultMethodMember(node.callee)
-        ) {
+        if (hasSpreadArgument) {
+          if (!isResultMethodMember(node.callee)) {
+            return;
+          }
           for (const argument of node.arguments) {
             if (argument.type === AST_NODE_TYPES.SpreadElement) {
               context.report({
@@ -874,13 +1450,10 @@ export const requireSqlResultMapping = createRule({
           return;
         }
 
-        if (
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          RELATIONAL_RESULT_METHODS.has(
-            resolvedMemberName(node.callee) ?? "",
-          ) &&
-          isResultMethodMember(node.callee)
-        ) {
+        if (RELATIONAL_RESULT_METHODS.has(methodName)) {
+          if (!isResultMethodMember(node.callee)) {
+            return;
+          }
           const config = node.arguments[0];
           if (
             config !== undefined &&
@@ -911,21 +1484,32 @@ export const requireSqlResultMapping = createRule({
           }
         }
 
-        const fields = resultFieldArgument(node);
+        const fields = resultFieldArgument(node, methodName);
         if (fields === null) {
           return;
         }
         const unmapped: TSESTree.Node[] = [];
-        collectUnmappedSelections(fields, unmapped);
+        const uninspectable: TSESTree.Node[] = [];
+        collectUnmappedSelections(
+          fields,
+          unmapped,
+          uninspectable,
+          new Set<TSESTree.Node>(),
+        );
         if (
-          unmapped.length === 0 ||
-          node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          (unmapped.length === 0 && uninspectable.length === 0) ||
           !isResultMethodMember(node.callee)
         ) {
           return;
         }
         for (const field of unmapped) {
           context.report({ node: field, messageId: "unmappedResult" });
+        }
+        for (const field of uninspectable) {
+          context.report({
+            node: field,
+            messageId: "uninspectableResultSelection",
+          });
         }
       },
       NewExpression(node: TSESTree.NewExpression): void {

@@ -326,6 +326,9 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         const LocalConstructor = SQL<string>;
         const instantiatedLocalConstructor = new LocalConstructor("value");
         class LocalSubclass extends SQL<string> {}
+        class LocalImplementation implements SQL<string> {
+          constructor(readonly value: string) {}
+        }
         interface LocalInterface extends SQL<string> {}
         declare const localInterfaceValue: LocalInterface;
         void localValue;
@@ -337,6 +340,7 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         void constructedLocalAlias;
         void instantiatedLocalConstructor;
         void LocalSubclass;
+        void LocalImplementation;
         void localInterfaceValue;
       `,
     },
@@ -440,6 +444,30 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         const mapped = new TypedSql([]).mapWith(String);
         await db.select().from(users).where(predicate);
         db.select({ value: mapped });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const mapped = sql\`upper(\${users.name})\`.mapWith(users.name);
+        declare function mappedFields(): {
+          readonly value: typeof mapped;
+        };
+        db.select(mappedFields());
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        let mapped = sql\`upper(\${users.name})\`.mapWith(users.name);
+        let column = users.name;
+        db.select({ mapped, column });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        const emptyFields = {};
+        db.select(emptyFields);
       `,
     },
   ],
@@ -616,6 +644,22 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
     {
       code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class TypedSql extends SQL implements SQL<string> {
+          override _: { brand: "SQL"; type: string } = {
+            brand: "SQL",
+            type: "",
+          };
+          override as(): never {
+            throw new Error("not implemented");
+          }
+        }
+        await db.select().from(users).where(new TypedSql([]));
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
         declare const value: import("drizzle-orm").SQL<string>;
         db.select({ value });
       `,
@@ -642,6 +686,101 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         db.select({ value: new TypedSql([]) });
       `,
       errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const source = { value: sql\`SELECT 1\` };
+        const fields: Omit<typeof source, "value"> = source;
+        db.select(fields);
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const source = {
+          name: users.name,
+          value: sql\`SELECT 1\`,
+        };
+        const fields: Pick<typeof source, "name"> = source;
+        const alias = fields;
+        db.select((void 0, alias));
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const source = {
+          name: users.name,
+          value: sql\`SELECT 1\`,
+        };
+        let fields: Pick<typeof source, "name"> = source;
+        db.select(fields);
+      `,
+      errors: [{ messageId: "uninspectableResultSelection" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        declare function opaqueFields(): Record<never, never>;
+        db.select(opaqueFields());
+      `,
+      errors: [{ messageId: "uninspectableResultSelection" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        type DatabaseMethod = typeof db.select;
+        type QueryMethod = DatabaseMethod;
+        declare const runQuery: QueryMethod;
+        runQuery({
+          value: sql\`upper(\${users.name})\`.mapWith(users.name),
+        });
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const runQuery = Reflect.get(db, "select");
+        runQuery({
+          value: sql\`upper(\${users.name})\`.mapWith(users.name),
+        });
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        interface QueryExecutor {
+          readonly run: typeof db.select;
+        }
+        declare const selector: QueryExecutor;
+        selector.run({
+          value: sql\`upper(\${users.name})\`.mapWith(users.name),
+        });
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${relationalPreamble}
+        type FindUsers = typeof db.query.users.findMany;
+        declare const runQuery: FindUsers;
+        runQuery({ columns: { id: true } });
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const fields = Object.defineProperty({}, "value", {
+          enumerable: true,
+          value: sql\`SELECT 1\`,
+        });
+        db.select(fields);
+      `,
+      errors: [{ messageId: "uninspectableResultSelection" }],
     },
     {
       code: `${drizzlePreamble}
