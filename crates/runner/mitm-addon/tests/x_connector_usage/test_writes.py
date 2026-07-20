@@ -18,6 +18,7 @@ from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
 )
+from usage.providers.connectors import x_billing
 
 
 def _raw_deflate_body(payload: bytes) -> bytes:
@@ -404,6 +405,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "Open example.com/path/to/resource?search=foo&lang=en",
         "Open example.com:443/path",
         "Open xn--r8jz45g.xn--q9jyb4c",
+        "Uppercase IDN XN--R8JZ45G.XN--Q9JYB4C",
         "IDN 例え.みんな",
         "Accent mañana.com",
         "Sharp S faß.de",
@@ -453,6 +455,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "Leading hyphen -bad.com",
         "Trailing hyphen bad-.com",
         "Invalid prefix bad-.com.notatld",
+        "Invalid A-label xn--a.com",
     ],
 )
 def test_tweet_create_url_like_non_links_downgrade_to_content_create(
@@ -472,6 +475,38 @@ def test_tweet_create_url_like_non_links_downgrade_to_content_create(
     flow.request.method = "POST"
     flow.request.content = json.dumps({"text": text}).encode()
     p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_long_dotted_ascii_candidate_skips_idna_normalization(
+    x_usage, tmp_path, real_flow
+):
+    """Long ordinary ASCII candidates avoid generic IDNA work."""
+    text = ("a." * 12_500)[:25_000]
+    request_body = json.dumps({"text": text}).encode()
+    assert len(text) == 25_000
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    with patch.object(
+        x_billing,
+        "normalize_idna_label",
+        wraps=x_billing.normalize_idna_label,
+    ) as normalize_idna_label:
+        p = x_usage.call_and_get_single_billing(flow)
+
+    normalize_idna_label.assert_not_called()
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
 
