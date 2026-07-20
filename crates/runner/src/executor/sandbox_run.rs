@@ -13,9 +13,7 @@ use sandbox::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{
-    AgentExecutionResult, RunControls, RunStart, SessionHistoryRestorePlan, run_in_sandbox,
-};
+use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
@@ -31,6 +29,7 @@ use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
     RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
+    SessionHistoryRestorePlan,
 };
 use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
