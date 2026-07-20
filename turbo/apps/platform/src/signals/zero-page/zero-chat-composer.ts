@@ -3,6 +3,7 @@ import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/cha
 import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { jsonParseOr } from "../utils.ts";
+import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -139,6 +140,15 @@ export const setComposerPermissionConnector$ = command(
     set(internalComposerPermissionConnector$, connectorType);
   },
 );
+export const composerPermissionMetadata$ = computed(async (get) => {
+  const connectorType = get(composerPermissionConnector$);
+  if (!connectorType) {
+    return null;
+  }
+  return await get(
+    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
+  );
+});
 
 // -- Model picker open state ------------------------------------------------
 

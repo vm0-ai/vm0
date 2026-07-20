@@ -15,6 +15,7 @@ import {
   useLoadableState,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { equalArrays } from "../../lib/equality.ts";
@@ -179,7 +180,6 @@ import {
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   showAddDialog$,
@@ -215,6 +215,7 @@ import {
   setComputerUseDownloadDialogOpen$,
   composerPermissionConnector$,
   setComposerPermissionConnector$,
+  composerPermissionMetadata$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
   templateCardHover$,
@@ -5618,7 +5619,6 @@ function ComposerConnectorPermissionDialog({
 
   const grants =
     grantsLoadable.state === "hasData" ? grantsLoadable.data : undefined;
-  useUserPermissionGrantExpiryTick(grants ?? []);
 
   if (grants === undefined) {
     return null;
@@ -5632,6 +5632,7 @@ function ComposerConnectorPermissionDialog({
       agentId={agentId}
       connectorType={connector.type}
       connectorLabel={connector.label}
+      metadata$={composerPermissionMetadata$}
       displayName={agentDisplayName}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
@@ -6597,6 +6598,10 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
+function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
+  return loadable.state === "hasData" ? loadable.data : null;
+}
+
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
@@ -6866,11 +6871,9 @@ export function useZeroChatComposer({
 
   const savingType = useGet(composerSavingType$);
   const setSavingType = useSet(setComposerSavingType$);
-  const agentRecordIdLoadable = useLastLoadable(currentChatAgentRecordId$);
-  const agentRecordId =
-    agentRecordIdLoadable.state === "hasData"
-      ? agentRecordIdLoadable.data
-      : null;
+  const agentRecordId = loadableDataOrNull(
+    useLastLoadable(currentChatAgentRecordId$),
+  );
 
   const connectorsLoading =
     allTypesLoadable.state !== "hasData" ||
