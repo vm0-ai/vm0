@@ -787,6 +787,9 @@ describe("GET /api/zero/artifacts", () => {
         );
       }),
     ).toBeTruthy();
+    if (!firstResponse.syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
 
     host.captureHostedSitesS3();
     const redeployed = await host.redeployHtml(owner.actor, {
@@ -795,7 +798,9 @@ describe("GET /api/zero/artifacts", () => {
     });
     await flushWaitUntilForTest();
 
-    const refreshedResponse = await chat.listArtifacts(owner.actor);
+    const refreshedResponse = await chat.listArtifacts(owner.actor, {
+      updatedAfter: firstResponse.syncUntil,
+    });
     const refreshedArtifact = refreshedResponse.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });
@@ -986,10 +991,103 @@ describe("GET /api/zero/artifacts", () => {
       expect(pages).toBeLessThanOrEqual(10);
     } while (cursor);
 
-    // Every artifact surfaced exactly once across pages — no cursor-drift dups,
-    // no skips — proving keyset walks the deduped winner set correctly.
+    // Every raw artifact row surfaced exactly once across pages with no cursor
+    // drift, repeated rows, or skips.
     expect(collected).toHaveLength(created.length);
     expect(new Set(collected)).toStrictEqual(new Set(created));
+  }, 120_000);
+
+  it("paginates caller-scoped artifacts across the incremental replay window", async () => {
+    const owner = await artifactActor("Artifacts API incremental agent");
+    await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `existing-${randomUUID().slice(0, 8)}`,
+    });
+    const baseline = await chat.listArtifacts(owner.actor);
+    const syncUntil = baseline.syncUntil;
+    if (!syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
+
+    const created = [];
+    for (const label of ["first", "second"]) {
+      created.push(
+        await createHostedArtifact({
+          actor: owner.actor,
+          agentId: owner.agentId,
+          runnerGroup: owner.runnerGroup,
+          site: `incremental-${label}-${randomUUID().slice(0, 8)}`,
+        }),
+      );
+    }
+    const outsider = await artifactActor("Artifacts API incremental outsider");
+    const outsideArtifact = await createHostedArtifact({
+      actor: outsider.actor,
+      agentId: outsider.agentId,
+      runnerGroup: outsider.runnerGroup,
+      site: `incremental-outside-${randomUUID().slice(0, 8)}`,
+    });
+
+    const collected: string[] = [];
+    let cursor: string | undefined;
+    let responseSyncUntil: string | undefined;
+    do {
+      const page = await chat.listArtifacts(owner.actor, {
+        limit: 1,
+        cursor,
+        // Move the requested watermark one minute ahead. The replay overlap
+        // must still recover rows that committed just behind that watermark.
+        updatedAfter: new Date(Date.parse(syncUntil) + 60_000).toISOString(),
+      });
+      responseSyncUntil ??= page.syncUntil;
+      expect(page.syncUntil).toBe(responseSyncUntil);
+      collected.push(
+        ...page.artifacts.map((artifact) => {
+          return artifact.fileId;
+        }),
+      );
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(collected).toHaveLength(new Set(collected).size);
+    for (const artifact of created) {
+      expect(collected).toContain(artifact.fileId);
+    }
+    expect(collected).not.toContain(outsideArtifact.fileId);
+  }, 120_000);
+
+  it("returns updated thread metadata in incremental mode", async () => {
+    const owner = await artifactActor("Artifacts API metadata sync agent");
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `metadata-${randomUUID().slice(0, 8)}`,
+    });
+    const baseline = await chat.listArtifacts(owner.actor);
+    if (!baseline.syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
+
+    const title = `Renamed artifact thread ${randomUUID().slice(0, 8)}`;
+    await chat.renameThread(owner.actor, artifact.threadId, title);
+
+    const changed = await chat.listArtifacts(owner.actor, {
+      // Combined with the five-minute overlap, this makes the effective lower
+      // bound the baseline itself, excluding the older file timestamp.
+      updatedAfter: new Date(
+        Date.parse(baseline.syncUntil) + 5 * 60_000,
+      ).toISOString(),
+    });
+    const changedArtifact = changed.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    if (!changedArtifact) {
+      throw new Error("Expected renamed artifact to be incrementally listed");
+    }
+    expect(changedArtifact.threadTitle).toBe(title);
   }, 120_000);
 });
 
@@ -1002,10 +1100,18 @@ describe("POST /api/zero/artifacts/favorite", () => {
       runnerGroup: owner.runnerGroup,
       site: `favorite-${randomUUID().slice(0, 8)}`,
     });
+    const baseline = await chat.listArtifacts(owner.actor);
+    if (!baseline.syncUntil) {
+      throw new Error("Expected artifact sync timestamp");
+    }
 
     await chat.favoriteArtifact(owner.actor, artifact.url);
 
-    const favorited = await chat.listArtifacts(owner.actor);
+    const favorited = await chat.listArtifacts(owner.actor, {
+      updatedAfter: new Date(
+        Date.parse(baseline.syncUntil) + 5 * 60_000,
+      ).toISOString(),
+    });
     const favoritedArtifact = favorited.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });
@@ -1013,10 +1119,17 @@ describe("POST /api/zero/artifacts/favorite", () => {
       throw new Error("Expected favorite artifact to be listed");
     }
     expect(favoritedArtifact.isFavorited).toBeTruthy();
+    if (!favorited.syncUntil) {
+      throw new Error("Expected favorite sync timestamp");
+    }
 
     await chat.unfavoriteArtifact(owner.actor, artifact.url);
 
-    const unfavorited = await chat.listArtifacts(owner.actor);
+    const unfavorited = await chat.listArtifacts(owner.actor, {
+      updatedAfter: new Date(
+        Date.parse(favorited.syncUntil) + 5 * 60_000,
+      ).toISOString(),
+    });
     const unfavoritedArtifact = unfavorited.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });

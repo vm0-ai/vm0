@@ -6,7 +6,6 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -229,7 +228,7 @@ describe("prompt query parameter injection", () => {
     });
   });
 
-  it("starts an optimistic website template chat from the prompt route when enabled", async () => {
+  it("starts an optimistic website template chat from the prompt route", async () => {
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
       return item.id === "website-template:warm-cards";
     });
@@ -249,7 +248,6 @@ describe("prompt query parameter injection", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
       path: "/prompt?prompt=Make%20a%20warm%20website&template=website-template%3Awarm-cards",
     });
 
@@ -257,30 +255,6 @@ describe("prompt query parameter injection", () => {
       expect(screen.getByText("Make a warm website")).toBeInTheDocument();
       expect(runPrompt).toBe("Make a warm website");
       expect(websiteTemplateId).toBe(websiteTemplate?.id);
-    });
-  });
-
-  it("ignores website template prompt params while the website template switch is off", async () => {
-    let generationTemplate:
-      | {
-          type: string;
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        generationTemplate = body.generationTemplate;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: false },
-      path: "/prompt?prompt=Make%20a%20warm%20website&template=website-template%3Awarm-cards",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Make a warm website")).toBeInTheDocument();
-      expect(generationTemplate).toBeUndefined();
     });
   });
 });

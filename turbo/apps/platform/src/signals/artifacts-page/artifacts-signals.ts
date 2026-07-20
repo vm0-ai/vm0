@@ -271,24 +271,79 @@ export const reloadArtifacts$ = command(({ set }) => {
   });
 });
 
-// Remote source: keyset-paginate through every artifact for the org (following
-// `nextCursor` until the set is exhausted), replace the IndexedDB cache with the
-// full set, and return it. Errors propagate to the loadable so the view can fall
-// back to the cache. Reacts only to the reload counter, never to the filters, so
-// filtering never triggers a re-fetch.
+function artifactIsHosted(item: ArtifactItem): boolean {
+  return (
+    item.artifactKind === "hosted-site" ||
+    item.artifactKind === "presentation-html"
+  );
+}
+
+function mergeArtifactItems(
+  cached: readonly ArtifactItem[],
+  changed: readonly ArtifactItem[],
+): ArtifactItem[] {
+  const byId = new Map<string, ArtifactItem>();
+  for (const item of cached) {
+    byId.set(item.artifactItemId, item);
+  }
+  for (const item of changed) {
+    byId.set(item.artifactItemId, item);
+  }
+
+  const hostedRunIds = new Set(
+    Array.from(byId.values())
+      .filter(artifactIsHosted)
+      .map((item) => {
+        return item.runId;
+      }),
+  );
+  return Array.from(byId.values())
+    .filter((item) => {
+      return !hostedRunIds.has(item.runId) || artifactIsHosted(item);
+    })
+    .sort((left, right) => {
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt.localeCompare(left.createdAt);
+      }
+      return right.artifactItemId.localeCompare(left.artifactItemId);
+    });
+}
+
+// Remote source: read the last-known cache immediately, request only rows that
+// changed since its synchronization timestamp, and merge those rows locally.
+// A server without incremental support omits `syncUntil`; in that case its
+// response is treated as the historical full snapshot for rolling-deploy
+// compatibility.
 export const remoteArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const client = get(zeroClient$)(artifactsContract);
-    const artifacts: ArtifactItem[] = [];
+    const stores = artifactItemCacheStores(dbPromise);
+    const [cachedArtifacts, lastSyncedAt] = await Promise.all([
+      stores.readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT }),
+      stores.readStore.readLastSyncedAt(),
+    ]);
+    const updatedAfter =
+      cachedArtifacts.length === 0
+        ? undefined
+        : (lastSyncedAt ?? cachedArtifacts[0]?.createdAt);
+    const remoteArtifacts: ArtifactItem[] = [];
     let cursor: string | undefined;
+    let syncUntil: string | undefined;
     for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
       const result = await accept(
-        client.list({ query: { limit: ARTIFACTS_PAGE_SIZE, cursor } }),
+        client.list({
+          query: {
+            limit: ARTIFACTS_PAGE_SIZE,
+            cursor,
+            updatedAfter,
+          },
+        }),
         [200],
       );
-      artifacts.push(
+      syncUntil ??= result.body.syncUntil;
+      remoteArtifacts.push(
         ...result.body.artifacts.map((item) => {
           return artifactItemSchema.parse(item);
         }),
@@ -298,7 +353,13 @@ export const remoteArtifacts$ = computed(
       }
       cursor = result.body.nextCursor;
     }
-    await artifactItemCacheStores(dbPromise).writeStore.replaceItems(artifacts);
+
+    const mergeBase = updatedAfter && syncUntil ? cachedArtifacts : [];
+    const artifacts = mergeArtifactItems(mergeBase, remoteArtifacts);
+    const cacheUpdated = await stores.writeStore.replaceItems(artifacts);
+    if (cacheUpdated && syncUntil) {
+      await stores.writeStore.setLastSyncedAt(syncUntil);
+    }
     return { artifacts };
   },
 );

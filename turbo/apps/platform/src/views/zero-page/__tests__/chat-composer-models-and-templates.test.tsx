@@ -5766,7 +5766,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("selects and sends a website template behind the feature switch", async () => {
+  it("selects and sends a website template", async () => {
     const user = userEvent.setup({ delay: null });
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
     const websiteTemplatePreviewImageUrl = r2ImageTransformUrl(
@@ -5783,7 +5783,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
       path: `/chats/${THREAD_ID}`,
     });
 

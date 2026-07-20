@@ -69,14 +69,16 @@ export async function chatIdbWriteBestEffort(
   label: string,
   operation: () => Promise<void>,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   // Writes should never block the server-backed chat flow.
   // eslint-disable-next-line no-restricted-syntax
   try {
     await withChatIdbTimeout(label, operation, signal);
+    return true;
   } catch (error) {
     throwIfAbort(error);
     signal?.throwIfAborted();
     L.debug("write:ignored", { label, error });
+    return false;
   }
 }
