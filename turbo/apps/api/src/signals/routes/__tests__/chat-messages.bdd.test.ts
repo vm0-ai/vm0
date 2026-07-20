@@ -2706,26 +2706,35 @@ describe("CHAT-02: initial thinking indicator", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
 
-    let upstreamAuthorization: string | null = null;
-    let promptPayload = "";
+    let thinkingAuthorization: string | null = null;
+    let thinkingPromptPayload = "";
+    const titleResponse = "Launch Checklist";
     const thinkingResponse =
       "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
-          upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
-          promptPayload = payload.messages
-            .map((message) => {
-              return message.content;
-            })
-            .join("\n\n");
+          const systemContent = payload.messages[0]?.content ?? "";
+          let responseContent = "Unrelated completion";
+          if (systemContent.includes("Generate a short, descriptive title")) {
+            responseContent = titleResponse;
+          }
+          if (systemContent.includes("Write user-visible progress copy")) {
+            thinkingAuthorization = request.headers.get("authorization");
+            thinkingPromptPayload = payload.messages
+              .map((message) => {
+                return message.content;
+              })
+              .join("\n\n");
+            responseContent = thinkingResponse;
+          }
           return HttpResponse.json({
             choices: [
               {
                 finish_reason: "stop",
-                message: { content: thinkingResponse },
+                message: { content: responseContent },
               },
             ],
           });
@@ -2747,6 +2756,7 @@ describe("CHAT-02: initial thinking indicator", () => {
         );
       });
     });
+    await waitForThreadTitle(actor, run.threadId, titleResponse);
     const marker = assistantMessages(page.messages).find((message) => {
       return (
         message.runId === run.runId && message.thinking === thinkingResponse
@@ -2759,10 +2769,12 @@ describe("CHAT-02: initial thinking indicator", () => {
       runEventId: "thinking:initial",
       thinking: thinkingResponse,
     });
-    expect(upstreamAuthorization).toBe("Bearer thinking-key");
-    expect(promptPayload).toContain("few short paragraphs");
-    expect(promptPayload).toContain("Match the current user's language");
-    expect(promptPayload).toContain("Draft a launch checklist");
+    expect(thinkingAuthorization).toBe("Bearer thinking-key");
+    expect(thinkingPromptPayload).toContain("few short paragraphs");
+    expect(thinkingPromptPayload).toContain(
+      "Match the current user's language",
+    );
+    expect(thinkingPromptPayload).toContain("Draft a launch checklist");
 
     await cancelChatRun(actor, run.runId);
   });
