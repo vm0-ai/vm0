@@ -1,5 +1,7 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -7,7 +9,7 @@ import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
@@ -20,6 +22,8 @@ import {
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
 import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
+import { insertChatMessage } from "./zero-chat-message.service";
+import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 
@@ -103,6 +107,57 @@ async function queuePausedForThread(
 }
 
 /**
+ * Pre-dispatch chat candidates do not own the thread until their user message
+ * is durable. Candidate markers let concurrent contenders coexist briefly
+ * while the thread-row claim chooses exactly one dispatchable run.
+ */
+function chatRunOwnsThreadCondition(): SQL {
+  return sql`
+    (
+      NOT EXISTS (
+        SELECT 1
+        FROM ${agentRunCallbacks}
+        WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+          AND ${agentRunCallbacks.internalKind} = 'chat'
+          AND (
+            ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+            OR ${agentRunCallbacks.payload}->>'workflowQueueEventId' IS NOT NULL
+          )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM ${chatMessages}
+        WHERE ${chatMessages.runId} = ${zeroRuns.id}
+          AND ${chatMessages.role} = 'user'
+      )
+    )
+  `;
+}
+
+export async function activeChatThreadOwnerExists(
+  db: ReadonlyDb,
+  args: {
+    readonly threadId: string;
+    readonly excludeRunId?: string;
+  },
+): Promise<boolean> {
+  const [run] = await db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, args.threadId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+        args.excludeRunId ? ne(zeroRuns.id, args.excludeRunId) : undefined,
+        chatRunOwnsThreadCondition(),
+      ),
+    )
+    .limit(1);
+  return run !== undefined;
+}
+
+/**
  * Thread-level busy check: any in-flight run bound to the workflow's chat
  * thread blocks the queue. `queued` counts — the workflow's single in-flight
  * run may itself be waiting on an org concurrency slot, and admitting more
@@ -112,18 +167,7 @@ async function activeRunExistsForWorkflowThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-      ),
-    )
-    .limit(1);
-  return run !== undefined;
+  return await activeChatThreadOwnerExists(db, { threadId });
 }
 
 async function pendingWorkflowEventExists(
@@ -155,12 +199,52 @@ async function pendingTickExistsForAutomation(
   return tick !== undefined;
 }
 
-type WorkflowQueueAdmission = "proceed" | "enqueued";
+export interface WorkflowQueueEvent {
+  readonly id: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly automationId: string;
+  readonly chatThreadId: string;
+  readonly triggerSource: string;
+  readonly triggerBrief: string | null;
+  readonly encryptedParams: string;
+  readonly createdAt: Date;
+}
+
+function workflowQueueEventFromRow(
+  item: typeof chatMessageQueue.$inferSelect,
+): WorkflowQueueEvent {
+  if (
+    item.itemType !== "workflow_event" ||
+    !item.automationId ||
+    !item.triggerSource ||
+    !item.encryptedParams
+  ) {
+    throw new Error(
+      `Workflow event queue item ${item.id} is missing its automation payload`,
+    );
+  }
+  return {
+    id: item.id,
+    orgId: item.orgId,
+    userId: item.userId,
+    automationId: item.automationId,
+    chatThreadId: item.chatThreadId,
+    triggerSource: item.triggerSource,
+    triggerBrief: item.triggerBrief,
+    encryptedParams: item.encryptedParams,
+    createdAt: item.createdAt,
+  };
+}
+
+type WorkflowQueueAdmission =
+  | { readonly kind: "proceed"; readonly event: WorkflowQueueEvent }
+  | { readonly kind: "enqueued" };
 
 /**
- * Decide whether a fired automation event may create its run now or must wait in
- * the chat message queue. Serialized per chat thread via an advisory lock.
- * Schedule ticks coalesce per automation: at most one pending tick.
+ * Persist a fired automation event before deciding whether its queue head may
+ * create a run inline. Schedule ticks coalesce per automation, while every
+ * non-coalesced event has a durable row before run preparation begins.
  */
 export async function admitWorkflowAutomationEvent(
   db: Db,
@@ -181,62 +265,51 @@ export async function admitWorkflowAutomationEvent(
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(args.chatThreadId));
 
-    const paused = await queuePausedForThread(tx, args.chatThreadId);
-
-    if (!paused) {
-      const busy = await activeRunExistsForWorkflowThread(
-        tx,
-        args.chatThreadId,
-      );
-      if (!busy && !(await pendingWorkflowEventExists(tx, args.chatThreadId))) {
-        return "proceed";
-      }
-    }
-
     if (
       automation.kind === "schedule" &&
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
-      return "enqueued";
+      return { kind: "enqueued" };
     }
 
-    await tx.insert(chatMessageQueue).values({
-      orgId: automation.orgId,
-      userId: automation.ownerUserId,
-      chatThreadId: args.chatThreadId,
-      itemType: "workflow_event",
-      automationId: automation.id,
-      triggerSource: args.triggerSource,
-      triggerBrief: args.triggerBrief ?? null,
-      encryptedParams,
-    });
-    return "enqueued";
+    const paused = await queuePausedForThread(tx, args.chatThreadId);
+    const mayProceed =
+      !paused &&
+      !(await hasUnclaimedQueuedUserMessage(tx, args.chatThreadId)) &&
+      !(await activeRunExistsForWorkflowThread(tx, args.chatThreadId)) &&
+      !(await pendingWorkflowEventExists(tx, args.chatThreadId));
+
+    const [item] = await tx
+      .insert(chatMessageQueue)
+      .values({
+        orgId: automation.orgId,
+        userId: automation.ownerUserId,
+        chatThreadId: args.chatThreadId,
+        itemType: "workflow_event",
+        automationId: automation.id,
+        triggerSource: args.triggerSource,
+        triggerBrief: args.triggerBrief ?? null,
+        encryptedParams,
+      })
+      .returning();
+    if (!item) {
+      throw new Error("Workflow event queue insert returned no row");
+    }
+    return mayProceed
+      ? { kind: "proceed", event: workflowQueueEventFromRow(item) }
+      : { kind: "enqueued" };
   });
 }
 
-export interface ClaimedWorkflowQueueEvent {
-  readonly id: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly automationId: string;
-  readonly chatThreadId: string;
-  readonly triggerSource: string;
-  readonly triggerBrief: string | null;
-  readonly encryptedParams: string;
-  readonly createdAt: Date;
-}
-
 /**
- * Pop the oldest pending workflow event for the thread's queue, or return
- * null when the queue must not advance: paused, a queued user chat message
- * waiting (user messages always drain first), or an in-flight run.
- * The claimed row is deleted; a failed dequeue re-inserts it via
- * `restoreWorkflowQueueEventAndPause`.
+ * Read the oldest dispatchable workflow event without consuming it. Expensive
+ * run preparation happens after this read; the pre-dispatch claim rechecks and
+ * deletes the exact head only when its candidate run wins ownership.
  */
-export async function claimNextWorkflowQueueEvent(
+export async function peekNextWorkflowQueueEvent(
   db: Db,
   chatThreadId: string,
-): Promise<ClaimedWorkflowQueueEvent | null> {
+): Promise<WorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(chatThreadId));
     if (await queuePausedForThread(tx, chatThreadId)) {
@@ -264,24 +337,7 @@ export async function claimNextWorkflowQueueEvent(
     if (!item) {
       return null;
     }
-    if (!item.automationId || !item.triggerSource || !item.encryptedParams) {
-      throw new Error(
-        `Workflow event queue item ${item.id} is missing its automation payload`,
-      );
-    }
-
-    await tx.delete(chatMessageQueue).where(eq(chatMessageQueue.id, item.id));
-    return {
-      id: item.id,
-      orgId: item.orgId,
-      userId: item.userId,
-      automationId: item.automationId,
-      chatThreadId: item.chatThreadId,
-      triggerSource: item.triggerSource,
-      triggerBrief: item.triggerBrief,
-      encryptedParams: item.encryptedParams,
-      createdAt: item.createdAt,
-    };
+    return workflowQueueEventFromRow(item);
   });
 }
 
@@ -304,45 +360,196 @@ async function setPauseState(
     .where(eq(chatThreads.id, chatThreadId));
 }
 
-/**
- * Put a claimed event back at its original queue position (id and createdAt
- * are preserved) and pause the queue so the failure does not burn through
- * the backlog. Used when run creation for a dequeued event fails.
- */
-export async function restoreWorkflowQueueEventAndPause(
+export async function claimWorkflowQueueEventForRun(
   db: Db,
   args: {
-    readonly event: ClaimedWorkflowQueueEvent;
+    readonly event: WorkflowQueueEvent;
+    readonly runId: string;
+    readonly prompt: string;
+  },
+): Promise<boolean> {
+  const { event } = args;
+  return await db.transaction(async (tx) => {
+    const [thread] = await tx
+      .select({ queuePausedAt: chatThreads.queuePausedAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, event.chatThreadId))
+      .for("update");
+    if (!thread || thread.queuePausedAt !== null) {
+      return false;
+    }
+
+    const [run] = await tx
+      .select({
+        status: agentRuns.status,
+        chatThreadId: zeroRuns.chatThreadId,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.id, args.runId))
+      .for("update", { of: agentRuns });
+    if (
+      !run ||
+      run.chatThreadId !== event.chatThreadId ||
+      (run.status !== "queued" && run.status !== "pending")
+    ) {
+      return false;
+    }
+
+    const [marker] = await tx
+      .select({ id: agentRunCallbacks.id })
+      .from(agentRunCallbacks)
+      .where(
+        and(
+          eq(agentRunCallbacks.runId, args.runId),
+          eq(agentRunCallbacks.internalKind, "chat"),
+          sql`${agentRunCallbacks.payload}->>'workflowQueueEventId' = ${event.id}`,
+        ),
+      )
+      .limit(1);
+    if (!marker) {
+      throw new Error(
+        `Workflow queue candidate ${args.runId} is missing event marker ${event.id}`,
+      );
+    }
+
+    if (await hasUnclaimedQueuedUserMessage(tx, event.chatThreadId)) {
+      return false;
+    }
+    if (
+      await activeChatThreadOwnerExists(tx, {
+        threadId: event.chatThreadId,
+        excludeRunId: args.runId,
+      })
+    ) {
+      return false;
+    }
+
+    const [head] = await tx
+      .select({ id: chatMessageQueue.id })
+      .from(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.chatThreadId, event.chatThreadId),
+          eq(chatMessageQueue.itemType, "workflow_event"),
+        ),
+      )
+      .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+      .for("update")
+      .limit(1);
+    if (head?.id !== event.id) {
+      return false;
+    }
+
+    const [deleted] = await tx
+      .delete(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.id, event.id),
+          eq(chatMessageQueue.chatThreadId, event.chatThreadId),
+          eq(chatMessageQueue.itemType, "workflow_event"),
+        ),
+      )
+      .returning({ id: chatMessageQueue.id });
+    if (!deleted) {
+      return false;
+    }
+
+    const message = await insertChatMessage(tx, {
+      chatThreadId: event.chatThreadId,
+      role: "user",
+      content: args.prompt,
+      runId: args.runId,
+      runGroupId: event.automationId,
+    });
+    if (!message) {
+      throw new Error(
+        `Workflow queue event ${event.id} user message was not inserted`,
+      );
+    }
+    if (run.status === "queued") {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: event.chatThreadId,
+        runId: args.runId,
+        runGroupId: event.automationId,
+        createdAfter: message.createdAt,
+      });
+    }
+    return true;
+  });
+}
+
+/** Consume a stale/invalid event only if it is still the workflow FIFO head. */
+export async function discardWorkflowQueueEvent(
+  db: Db,
+  event: WorkflowQueueEvent,
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(chatMessageQueueLock(event.chatThreadId));
+    const [head] = await tx
+      .select({ id: chatMessageQueue.id })
+      .from(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.chatThreadId, event.chatThreadId),
+          eq(chatMessageQueue.itemType, "workflow_event"),
+        ),
+      )
+      .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+      .for("update")
+      .limit(1);
+    if (head?.id !== event.id) {
+      return false;
+    }
+    const deleted = await tx
+      .delete(chatMessageQueue)
+      .where(eq(chatMessageQueue.id, event.id))
+      .returning({ id: chatMessageQueue.id });
+    return deleted.length > 0;
+  });
+}
+
+/** Pause only while the failed pre-dispatch event is still pending. */
+export async function pauseWorkflowQueueEvent(
+  db: Db,
+  args: {
+    readonly event: WorkflowQueueEvent;
     readonly pauseReason: string;
     readonly pausedAt: Date;
   },
-): Promise<void> {
-  const { event } = args;
-  await db.transaction(async (tx) => {
-    await tx.execute(chatMessageQueueLock(event.chatThreadId));
-
-    await tx
-      .insert(chatMessageQueue)
-      .values({
-        id: event.id,
-        orgId: event.orgId,
-        userId: event.userId,
-        chatThreadId: event.chatThreadId,
-        itemType: "workflow_event",
-        automationId: event.automationId,
-        triggerSource: event.triggerSource,
-        triggerBrief: event.triggerBrief,
-        encryptedParams: event.encryptedParams,
-        createdAt: event.createdAt,
-      })
-      .onConflictDoNothing();
-
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(chatMessageQueueLock(args.event.chatThreadId));
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.event.chatThreadId))
+      .for("update");
+    if (!thread) {
+      return false;
+    }
+    const [pending] = await tx
+      .select({ id: chatMessageQueue.id })
+      .from(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.id, args.event.id),
+          eq(chatMessageQueue.chatThreadId, args.event.chatThreadId),
+          eq(chatMessageQueue.itemType, "workflow_event"),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!pending) {
+      return false;
+    }
     await setPauseState(
       tx,
-      event.chatThreadId,
+      args.event.chatThreadId,
       { pausedAt: args.pausedAt, pauseReason: args.pauseReason },
       args.pausedAt,
     );
+    return true;
   });
 }
 
@@ -457,6 +664,7 @@ export async function loadRunningWorkflowThreadRun(
       and(
         eq(zeroRuns.chatThreadId, threadId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
+        chatRunOwnsThreadCondition(),
       ),
     )
     .orderBy(asc(agentRuns.createdAt))

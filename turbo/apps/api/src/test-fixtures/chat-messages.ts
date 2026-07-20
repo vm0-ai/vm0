@@ -1,4 +1,5 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -116,7 +117,7 @@ export async function hasVm0ApiKeyLabel(args: {
 /**
  * Holds the production org admission advisory lock and reports its waiter
  * count. No product API exposes database lock timing, so this fixture is the
- * narrow boundary exception for the queue-drain concurrency test.
+ * narrow boundary exception for queue-admission and drain concurrency tests.
  */
 export async function holdOrgAdmissionLockFixture(args: {
   readonly orgId: string;
@@ -240,4 +241,35 @@ export async function holdChatMessageWritesFixture(args: {
       return rows[0]?.waiterCount ?? 0;
     },
   };
+}
+
+/**
+ * Reports whether the production queue row is write-locked by another
+ * transaction. This observes lock timing only; it neither creates nor changes
+ * product rows.
+ */
+export async function queuedUserMessageIsWriteLockedFixture(args: {
+  readonly threadId: string;
+  readonly messageId: string;
+}): Promise<boolean> {
+  const condition = and(
+    eq(chatMessageQueue.chatThreadId, args.threadId),
+    eq(chatMessageQueue.chatMessageId, args.messageId),
+    eq(chatMessageQueue.itemType, "user_message"),
+  );
+  const existing = await db()
+    .select({ id: chatMessageQueue.id })
+    .from(chatMessageQueue)
+    .where(condition)
+    .limit(1);
+  if (existing.length === 0) {
+    return false;
+  }
+  const unlocked = await db()
+    .select({ id: chatMessageQueue.id })
+    .from(chatMessageQueue)
+    .where(condition)
+    .for("update", { skipLocked: true })
+    .limit(1);
+  return unlocked.length === 0;
 }

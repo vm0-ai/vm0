@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -9,8 +10,10 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-messages";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
@@ -21,6 +24,7 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
+const connectorsApi = createConnectorBddApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
@@ -37,6 +41,10 @@ function automationsClient() {
 
 function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
+}
+
+function queueClient() {
+  return setupApp({ context })(zeroWorkflowQueueContract);
 }
 
 interface Scenario {
@@ -56,6 +64,11 @@ async function setup(): Promise<Scenario> {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
   }
+  // Completed sandbox runs persist memory versions. Keep this queue suite's
+  // actors out of the repository-wide memory summarization sweep.
+  await connectorsApi.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.MemoryViewer]: false,
+  });
   const agent = await wf.createAgent(actor, {
     displayName: "Workflow Queue Agent",
   });
@@ -183,18 +196,6 @@ async function completeRunThroughSandbox(
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-queue-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow queue history ${runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooksApi.requestAgentComplete(
     { runId, exitCode: 0 },
     sandboxHeaders,
@@ -212,6 +213,109 @@ async function executeDueWorkflowAutomations(): Promise<void> {
 }
 
 describe("workflow queue", () => {
+  it("serializes concurrent workflow events admitted to an idle thread", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const firstPromise = postWorkflowWebhook(automation, "first");
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    let secondSettled = false;
+    const secondPromise = postWorkflowWebhook(automation, "second").then(
+      (result) => {
+        secondSettled = true;
+        return result;
+      },
+    );
+    await expect
+      .poll(async () => {
+        return {
+          secondSettled,
+          waiterCount: await admissionLock.waiterCount(),
+        };
+      })
+      .toStrictEqual({ secondSettled: true, waiterCount: 1 });
+    const second = await secondPromise;
+    admissionLock.release();
+    await admissionLock.done;
+    const first = await firstPromise;
+
+    const firstRunId = expectAcceptedRunId(first);
+    expectAcceptedWithoutRun(second);
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running?.runId).toBe(firstRunId);
+    expect(queue.body.pending).toHaveLength(1);
+
+    await completeRunThroughSandbox(scenario, firstRunId);
+    const afterFirst = await workflowRunIds(automation.threadId);
+    expect(afterFirst).toHaveLength(2);
+    await completeRunThroughSandbox(scenario, afterFirst[1]!);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+  });
+
+  it("lets a user message arriving during workflow preparation take priority", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowPromise = postWorkflowWebhook(
+      automation,
+      "workflow-preparing",
+    );
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    const userPromise = accept(
+      chatMessagesClient().send({
+        headers: authHeaders(),
+        body: {
+          agentId: scenario.agentId,
+          threadId: automation.threadId,
+          prompt: "user takes priority",
+        },
+      }),
+      [201],
+    );
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+    admissionLock.release();
+    await admissionLock.done;
+
+    expectAcceptedWithoutRun(await workflowPromise);
+    const user = await userPromise;
+    if (!user.body.runId) {
+      throw new Error("Expected the queued user message to claim a run");
+    }
+
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running?.runId).toBe(user.body.runId);
+    expect(queue.body.pending).toHaveLength(1);
+    expect(queue.body.pending[0]?.automationId).toBe(automation.automationId);
+  });
+
   it("queues webhook events behind the in-flight run and drains them serially", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

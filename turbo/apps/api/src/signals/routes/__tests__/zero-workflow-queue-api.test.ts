@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -9,7 +10,9 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-messages";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
@@ -20,6 +23,7 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
+const connectorsApi = createConnectorBddApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-api-workflow";
 
@@ -33,6 +37,10 @@ function automationsClient() {
 
 function queueClient() {
   return setupApp({ context })(zeroWorkflowQueueContract);
+}
+
+function modelProvidersClient() {
+  return setupApp({ context })(zeroModelProvidersByTypeContract);
 }
 
 interface Scenario {
@@ -51,6 +59,11 @@ async function setup(): Promise<Scenario> {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
   }
+  // Completed sandbox runs persist memory versions. Keep this queue suite's
+  // actors out of the repository-wide memory summarization sweep.
+  await connectorsApi.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.MemoryViewer]: false,
+  });
   const agent = await wf.createAgent(actor, {
     displayName: "Workflow Queue API Agent",
   });
@@ -158,18 +171,6 @@ async function completeRunThroughSandbox(
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-queue-api-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow queue api history ${runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooksApi.requestAgentComplete(
     { runId, exitCode: 0 },
     sandboxHeaders,
@@ -310,5 +311,145 @@ describe("workflow queue API", () => {
     expect(resumed.body.pausedAt).toBeNull();
     expect(resumed.body.running).not.toBeNull();
     expect(resumed.body.pending).toHaveLength(1);
+  });
+
+  it("lets a pause arriving during run preparation keep the event pending", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const deliveryPromise = postWorkflowWebhook(
+      automation,
+      "pause-during-preparation",
+    );
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    const paused = await accept(
+      queueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(paused.body.pausedAt).not.toBeNull();
+
+    admissionLock.release();
+    await admissionLock.done;
+    await expect(deliveryPromise).resolves.toBeNull();
+
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running).toBeNull();
+    expect(queue.body.pending).toHaveLength(1);
+    expect(queue.body.pending[0]?.automationId).toBe(automation.automationId);
+  });
+
+  it("pauses a durable event when run creation fails before its claim", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    await accept(
+      modelProvidersClient().delete({
+        headers: authHeaders(),
+        params: { type: "anthropic-api-key" },
+      }),
+      [204],
+    );
+
+    await expect(
+      postWorkflowWebhook(automation, "pre-claim-create-failure"),
+    ).resolves.toBeNull();
+
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(queue.body.running).toBeNull();
+    expect(queue.body.pending).toHaveLength(1);
+    expect(queue.body.pending[0]?.automationId).toBe(automation.automationId);
+    expect(queue.body.pausedAt).not.toBeNull();
+    expect(queue.body.pauseReason).toContain("No model provider configured");
+  });
+
+  it("serializes concurrent resumes before advancing the next event", async () => {
+    const { scenario, automation, runningRunId } = await busyQueueFixture(1);
+    await accept(
+      queueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    await expect(
+      postWorkflowWebhook(automation, "while-paused"),
+    ).resolves.toBeNull();
+    await completeRunThroughSandbox(scenario, runningRunId);
+
+    const idle = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(idle.body.running).toBeNull();
+    expect(idle.body.pending).toHaveLength(2);
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+    const firstResumePromise = accept(
+      queueClient().resume({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    const secondResumePromise = accept(
+      queueClient().resume({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+    admissionLock.release();
+    await admissionLock.done;
+    const secondResume = await secondResumePromise;
+    const firstResume = await firstResumePromise;
+
+    expect(firstResume.body.running).not.toBeNull();
+    expect(firstResume.body.pending).toHaveLength(1);
+    expect(secondResume.body.running?.runId).toBe(
+      firstResume.body.running?.runId,
+    );
+    expect(secondResume.body.pending).toHaveLength(1);
+
+    const afterResume = await workflowRunIds(automation.threadId);
+    expect(afterResume).toHaveLength(2);
+    await completeRunThroughSandbox(scenario, afterResume[1]!);
+    const afterSecond = await workflowRunIds(automation.threadId);
+    expect(afterSecond).toHaveLength(3);
+    await completeRunThroughSandbox(scenario, afterSecond[2]!);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(3);
   });
 });

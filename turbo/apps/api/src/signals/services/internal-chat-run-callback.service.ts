@@ -5,7 +5,6 @@ import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/e
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
@@ -33,7 +32,6 @@ import { z } from "zod";
 
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
-import { executeRawRows } from "../../lib/db-raw-rows";
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -53,6 +51,7 @@ import {
   BEFORE_DISPATCH_CANCELLED_ERROR,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
+import { activeChatThreadOwnerExists } from "./chat-message-queue.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
@@ -94,8 +93,6 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
-const idRowSchema = z.object({ id: z.string() });
-
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
 type ChatCallbackPreCreateTimingActionType =
@@ -1582,34 +1579,7 @@ async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const runs = await executeRawRows(
-    db,
-    sql`
-      SELECT ${zeroRuns.id} AS "id"
-      FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${threadId}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-              AND ${agentRunCallbacks.internalKind} = 'chat'
-              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
-              AND ${chatMessages.role} = 'user'
-          )
-        )
-      LIMIT 1
-    `,
-    idRowSchema,
-  );
-  return runs[0] !== undefined;
+  return await activeChatThreadOwnerExists(db, { threadId });
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1855,35 +1825,12 @@ async function claimQueuedUserMessageForDispatch(args: {
     // message. Concurrent drains may insert more than one candidate before
     // reaching this serialized gate; ignoring those unclaimed candidates lets
     // one claim win while the others cancel before dispatch.
-    const competingRuns = await executeRawRows(
-      tx,
-      sql`
-        SELECT ${zeroRuns.id} AS "id"
-        FROM ${zeroRuns}
-        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-        WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
-          AND ${zeroRuns.id} <> ${args.runId}
-          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-          AND (
-            NOT EXISTS (
-              SELECT 1
-              FROM ${agentRunCallbacks}
-              WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-                AND ${agentRunCallbacks.internalKind} = 'chat'
-                AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
-            )
-            OR EXISTS (
-              SELECT 1
-              FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${zeroRuns.id}
-                AND ${chatMessages.role} = 'user'
-            )
-          )
-        LIMIT 1
-      `,
-      idRowSchema,
-    );
-    if (competingRuns[0]) {
+    if (
+      await activeChatThreadOwnerExists(tx, {
+        threadId: args.threadId,
+        excludeRunId: args.runId,
+      })
+    ) {
       return null;
     }
 

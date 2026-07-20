@@ -10,10 +10,14 @@ import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
 import { now, nowDate } from "../external/time";
-import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
+import type {
+  BeforeRunDispatch,
+  DispatchFailedRunCallbacks,
+} from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   postRunUserMessage,
+  publishRunUserMessageSignals,
   resolveRunChatThreadModelPin,
 } from "./zero-chat-run-message.service";
 import {
@@ -21,11 +25,17 @@ import {
   type ModelFirstPin,
 } from "./zero-model-selection.service";
 import {
+  admitWorkflowAutomationEvent,
+  claimWorkflowQueueEventForRun,
+  discardWorkflowQueueEvent,
+  pauseWorkflowQueueEvent,
+  type WorkflowQueueEvent,
+} from "./chat-message-queue.service";
+import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { admitWorkflowAutomationEvent } from "./chat-message-queue.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
@@ -60,6 +70,7 @@ export type RunFailure = Exclude<
   RunWorkflowAutomationResult,
   { kind: "ok" } | { kind: "enqueued" }
 >;
+type RunConflict = Extract<RunFailure, { readonly kind: "conflict" }>;
 type ActivePreviousRunPolicy = "block" | "allow";
 
 interface InternalRunCallbackInput {
@@ -91,6 +102,9 @@ export interface RunWorkflowAutomationNowArgs {
   // Set by the queue drain (and manual "Run now"): skip workflow-queue
   // admission and always create the run.
   readonly bypassWorkflowQueue?: boolean;
+  // Set by the queue drain. The run must claim this exact event before runner
+  // queue persistence; manual queue bypasses leave it undefined.
+  readonly workflowQueueEvent?: WorkflowQueueEvent;
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -103,6 +117,8 @@ interface WorkflowAutomationRunInput {
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
+
+type WorkflowQueueClaimState = "pending" | "claimed" | "lost";
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -293,12 +309,12 @@ async function checkWorkflowAutomationTargetReadable(args: {
   readonly allowClaimedOnceScheduleAutomation: boolean;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
-}): Promise<RunFailure | undefined> {
+}): Promise<RunConflict | undefined> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
     "nested",
-    async (): Promise<RunFailure | undefined> => {
+    async (): Promise<RunConflict | undefined> => {
       const canFire = await workflowAutomationCanFire(args.db, {
         automation: args.automation,
         agentId: args.agentId,
@@ -375,20 +391,77 @@ async function buildTimedWorkflowAutomationRunInput(args: {
   );
 }
 
-/**
- * Workflow-queue admission: an event fired while the workflow is busy (or its
- * queue is paused/non-empty) is persisted as a queue event instead of creating
- * a run. Returns true when the event was enqueued.
- */
-async function enqueueWorkflowAutomationEventIfBusy(input: {
+function callbackPayloadRecord(
+  payload: unknown,
+): payload is Readonly<Record<string, unknown>> {
+  return (
+    typeof payload === "object" && payload !== null && !Array.isArray(payload)
+  );
+}
+
+function markWorkflowQueueCandidateCallbacks(
+  callbacks: readonly InternalRunCallbackInput[],
+  eventId: string,
+): readonly InternalRunCallbackInput[] {
+  let marked = false;
+  const result = callbacks.map((callback) => {
+    if (callback.internalKind !== "chat") {
+      return callback;
+    }
+    if (!callbackPayloadRecord(callback.payload)) {
+      throw new Error("Workflow chat callback payload must be an object");
+    }
+    marked = true;
+    return {
+      ...callback,
+      payload: {
+        ...callback.payload,
+        workflowQueueEventId: eventId,
+      },
+    };
+  });
+  if (!marked) {
+    throw new Error("Workflow queue candidate requires a chat callback");
+  }
+  return result;
+}
+
+type WorkflowQueuePreparation =
+  | {
+      readonly kind: "run";
+      readonly event: WorkflowQueueEvent | undefined;
+    }
+  | { readonly kind: "enqueued" };
+
+interface PreparedWorkflowAutomationRun {
+  readonly runInput: WorkflowAutomationRunInput;
+  readonly modelPin: ModelFirstPin;
+  readonly effectiveModelProvider: string | null | undefined;
+}
+
+type WorkflowAutomationPreparation =
+  | {
+      readonly kind: "ready";
+      readonly prepared: PreparedWorkflowAutomationRun;
+    }
+  | {
+      readonly kind: "complete";
+      readonly result: RunWorkflowAutomationResult;
+    };
+
+/** Persist automated intake before allowing its new FIFO head to prepare. */
+async function prepareWorkflowQueueEvent(input: {
   readonly db: Db;
   readonly args: RunWorkflowAutomationNowArgs;
   readonly signal: AbortSignal;
-}): Promise<boolean> {
+}): Promise<WorkflowQueuePreparation> {
   const { db, args, signal } = input;
   const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
-    return false;
+    return { kind: "run", event: args.workflowQueueEvent };
+  }
+  if (args.workflowQueueEvent) {
+    throw new Error("Workflow queue event requires queue-admission bypass");
   }
   const admission = await admitWorkflowAutomationEvent(db, {
     automation,
@@ -405,15 +478,98 @@ async function enqueueWorkflowAutomationEventIfBusy(input: {
     },
   });
   signal.throwIfAborted();
-  if (admission === "enqueued") {
-    await publishChatThreadWorkflowQueueChangedSafely(
-      automation.ownerUserId,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
-    return true;
+  await publishChatThreadWorkflowQueueChangedSafely(
+    automation.ownerUserId,
+    chatThreadId,
+  );
+  signal.throwIfAborted();
+  if (admission.kind === "enqueued") {
+    return { kind: "enqueued" };
   }
-  return false;
+  return { kind: "run", event: admission.event };
+}
+
+async function prepareWorkflowAutomationRun(input: {
+  readonly db: Db;
+  readonly args: RunWorkflowAutomationNowArgs;
+  readonly queueEvent: WorkflowQueueEvent | undefined;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<WorkflowAutomationPreparation> {
+  const { db, args, queueEvent, timing, signal } = input;
+  const { automation, agentId, workflowName, chatThreadId } = args.due;
+  const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
+    db,
+    automation,
+    activePreviousRunPolicy: args.activePreviousRunPolicy,
+    timing,
+    signal,
+  });
+  if (activePreviousRunFailure) {
+    return {
+      kind: "complete",
+      result: queueEvent ? { kind: "enqueued" } : activePreviousRunFailure,
+    };
+  }
+
+  const targetAccessFailure = await checkWorkflowAutomationTargetReadable({
+    db,
+    automation,
+    agentId,
+    allowClaimedOnceScheduleAutomation:
+      args.due.allowClaimedOnceScheduleAutomation === true,
+    timing,
+    signal,
+  });
+  if (targetAccessFailure) {
+    const result = queueEvent
+      ? await discardUnfireableWorkflowQueueEvent({
+          db,
+          event: queueEvent,
+          failure: targetAccessFailure,
+          signal,
+        })
+      : targetAccessFailure;
+    return { kind: "complete", result };
+  }
+
+  const modelContext = await resolveTimedWorkflowModelContext({
+    db,
+    automation,
+    chatThreadId,
+    timing,
+    signal,
+  });
+  if (!modelContext.ok) {
+    const result =
+      queueEvent && modelContext.failure.kind === "run_error"
+        ? await preserveWorkflowQueueEventAfterFailure({
+            db,
+            event: queueEvent,
+            response: modelContext.failure.response,
+            signal,
+          })
+        : modelContext.failure;
+    return { kind: "complete", result };
+  }
+
+  const runInput = await buildTimedWorkflowAutomationRunInput({
+    command: args,
+    automation,
+    agentId,
+    workflowName,
+    chatThreadId,
+    timing,
+  });
+  signal.throwIfAborted();
+  return {
+    kind: "ready",
+    prepared: {
+      runInput,
+      modelPin: modelContext.modelPin,
+      effectiveModelProvider: modelContext.effectiveModelProvider,
+    },
+  };
 }
 
 async function recordWorkflowAutomationRunStart(input: {
@@ -424,19 +580,28 @@ async function recordWorkflowAutomationRunStart(input: {
   readonly prompt: string;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly queueEvent: WorkflowQueueEvent | undefined;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const { db, args, runId, signal } = input;
   const { automation, chatThreadId } = args.due;
-  await postRunUserMessage({
-    db,
-    threadId: chatThreadId,
-    userId: automation.ownerUserId,
-    runId,
-    prompt: input.prompt,
-    appendQueueMarker: input.runStatus === "queued",
-    runGroupId: automation.id,
-  });
+  if (input.queueEvent) {
+    await publishRunUserMessageSignals(automation.ownerUserId, chatThreadId);
+    await publishChatThreadWorkflowQueueChangedSafely(
+      automation.ownerUserId,
+      chatThreadId,
+    );
+  } else {
+    await postRunUserMessage({
+      db,
+      threadId: chatThreadId,
+      userId: automation.ownerUserId,
+      runId,
+      prompt: input.prompt,
+      appendQueueMarker: input.runStatus === "queued",
+      runGroupId: automation.id,
+    });
+  }
   signal.throwIfAborted();
 
   await db
@@ -461,6 +626,62 @@ async function recordWorkflowAutomationRunStart(input: {
   signal.throwIfAborted();
 }
 
+async function preserveWorkflowQueueEventAfterFailure(input: {
+  readonly db: Db;
+  readonly event: WorkflowQueueEvent;
+  readonly response: RunErrorResponse;
+  readonly signal: AbortSignal;
+}): Promise<RunWorkflowAutomationResult> {
+  const pausedAt = nowDate();
+  const paused = await pauseWorkflowQueueEvent(input.db, {
+    event: input.event,
+    pauseReason: input.response.body.error.message,
+    pausedAt,
+  });
+  input.signal.throwIfAborted();
+  if (paused) {
+    await publishChatThreadWorkflowQueueChangedSafely(
+      input.event.userId,
+      input.event.chatThreadId,
+    );
+    input.signal.throwIfAborted();
+  }
+  return { kind: "enqueued" };
+}
+
+async function discardUnfireableWorkflowQueueEvent(input: {
+  readonly db: Db;
+  readonly event: WorkflowQueueEvent;
+  readonly failure: RunConflict;
+  readonly signal: AbortSignal;
+}): Promise<RunWorkflowAutomationResult> {
+  const discarded = await discardWorkflowQueueEvent(input.db, input.event);
+  input.signal.throwIfAborted();
+  if (!discarded) {
+    return { kind: "enqueued" };
+  }
+  await publishChatThreadWorkflowQueueChangedSafely(
+    input.event.userId,
+    input.event.chatThreadId,
+  );
+  input.signal.throwIfAborted();
+  return input.failure;
+}
+
+function workflowQueueClaimFailureResponse(
+  error: string | undefined,
+): RunErrorResponse {
+  return {
+    status: 500,
+    body: {
+      error: {
+        message: error ?? "Workflow queue ownership claim failed",
+        code: "INTERNAL_ERROR",
+      },
+    },
+  };
+}
+
 export const runWorkflowAutomationNow$ = command(
   async (
     { set },
@@ -468,63 +689,47 @@ export const runWorkflowAutomationNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { automation, agentId, workflowName, chatThreadId } = args.due;
+    const { automation, agentId, chatThreadId } = args.due;
     const timing = workflowAutomationTiming(args);
 
-    const enqueued = await enqueueWorkflowAutomationEventIfBusy({
+    const queuePreparation = await prepareWorkflowQueueEvent({
       db,
       args,
       signal,
     });
-    if (enqueued) {
+    if (queuePreparation.kind === "enqueued") {
       return { kind: "enqueued" };
     }
+    const queueEvent = queuePreparation.event;
 
-    const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
+    const preparation = await prepareWorkflowAutomationRun({
       db,
-      automation,
-      activePreviousRunPolicy: args.activePreviousRunPolicy,
+      args,
+      queueEvent,
       timing,
       signal,
     });
-    if (activePreviousRunFailure) {
-      return activePreviousRunFailure;
+    if (preparation.kind === "complete") {
+      return preparation.result;
     }
-
-    const targetAccessFailure = await checkWorkflowAutomationTargetReadable({
-      db,
-      automation,
-      agentId,
-      allowClaimedOnceScheduleAutomation:
-        args.due.allowClaimedOnceScheduleAutomation === true,
-      timing,
-      signal,
-    });
-    if (targetAccessFailure) {
-      return targetAccessFailure;
-    }
-
-    const modelContext = await resolveTimedWorkflowModelContext({
-      db,
-      automation,
-      chatThreadId,
-      timing,
-      signal,
-    });
-    if (!modelContext.ok) {
-      return modelContext.failure;
-    }
-    const { modelPin, effectiveModelProvider } = modelContext;
-
-    const runInput = await buildTimedWorkflowAutomationRunInput({
-      command: args,
-      automation,
-      agentId,
-      workflowName,
-      chatThreadId,
-      timing,
-    });
-    signal.throwIfAborted();
+    const { runInput, modelPin, effectiveModelProvider } = preparation.prepared;
+    const callbacks = queueEvent
+      ? markWorkflowQueueCandidateCallbacks(runInput.callbacks, queueEvent.id)
+      : runInput.callbacks;
+    const queueClaimState: { current: WorkflowQueueClaimState } = {
+      current: "pending",
+    };
+    const beforeDispatch: BeforeRunDispatch | undefined = queueEvent
+      ? async ({ runId }) => {
+          const claimed = await claimWorkflowQueueEventForRun(db, {
+            event: queueEvent,
+            runId,
+            prompt: runInput.prompt,
+          });
+          queueClaimState.current = claimed ? "claimed" : "lost";
+          return claimed;
+        }
+      : undefined;
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_workflow_automation_create_run",
       "nested",
@@ -555,9 +760,10 @@ export const runWorkflowAutomationNow$ = command(
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
         appendSystemPrompt: runInput.appendSystemPrompt,
-        callbacks: runInput.callbacks,
+        callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+        beforeDispatch,
         timing,
       },
       signal,
@@ -565,7 +771,26 @@ export const runWorkflowAutomationNow$ = command(
     signal.throwIfAborted();
 
     if (result.status !== 201) {
+      if (queueEvent) {
+        return await preserveWorkflowQueueEventAfterFailure({
+          db,
+          event: queueEvent,
+          response: result,
+          signal,
+        });
+      }
       return { kind: "run_error", response: result };
+    }
+    if (queueEvent && queueClaimState.current === "lost") {
+      return { kind: "enqueued" };
+    }
+    if (queueEvent && queueClaimState.current === "pending") {
+      return await preserveWorkflowQueueEventAfterFailure({
+        db,
+        event: queueEvent,
+        response: workflowQueueClaimFailureResponse(result.body.error),
+        signal,
+      });
     }
 
     await recordWorkflowAutomationRunStart({
@@ -576,6 +801,7 @@ export const runWorkflowAutomationNow$ = command(
       prompt: runInput.prompt,
       modelPin,
       effectiveModelProvider,
+      queueEvent,
       signal,
     });
 

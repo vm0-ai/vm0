@@ -23,9 +23,10 @@ interface DrainChatThreadQueueInput {
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. User messages are attempted
  * first; the workflow drain then observes the newly-created active run and
- * stops, or consumes the oldest workflow event when no user message
- * dispatched. Both halves serialize on the same per-thread advisory lock and
- * pop in `ORDER BY created_at, id` order.
+ * stops, or prepares the oldest workflow event when no user message
+ * dispatched. Their pre-dispatch claims serialize on the chat-thread row,
+ * recheck user priority and ownership, and consume only the exact candidate
+ * that may proceed.
  *
  * This entry is the designated mounting point for a future unified per-thread
  * rate limiter: admission delays belong here, before either drain half runs.

@@ -135,20 +135,30 @@ The orchestration layer coordinates job execution between web API and runners.
 A chat thread runs at most one run at a time. Queued work lives in
 `chat_message_queue` with two item types: `user_message` (a chat message
 waiting for its run) and `workflow_event` (a fired workflow automation event
-carrying its encrypted payload). Admission and consumption serialize on a
-per-thread Postgres advisory lock and pop in `ORDER BY created_at, id` order,
-with user messages always draining before workflow events.
+carrying its encrypted payload). Automated workflow intake always commits its
+queue row before run preparation. Drains peek at the workflow FIFO head rather
+than removing it, with user messages always taking priority over workflow
+events ordered by `created_at, id`.
+
+Prepared workflow runs are candidates until a pre-dispatch transaction locks
+the chat thread and rechecks pause state, queued-user priority, active
+ownership, and the exact FIFO head. Only the winner removes that event, binds
+its user message, and proceeds to runner dispatch; competing candidates cancel
+without consuming queue work. Short advisory-lock transactions still
+serialize queue intake, inspection, and mutation, but no database lock or
+connection spans full run preparation.
 
 All scheduling flows converge on a single drain entry
 (`drainChatThreadQueueForThread$` in
 `turbo/apps/api/src/signals/services/chat-thread-queue-drain.service.ts`):
 terminal run callbacks, run cancellation, queue resume, and a cron sweep for
-threads missed by callbacks. A run-creation failure for a dequeued workflow
-event restores the event at its original queue position and pauses the
-thread's queue (`chat_threads.queue_paused_at` / `pause_reason`); pause
-freezes consumption while intake continues. Schedule ticks coalesce to at
-most one pending event per automation. The drain entry is the designated
-mounting point for a future unified per-thread rate limiter.
+threads missed by callbacks. A failure before the workflow event is bound to a
+run leaves that event pending and pauses the thread's queue
+(`chat_threads.queue_paused_at` / `pause_reason`); after the claim commits, a
+later dispatch failure belongs to the bound run. Pause freezes consumption
+while intake continues. Schedule ticks coalesce to at most one pending event
+per automation. The drain entry is the designated mounting point for a future
+unified per-thread rate limiter.
 
 ---
 

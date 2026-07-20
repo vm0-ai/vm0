@@ -61,6 +61,7 @@ import {
   hasVm0ApiKeyLabel,
   holdChatMessageWritesFixture,
   holdOrgAdmissionLockFixture,
+  queuedUserMessageIsWriteLockedFixture,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
 
@@ -4132,7 +4133,15 @@ describe("CHAT-02: shared user message queue", () => {
     });
     admissionLock.release();
     await admissionLock.done;
-    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(1);
+    await expect
+      .poll(() => {
+        return queuedUserMessageIsWriteLockedFixture({
+          threadId: anchor.threadId,
+          messageId,
+        });
+      })
+      .toBe(true);
+    const blockedBeforeRecall = await messageWritesLock.blockedWaiterCount();
 
     const recall = chat.requestSendMessage(
       actor,
@@ -4144,7 +4153,12 @@ describe("CHAT-02: shared user message queue", () => {
       },
       [400],
     );
-    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(2);
+    // The claim holds this exact queue row before recall starts. Recall then
+    // adds one transitive waiter behind the write-blocked claim; unrelated
+    // chat-message writers may already be waiting on the table boundary.
+    await expect
+      .poll(messageWritesLock.blockedWaiterCount)
+      .toBeGreaterThan(blockedBeforeRecall);
     messageWritesLock.release();
 
     const recalled = await recall;

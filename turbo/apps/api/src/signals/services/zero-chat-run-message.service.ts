@@ -185,13 +185,15 @@ export async function postRunUserMessage(params: {
       });
     }
   });
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+  await publishRunUserMessageSignals(params.userId, params.threadId);
+}
+
+/** Publish the post-commit signals for a newly materialized run user message. */
+export async function publishRunUserMessageSignals(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
 }

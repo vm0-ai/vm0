@@ -12,10 +12,11 @@ import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtim
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import {
-  claimNextWorkflowQueueEvent,
+  discardWorkflowQueueEvent,
   decryptWorkflowQueueEventParams,
-  restoreWorkflowQueueEventAndPause,
-  type ClaimedWorkflowQueueEvent,
+  pauseWorkflowQueueEvent,
+  peekNextWorkflowQueueEvent,
+  type WorkflowQueueEvent,
 } from "./chat-message-queue.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 
@@ -33,7 +34,7 @@ interface DequeueTarget {
 
 async function loadDequeueTarget(
   db: Db,
-  event: ClaimedWorkflowQueueEvent,
+  event: WorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
   const [row] = await db
     .select({
@@ -57,11 +58,10 @@ async function loadDequeueTarget(
 }
 
 /**
- * Advance the thread's workflow queue: as long as user queued messages always
- * win (enforced inside `claimNextWorkflowQueueEvent`), pop the oldest event
- * and turn it into a run. Events whose automation disappeared or can no longer
- * fire are consumed and skipped; a run-creation failure restores the event to
- * the queue head and pauses the queue so the backlog is preserved.
+ * Advance the thread's workflow queue: peek the oldest event, prepare its run,
+ * and let the pre-dispatch thread claim consume exactly that head. Events whose
+ * automation disappeared or can no longer fire are consumed and skipped; a
+ * pre-claim failure leaves the event in place and pauses the queue.
  */
 export const drainWorkflowQueueForThread$ = command(
   async (
@@ -75,7 +75,7 @@ export const drainWorkflowQueueForThread$ = command(
     const db = set(writeDb$);
 
     for (let attempt = 0; attempt < MAX_DRAIN_ATTEMPTS; attempt++) {
-      const event = await claimNextWorkflowQueueEvent(db, args.chatThreadId);
+      const event = await peekNextWorkflowQueueEvent(db, args.chatThreadId);
       signal.throwIfAborted();
       if (!event) {
         return;
@@ -88,6 +88,11 @@ export const drainWorkflowQueueForThread$ = command(
           eventId: event.id,
           automationId: event.automationId,
         });
+        const discarded = await discardWorkflowQueueEvent(db, event);
+        signal.throwIfAborted();
+        if (!discarded) {
+          return;
+        }
         await publishChatThreadWorkflowQueueChangedSafely(
           event.userId,
           event.chatThreadId,
@@ -106,6 +111,16 @@ export const drainWorkflowQueueForThread$ = command(
           eventId: event.id,
           automationId: event.automationId,
         });
+        const discarded = await discardWorkflowQueueEvent(db, event);
+        signal.throwIfAborted();
+        if (!discarded) {
+          return;
+        }
+        await publishChatThreadWorkflowQueueChangedSafely(
+          event.userId,
+          event.chatThreadId,
+        );
+        signal.throwIfAborted();
         continue;
       }
 
@@ -129,6 +144,7 @@ export const drainWorkflowQueueForThread$ = command(
           recordLastRunId: params.recordLastRunId,
           recordLastRunAt: params.recordLastRunAt,
           bypassWorkflowQueue: true,
+          workflowQueueEvent: event,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         },
         signal,
@@ -136,11 +152,6 @@ export const drainWorkflowQueueForThread$ = command(
       signal.throwIfAborted();
 
       if (result.kind === "ok" || result.kind === "enqueued") {
-        await publishChatThreadWorkflowQueueChangedSafely(
-          event.userId,
-          event.chatThreadId,
-        );
-        signal.throwIfAborted();
         return;
       }
       if (result.kind === "conflict") {
@@ -152,12 +163,15 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      await restoreWorkflowQueueEventAndPause(db, {
+      const paused = await pauseWorkflowQueueEvent(db, {
         event,
         pauseReason: result.response.body.error.message,
         pausedAt: nowDate(),
       });
       signal.throwIfAborted();
+      if (!paused) {
+        return;
+      }
       log.warn("Workflow queue paused after run creation failure", {
         eventId: event.id,
         chatThreadId: event.chatThreadId,
