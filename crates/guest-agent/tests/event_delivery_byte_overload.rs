@@ -17,7 +17,7 @@ async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let server = MockServer::start();
-    let mut prompt_lines = vec!["@ECHO@".to_string()];
+    let mut prompt_lines = vec!["@ECHO-HANG@".to_string()];
     // One in-flight payload plus seven queued payloads crosses the byte budget;
     // seven queued payloads alone do not. This distinguishes queued-plus-in-flight
     // accounting from a queue-only implementation.

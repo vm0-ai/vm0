@@ -14,7 +14,7 @@ async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let server = MockServer::start();
-    let mut prompt_lines = vec!["@ECHO@".to_string()];
+    let mut prompt_lines = vec!["@ECHO-HANG@".to_string()];
     prompt_lines
         .extend((0..260).map(|index| json!({ "type": "assistant", "index": index }).to_string()));
     let prompt = prompt_lines.join("\n");
@@ -40,21 +40,23 @@ async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
     .await
     .expect("delivery overload should not wait for the stalled event request");
 
-    let (error, last_event_sequence) = match execution {
-        Ok(result) => (
-            result
-                .control_error
-                .expect("a live CLI should expose delivery overload as a control error")
-                .to_string(),
-            result.last_event_sequence,
-        ),
-        Err(error) => (error.to_string(), None),
-    };
+    let result = execution.expect("the live CLI should use controlled delivery termination");
+    let error = result
+        .control_error
+        .expect("count overload should be exposed as a control error")
+        .to_string();
     assert!(
         error.contains("event delivery queue exceeded 128 pending events"),
         "unexpected overload error: {error}"
     );
-    assert_eq!(last_event_sequence, None);
+    assert_eq!(result.last_event_sequence, None);
+    assert_eq!(
+        result
+            .cli_termination
+            .expect("delivery overload should record process-group termination")
+            .reason,
+        guest_contracts::diagnostics::CliTerminationReason::EventDelivery
+    );
     assert!(
         stalled_events.calls() <= 1,
         "the serial sender should have at most one stalled request in flight"

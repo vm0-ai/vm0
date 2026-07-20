@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 const ACTIVE_INPUT_SMOKE_MARKER: &str = "@active-input-smoke:";
+const ECHO_HANG_MARKER: &str = "@ECHO-HANG@";
 const ECHO_MARKER: &str = "@ECHO@";
 const FAIL_NO_NEWLINE_MARKER: &str = "@fail-no-newline:";
 const FAIL_INVALID_UTF8_MARKER: &str = "@fail-invalid-utf8";
@@ -27,6 +28,7 @@ pub(crate) enum MockScenario<'a> {
     ActiveInputSmoke { expected_follow_ups: usize },
     InvalidActiveInputSmokeCount(&'a str),
     EchoJsonl(&'a str),
+    EchoJsonlAndHang(&'a str),
     FailNoNewline(&'a str),
     FailInvalidUtf8,
     FailInvalidUtf8Long,
@@ -57,6 +59,7 @@ enum ScenarioMatchKind {
 enum ScenarioKind {
     ActiveInputSmoke,
     EchoJsonl,
+    EchoJsonlAndHang,
     FailNoNewline,
     FailInvalidUtf8,
     FailInvalidUtf8Long,
@@ -91,6 +94,11 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         marker: ACTIVE_INPUT_SMOKE_MARKER,
         match_kind: ScenarioMatchKind::PrefixPayload,
         scenario_kind: ScenarioKind::ActiveInputSmoke,
+    },
+    ScenarioRule {
+        marker: ECHO_HANG_MARKER,
+        match_kind: ScenarioMatchKind::FirstLinePayload,
+        scenario_kind: ScenarioKind::EchoJsonlAndHang,
     },
     ScenarioRule {
         marker: ECHO_MARKER,
@@ -235,6 +243,9 @@ impl ScenarioKind {
                 }
             }
             (Self::EchoJsonl, ScenarioMatch::Payload(payload)) => MockScenario::EchoJsonl(payload),
+            (Self::EchoJsonlAndHang, ScenarioMatch::Payload(payload)) => {
+                MockScenario::EchoJsonlAndHang(payload)
+            }
             (Self::FailNoNewline, ScenarioMatch::Payload(msg)) => MockScenario::FailNoNewline(msg),
             (Self::Fail, ScenarioMatch::Payload(msg)) => MockScenario::Fail(msg),
             (Self::WriteEnvJson, ScenarioMatch::Payload(path)) => MockScenario::WriteEnvJson(path),
@@ -344,6 +355,10 @@ mod tests {
                 MockScenario::ActiveInputSmoke {
                     expected_follow_ups: 2,
                 },
+            ),
+            (
+                "@ECHO-HANG@\n{\"type\":\"result\"}",
+                MockScenario::EchoJsonlAndHang("{\"type\":\"result\"}"),
             ),
             (
                 "@ECHO@\n{\"type\":\"result\"}",
