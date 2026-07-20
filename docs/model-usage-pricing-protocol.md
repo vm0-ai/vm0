@@ -53,8 +53,9 @@ The decoded pricing value is a JSON object with exactly these four fields:
 }
 ```
 
-The zero prices illustrate the shape only. Pricing values are supplied by the
-producer and are not defined by this document.
+The timestamp and zero prices illustrate the shape only. A real `issuedAt` must
+use current Unix time within the freshness window. Pricing values are supplied
+by the producer and are not defined by this document.
 
 | Field           | Requirement                                           |
 | --------------- | ----------------------------------------------------- |
