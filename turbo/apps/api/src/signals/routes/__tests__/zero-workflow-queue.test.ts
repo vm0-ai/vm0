@@ -264,6 +264,15 @@ describe("workflow queue", () => {
     expect(afterFirst).toHaveLength(2);
     await completeRunThroughSandbox(scenario, afterFirst[1]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+    const drained = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(drained.body.running).toBeNull();
+    expect(drained.body.pending).toHaveLength(0);
   });
 
   it("lets a user message arriving during workflow preparation take priority", async () => {

@@ -451,5 +451,14 @@ describe("workflow queue API", () => {
     expect(afterSecond).toHaveLength(3);
     await completeRunThroughSandbox(scenario, afterSecond[2]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(3);
+    const drained = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(drained.body.running).toBeNull();
+    expect(drained.body.pending).toHaveLength(0);
   });
 });
