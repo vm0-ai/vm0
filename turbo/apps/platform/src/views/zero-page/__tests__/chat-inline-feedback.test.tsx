@@ -1036,14 +1036,14 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
 
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(
+    fireEvent.click(await screen.findByLabelText("Template"));
+    fireEvent.click(
       await screen.findByLabelText(
         `Preview ${template.title} at current slide`,
       ),
     );
-    await user.click(await screen.findByLabelText("Select style Gold Luxe"));
-    await user.click(
+    fireEvent.click(await screen.findByLabelText("Select style Gold Luxe"));
+    fireEvent.click(
       await screen.findByLabelText(`Select template ${template.title}`),
     );
     await waitFor(() => {
@@ -1073,10 +1073,13 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    fireEvent.click(buttonByText("Provide feedback"));
 
-    await findFeedbackNote();
-    await user.keyboard("Use the attached brief as supporting context.");
+    const feedbackNote = await findFeedbackNote();
+    pastePlainText(
+      feedbackNote,
+      "Use the attached brief as supporting context.",
+    );
     expect(
       screen.getByLabelText(`Remove template ${templateChipLabel}`),
     ).toBeInTheDocument();
@@ -1084,7 +1087,7 @@ describe("chat inline feedback", () => {
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Send"));
+    fireEvent.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(sentBodies[0]).toMatchObject({
