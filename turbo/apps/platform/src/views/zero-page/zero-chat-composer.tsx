@@ -93,6 +93,7 @@ import type {
   ComposerTemplateAttachment,
   WorkflowComposerSignals,
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -6578,6 +6579,7 @@ export function useZeroChatComposer({
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const insertTemplate = useSet(composer.insertTemplate$);
   const insertFile = useSet(composer.insertFile$);
+  const insertReferencedFile = useSet(composer.insertReferencedFile$);
   const resolveFile = useSet(composer.resolveFile$);
   const removeFile = useSet(composer.removeFile$);
   const appendComposerText = useSet(composer.appendText$);
@@ -6588,8 +6590,9 @@ export function useZeroChatComposer({
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const features = useGet(featureSwitch$);
-  const inlinePromptItems =
-    features[FeatureSwitchKey.ComposerInlinePromptItems] ?? false;
+  const inlineAttachmentReferences =
+    features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false;
+  const inlinePromptItems = composerInlinePromptItemsEnabled(features);
   const visualAttachmentUnsupported =
     getVisualAttachmentUnsupportedState(modelPicker);
   const visibleAttachments = resolveVisibleAttachments(
@@ -6598,10 +6601,11 @@ export function useZeroChatComposer({
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
-  const uploadInlineFile = (file: File) => {
+  const uploadInlineFile = (file: File, usePromptReference: boolean) => {
     const started = startAttachmentUpload(file, rootSignal);
     const { clientId } = started.attachment;
-    insertFile({
+    const insert = usePromptReference ? insertReferencedFile : insertFile;
+    insert({
       clientId,
       filename: started.attachment.filename,
       contentType: started.attachment.contentType,
@@ -6622,14 +6626,20 @@ export function useZeroChatComposer({
         return;
       }
       resolveFile(clientId, info.id, info.url);
-      removeAttachment(started.attachment);
+      if (!usePromptReference) {
+        removeAttachment(started.attachment);
+      }
     };
     detach(settleUpload(), Reason.DomCallback);
   };
 
-  const uploadComposerFile = (file: File) => {
-    if (inlinePromptItems) {
-      uploadInlineFile(file);
+  const shouldInsertInlineAttachment = (): boolean => {
+    return inlineAttachmentReferences || inlinePromptItems;
+  };
+
+  const uploadComposerFile = (file: File, insertInline: boolean) => {
+    if (insertInline) {
+      uploadInlineFile(file, inlineAttachmentReferences);
       return;
     }
     detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
@@ -6638,8 +6648,27 @@ export function useZeroChatComposer({
   const insertClipboardAttachments = (
     clipboardAttachments: PersistedAttachment[],
   ) => {
-    if (!inlinePromptItems) {
+    const insertInline = shouldInsertInlineAttachment();
+    if (!insertInline) {
       restoreAttachments(clipboardAttachments);
+      return;
+    }
+    if (inlineAttachmentReferences) {
+      const restoredAttachments = restoreAttachments(clipboardAttachments);
+      for (const [index, attachment] of clipboardAttachments.entries()) {
+        const restoredAttachment = restoredAttachments[index];
+        if (!restoredAttachment) {
+          continue;
+        }
+        insertReferencedFile({
+          clientId: restoredAttachment.clientId,
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          size: attachment.size,
+          fileId: attachment.id,
+          url: attachment.url,
+        });
+      }
       return;
     }
     for (const attachment of clipboardAttachments) {
@@ -6729,7 +6758,7 @@ export function useZeroChatComposer({
       }
       e.preventDefault();
       applyPlainText();
-      uploadComposerFile(file);
+      uploadComposerFile(file, shouldInsertInlineAttachment());
       onDraftChange?.();
     }
   };
@@ -6742,6 +6771,7 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
+    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -6752,7 +6782,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file);
+      uploadComposerFile(file, insertInline);
       uploaded = true;
     }
     if (uploaded) {
@@ -6886,7 +6916,10 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const currentInput = await readInputForSubmission(pageSignal);
+      const currentInput = await readInputForSubmission(
+        inlineAttachmentReferences,
+        pageSignal,
+      );
       const prompt = currentInput.trim();
       if (prompt.length === 0 && visibleAttachments.length === 0) {
         return;
@@ -6946,6 +6979,7 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
+    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -6956,7 +6990,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file);
+      uploadComposerFile(file, insertInline);
       uploaded = true;
     }
     if (uploaded) {
@@ -7047,6 +7081,7 @@ export function useZeroChatComposer({
                 <AttachmentChips
                   attachments={visibleAttachments}
                   onRemove={(attachment) => {
+                    removeFile(attachment.clientId);
                     removeAttachment(attachment);
                     onDraftChange?.();
                   }}

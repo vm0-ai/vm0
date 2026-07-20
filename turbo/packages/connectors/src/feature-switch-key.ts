@@ -57,6 +57,7 @@ export enum FeatureSwitchKey {
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
   ComposerInlinePromptItems = "composerInlinePromptItems",
+  ComposerInlineAttachmentReferences = "composerInlineAttachmentReferences",
 
   ZapierConnector = "zapierConnector",
   MemoryViewer = "memoryViewer",

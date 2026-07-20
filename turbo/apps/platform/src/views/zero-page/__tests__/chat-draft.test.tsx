@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -173,6 +174,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+function composerFileInput(editor: HTMLElement): HTMLInputElement {
+  const fileInput = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+  ).find((candidate) => {
+    return candidate.parentElement?.contains(editor) ?? false;
+  });
+  if (!fileInput) {
+    throw new Error("File input not found");
+  }
+  return fileInput;
+}
+
 async function navigateToThread(threadId: string): Promise<void> {
   const link = await waitFor(() => {
     return document.querySelector<HTMLAnchorElement>(
@@ -328,6 +341,241 @@ describe("chat drafts", () => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
+  });
+
+  it("shows numbered text references and attachment chips", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000103";
+    const uploadResults = [
+      {
+        id: "upload-image-one",
+        filename: "first.png",
+        contentType: "image/png",
+        size: 3,
+        url: "https://cdn.vm0.io/artifacts/user_1/upload-image-one/first.png",
+      },
+      {
+        id: "upload-image-two",
+        filename: "second.png",
+        contentType: "image/png",
+        size: 3,
+        url: "https://cdn.vm0.io/artifacts/user_1/upload-image-two/second.png",
+      },
+      {
+        id: "upload-file-one",
+        filename: "first.pdf",
+        contentType: "application/pdf",
+        size: 3,
+        url: "https://cdn.vm0.io/artifacts/user_1/upload-file-one/first.pdf",
+      },
+      {
+        id: "upload-file-two",
+        filename: "second.pdf",
+        contentType: "application/pdf",
+        size: 3,
+        url: "https://cdn.vm0.io/artifacts/user_1/upload-file-two/second.pdf",
+      },
+    ] as const;
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: readonly { id?: string }[];
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Compare ");
+    const fileInput = composerFileInput(editor);
+    for (const upload of uploadResults) {
+      context.mocks.upload.success(upload);
+      await user.upload(
+        fileInput,
+        new File([upload.filename], upload.filename, {
+          type: upload.contentType,
+        }),
+      );
+      await screen.findByLabelText(`Remove ${upload.filename}`);
+      await waitFor(() => {
+        expect(screen.getByLabelText("Send")).toBeEnabled();
+      });
+    }
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("Compare");
+      expect(editor).toHaveTextContent("image1 image2 file1 file2");
+      expect(
+        editor.querySelectorAll("[data-composer-inline-file]"),
+      ).toHaveLength(4);
+      expect(editor.querySelector("button")).toBeNull();
+      expect(screen.getByLabelText("Remove first.png")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove second.png")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove first.pdf")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove second.pdf")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.prompt).toContain("Compare");
+    for (const reference of ["image1", "image2", "file1", "file2"]) {
+      expect(submitted?.prompt).toContain(reference);
+    }
+    expect(submitted?.attachFiles).toHaveLength(4);
+  });
+
+  it("keeps the attachment chip when its text reference is deleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000104";
+    const uploadUrl =
+      "https://cdn.vm0.io/artifacts/user_1/upload-empty/empty-composer.pdf";
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: readonly { id?: string }[];
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-empty-composer",
+      filename: "empty-composer.pdf",
+      contentType: "application/pdf",
+      size: 8,
+      url: uploadUrl,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    const fileInput = composerFileInput(editor);
+    await user.upload(
+      fileInput,
+      new File(["document"], "empty-composer.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    await expect(
+      screen.findByLabelText("Remove empty-composer.pdf"),
+    ).resolves.toBeInTheDocument();
+    expect(editor).toHaveTextContent("file1");
+    expect(editor.querySelectorAll("[data-composer-inline-file]")).toHaveLength(
+      1,
+    );
+    expect(editor.querySelector("button")).toBeNull();
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
+    await waitFor(() => {
+      expect(editor).not.toHaveTextContent("file1");
+      expect(
+        screen.getByLabelText("Remove empty-composer.pdf"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.prompt).toBe("(see attached files)");
+    expect(submitted?.attachFiles?.[0]?.id).toBe("upload-empty-composer");
+  });
+
+  it("restores numbered attachment references and their attachment chips", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000105";
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/test/drafts/reference-image.png";
+    const fileUrl = "https://cdn.vm7.io/artifacts/test/drafts/reference.pdf";
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: readonly { id?: string }[];
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: `Compare [image1](${imageUrl}) with [file1](${fileUrl})`,
+        draftAttachments: [
+          {
+            id: "draft-image-reference",
+            filename: "reference-image.png",
+            contentType: "image/png",
+            size: 10,
+            url: imageUrl,
+          },
+          {
+            id: "draft-file-reference",
+            filename: "reference.pdf",
+            contentType: "application/pdf",
+            size: 20,
+            url: fileUrl,
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveTextContent("Compare image1 with file1");
+      expect(
+        textarea().querySelectorAll("[data-composer-inline-file]"),
+      ).toHaveLength(2);
+      expect(textarea().querySelector("button")).toBeNull();
+      expect(
+        screen.getByLabelText("Remove reference-image.png"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove reference.pdf")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.prompt).toBe("Compare image1 with file1");
+    expect(submitted?.attachFiles).toHaveLength(2);
   });
 
   it("persists edited draft attachments and clears the server draft after sending", async () => {

@@ -9,6 +9,7 @@ import {
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
@@ -19,7 +20,6 @@ import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-sour
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 export const SIDEBAR_PARAM = "sidebar";
 
@@ -143,7 +143,7 @@ const setupPaneThread$ = command(
       draft,
       dataSource,
       initialOptimisticEntries,
-      get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ?? false,
+      composerInlinePromptItemsEnabled(get(featureSwitch$)),
     );
     set(spec.setPaneThread$, thread);
 

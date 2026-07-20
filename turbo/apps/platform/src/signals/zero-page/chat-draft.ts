@@ -234,7 +234,7 @@ export interface DraftSignals {
     [ZeroChatAttachment, AbortSignal]
   >;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
-  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
+  restoreAttachments$: Command<ZeroChatAttachment[], [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   removeAttachmentByClientId$: Command<void, [string]>;
   dragOver$: Computed<boolean>;
@@ -391,12 +391,13 @@ function createDraftAttachmentSignals(
   const restoreAttachments$ = command(
     ({ set }, persisted: PersistedAttachment[]) => {
       if (persisted.length === 0) {
-        return;
+        return [];
       }
       const restored = persisted.map(createRestoredAttachment);
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
+      return restored;
     },
   );
   const removeAttachment$ = command(

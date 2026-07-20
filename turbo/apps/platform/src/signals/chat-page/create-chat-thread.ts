@@ -29,6 +29,7 @@ import {
   createRestoredAttachment,
   type DraftSignals,
 } from "../zero-page/chat-draft.ts";
+import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
@@ -2960,7 +2961,7 @@ interface PreparedSendMessageResult {
 function shouldIncludeDraftAttachments(
   features: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
-  return !(features[FeatureSwitchKey.ComposerInlinePromptItems] ?? false);
+  return !composerInlinePromptItemsEnabled(features);
 }
 
 function prepareTextOnlyUserMessage(

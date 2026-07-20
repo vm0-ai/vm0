@@ -24,6 +24,7 @@ import {
   clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
+import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -448,9 +449,8 @@ const sendNewThreadMessage$ = command(
       draft,
       prompt,
       {
-        includeAttachments: !(
-          get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ??
-          false
+        includeAttachments: !composerInlinePromptItemsEnabled(
+          get(featureSwitch$),
         ),
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,

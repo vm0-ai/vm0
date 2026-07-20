@@ -331,6 +331,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerInlineAttachmentReferences]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep attachments in chips, insert numbered image or file text references, and override composerInlinePromptItems.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
