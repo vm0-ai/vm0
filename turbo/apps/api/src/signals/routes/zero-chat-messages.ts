@@ -238,7 +238,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly websiteTemplatesEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1128,24 +1127,7 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    websiteTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.WebsiteTemplates,
-      context,
-    ),
   };
-}
-
-function validateGenerationTemplateFeatureSwitches(params: {
-  readonly body: NormalSendBody;
-  readonly featureSwitches: NormalSendFeatureSwitches;
-}): NormalSendFailure | undefined {
-  if (
-    params.body.generationTemplate?.type === "website" &&
-    !params.featureSwitches.websiteTemplatesEnabled
-  ) {
-    return badRequestMessage("Website templates are not enabled");
-  }
-  return undefined;
 }
 
 function validateGenerationTemplatePrompt(
@@ -1160,16 +1142,6 @@ function validateGenerationTemplatePrompt(
     return badRequestMessage(validation.message);
   }
   return undefined;
-}
-
-function validateGenerationTemplateForNormalSend(params: {
-  readonly body: NormalSendBody;
-  readonly featureSwitches: NormalSendFeatureSwitches;
-}): NormalSendFailure | undefined {
-  return (
-    validateGenerationTemplateFeatureSwitches(params) ??
-    validateGenerationTemplatePrompt(params.body)
-  );
 }
 
 async function updateUserModelPreference(
@@ -2345,10 +2317,7 @@ const prepareNormalSend$ = command(
     if (codexServiceTierError) {
       return codexServiceTierError;
     }
-    const generationTemplateError = validateGenerationTemplateForNormalSend({
-      body: args.body,
-      featureSwitches,
-    });
+    const generationTemplateError = validateGenerationTemplatePrompt(args.body);
     if (generationTemplateError) {
       return generationTemplateError;
     }

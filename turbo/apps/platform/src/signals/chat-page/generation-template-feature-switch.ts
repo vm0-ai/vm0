@@ -12,11 +12,5 @@ export function generationTemplateForFeatureSwitches(
   if (features?.[FeatureSwitchKey.ComposerInlinePromptItems] ?? false) {
     return undefined;
   }
-  if (
-    value?.type === "website" &&
-    !(features?.[FeatureSwitchKey.WebsiteTemplates] ?? false)
-  ) {
-    return undefined;
-  }
   return value;
 }

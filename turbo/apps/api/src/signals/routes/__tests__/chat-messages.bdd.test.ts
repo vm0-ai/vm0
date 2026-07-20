@@ -3215,13 +3215,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid template agent",
     });
-    if (!actor.orgId) {
-      throw new Error("Expected test actor to belong to an org");
-    }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.WebsiteTemplates]: true,
-    });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation runbook item");
