@@ -1,0 +1,1 @@
+CREATE INDEX "idx_run_uploaded_files_updated" ON "run_uploaded_files" USING btree ("updated_at","id") WHERE "run_uploaded_files"."url" IS NOT NULL;
