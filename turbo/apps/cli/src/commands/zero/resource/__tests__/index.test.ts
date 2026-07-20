@@ -1,3 +1,4 @@
+import { WEBSITE_TEMPLATE_ITEMS } from "@vm0/core";
 import { describe, expect, it } from "vitest";
 
 import { findRegistryResourceForPull } from "../index";
@@ -44,5 +45,26 @@ describe("zero resource pull registry resolver", () => {
     expect(findRegistryResourceForPull("dot-matrix")?.id).toBe(
       "template:dot-matrix",
     );
+  });
+
+  it("resolves every feature-switched website v2 package", () => {
+    for (const item of WEBSITE_TEMPLATE_ITEMS) {
+      const resourceId = `${item.resourceId}-v2`;
+
+      expect(findRegistryResourceForPull(resourceId)).toEqual(
+        expect.objectContaining({
+          id: resourceId,
+          kind: "template",
+          targets: ["website"],
+          source: expect.objectContaining({
+            path: item.sourcePath,
+            archive: {
+              type: "tar.gz",
+              sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+            },
+          }),
+        }),
+      );
+    }
   });
 });

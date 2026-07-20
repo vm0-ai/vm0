@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
@@ -82,6 +84,7 @@ import {
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
@@ -1722,7 +1725,7 @@ async function buildCreateQueuedChatRunInput(args: {
     },
   );
 
-  const [latestSession, loadedIncompleteContext] =
+  const [latestSession, loadedIncompleteContext, featureSwitchContext] =
     await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
@@ -1731,6 +1734,7 @@ async function buildCreateQueuedChatRunInput(args: {
         return Promise.all([
           latestSessionForThreadFromDb(args.db, args.threadId),
           loadWebChatIncompleteContext(args.db, args.threadId),
+          loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
         ]);
       },
     );
@@ -1759,6 +1763,10 @@ async function buildCreateQueuedChatRunInput(args: {
     () => {
       return resolveThreadGenerationTemplatePrompt({
         explicit: resolvedQueuedMessage.generationTemplate,
+        websiteTemplateV2Enabled: isFeatureEnabled(
+          FeatureSwitchKey.WebsiteTemplateV2,
+          featureSwitchContext,
+        ),
       });
     },
   );

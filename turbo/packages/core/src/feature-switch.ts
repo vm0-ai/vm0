@@ -462,6 +462,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
     enabled: true,
   },
+  [FeatureSwitchKey.WebsiteTemplateV2]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
     description:

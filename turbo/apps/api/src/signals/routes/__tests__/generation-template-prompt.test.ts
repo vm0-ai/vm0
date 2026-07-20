@@ -213,6 +213,36 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("zero generate website --template");
   });
 
+  it("selects every additive v2 package behind the rollout switch", () => {
+    for (const item of WEBSITE_TEMPLATE_ITEMS) {
+      const resourceId = `${item.resourceId}-v2`;
+      const result = buildGenerationTemplatePrompt(
+        {
+          type: "website",
+          selection: {
+            websiteTemplateId: item.id,
+          },
+        },
+        { websiteTemplateV2Enabled: true },
+      );
+
+      expect(result).toStrictEqual({
+        status: "resolved",
+        prompt: expect.stringContaining(
+          `zero resource pull ${resourceId} --dir ./generated/resources`,
+        ),
+      });
+      if (result.status !== "resolved") {
+        continue;
+      }
+      expect(result.prompt).toContain(`Template package id: ${resourceId}`);
+      expect(result.prompt).toContain(`Package resource: ${resourceId}`);
+      expect(result.prompt).toContain(
+        `./generated/resources/${item.sourcePath}/render.mjs`,
+      );
+    }
+  });
+
   it("rejects unknown workflow templates", () => {
     const result = buildGenerationTemplatePrompt({
       type: "workflow",
