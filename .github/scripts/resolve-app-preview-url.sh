@@ -13,8 +13,8 @@ cloudflare_preview_domain="$3"
 : "${job_ref:?job ref is required}"
 : "${preview_domain:?preview domain is required}"
 
-if [[ "$job_ref" =~ ^pr-[0-9]+$ ]]; then
-  : "${cloudflare_preview_domain:?Cloudflare preview domain is required for PR app previews}"
+if [[ "$job_ref" =~ ^pr-[0-9]+$ || "$job_ref" == "staging" ]]; then
+  : "${cloudflare_preview_domain:?Cloudflare preview domain is required for app previews}"
   printf 'https://%s-app.%s\n' "$job_ref" "$cloudflare_preview_domain"
 else
   printf 'https://%s-app.%s\n' "$job_ref" "$preview_domain"

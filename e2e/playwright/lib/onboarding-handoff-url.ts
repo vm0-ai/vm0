@@ -34,7 +34,9 @@ function withExpectedPreviewAppOrigin(
 
 function previewAppFallbackOrigin(onboardingOrigin: string): string | null {
   const onboardingUrl = new URL(onboardingOrigin);
-  const previewDomainMatch = /^pr-\d+-www\.(.+)$/.exec(onboardingUrl.hostname);
+  const previewDomainMatch = /^(?:pr-\d+|staging)-www\.(.+)$/.exec(
+    onboardingUrl.hostname,
+  );
   if (!previewDomainMatch) {
     return null;
   }
