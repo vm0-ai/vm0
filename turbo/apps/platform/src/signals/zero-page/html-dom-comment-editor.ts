@@ -418,17 +418,25 @@ async function fetchHtmlDomEditDocument(
   };
 }
 
-export const currentHtmlDomEditDocument$ = computed(async (get) => {
+const currentHtmlDomEditSourceUrl$ = computed((get) => {
   if (!get(artifactHtmlEditMode$)) {
-    throw new Error("HTML editor is unavailable");
+    return null;
   }
   const artifact = get(currentArtifactRef$);
-  if (!artifact || artifact.kind !== "html") {
+  if (!artifact || artifact.source !== "url" || artifact.kind !== "html") {
+    return null;
+  }
+  return publicAttachmentUrl(artifact.url);
+});
+
+export const currentHtmlDomEditDocument$ = computed(async (get) => {
+  const sourceUrl = get(currentHtmlDomEditSourceUrl$);
+  if (!sourceUrl) {
     throw new Error("HTML editor URL is unavailable");
   }
   return await fetchHtmlDomEditDocument({
     signal: get(pageSignal$),
-    sourceUrl: publicAttachmentUrl(artifact.url),
+    sourceUrl,
   });
 });
 
