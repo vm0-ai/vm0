@@ -1600,14 +1600,12 @@ function websitePreviewImageUrlsForItems(
 function initialTemplatePreviewImageUrlsForCategory({
   category,
   hasPptTab,
-  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   presentationThemeIdBySlug,
 }: {
   category: string;
   hasPptTab: boolean;
-  hasWebsiteTab?: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   presentationThemeIdBySlug?: Readonly<Record<string, string>>;
@@ -1627,7 +1625,7 @@ function initialTemplatePreviewImageUrlsForCategory({
   if (category === "video" && hasVideoTab) {
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
   }
-  if (category === "website" && hasWebsiteTab) {
+  if (category === "website") {
     return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
   }
   return [];
@@ -4185,14 +4183,12 @@ function IllustrationTemplateCard({
 function resolveTemplatePickerCategory({
   category,
   hasPptTab,
-  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
 }: {
   category: string;
   hasPptTab: boolean;
-  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4201,9 +4197,7 @@ function resolveTemplatePickerCategory({
   if (hasPptTab) {
     categories.push("slides");
   }
-  if (hasWebsiteTab) {
-    categories.push("website");
-  }
+  categories.push("website");
   if (hasIllustrationTab) {
     categories.push("illustration");
   }
@@ -4250,7 +4244,6 @@ function templatePickerCategoryMeta(category: string): {
 function TemplatePickerCategoryNav({
   selectedCategory,
   hasPptTab,
-  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -4258,7 +4251,6 @@ function TemplatePickerCategoryNav({
 }: {
   selectedCategory: string;
   hasPptTab: boolean;
-  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4276,13 +4268,11 @@ function TemplatePickerCategoryNav({
       Icon: IconPresentation,
     });
   }
-  if (hasWebsiteTab) {
-    categoryOptions.push({
-      value: "website",
-      label: "Website",
-      Icon: IconWorld,
-    });
-  }
+  categoryOptions.push({
+    value: "website",
+    label: "Website",
+    Icon: IconWorld,
+  });
   if (hasIllustrationTab) {
     categoryOptions.push({
       value: "illustration",
@@ -4523,7 +4513,6 @@ function TemplatePickerDialog({
   onClose,
   hasPptTab,
   presentationItems,
-  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -4534,7 +4523,6 @@ function TemplatePickerDialog({
   onClose: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
-  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4590,7 +4578,6 @@ function TemplatePickerDialog({
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
-    hasWebsiteTab,
     hasIllustrationTab,
     hasVideoTab,
     hasWorkflowTab,
@@ -4612,7 +4599,7 @@ function TemplatePickerDialog({
     if (targetCategory === "video" && hasVideoTab) {
       return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
     }
-    if (targetCategory === "website" && hasWebsiteTab) {
+    if (targetCategory === "website") {
       return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
     }
     return [];
@@ -4820,7 +4807,6 @@ function TemplatePickerDialog({
               <TemplatePickerCategoryNav
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
-                hasWebsiteTab={hasWebsiteTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
                 hasWorkflowTab={hasWorkflowTab}
@@ -4838,7 +4824,6 @@ function TemplatePickerDialog({
                 <TemplatePickerCategoryContent
                   selectedCategory={selectedCategory}
                   hasPptTab={hasPptTab}
-                  hasWebsiteTab={hasWebsiteTab}
                   hasVideoTab={hasVideoTab}
                   hasWorkflowTab={hasWorkflowTab}
                   filteredPptItems={filteredPptItems}
@@ -4875,7 +4860,6 @@ function TemplatePickerDialog({
 function TemplatePickerCategoryContent({
   selectedCategory,
   hasPptTab,
-  hasWebsiteTab,
   hasVideoTab,
   hasWorkflowTab,
   filteredPptItems,
@@ -4900,7 +4884,6 @@ function TemplatePickerCategoryContent({
 }: {
   selectedCategory: string;
   hasPptTab: boolean;
-  hasWebsiteTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
   filteredPptItems: readonly PresentationTemplateItem[];
@@ -4957,7 +4940,7 @@ function TemplatePickerCategoryContent({
     );
   }
 
-  if (selectedCategory === "website" && hasWebsiteTab) {
+  if (selectedCategory === "website") {
     return (
       <div
         data-website-template-grid-scroll=""
@@ -5076,7 +5059,6 @@ function TemplatePickerCategoryContent({
 
 function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
-  hasWebsiteTab: boolean,
 ): ComposerTemplateAttachment | undefined {
   const presentationItem = selectedPresentationTemplateItem(value);
   if (presentationItem && value?.type === "presentation") {
@@ -5120,9 +5102,7 @@ function selectedComposerTemplateAttachment(
       category: "workflow",
     };
   }
-  const websiteItem = hasWebsiteTab
-    ? selectedWebsiteTemplateItem(value)
-    : undefined;
+  const websiteItem = selectedWebsiteTemplateItem(value);
   return websiteItem
     ? { type: "website", title: websiteItem.title, category: "website" }
     : undefined;
@@ -5158,19 +5138,13 @@ function ComposerTemplateAttachmentSync({
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const features = useLastResolved(featureSwitch$);
-  const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
-  const attachment = selectedComposerTemplateAttachment(
-    picker?.value,
-    hasWebsiteTab,
-  );
+  const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
       initialTemplatePreviewImageUrlsForCategory({
         category,
         hasPptTab: true,
-        hasWebsiteTab,
         hasIllustrationTab: true,
         hasVideoTab: true,
         presentationThemeIdBySlug: cardThemeIdBySlug,
@@ -5210,7 +5184,6 @@ function TemplatePickerButton({
   picker,
   hasPptTab,
   presentationItems,
-  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -5219,7 +5192,6 @@ function TemplatePickerButton({
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
-  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -5235,7 +5207,6 @@ function TemplatePickerButton({
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
-    hasWebsiteTab,
     hasIllustrationTab,
     hasVideoTab,
     hasWorkflowTab,
@@ -5246,7 +5217,6 @@ function TemplatePickerButton({
       initialTemplatePreviewImageUrlsForCategory({
         category: selectedCategory,
         hasPptTab,
-        hasWebsiteTab,
         hasIllustrationTab,
         hasVideoTab,
         presentationThemeIdBySlug: cardThemeIdBySlug,
@@ -5296,7 +5266,6 @@ function TemplatePickerButton({
           }}
           hasPptTab={hasPptTab}
           presentationItems={presentationItems}
-          hasWebsiteTab={hasWebsiteTab}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
           hasWorkflowTab={hasWorkflowTab}
@@ -5315,8 +5284,6 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const hasPptTab = true;
-  const features = useLastResolved(featureSwitch$);
-  const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
   const hasWorkflowTab = true;
@@ -5329,7 +5296,6 @@ function ComposerTemplatePickerSlot({
       picker={picker}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
-      hasWebsiteTab={hasWebsiteTab}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
       hasWorkflowTab={hasWorkflowTab}
@@ -6991,10 +6957,7 @@ export function useZeroChatComposer({
             if (!value) {
               return;
             }
-            const attachment = selectedComposerTemplateAttachment(
-              value,
-              features[FeatureSwitchKey.WebsiteTemplates] ?? false,
-            );
+            const attachment = selectedComposerTemplateAttachment(value);
             if (attachment) {
               insertTemplate(value, attachment);
             }
