@@ -64,12 +64,14 @@ export function scrollSlashWorkflowIntoView(
 
 export function SlashWorkflowMenu({
   workflows,
+  query,
   loading,
   selectedIndex,
   showWorkflowsPageLink,
   onSelect,
 }: {
   readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly query: string;
   readonly loading: boolean;
   readonly selectedIndex: number;
   readonly showWorkflowsPageLink: boolean;
@@ -117,7 +119,12 @@ export function SlashWorkflowMenu({
               >
                 <span className="w-full truncate font-mono text-sm text-foreground">
                   <span className="text-primary">/</span>
-                  {workflow.name}
+                  {query && (
+                    <span className="text-primary/60">
+                      {workflow.name.slice(0, query.length)}
+                    </span>
+                  )}
+                  {workflow.name.slice(query.length)}
                 </span>
                 {workflow.description && (
                   <span className="w-full truncate text-xs text-muted-foreground/70">

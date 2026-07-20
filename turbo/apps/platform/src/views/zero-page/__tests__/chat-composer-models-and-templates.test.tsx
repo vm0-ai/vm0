@@ -1092,7 +1092,9 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
     });
-    expect(screen.getByText("sales-research")).toBeInTheDocument();
+    const matchedPrefix = screen.getByText("sales", { selector: "span" });
+    expect(matchedPrefix).toHaveClass("text-primary/60");
+    expect(screen.getByText("-research")).toBeInTheDocument();
 
     await user.keyboard("{Enter}");
 
