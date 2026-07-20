@@ -12,7 +12,7 @@ import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, exists, or } from "drizzle-orm";
 import { z } from "zod";
 import archiver from "archiver";
 
@@ -593,12 +593,17 @@ async function loadArtifactFile(
         eq(runUploadedFiles.externalId, args.fileId),
         or(
           eq(zeroRuns.chatThreadId, args.threadId),
-          sql`EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              AND ${chatMessages.chatThreadId} = ${args.threadId}
-          )`,
+          exists(
+            db
+              .select({ one: chatMessages.id })
+              .from(chatMessages)
+              .where(
+                and(
+                  eq(chatMessages.runId, runUploadedFiles.runId),
+                  eq(chatMessages.chatThreadId, args.threadId),
+                ),
+              ),
+          ),
         ),
       ),
     )

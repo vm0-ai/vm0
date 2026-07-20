@@ -4,7 +4,19 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  not,
+  or,
+  type SQL,
+} from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -65,23 +77,34 @@ export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
-function completedConversationContextMessageCondition() {
-  return sql<boolean>`NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.revokesMessageId} IS NULL
-      AND ${chatMessages.interruptsRunId} IS NULL
-      AND ${chatMessages.error} IS NULL
-    )
-    AND NOT (
-      ${chatMessages.runId} IS NOT NULL
-      AND EXISTS (
-        SELECT 1
-        FROM ${agentRuns}
-        WHERE ${agentRuns.id} = ${chatMessages.runId}
-          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      )
-    )`;
+function completedConversationContextMessageCondition(db: SelectDb) {
+  return and(
+    not(
+      and(
+        eq(chatMessages.role, "user"),
+        isNull(chatMessages.runId),
+        isNull(chatMessages.revokesMessageId),
+        isNull(chatMessages.interruptsRunId),
+        isNull(chatMessages.error),
+      ) as SQL,
+    ),
+    not(
+      and(
+        isNotNull(chatMessages.runId),
+        exists(
+          db
+            .select({ one: agentRuns.id })
+            .from(agentRuns)
+            .where(
+              and(
+                eq(agentRuns.id, chatMessages.runId),
+                inArray(agentRuns.status, ["queued", "pending", "running"]),
+              ),
+            ),
+        ),
+      ) as SQL,
+    ),
+  ) as SQL;
 }
 
 function stripMarkdown(text: string): string {
@@ -186,13 +209,16 @@ async function getLatestTitleContextMessages(
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(),
-    completedConversationContextMessageCondition(),
+    completedConversationContextMessageCondition(db),
   ];
   if (options?.excludeRunId !== undefined) {
     filters.push(
       // Keep prior context free of the current exchange. User rows have the run
       // id too, so this excludes both sides of the just-completed round.
-      sql`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${options.excludeRunId})`,
+      or(
+        isNull(chatMessages.runId),
+        ne(chatMessages.runId, options.excludeRunId),
+      ) as SQL,
     );
   }
 
@@ -410,7 +436,7 @@ async function getLatestFollowupContextMessages(
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
-        completedConversationContextMessageCondition(),
+        completedConversationContextMessageCondition(db),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))

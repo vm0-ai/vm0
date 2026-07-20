@@ -2,7 +2,7 @@ import {
   chatMessages,
   type ChatMessageGoalEvent,
 } from "@vm0/db/schema/chat-message";
-import { sql } from "drizzle-orm";
+import { and, eq, isNotNull, not, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { insertChatMessage } from "./zero-chat-message.service";
@@ -56,8 +56,10 @@ export function clearedGoalEvent(): ChatMessageGoalEvent {
  * because the client needs markers to fold active-goal display state.
  */
 export function excludeGoalMarkerCondition() {
-  return sql<boolean>`NOT (
-      ${chatMessages.role} = 'assistant'
-      AND ${chatMessages.goalEvent} IS NOT NULL
-    )`;
+  return not(
+    and(
+      eq(chatMessages.role, "assistant"),
+      isNotNull(chatMessages.goalEvent),
+    ) as SQL,
+  );
 }

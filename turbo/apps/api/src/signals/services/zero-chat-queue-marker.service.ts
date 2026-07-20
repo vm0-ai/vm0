@@ -1,6 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notExists } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
 import {
@@ -13,6 +14,8 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
+
+const revoker = alias(chatMessages, "revoker");
 const QUEUED_RUN_MARKER_REVOKE_EVENT_ID = "queue:dequeued";
 
 export interface QueueMarkerRevokeNotification {
@@ -85,11 +88,12 @@ export async function revokeQueuedRunAssistantMarkers(
         eq(chatMessages.runId, args.runId),
         eq(chatMessages.role, "assistant"),
         eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
-        sql<boolean>`NOT EXISTS (
-          SELECT 1
-          FROM ${chatMessages} AS revoker
-          WHERE revoker.revokes_message_id = ${chatMessages.id}
-        )`,
+        notExists(
+          tx
+            .select({ one: revoker.id })
+            .from(revoker)
+            .where(eq(revoker.revokesMessageId, chatMessages.id)),
+        ),
       ),
     );
 
