@@ -285,16 +285,20 @@ mod tests {
     }
 
     #[test]
-    fn restore_plan_defaults_for_inline_history() {
-        let mut context = execution_context_for_test(RunId::new_v4());
-        context.resume_session = Some(ResumeSession::inline(
+    fn restore_plan_defaults_without_hash_backed_history() {
+        let mut context_without_resume = execution_context_for_test(RunId::new_v4());
+        context_without_resume.resume_session = None;
+        let mut context_with_inline_history = execution_context_for_test(RunId::new_v4());
+        context_with_inline_history.resume_session = Some(ResumeSession::inline(
             "sess-restore-plan".into(),
             "session history".into(),
         ));
 
-        let plan = build_plan(true, &context, SandboxReuseResult::Reused, None);
+        for context in [&context_without_resume, &context_with_inline_history] {
+            let plan = build_plan(true, context, SandboxReuseResult::Reused, None);
 
-        assert!(matches!(plan, SessionHistoryRestorePlan::Default));
+            assert!(matches!(plan, SessionHistoryRestorePlan::Default));
+        }
     }
 
     #[test]
