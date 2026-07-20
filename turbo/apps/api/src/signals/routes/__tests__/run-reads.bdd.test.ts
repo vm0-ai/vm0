@@ -901,8 +901,10 @@ describe("RUN-04: session and checkpoint reads", () => {
     expect(checkpoint.body).toMatchObject({
       id: withArtifacts.body.checkpointId,
       runId: r1.runId,
-      artifactSnapshots: { "bdd-out": outArtifact.vasVersionId },
       volumeVersionsSnapshot: { versions: { data: "vol-v1" } },
+    });
+    expect(checkpoint.body.artifactSnapshots).toStrictEqual({
+      "bdd-out": outArtifact.vasVersionId,
     });
     if (checkpoint.status !== 200) {
       throw new Error("Expected the checkpoint read to succeed");
