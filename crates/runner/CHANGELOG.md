@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.146.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.17...runner-rs-v0.146.18) (2026-07-20)
+
+
+### Bug Fixes
+
+* **runner:** fail local cancel on incomplete claim scan ([#22234](https://github.com/vm0-ai/vm0/issues/22234)) ([e3db740](https://github.com/vm0-ai/vm0/commit/e3db7405dfea92464ff019781771ce30a8ac22b4))
+
+
+### Documentation
+
+* **mitm-addon:** document signed pricing protocol ([#22236](https://github.com/vm0-ai/vm0/issues/22236)) ([d5e07cc](https://github.com/vm0-ai/vm0/commit/d5e07cca5c8118afab4f8df609534f2ceadd06ce))
+
 ## [0.146.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.16...runner-rs-v0.146.17) (2026-07-20)
 
 
