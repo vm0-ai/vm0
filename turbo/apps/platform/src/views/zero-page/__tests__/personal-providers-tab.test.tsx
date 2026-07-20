@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
+import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -435,6 +436,20 @@ describe("personal model providers settings", () => {
     click(submit);
     await expect(
       screen.findByText("Claude authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(submit).toBeEnabled();
+    });
+
+    context.mocks.http.post(
+      "*/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+      () => {
+        return HttpResponse.error();
+      },
+    );
+    click(submit);
+    await expect(
+      screen.findByText("Failed to fetch"),
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(submit).toBeEnabled();

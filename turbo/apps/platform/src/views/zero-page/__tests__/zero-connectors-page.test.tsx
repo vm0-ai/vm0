@@ -30,6 +30,7 @@ import type {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -1936,15 +1937,23 @@ describe("connectors page", () => {
       }),
     ]);
     context.mocks.browser.open(createMockAuthWindow());
-    context.mocks.api(
-      zeroConnectorOauthDeviceAuthSessionContract.poll,
-      ({ respond }) => {
-        return respond(500, {
-          error: {
-            message: "Stripe device authorization is unavailable",
-            code: "UNAVAILABLE",
-          },
-        });
+    let pollCount = 0;
+    context.mocks.http.post(
+      "*/api/zero/connectors/stripe/oauth/device/sessions/:sessionId/poll",
+      () => {
+        pollCount += 1;
+        if (pollCount === 1) {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Stripe device authorization is unavailable",
+                code: "UNAVAILABLE",
+              },
+            },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.error();
       },
     );
 
@@ -1958,6 +1967,15 @@ describe("connectors page", () => {
 
     await expect(
       screen.findByText("Stripe device authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
+    });
+
+    click(buttonByText("Connect Stripe", dialog));
+    click(await within(dialog).findByTestId("connector-oauth-device-open"));
+    await expect(
+      screen.findByText("Failed to fetch"),
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(buttonByText("Connect Stripe", dialog)).toBeEnabled();
@@ -2745,6 +2763,20 @@ describe("connectors page", () => {
     click(complete);
     await expect(
       screen.findByText("AWS authorization is unavailable"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(complete).toBeEnabled();
+    });
+
+    context.mocks.http.post(
+      "*/api/zero/connectors/aws/external-code/sessions/:sessionId/complete",
+      () => {
+        return HttpResponse.error();
+      },
+    );
+    click(complete);
+    await expect(
+      screen.findByText("Failed to fetch"),
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(complete).toBeEnabled();
