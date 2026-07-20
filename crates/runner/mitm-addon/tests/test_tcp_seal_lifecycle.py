@@ -25,6 +25,7 @@ def _write_seal_request(
     log_path: Path,
     *,
     seal_request_id: str,
+    final_attempt: bool = False,
 ) -> Path:
     request_path = lifecycle_file.parent / "tcp-seal-request"
     request_path.write_text(
@@ -34,6 +35,7 @@ def _write_seal_request(
                 "sealRequestId": seal_request_id,
                 "requestedAtMs": _REQUESTED_AT_MS,
                 "path": str(log_path),
+                "finalAttempt": final_attempt,
             }
         )
     )
@@ -263,6 +265,11 @@ async def test_seal_retries_row_rejected_by_jsonl_backpressure(
         assert first_state["pending"] == 1
         assert not log_path.exists()
 
+        flow.messages.append(tcp.TCPMessage(False, b"late-server-data"))
+        mitm_addon.tcp_message(flow)
+        await asyncio.sleep(0)
+        assert flow.messages == []
+
         monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 4096)
         _write_seal_request(
             lifecycle_file,
@@ -277,6 +284,150 @@ async def test_seal_retries_row_rejected_by_jsonl_backpressure(
     retry_state = json.loads(state_path.read_text())
     assert retry_state["sealRequestId"] == "seal-backpressure-retry"
     assert retry_state["pending"] == 0
+
+
+async def test_final_seal_discards_row_rejected_by_jsonl_backpressure(
+    tmp_path,
+    registry_file,
+    monkeypatch,
+    mitm_ctx,
+    real_tcp_flow,
+):
+    lifecycle_file = tmp_path / "tcp_seal_lifecycle.py"
+    log_path = tmp_path / "network.jsonl"
+    state_path = _write_seal_request(
+        lifecycle_file,
+        log_path,
+        seal_request_id="seal-rejected-row",
+    )
+    usage.set_pending_path(str(tmp_path / "usage-pending"), usage_state_id=_USAGE_STATE_ID)
+    monkeypatch.setattr(tcp_seal_lifecycle, "__file__", str(lifecycle_file))
+    monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 0)
+    flow = real_tcp_flow()
+
+    with mitm_ctx(registry_path=str(registry_file)):
+        mitm_addon.running()
+        mitm_addon.tcp_start(flow)
+        await _request_seal_and_wait()
+
+        _write_seal_request(
+            lifecycle_file,
+            log_path,
+            seal_request_id="seal-final-rejection",
+            final_attempt=True,
+        )
+        await _request_seal_and_wait()
+        final_state = json.loads(state_path.read_text())
+        assert final_state["sealRequestId"] == "seal-final-rejection"
+        assert final_state["pending"] == 0
+        assert final_state["failed"] is True
+
+        monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 4096)
+        _write_seal_request(
+            lifecycle_file,
+            log_path,
+            seal_request_id="seal-after-final-rejection",
+        )
+        await _request_seal_and_wait()
+
+    logging_utils.flush_log_path(str(log_path))
+    assert not log_path.exists()
+    retry_state = json.loads(state_path.read_text())
+    assert retry_state["sealRequestId"] == "seal-after-final-rejection"
+    assert retry_state["pending"] == 0
+    assert "failed" not in retry_state
+
+
+async def test_rejected_tcp_log_retry_buffer_is_bounded(
+    tmp_path,
+    registry_file,
+    monkeypatch,
+    mitm_ctx,
+    real_tcp_flow,
+):
+    lifecycle_file = tmp_path / "tcp_seal_lifecycle.py"
+    first_log_path = tmp_path / "network.jsonl"
+    second_log_path = tmp_path / "network-2.jsonl"
+    usage.set_pending_path(str(tmp_path / "usage-pending"), usage_state_id=_USAGE_STATE_ID)
+    monkeypatch.setattr(tcp_seal_lifecycle, "__file__", str(lifecycle_file))
+    monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 0)
+    monkeypatch.setattr(tcp_logging, "MAX_PENDING_TCP_LOG_ROWS", 1)
+    first_flow = real_tcp_flow(client_ip="10.200.0.1")
+    second_flow = real_tcp_flow(client_ip="10.200.0.2")
+
+    with mitm_ctx(registry_path=str(registry_file)) as log:
+        mitm_addon.running()
+        mitm_addon.tcp_start(first_flow)
+        mitm_addon.tcp_end(first_flow)
+        mitm_addon.tcp_start(second_flow)
+        mitm_addon.tcp_end(second_flow)
+
+        log.warn.assert_any_call(
+            "Dropped oldest pending TCP network-log row because retry buffer is full"
+        )
+        monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 4096)
+
+        _write_seal_request(
+            lifecycle_file,
+            first_log_path,
+            seal_request_id="seal-evicted-row",
+        )
+        await _request_seal_and_wait()
+        _write_seal_request(
+            lifecycle_file,
+            second_log_path,
+            seal_request_id="seal-retained-row",
+        )
+        await _request_seal_and_wait()
+
+    logging_utils.flush_log_path(str(first_log_path))
+    assert not first_log_path.exists()
+    [entry] = read_jsonl_entries_after_flush(second_log_path)
+    assert entry["type"] == "tcp"
+
+
+async def test_full_retry_buffer_does_not_evict_when_writer_recovers(
+    tmp_path,
+    registry_file,
+    monkeypatch,
+    mitm_ctx,
+    real_tcp_flow,
+):
+    lifecycle_file = tmp_path / "tcp_seal_lifecycle.py"
+    first_log_path = tmp_path / "network.jsonl"
+    second_log_path = tmp_path / "network-2.jsonl"
+    usage.set_pending_path(str(tmp_path / "usage-pending"), usage_state_id=_USAGE_STATE_ID)
+    monkeypatch.setattr(tcp_seal_lifecycle, "__file__", str(lifecycle_file))
+    monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 0)
+    monkeypatch.setattr(tcp_logging, "MAX_PENDING_TCP_LOG_ROWS", 1)
+    first_flow = real_tcp_flow(client_ip="10.200.0.1")
+    second_flow = real_tcp_flow(client_ip="10.200.0.2")
+
+    with mitm_ctx(registry_path=str(registry_file)) as log:
+        mitm_addon.running()
+        mitm_addon.tcp_start(first_flow)
+        mitm_addon.tcp_end(first_flow)
+
+        monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 4096)
+        mitm_addon.tcp_start(second_flow)
+        mitm_addon.tcp_end(second_flow)
+        _write_seal_request(
+            lifecycle_file,
+            first_log_path,
+            seal_request_id="seal-row-after-writer-recovery",
+        )
+        await _request_seal_and_wait()
+
+        assert not any(
+            call.args
+            == ("Dropped oldest pending TCP network-log row because retry buffer is full",)
+            for call in log.warn.call_args_list
+        )
+
+    [first_entry] = read_jsonl_entries_after_flush(first_log_path)
+    [second_entry] = read_jsonl_entries_after_flush(second_log_path)
+    assert first_entry["type"] == "tcp"
+    assert second_entry["type"] == "tcp"
 
 
 async def test_seal_timeout_writes_terminal_pending_state(

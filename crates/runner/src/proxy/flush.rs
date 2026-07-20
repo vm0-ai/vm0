@@ -23,7 +23,7 @@ pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum time to wait for mitmproxy JSONL writes to become visible before upload.
 pub const JSONL_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Maximum time to wait for active TCP rows to enter the JSONL writer queue.
+/// Total request-slot and acknowledgement budget for active TCP rows to enter the JSONL queue.
 pub const TCP_SEAL_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Poll interval when waiting for usage flush.
@@ -175,6 +175,7 @@ struct TcpSealRequestMarker<'a> {
     seal_request_id: &'a str,
     requested_at_ms: u64,
     path: &'a str,
+    final_attempt: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,6 +187,8 @@ struct TcpSealState {
     seal_request_id: String,
     path: String,
     pending: u32,
+    #[serde(default)]
+    failed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +199,7 @@ struct TcpSealSnapshot {
     seal_request_id: String,
     path: String,
     pending: u32,
+    failed: bool,
 }
 
 impl From<&TcpSealState> for TcpSealSnapshot {
@@ -207,12 +211,16 @@ impl From<&TcpSealState> for TcpSealSnapshot {
             seal_request_id: state.seal_request_id.clone(),
             path: state.path.clone(),
             pending: state.pending,
+            failed: state.failed,
         }
     }
 }
 
 enum FlushReadiness<S> {
     Ready,
+    Failed {
+        not_ready: String,
+    },
     NotReady {
         not_ready: String,
         snapshot: Option<S>,
@@ -336,20 +344,64 @@ impl MitmJsonlFlushHandle {
 
 impl MitmTcpSealHandle {
     pub async fn seal_path(&self, path: &Path) -> bool {
-        let _request_guard = self.request_lock.lock().await;
-        let target = usage_flush_state_guard(&self.usage_state).clone();
-        let request = match write_tcp_seal_request(&self.addon_dir, &target, path).await {
-            Ok(request) => request,
-            Err(e) => {
-                warn!(error = %e, path = %path.display(), "failed to create TCP seal request");
+        self.seal_path_with_final_attempt(path, false).await
+    }
+
+    pub async fn seal_path_for_upload(&self, path: &Path) -> bool {
+        self.seal_path_with_final_attempt(path, true).await
+    }
+
+    async fn seal_path_with_final_attempt(&self, path: &Path, final_attempt: bool) -> bool {
+        let deadline = tokio::time::Instant::now() + TCP_SEAL_TIMEOUT;
+        let _request_guard = match tokio::time::timeout_at(deadline, self.request_lock.lock()).await
+        {
+            Ok(guard) => guard,
+            Err(_) => {
+                warn!(
+                    timeout_secs = TCP_SEAL_TIMEOUT.as_secs(),
+                    path = %path.display(),
+                    "TCP seal deadline expired while waiting to create request"
+                );
                 return false;
             }
         };
+        if tokio::time::Instant::now() >= deadline {
+            warn!(
+                timeout_secs = TCP_SEAL_TIMEOUT.as_secs(),
+                path = %path.display(),
+                "TCP seal deadline expired before creating request"
+            );
+            return false;
+        }
+
+        let target = usage_flush_state_guard(&self.usage_state).clone();
+        let request =
+            match write_tcp_seal_request(&self.addon_dir, &target, path, final_attempt).await {
+                Ok(request) => request,
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        path = %path.display(),
+                        "failed to create TCP seal request"
+                    );
+                    return false;
+                }
+            };
         if !self.request_flush() {
             warn!(path = %path.display(), "failed to request TCP network-log seal");
             return false;
         }
-        wait_tcp_seal_requesting(&self.addon_dir, TCP_SEAL_TIMEOUT, &request, || {
+
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            warn!(
+                timeout_secs = TCP_SEAL_TIMEOUT.as_secs(),
+                path = %path.display(),
+                "TCP seal deadline expired after creating request"
+            );
+            return false;
+        }
+        wait_tcp_seal_requesting(&self.addon_dir, remaining, &request, || {
             self.request_flush()
         })
         .await
@@ -409,6 +461,7 @@ async fn write_tcp_seal_request(
     addon_dir: &Path,
     target: &UsageFlushTarget,
     log_path: &Path,
+    final_attempt: bool,
 ) -> RunnerResult<TcpSealRequest> {
     let request = TcpSealRequest::new(target, log_path);
     let marker = TcpSealRequestMarker {
@@ -416,6 +469,7 @@ async fn write_tcp_seal_request(
         seal_request_id: &request.core.flush_request_id,
         requested_at_ms: request.core.requested_at_ms,
         path: &request.path,
+        final_attempt,
     };
     write_flush_request_marker(addon_dir, "tcp-seal-request", &marker, "TCP seal request").await?;
     Ok(request)
@@ -687,6 +741,9 @@ async fn wait_flush_requesting<S>(
         let (not_ready, snapshot) = match read_addon_state_file(&path).await {
             Ok(Some(content)) => match evaluate_state(&content) {
                 FlushReadiness::Ready => return Ok(()),
+                FlushReadiness::Failed { not_ready } => {
+                    return Err(FlushWaitFailure::RequestFailed { not_ready });
+                }
                 FlushReadiness::NotReady {
                     not_ready,
                     snapshot,
@@ -817,6 +874,10 @@ async fn wait_tcp_seal_requesting(
             Ok(state) => {
                 let snapshot = Some(TcpSealSnapshot::from(&state));
                 match validate_tcp_seal_state(&state, request, now_millis()) {
+                    Ok(()) if state.failed => FlushReadiness::Failed {
+                        not_ready: "addon discarded TCP rows after final writer rejection"
+                            .to_string(),
+                    },
                     Ok(()) if state.pending == 0 => FlushReadiness::Ready,
                     Ok(()) => FlushReadiness::NotReady {
                         not_ready: format!("pending TCP seals={}", state.pending),
@@ -860,6 +921,7 @@ async fn wait_tcp_seal_requesting(
                         seal_request_id = %snapshot.seal_request_id,
                         path = %snapshot.path,
                         pending = snapshot.pending,
+                        failed = snapshot.failed,
                         "TCP seal timed out, proceeding with sandbox finalization"
                     );
                 }
@@ -992,6 +1054,19 @@ mod tests {
         .to_string()
     }
 
+    fn failed_tcp_seal_state(path: &Path) -> String {
+        serde_json::json!({
+            "pid": 1234,
+            "usageStateId": "state-test",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "sealRequestId": "tcp-seal-request-test",
+            "path": path.to_string_lossy().to_string(),
+            "pending": 0,
+            "failed": true,
+        })
+        .to_string()
+    }
+
     fn usage_state(flows: u32, buffered: u32, reports: u32) -> String {
         usage_state_with_request(flows, buffered, reports, Some("request-test"))
     }
@@ -1095,7 +1170,7 @@ mod tests {
         let target = usage_target();
         let log_path = dir.path().join("network.jsonl");
 
-        let request = write_tcp_seal_request(dir.path(), &target, &log_path)
+        let request = write_tcp_seal_request(dir.path(), &target, &log_path, false)
             .await
             .unwrap();
 
@@ -1107,6 +1182,7 @@ mod tests {
         assert_eq!(marker["sealRequestId"], request.core.flush_request_id);
         assert_eq!(marker["requestedAtMs"], request.core.requested_at_ms);
         assert_eq!(marker["path"], log_path.to_string_lossy().to_string());
+        assert_eq!(marker["finalAttempt"], false);
         assert!(marker.get("flushRequestId").is_none());
     }
 
@@ -1163,6 +1239,20 @@ mod tests {
         .unwrap();
 
         assert!(!wait_tcp_seal(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_tcp_seal_rejects_terminal_writer_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let request = tcp_seal_request(&log_path);
+        std::fs::write(
+            dir.path().join("tcp-seal-state"),
+            failed_tcp_seal_state(&log_path),
+        )
+        .unwrap();
+
+        assert!(!wait_tcp_seal(dir.path(), Duration::from_secs(5), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1637,6 +1727,33 @@ mod tests {
         )
         .unwrap();
         assert!(jsonl_task.await.unwrap());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn concurrent_tcp_seals_share_one_total_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_log_path = dir.path().join("network-a.jsonl");
+        let second_log_path = dir.path().join("network-b.jsonl");
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        proxy.set_addon_dir_for_test(dir.path().to_path_buf());
+        let (tx, mut rx) = mpsc::channel(1);
+        let handle = proxy.tcp_seal_handle(tx);
+
+        let started_at = tokio::time::Instant::now();
+        let first_handle = handle.clone();
+        let first = tokio::spawn(async move { first_handle.seal_path(&first_log_path).await });
+        rx.recv().await.unwrap();
+
+        let second = tokio::spawn(async move { handle.seal_path(&second_log_path).await });
+        tokio::task::yield_now().await;
+
+        let (first_result, second_result) = tokio::join!(first, second);
+        assert!(!first_result.unwrap());
+        assert!(!second_result.unwrap());
+        assert_eq!(
+            tokio::time::Instant::now().duration_since(started_at),
+            TCP_SEAL_TIMEOUT
+        );
     }
 
     #[tokio::test(start_paused = true)]

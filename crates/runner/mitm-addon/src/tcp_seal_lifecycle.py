@@ -116,16 +116,21 @@ def _seal_tcp_for_runner_request() -> None:
     if request is None:
         return
 
-    log_path, seal_request_id = request
+    log_path, seal_request_id, final_attempt = request
     pending = 0
+    failed = False
     timed_out = False
     try:
-        if not tcp_logging.seal_path_from_thread(
+        result = tcp_logging.seal_path_from_thread(
             log_path,
+            final_attempt=final_attempt,
             timeout=RUNNER_TCP_SEAL_TIMEOUT_SECONDS,
-        ):
+        )
+        if result == "pending":
             pending = 1
             ctx.log.warn("TCP network-log seal could not admit all rows")
+        elif result == "failed":
+            failed = True
     except TimeoutError:
         pending = 1
         timed_out = True
@@ -134,12 +139,17 @@ def _seal_tcp_for_runner_request() -> None:
         pending = 1
         ctx.log.warn(f"Failed to seal TCP network logs after runner request ({type(exc).__name__})")
     finally:
-        state_written = _write_tcp_seal_state(log_path, seal_request_id, pending=pending)
-        if state_written and (pending == 0 or timed_out):
+        state_written = _write_tcp_seal_state(
+            log_path,
+            seal_request_id,
+            pending=pending,
+            failed=failed,
+        )
+        if state_written and (pending == 0 or timed_out or failed):
             _last_tcp_seal_request_id = seal_request_id
 
 
-def _read_tcp_seal_request() -> tuple[str, str] | None:
+def _read_tcp_seal_request() -> tuple[str, str, bool] | None:
     marker_path = Path(__file__).resolve().parent / _TCP_SEAL_REQUEST_FILE
     try:
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
@@ -164,7 +174,10 @@ def _read_tcp_seal_request() -> tuple[str, str] | None:
     log_path = marker.get("path")
     if not isinstance(log_path, str) or not log_path:
         return None
-    return log_path, seal_request_id
+    final_attempt = marker.get("finalAttempt", False)
+    if type(final_attempt) is not bool:
+        return None
+    return log_path, seal_request_id, final_attempt
 
 
 def _is_safe_tcp_seal_request_id(seal_request_id: str) -> bool:
@@ -179,6 +192,7 @@ def _write_tcp_seal_state(
     seal_request_id: str,
     *,
     pending: int = 0,
+    failed: bool = False,
 ) -> bool:
     state_path = Path(__file__).resolve().parent / _TCP_SEAL_STATE_FILE
     state = {
@@ -189,6 +203,8 @@ def _write_tcp_seal_state(
         "path": log_path,
         "pending": pending,
     }
+    if failed:
+        state["failed"] = True
     tmp_path = state_path.with_name(f"{state_path.name}.{seal_request_id}.tmp")
     with _tcp_seal_state_write_lock:
         try:

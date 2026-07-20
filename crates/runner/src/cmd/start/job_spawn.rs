@@ -445,7 +445,7 @@ impl DeferredUploadPhase {
         let network_log_path = exec_config.log_paths.network_log(run_id);
         let network_log_upload = async {
             if let Some(mitm_tcp_seal) = exec_config.mitm_tcp_seal.as_ref() {
-                let sealed = mitm_tcp_seal.seal_path(&network_log_path).await;
+                let sealed = mitm_tcp_seal.seal_path_for_upload(&network_log_path).await;
                 if !sealed {
                     warn!(
                         run_id = %run_id,

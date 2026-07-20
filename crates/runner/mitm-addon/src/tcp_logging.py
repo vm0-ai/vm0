@@ -3,9 +3,11 @@
 import asyncio
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import CancelledError, Future
+from typing import Literal
 
-from mitmproxy import tcp
+from mitmproxy import ctx, tcp
 
 import deferred_callbacks
 import flow_metadata
@@ -22,9 +24,17 @@ _TCP_REQUEST_SIZE = "_tcp_request_size"
 _TCP_RESPONSE_SIZE = "_tcp_response_size"
 _TCP_LOG_FINALIZED = "_tcp_log_finalized"
 
+TcpSealResult = Literal["sealed", "pending", "failed"]
+
+# Keep rejected rows independently from mitmproxy flows so a stalled writer
+# cannot retain live connection objects without bound.
+MAX_PENDING_TCP_LOG_ROWS = 4096
+
 _event_loop: asyncio.AbstractEventLoop | None = None
 _active_flows_by_path: dict[str, dict[str, tcp.TCPFlow]] = {}
-_pending_seal_futures: set[Future[bool]] = set()
+_pending_log_rows: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
+_pending_log_drop_warning_logged = False
+_pending_seal_futures: set[Future[TcpSealResult]] = set()
 _pending_seal_futures_lock = threading.Lock()
 
 
@@ -37,10 +47,12 @@ def set_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 def reset_for_tests() -> None:
     """Reset module lifecycle state after background workers have stopped."""
-    global _event_loop
+    global _event_loop, _pending_log_drop_warning_logged
 
     _event_loop = None
     _active_flows_by_path.clear()
+    _pending_log_rows.clear()
+    _pending_log_drop_warning_logged = False
     _cancel_pending_seal_futures()
 
 
@@ -48,23 +60,30 @@ def shutdown() -> None:
     """Finalize active flows and close cross-thread event-loop admission."""
     global _event_loop
 
-    for log_path in tuple(_active_flows_by_path):
-        _seal_path(log_path)
+    log_paths = set(_active_flows_by_path)
+    log_paths.update(log_path for log_path, _flow_id in _pending_log_rows)
+    for log_path in log_paths:
+        _seal_path(log_path, final_attempt=True)
     _event_loop = None
     _cancel_pending_seal_futures()
 
 
-def seal_path_from_thread(log_path: str, *, timeout: float) -> bool:
+def seal_path_from_thread(
+    log_path: str,
+    *,
+    final_attempt: bool,
+    timeout: float,
+) -> TcpSealResult:
     """Seal one path on the mitmproxy event loop from a worker thread."""
     loop = _event_loop
     if loop is None:
         raise RuntimeError("TCP logging event loop is not running")
 
-    future: Future[bool] = Future()
+    future: Future[TcpSealResult] = Future()
     with _pending_seal_futures_lock:
         _pending_seal_futures.add(future)
     try:
-        loop.call_soon_threadsafe(_complete_path_seal, log_path, future)
+        loop.call_soon_threadsafe(_complete_path_seal, log_path, final_attempt, future)
     except RuntimeError:
         _discard_pending_seal_future(future)
         raise
@@ -78,22 +97,26 @@ def seal_path_from_thread(log_path: str, *, timeout: float) -> bool:
         raise RuntimeError("TCP logging path seal was cancelled") from None
 
 
-def _complete_path_seal(log_path: str, future: Future[bool]) -> None:
+def _complete_path_seal(
+    log_path: str,
+    final_attempt: bool,
+    future: Future[TcpSealResult],
+) -> None:
     if not future.set_running_or_notify_cancel():
         _discard_pending_seal_future(future)
         return
 
     try:
-        sealed = _seal_path(log_path)
+        result = _seal_path(log_path, final_attempt=final_attempt)
     except Exception as exc:
         future.set_exception(exc)
     else:
-        future.set_result(sealed)
+        future.set_result(result)
     finally:
         _discard_pending_seal_future(future)
 
 
-def _discard_pending_seal_future(future: Future[bool]) -> None:
+def _discard_pending_seal_future(future: Future[TcpSealResult]) -> None:
     with _pending_seal_futures_lock:
         _pending_seal_futures.discard(future)
 
@@ -172,13 +195,22 @@ def _remove_active_flow(flow: tcp.TCPFlow, log_path: str) -> None:
         _active_flows_by_path.pop(log_path, None)
 
 
-def _seal_path(log_path: str) -> bool:
+def _seal_path(log_path: str, *, final_attempt: bool) -> TcpSealResult:
+    _admit_pending_log_rows(log_path)
     active_flows = tuple(_active_flows_by_path.get(log_path, {}).values())
-    sealed = True
     for flow in active_flows:
-        if not _log_tcp(flow):
-            sealed = False
-    return sealed
+        _freeze_tcp_log(flow)
+
+    _admit_pending_log_rows(log_path)
+    pending = _pending_log_row_count(log_path)
+    if pending == 0:
+        return "sealed"
+    if not final_attempt:
+        return "pending"
+
+    _discard_pending_log_rows(log_path)
+    ctx.log.warn(f"Dropped {pending} TCP network-log rows after final writer rejection")
+    return "failed"
 
 
 def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
@@ -228,15 +260,22 @@ def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
     )
 
 
-def _log_tcp(flow: tcp.TCPFlow) -> bool:
+def _log_tcp(flow: tcp.TCPFlow) -> None:
+    network_log_path = flow_metadata.network_log_path(flow.metadata)
+    if network_log_path:
+        _admit_pending_log_rows(network_log_path)
+    _freeze_tcp_log(flow)
+
+
+def _freeze_tcp_log(flow: tcp.TCPFlow) -> str | None:
     if flow.metadata.get(_TCP_LOG_FINALIZED, False):
         _drain_tcp_messages(flow)
-        return True
+        return None
 
     run_id = flow_metadata.run_id(flow.metadata)
     network_log_path = flow_metadata.network_log_path(flow.metadata)
     if not run_id or not network_log_path:
-        return False
+        return None
 
     start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
     latency_ms = logging_utils.elapsed_ms(start_time)
@@ -260,8 +299,45 @@ def _log_tcp(flow: tcp.TCPFlow) -> bool:
     if flow.error:
         log_entry["error"] = flow.error.msg
 
-    if not logging_utils.log_network_entry(network_log_path, log_entry):
-        return False
     flow.metadata[_TCP_LOG_FINALIZED] = True
     _remove_active_flow(flow, network_log_path)
-    return True
+    if not logging_utils.log_network_entry(network_log_path, log_entry):
+        _retain_pending_log_row(network_log_path, flow.id, log_entry)
+    return network_log_path
+
+
+def _retain_pending_log_row(
+    log_path: str,
+    flow_id: str,
+    log_entry: dict[str, object],
+) -> None:
+    global _pending_log_drop_warning_logged
+
+    key = (log_path, flow_id)
+    if key not in _pending_log_rows and len(_pending_log_rows) >= MAX_PENDING_TCP_LOG_ROWS:
+        _pending_log_rows.popitem(last=False)
+        if not _pending_log_drop_warning_logged:
+            ctx.log.warn("Dropped oldest pending TCP network-log row because retry buffer is full")
+            _pending_log_drop_warning_logged = True
+    _pending_log_rows[key] = log_entry
+
+
+def _admit_pending_log_rows(log_path: str) -> None:
+    for key, log_entry in tuple(_pending_log_rows.items()):
+        pending_log_path, _flow_id = key
+        if pending_log_path != log_path:
+            continue
+        if not logging_utils.log_network_entry(log_path, log_entry):
+            return
+        _pending_log_rows.pop(key)
+
+
+def _pending_log_row_count(log_path: str) -> int:
+    return sum(pending_log_path == log_path for pending_log_path, _flow_id in _pending_log_rows)
+
+
+def _discard_pending_log_rows(log_path: str) -> None:
+    for key in tuple(_pending_log_rows):
+        pending_log_path, _flow_id = key
+        if pending_log_path == log_path:
+            _pending_log_rows.pop(key)
