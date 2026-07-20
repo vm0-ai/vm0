@@ -1,22 +1,25 @@
-name: Check storage archive size backfill status
+name: Diagnose storage archive size backfill
 
-run-name: Check production storage archive size backfill status
+run-name: Diagnose production storage archive size backfill
 
 on:
   pull_request:
     paths:
       - ".github/workflows/storage-archive-size-backfill-status.yml"
+      - ".github/scripts/storage-archive-size-backfill-diagnostics.sql"
 
 permissions:
   contents: read
 
 jobs:
   status:
-    name: Check production backfill status
+    name: Diagnose production backfill
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: production
     steps:
+      - uses: actions/checkout@v7
+
       - name: Query status endpoint
         shell: bash
         env:
@@ -72,3 +75,71 @@ jobs:
           else
             echo "::warning::Storage archive size backfill runtime is retired"
           fi
+
+      - name: Install production database tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global neonctl@2.15.0
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Classify unresolved versions
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${NEON_API_KEY}" ]]; then
+            echo "::error::NEON_API_KEY is not configured"
+            exit 1
+          fi
+          if [[ -z "${NEON_PROJECT_ID}" ]]; then
+            echo "::error::NEON_PROJECT_ID is not configured"
+            exit 1
+          fi
+
+          database_url="$(
+            neonctl connection-string production \
+              --project-id "${NEON_PROJECT_ID}" \
+              --database-name neondb \
+              --role-name neondb_owner \
+              --pooled
+          )"
+          echo "::add-mask::${database_url}"
+
+          diagnostics_path="${RUNNER_TEMP}/storage-archive-size-backfill-diagnostics.json"
+          trap 'rm -f "${diagnostics_path}"' EXIT
+
+          PGOPTIONS="-c default_transaction_read_only=on" \
+            psql "${database_url}" \
+              --no-psqlrc \
+              --quiet \
+              --tuples-only \
+              --no-align \
+              --set ON_ERROR_STOP=1 \
+              --file .github/scripts/storage-archive-size-backfill-diagnostics.sql \
+              > "${diagnostics_path}"
+
+          if ! jq -e '
+            type == "object"
+            and (.remainingNull.total | type == "number")
+            and (.candidates.total | type == "number")
+            and (.candidates.currentHeads | type == "number")
+            and (.candidates.nonHeadWithoutKnownReferences | type == "number")
+          ' "${diagnostics_path}" > /dev/null; then
+            echo "::error::Production classification returned invalid JSON"
+            exit 1
+          fi
+
+          jq . "${diagnostics_path}"
+          {
+            echo
+            echo "## Unresolved storage version classification"
+            echo
+            echo '```json'
+            jq . "${diagnostics_path}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
