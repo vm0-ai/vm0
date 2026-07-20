@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.609.5](https://github.com/vm0-ai/vm0/compare/app-v0.609.4...app-v0.609.5) (2026-07-20)
+
+
+### Refactoring
+
+* canonicalize workflow queue automation IDs ([#22151](https://github.com/vm0-ai/vm0/issues/22151)) ([af2f5fd](https://github.com/vm0-ai/vm0/commit/af2f5fd4e7381372388e5ba597b27b33de9899fb))
+* graduate website templates to always-on ([#22209](https://github.com/vm0-ai/vm0/issues/22209)) ([9c1a75a](https://github.com/vm0-ai/vm0/commit/9c1a75ab743c243447eb8f850c61a89cae177422))
+
+
+### Performance Improvements
+
+* **artifacts:** sync artifact updates incrementally ([#22190](https://github.com/vm0-ai/vm0/issues/22190)) ([d6875b3](https://github.com/vm0-ai/vm0/commit/d6875b307c961321442f4a15c37d96a188860845))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.4
+    * @vm0/connectors bumped to 1.172.2
+    * @vm0/core bumped to 8.442.3
+
 ## [0.609.4](https://github.com/vm0-ai/vm0/compare/app-v0.609.3...app-v0.609.4) (2026-07-20)
 
 

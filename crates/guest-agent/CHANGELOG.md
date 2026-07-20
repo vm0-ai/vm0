@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.53.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.13...guest-agent-v0.53.14) (2026-07-20)
+
+
+### Documentation
+
+* **guest-agent:** make mock scenario docs authoritative ([#22210](https://github.com/vm0-ai/vm0/issues/22210)) ([a584642](https://github.com/vm0-ai/vm0/commit/a58464252a205b643ae48a9a32eb7d3985e0877a))
+
+
+### Refactoring
+
+* **rust:** extract guest-agent failure diagnostics from main ([#22203](https://github.com/vm0-ai/vm0/issues/22203)) ([88fd828](https://github.com/vm0-ai/vm0/commit/88fd828d9480fc7564b7d40d1901f0a47bae7bea))
+
 ## [0.53.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.12...guest-agent-v0.53.13) (2026-07-19)
 
 ## [0.53.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.11...guest-agent-v0.53.12) (2026-07-19)

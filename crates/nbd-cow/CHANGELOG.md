@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.67](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.66...nbd-cow-v0.4.67) (2026-07-20)
+
+
+### Documentation
+
+* **rust:** run nbd-cow integration binary as root ([#22180](https://github.com/vm0-ai/vm0/issues/22180)) ([401ae9e](https://github.com/vm0-ai/vm0/commit/401ae9e9eebe5a2918801fded8d74bba45ab5ef6))
+
 ## [0.4.66](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.65...nbd-cow-v0.4.66) (2026-07-16)
 
 

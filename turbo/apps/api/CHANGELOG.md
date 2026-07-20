@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.287.0](https://github.com/vm0-ai/vm0/compare/api-v1.286.4...api-v1.287.0) (2026-07-20)
+
+
+### Features
+
+* **lint:** ban hand-written drizzle raw sql behind a file allowlist ([#22158](https://github.com/vm0-ai/vm0/issues/22158)) ([53a6dbd](https://github.com/vm0-ai/vm0/commit/53a6dbd43d11e707e0e9cfbd6c91c97b930bedcf))
+
+
+### Refactoring
+
+* canonicalize workflow queue automation IDs ([#22151](https://github.com/vm0-ai/vm0/issues/22151)) ([af2f5fd](https://github.com/vm0-ai/vm0/commit/af2f5fd4e7381372388e5ba597b27b33de9899fb))
+* graduate website templates to always-on ([#22209](https://github.com/vm0-ai/vm0/issues/22209)) ([9c1a75a](https://github.com/vm0-ai/vm0/commit/9c1a75ab743c243447eb8f850c61a89cae177422))
+* **runner:** remove generation claim attribution ([#22201](https://github.com/vm0-ai/vm0/issues/22201)) ([5f0d316](https://github.com/vm0-ai/vm0/commit/5f0d316ccb916fd575b0fe93f23061cb88dc4df7))
+
+
+### Performance Improvements
+
+* **artifacts:** sync artifact updates incrementally ([#22190](https://github.com/vm0-ai/vm0/issues/22190)) ([d6875b3](https://github.com/vm0-ai/vm0/commit/d6875b307c961321442f4a15c37d96a188860845))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.4
+    * @vm0/connectors bumped to 1.172.2
+    * @vm0/core bumped to 8.442.3
+    * @vm0/db bumped to 1.121.4
+
 ## [1.286.4](https://github.com/vm0-ai/vm0/compare/api-v1.286.3...api-v1.286.4) (2026-07-20)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.146.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.15...runner-rs-v0.146.16) (2026-07-20)
+
+
+### Refactoring
+
+* **runner:** extract session history restore planning ([#22215](https://github.com/vm0-ai/vm0/issues/22215)) ([f4c6f20](https://github.com/vm0-ai/vm0/commit/f4c6f2059e1d45128b280cb3a4d68513419282be))
+* **runner:** remove generation claim attribution ([#22201](https://github.com/vm0-ai/vm0/issues/22201)) ([5f0d316](https://github.com/vm0-ai/vm0/commit/5f0d316ccb916fd575b0fe93f23061cb88dc4df7))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid repeated idna normalization in x billing ([#22199](https://github.com/vm0-ai/vm0/issues/22199)) ([fd2c921](https://github.com/vm0-ai/vm0/commit/fd2c921da2e10a213eb645cfca08033d8db805b8))
+* **runner:** inventory workspace cache once per gc ([#22202](https://github.com/vm0-ai/vm0/issues/22202)) ([c7e1a1e](https://github.com/vm0-ai/vm0/commit/c7e1a1e5ff09c46171a036b57cd3630ee9d415f1))
+
 ## [0.146.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.14...runner-rs-v0.146.15) (2026-07-20)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.442.3](https://github.com/vm0-ai/vm0/compare/core-v8.442.2...core-v8.442.3) (2026-07-20)
+
+
+### Refactoring
+
+* graduate website templates to always-on ([#22209](https://github.com/vm0-ai/vm0/issues/22209)) ([9c1a75a](https://github.com/vm0-ai/vm0/commit/9c1a75ab743c243447eb8f850c61a89cae177422))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.4
+    * @vm0/connectors bumped to 1.172.2
+
 ## [8.442.2](https://github.com/vm0-ai/vm0/compare/core-v8.442.1...core-v8.442.2) (2026-07-20)
 
 
