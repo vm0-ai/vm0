@@ -976,8 +976,11 @@ function feedbackNoteContent(note: string): JSONContent[] {
   });
 }
 
-function feedbackNoteFromNode(node: ProseMirrorNode): string {
-  return nodeText(node);
+function feedbackNoteFromNode(
+  node: ProseMirrorNode,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
+): string {
+  return nodeText(node, node.content.size, attachmentReferenceClientIds);
 }
 
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
@@ -1527,7 +1530,7 @@ function workflowComposerDocToString(
       feedbackItems.push({
         id: attributes.feedbackId,
         quote: attributes.quote,
-        note: feedbackNoteFromNode(node),
+        note: feedbackNoteFromNode(node, attachmentReferenceClientIds),
       });
       continue;
     }
