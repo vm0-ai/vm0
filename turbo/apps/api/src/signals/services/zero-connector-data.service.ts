@@ -53,6 +53,12 @@ import {
   connectorCredentialStatusWithMethod,
 } from "./connector-credential-status.service";
 import {
+  connectorCredentialSecretReadCondition,
+  connectorCredentialStorageIsCompatible,
+  resolveConnectorCredentialAccess,
+  type ConnectorCredentialAccess,
+} from "./connector-credential-access.service";
+import {
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
@@ -76,6 +82,7 @@ type StoredConnectorRow = {
   readonly oauthScopes: string | null;
   readonly needsReconnect: boolean;
   readonly reconnectReason: string | null;
+  readonly storageVersion: number | null;
   readonly tokenExpiresAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -188,6 +195,10 @@ function storedConnectorRowToResponse(
   runtimeMethod: ConnectorRuntimeMethod,
   now: Date,
 ): ConnectorResponse {
+  const storageCompatible = connectorCredentialStorageIsCompatible({
+    runtimeMethod,
+    storageVersion: row.storageVersion,
+  });
   const credentialStatus = connectorCredentialStatusWithMethod({
     method: runtimeMethod.method,
     storedNeedsReconnect: row.needsReconnect,
@@ -195,7 +206,7 @@ function storedConnectorRowToResponse(
     now,
   });
   const connectionStatus =
-    credentialStatus === "reconnect-required"
+    !storageCompatible || credentialStatus === "reconnect-required"
       ? "reconnect-required"
       : "connected";
   return {
@@ -207,8 +218,9 @@ function storedConnectorRowToResponse(
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
     connectionStatus,
-    reconnectReason:
-      connectionStatus === "reconnect-required"
+    reconnectReason: !storageCompatible
+      ? null
+      : connectionStatus === "reconnect-required"
         ? (parseStoredReconnectReason(row.reconnectReason) ??
           connectorCredentialReconnectReasonWithMethod({
             method: runtimeMethod.method,
@@ -431,6 +443,7 @@ export function zeroConnectorList(args: {
         oauthScopes: connectors.oauthScopes,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
+        storageVersion: connectors.storageVersion,
         tokenExpiresAt: connectors.tokenExpiresAt,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
@@ -568,6 +581,7 @@ function storedConnectorByType(args: {
         oauthScopes: connectors.oauthScopes,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
+        storageVersion: connectors.storageVersion,
         tokenExpiresAt: connectors.tokenExpiresAt,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
@@ -614,15 +628,13 @@ export function zeroConnectorByType(args: {
 }
 
 async function loadPendingConnectorTokenRevoke(args: {
+  readonly access: ConnectorCredentialAccess;
   readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {
   const revokeMetadata = connectorAuthMethodRevokeMetadata(
-    args.runtimeMethod.method,
+    args.access.runtimeMethod.method,
   );
   if (revokeMetadata?.kind !== "token-revoke") {
     return null;
@@ -631,7 +643,7 @@ async function loadPendingConnectorTokenRevoke(args: {
   const inputEntries = Object.entries(revokeMetadata.inputs);
   if (inputEntries.length === 0) {
     return {
-      runtimeMethod: args.runtimeMethod,
+      runtimeMethod: args.access.runtimeMethod,
       encryptedInputs: {},
       featureSwitchContext: args.featureSwitchContext,
     };
@@ -644,12 +656,10 @@ async function loadPendingConnectorTokenRevoke(args: {
     .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
     .from(secrets)
     .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        inArray(secrets.name, secretNames),
-        eq(secrets.type, "connector"),
-      ),
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [{ access: args.access, names: secretNames }],
+      }),
     );
   args.signal.throwIfAborted();
 
@@ -668,7 +678,7 @@ async function loadPendingConnectorTokenRevoke(args: {
   }
 
   return {
-    runtimeMethod: args.runtimeMethod,
+    runtimeMethod: args.access.runtimeMethod,
     encryptedInputs,
     featureSwitchContext: args.featureSwitchContext,
   };
@@ -686,66 +696,6 @@ async function decryptConnectorRevokeInputs(args: {
     );
   }
   return inputs;
-}
-
-function resolveTokenRevokeRuntimeMethod(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly type: string;
-  readonly authMethod: string;
-}): ConnectorRuntimeMethod | null {
-  const runtimeMethod = getConnectorRuntimeMethod({
-    snapshot: args.snapshot,
-    connectorRef: args.type,
-    authMethodId: args.authMethod,
-    requireExecutable: true,
-  });
-  return runtimeMethod?.method.revoke.kind === "token-revoke"
-    ? runtimeMethod
-    : null;
-}
-
-function requireStoredConnectorRuntimeMethod(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly type: string;
-  readonly authMethod: string;
-}): ConnectorRuntimeMethod {
-  const runtimeMethod = getConnectorRuntimeMethod({
-    snapshot: args.snapshot,
-    connectorRef: args.type,
-    authMethodId: args.authMethod,
-    requireExecutable: false,
-  });
-  if (runtimeMethod === undefined) {
-    throw new Error(
-      `Current connector catalog cannot describe stored method ${args.type}:${args.authMethod}`,
-    );
-  }
-  return runtimeMethod;
-}
-
-function resolveReplaceTokenRevokeRuntimeMethod(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly type: string;
-  readonly authMethod: string | null;
-}): ConnectorRuntimeMethod | null {
-  if (!args.authMethod) {
-    return null;
-  }
-  const tokenRevokeMethod = resolveTokenRevokeRuntimeMethod({
-    snapshot: args.snapshot,
-    type: args.type,
-    authMethod: args.authMethod,
-  });
-  if (!tokenRevokeMethod) {
-    return null;
-  }
-  if (
-    tokenRevokeMethod.method.revoke.kind !== "token-revoke" ||
-    tokenRevokeMethod.method.revoke.revokePreviousOnReplace !== true
-  ) {
-    return null;
-  }
-  return tokenRevokeMethod;
 }
 
 async function revokePendingConnectorToken(args: {
@@ -826,6 +776,9 @@ async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly signal: AbortSignal;
 }): Promise<void> {
+  if (args.snapshot.identity.source !== "static") {
+    return;
+  }
   const cleanupAuthMethods = new Set<string>();
   for (const authMethod of args.authMethods) {
     if (authMethod) {
@@ -835,11 +788,15 @@ async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
 
   for (const authMethod of cleanupAuthMethods) {
     args.signal.throwIfAborted();
-    const runtimeMethod = requireStoredConnectorRuntimeMethod({
+    const runtimeMethod = getConnectorRuntimeMethod({
       snapshot: args.snapshot,
-      type: args.type,
-      authMethod,
+      connectorRef: args.type,
+      authMethodId: authMethod,
+      requireExecutable: false,
     });
+    if (runtimeMethod === undefined) {
+      continue;
+    }
     await deleteManualGrantConnectorLocalState({
       db: args.db,
       orgId: args.orgId,
@@ -884,7 +841,11 @@ export const deleteZeroConnectorLocalState$ = command(
       signal.throwIfAborted();
 
       const [existing] = await tx
-        .select({ id: connectors.id, authMethod: connectors.authMethod })
+        .select({
+          id: connectors.id,
+          authMethod: connectors.authMethod,
+          storageVersion: connectors.storageVersion,
+        })
         .from(connectors)
         .where(
           and(
@@ -901,28 +862,26 @@ export const deleteZeroConnectorLocalState$ = command(
         return { deleted: false, pendingTokenRevoke: null };
       }
 
-      const existingRuntimeMethod = getConnectorRuntimeMethod({
+      const accessResult = resolveConnectorCredentialAccess({
         snapshot,
-        connectorRef: args.type,
-        authMethodId: existing.authMethod,
-        requireExecutable: false,
+        stored: {
+          authMethodId: existing.authMethod,
+          connectorId: existing.id,
+          connectorRef: args.type,
+          orgId: args.orgId,
+          storageVersion: existing.storageVersion,
+          userId: args.userId,
+        },
       });
-      if (existingRuntimeMethod === undefined) {
-        return { deleted: false, pendingTokenRevoke: null };
-      }
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-      const tokenRevokeRuntimeMethod = resolveTokenRevokeRuntimeMethod({
-        snapshot,
-        type: args.type,
-        authMethod: existing.authMethod,
-      });
-      if (tokenRevokeRuntimeMethod !== null) {
+      if (
+        accessResult.kind === "ok" &&
+        accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
+      ) {
         pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
+          access: accessResult.access,
           db: tx,
-          orgId: args.orgId,
-          userId: args.userId,
-          runtimeMethod: tokenRevokeRuntimeMethod,
           featureSwitchContext,
           signal,
         });
@@ -934,24 +893,29 @@ export const deleteZeroConnectorLocalState$ = command(
         signal,
       });
 
-      await deleteConnectorScopedSecretNames(tx, {
-        connectorId: existing.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: connectorAuthMethodOwnedSecretNames(
-          existingRuntimeMethod.method,
-        ),
-        signal,
-      });
-      await deleteConnectorScopedVariableNames(tx, {
-        connectorId: existing.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: connectorAuthMethodOwnedVariableNames(
-          existingRuntimeMethod.method,
-        ),
-        signal,
-      });
+      if (
+        accessResult.kind === "ok" &&
+        accessResult.access.staticNullOwnerBridge
+      ) {
+        await deleteConnectorScopedSecretNames(tx, {
+          connectorId: existing.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: connectorAuthMethodOwnedSecretNames(
+            accessResult.access.runtimeMethod.method,
+          ),
+          signal,
+        });
+        await deleteConnectorScopedVariableNames(tx, {
+          connectorId: existing.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: connectorAuthMethodOwnedVariableNames(
+            accessResult.access.runtimeMethod.method,
+          ),
+          signal,
+        });
+      }
       await tx.delete(connectors).where(eq(connectors.id, existing.id));
       signal.throwIfAborted();
 
@@ -1028,6 +992,7 @@ async function upsertLocalConnectorRow(
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
       reconnectReason: connectors.reconnectReason,
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
@@ -1173,7 +1138,11 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   },
 ): Promise<PendingConnectorTokenRevoke | null> {
   const [existing] = await db
-    .select({ id: connectors.id, authMethod: connectors.authMethod })
+    .select({
+      id: connectors.id,
+      authMethod: connectors.authMethod,
+      storageVersion: connectors.storageVersion,
+    })
     .from(connectors)
     .where(
       and(
@@ -1190,41 +1159,53 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   }
 
   let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-  const existingRuntimeMethod = requireStoredConnectorRuntimeMethod({
+  const accessResult = resolveConnectorCredentialAccess({
     snapshot: args.snapshot,
-    type: args.type,
-    authMethod: existing.authMethod,
-  });
-  const tokenRevokeRuntimeMethod = resolveTokenRevokeRuntimeMethod({
-    snapshot: args.snapshot,
-    type: args.type,
-    authMethod: existing.authMethod,
-  });
-  if (tokenRevokeRuntimeMethod !== null) {
-    pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
-      db,
+    stored: {
+      authMethodId: existing.authMethod,
+      connectorId: existing.id,
+      connectorRef: args.type,
       orgId: args.orgId,
+      storageVersion: existing.storageVersion,
       userId: args.userId,
-      runtimeMethod: tokenRevokeRuntimeMethod,
+    },
+  });
+  if (
+    accessResult.kind === "ok" &&
+    accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
+  ) {
+    pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
+      access: accessResult.access,
+      db,
       featureSwitchContext: args.featureSwitchContext,
       signal: args.signal,
     });
   }
 
-  await deleteConnectorScopedSecretNames(db, {
+  await deleteConnectorOwnedCredentialRows(db, {
     connectorId: existing.id,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: connectorAuthMethodOwnedSecretNames(existingRuntimeMethod.method),
     signal: args.signal,
   });
-  await deleteConnectorScopedVariableNames(db, {
-    connectorId: existing.id,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: connectorAuthMethodOwnedVariableNames(existingRuntimeMethod.method),
-    signal: args.signal,
-  });
+  if (accessResult.kind === "ok" && accessResult.access.staticNullOwnerBridge) {
+    await deleteConnectorScopedSecretNames(db, {
+      connectorId: existing.id,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: connectorAuthMethodOwnedSecretNames(
+        accessResult.access.runtimeMethod.method,
+      ),
+      signal: args.signal,
+    });
+    await deleteConnectorScopedVariableNames(db, {
+      connectorId: existing.id,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: connectorAuthMethodOwnedVariableNames(
+        accessResult.access.runtimeMethod.method,
+      ),
+      signal: args.signal,
+    });
+  }
 
   return pendingTokenRevoke;
 }
@@ -1338,20 +1319,22 @@ export const connectManualGrantConnector$ = command(
       });
       signal.throwIfAborted();
 
-      await deleteConnectorScopedSecretNames(tx, {
-        connectorId: connectorRow.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: omittedSecretNames,
-        signal,
-      });
-      await deleteConnectorScopedVariableNames(tx, {
-        connectorId: connectorRow.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: omittedVariableNames,
-        signal,
-      });
+      if (args.snapshot.identity.source === "static") {
+        await deleteConnectorScopedSecretNames(tx, {
+          connectorId: connectorRow.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: omittedSecretNames,
+          signal,
+        });
+        await deleteConnectorScopedVariableNames(tx, {
+          connectorId: connectorRow.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: omittedVariableNames,
+          signal,
+        });
+      }
 
       await writeManualGrantCredentials(tx, {
         connectorId: connectorRow.id,
@@ -1853,7 +1836,7 @@ async function upsertPreparedConnectorTokenState(args: {
   });
 }
 
-async function loadExistingConnectorAuthMethod(
+async function loadExistingConnectorIdentity(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1861,9 +1844,17 @@ async function loadExistingConnectorAuthMethod(
     readonly type: string;
     readonly signal: AbortSignal;
   },
-): Promise<string | null> {
+): Promise<{
+  readonly authMethod: string;
+  readonly id: string;
+  readonly storageVersion: number | null;
+} | null> {
   const [existingConnector] = await db
-    .select({ authMethod: connectors.authMethod })
+    .select({
+      authMethod: connectors.authMethod,
+      id: connectors.id,
+      storageVersion: connectors.storageVersion,
+    })
     .from(connectors)
     .where(
       and(
@@ -1874,7 +1865,7 @@ async function loadExistingConnectorAuthMethod(
     )
     .limit(1);
   args.signal.throwIfAborted();
-  return existingConnector?.authMethod ?? null;
+  return existingConnector ?? null;
 }
 
 async function upsertConnectorTokenConnectionRow(
@@ -1931,6 +1922,7 @@ async function upsertConnectorTokenConnectionRow(
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
       reconnectReason: connectors.reconnectReason,
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
@@ -1942,56 +1934,6 @@ async function upsertConnectorTokenConnectionRow(
   }
 
   return connectorRow;
-}
-
-async function deleteObsoleteConnectorScopedStateForTokenConnect(
-  db: Db,
-  args: {
-    readonly connectorId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly runtimeMethod: ConnectorRuntimeMethod;
-    readonly existingRuntimeMethod: ConnectorRuntimeMethod | null;
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
-  if (
-    args.existingRuntimeMethod === null ||
-    args.existingRuntimeMethod.authMethodId === args.runtimeMethod.authMethodId
-  ) {
-    return;
-  }
-
-  const targetSecretNames = new Set(
-    connectorAuthMethodOwnedSecretNames(args.runtimeMethod.method),
-  );
-  const obsoleteSecretNames = connectorAuthMethodOwnedSecretNames(
-    args.existingRuntimeMethod.method,
-  ).filter((name) => {
-    return !targetSecretNames.has(name);
-  });
-  const targetVariableNames = new Set(
-    connectorAuthMethodOwnedVariableNames(args.runtimeMethod.method),
-  );
-  const obsoleteVariableNames = connectorAuthMethodOwnedVariableNames(
-    args.existingRuntimeMethod.method,
-  ).filter((name) => {
-    return !targetVariableNames.has(name);
-  });
-  await deleteConnectorScopedSecretNames(db, {
-    connectorId: args.connectorId,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: obsoleteSecretNames,
-    signal: args.signal,
-  });
-  await deleteConnectorScopedVariableNames(db, {
-    connectorId: args.connectorId,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: obsoleteVariableNames,
-    signal: args.signal,
-  });
 }
 
 async function commitConnectorTokenConnection(args: {
@@ -2017,34 +1959,64 @@ async function commitConnectorTokenConnection(args: {
   });
   args.signal.throwIfAborted();
 
-  const existingAuthMethod = await loadExistingConnectorAuthMethod(args.db, {
+  const existingConnector = await loadExistingConnectorIdentity(args.db, {
     orgId: args.orgId,
     userId: args.userId,
     type: args.runtimeMethod.connectorRef,
     signal: args.signal,
   });
-  const existingRuntimeMethod = existingAuthMethod
-    ? requireStoredConnectorRuntimeMethod({
+  const existingAccessResult = existingConnector
+    ? resolveConnectorCredentialAccess({
         snapshot: args.snapshot,
-        type: args.runtimeMethod.connectorRef,
-        authMethod: existingAuthMethod,
+        stored: {
+          authMethodId: existingConnector.authMethod,
+          connectorId: existingConnector.id,
+          connectorRef: args.runtimeMethod.connectorRef,
+          orgId: args.orgId,
+          storageVersion: existingConnector.storageVersion,
+          userId: args.userId,
+        },
       })
     : null;
-  const replaceTokenRevokeMethod = resolveReplaceTokenRevokeRuntimeMethod({
-    snapshot: args.snapshot,
-    type: args.runtimeMethod.connectorRef,
-    authMethod: existingAuthMethod,
-  });
-  const pendingTokenRevoke = replaceTokenRevokeMethod
-    ? await loadPendingConnectorTokenRevoke({
-        db: args.db,
-        orgId: args.orgId,
-        userId: args.userId,
-        runtimeMethod: replaceTokenRevokeMethod,
-        featureSwitchContext: args.featureSwitchContext,
-        signal: args.signal,
-      })
-    : null;
+  const existingAccess =
+    existingAccessResult?.kind === "ok" ? existingAccessResult.access : null;
+  const pendingTokenRevoke =
+    existingAccess?.runtimeMethod.method.revoke.kind === "token-revoke" &&
+    existingAccess.runtimeMethod.method.revoke.revokePreviousOnReplace === true
+      ? await loadPendingConnectorTokenRevoke({
+          access: existingAccess,
+          db: args.db,
+          featureSwitchContext: args.featureSwitchContext,
+          signal: args.signal,
+        })
+      : null;
+
+  if (existingConnector !== null) {
+    await deleteConnectorOwnedCredentialRows(args.db, {
+      connectorId: existingConnector.id,
+      signal: args.signal,
+    });
+  }
+  if (existingAccess?.staticNullOwnerBridge === true) {
+    await deleteConnectorScopedSecretNames(args.db, {
+      connectorId: existingAccess.connectorId,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: connectorAuthMethodOwnedSecretNames(
+        existingAccess.runtimeMethod.method,
+      ),
+      signal: args.signal,
+    });
+    await deleteConnectorScopedVariableNames(args.db, {
+      connectorId: existingAccess.connectorId,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: connectorAuthMethodOwnedVariableNames(
+        existingAccess.runtimeMethod.method,
+      ),
+      signal: args.signal,
+    });
+  }
 
   const connectorRow = await upsertConnectorTokenConnectionRow(args.db, {
     orgId: args.orgId,
@@ -2069,20 +2041,15 @@ async function commitConnectorTokenConnection(args: {
   });
   args.signal.throwIfAborted();
 
-  await deleteObsoleteConnectorScopedStateForTokenConnect(args.db, {
-    connectorId: connectorRow.id,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeMethod: args.runtimeMethod,
-    existingRuntimeMethod,
-    signal: args.signal,
-  });
   await deleteManualGrantConnectorLocalStateForAuthMethods({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
     type: args.runtimeMethod.connectorRef,
-    authMethods: [existingAuthMethod, args.runtimeMethod.authMethodId],
+    authMethods: [
+      existingConnector?.authMethod ?? null,
+      args.runtimeMethod.authMethodId,
+    ],
     snapshot: args.snapshot,
     signal: args.signal,
   });

@@ -29,7 +29,7 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { variables } from "@vm0/db/schema/variable";
 import { command } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { type Db, writeDb$ } from "../external/db";
 import {
@@ -45,10 +45,14 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { zeroRunContext } from "./zero-run-detail.service";
 import {
-  getConnectorRuntimeMethod,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialVariableReadCondition,
+  resolveConnectorCredentialAccess,
+  type ConnectorCredentialAccess,
+} from "./connector-credential-access.service";
 
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
@@ -70,6 +74,18 @@ interface StoredRuntimeState {
     ConnectorType,
     Readonly<Record<string, string>> | null
   >;
+}
+
+interface StoredConnectorRuntimeCandidate {
+  readonly connectorId: string;
+  readonly type: string;
+  readonly authMethod: string;
+  readonly storageVersion: number | null;
+}
+
+interface PendingStoredConnectorRuntime {
+  readonly access: ConnectorCredentialAccess;
+  readonly storageNameByRuntimeName: ReadonlyMap<string, string>;
 }
 
 type ConnectorCheckTimeline =
@@ -147,6 +163,76 @@ const connectorCheckFeatureStates$ = command(
   },
 );
 
+function pendingStoredConnectorRuntimes(
+  rows: readonly StoredConnectorRuntimeCandidate[],
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+  },
+): ReadonlyMap<ConnectorType, PendingStoredConnectorRuntime | null> {
+  const pending = new Map<
+    ConnectorType,
+    PendingStoredConnectorRuntime | null
+  >();
+
+  for (const row of rows) {
+    if (!isConnectorType(row.type)) {
+      continue;
+    }
+    if (pending.has(row.type)) {
+      throw new Error(`Duplicate stored connector state for ${row.type}`);
+    }
+    const accessResult = resolveConnectorCredentialAccess({
+      snapshot: args.snapshot,
+      stored: {
+        authMethodId: row.authMethod,
+        connectorId: row.connectorId,
+        connectorRef: row.type,
+        orgId: args.orgId,
+        storageVersion: row.storageVersion,
+        userId: args.userId,
+      },
+    });
+    if (accessResult.kind !== "ok") {
+      pending.set(row.type, null);
+      continue;
+    }
+    const { access } = accessResult;
+    const requiredRuntimeNames =
+      getFirewallExecutionMetadata(row.type)?.baseUrlVarNames ?? [];
+    if (requiredRuntimeNames.length === 0) {
+      pending.set(row.type, {
+        access,
+        storageNameByRuntimeName: new Map(),
+      });
+      continue;
+    }
+
+    const runtimeMetadata = connectorAuthMethodRuntimeMetadata(
+      access.runtimeMethod.method,
+    );
+    const requiredNameSet = new Set(requiredRuntimeNames);
+    const storageNameByRuntimeName = new Map<string, string>();
+    for (const binding of runtimeMetadata.runtimeBindings) {
+      if (
+        requiredNameSet.has(binding.envName) &&
+        binding.source.kind === "connector-variable"
+      ) {
+        storageNameByRuntimeName.set(binding.envName, binding.source.name);
+      }
+    }
+    pending.set(
+      row.type,
+      storageNameByRuntimeName.size === requiredNameSet.size
+        ? { access, storageNameByRuntimeName }
+        : null,
+    );
+  }
+
+  return pending;
+}
+
 async function loadStoredRuntimeState(
   db: Db,
   args: {
@@ -161,7 +247,12 @@ async function loadStoredRuntimeState(
     );
 
     const connectorRows = await tx
-      .select({ type: connectors.type, authMethod: connectors.authMethod })
+      .select({
+        connectorId: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        storageVersion: connectors.storageVersion,
+      })
       .from(connectors)
       .where(
         and(
@@ -170,71 +261,29 @@ async function loadStoredRuntimeState(
         ),
       );
 
-    const pending = new Map<
-      ConnectorType,
-      ReadonlyMap<string, string> | null
-    >();
-    const requiredStorageNames = new Set<string>();
+    const pending = pendingStoredConnectorRuntimes(connectorRows, args);
 
-    for (const row of connectorRows) {
-      if (!isConnectorType(row.type)) {
-        continue;
-      }
-      if (pending.has(row.type)) {
-        throw new Error(`Duplicate stored connector state for ${row.type}`);
-      }
-      const requiredRuntimeNames =
-        getFirewallExecutionMetadata(row.type)?.baseUrlVarNames ?? [];
-      if (requiredRuntimeNames.length === 0) {
-        pending.set(row.type, new Map());
-        continue;
-      }
-
-      const runtimeMethod = getConnectorRuntimeMethod({
-        snapshot: args.snapshot,
-        connectorRef: row.type,
-        authMethodId: row.authMethod,
-        requireExecutable: true,
-      });
-      if (!runtimeMethod) {
-        throw new Error(`Invalid stored auth method for ${row.type}`);
-      }
-      const runtimeMetadata = connectorAuthMethodRuntimeMetadata(
-        runtimeMethod.method,
-      );
-      const requiredNameSet = new Set(requiredRuntimeNames);
-      const storageNameByRuntimeName = new Map<string, string>();
-      for (const binding of runtimeMetadata.runtimeBindings) {
-        if (
-          requiredNameSet.has(binding.envName) &&
-          binding.source.kind === "connector-variable"
-        ) {
-          storageNameByRuntimeName.set(binding.envName, binding.source.name);
-        }
-      }
-      if (storageNameByRuntimeName.size !== requiredNameSet.size) {
-        pending.set(row.type, null);
-        continue;
-      }
-      for (const storageName of storageNameByRuntimeName.values()) {
-        requiredStorageNames.add(storageName);
-      }
-      pending.set(row.type, storageNameByRuntimeName);
-    }
-
+    const readGroups = [...pending.values()].flatMap((value) => {
+      return value === null || value.storageNameByRuntimeName.size === 0
+        ? []
+        : [
+            {
+              access: value.access,
+              names: [...value.storageNameByRuntimeName.values()],
+            },
+          ];
+    });
     const variableRows =
-      requiredStorageNames.size === 0
+      readGroups.length === 0
         ? []
         : await tx
             .select({ name: variables.name, value: variables.value })
             .from(variables)
             .where(
-              and(
-                eq(variables.orgId, args.orgId),
-                eq(variables.userId, args.userId),
-                eq(variables.type, "connector"),
-                inArray(variables.name, [...requiredStorageNames]),
-              ),
+              connectorCredentialVariableReadCondition({
+                db: tx,
+                groups: readGroups,
+              }),
             );
     const valueByStorageName = new Map(
       variableRows.map((row) => {
@@ -245,14 +294,17 @@ async function loadStoredRuntimeState(
       ConnectorType,
       Readonly<Record<string, string>> | null
     >();
-    for (const [type, storageNameByRuntimeName] of pending) {
-      if (storageNameByRuntimeName === null) {
+    for (const [type, pendingState] of pending) {
+      if (pendingState === null) {
         baseUrlVarsByType.set(type, null);
         continue;
       }
       const values: Record<string, string> = {};
       let complete = true;
-      for (const [runtimeName, storageName] of storageNameByRuntimeName) {
+      for (const [
+        runtimeName,
+        storageName,
+      ] of pendingState.storageNameByRuntimeName) {
         const value = valueByStorageName.get(storageName);
         if (!value) {
           complete = false;

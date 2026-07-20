@@ -28,9 +28,11 @@
  */
 
 import { execSync } from "node:child_process";
+import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
@@ -38,6 +40,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
 const MIGRATIONS_DIR = path.join(PACKAGE_DIR, "src/migrations");
 const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
+const RESTORE_DIR = path.join(dirname, "../.migrations-restore");
 
 // Parse DATABASE_URL to get connection details
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -273,8 +276,11 @@ async function backupMigrations(): Promise<void> {
 
 async function restoreMigrations(): Promise<void> {
   console.log("♻️  Restoring original migrations...");
+  await fs.access(BACKUP_DIR);
+  await fs.rm(RESTORE_DIR, { recursive: true, force: true });
+  await fs.cp(BACKUP_DIR, RESTORE_DIR, { recursive: true });
   await fs.rm(MIGRATIONS_DIR, { recursive: true, force: true });
-  await fs.cp(BACKUP_DIR, MIGRATIONS_DIR, { recursive: true });
+  await fs.rename(RESTORE_DIR, MIGRATIONS_DIR);
   await fs.rm(BACKUP_DIR, { recursive: true, force: true });
 }
 
@@ -446,6 +452,49 @@ async function validateSnapshotFiles(): Promise<void> {
   console.log();
 }
 
+async function applyMigrationsUpTo(
+  client: Client,
+  upToIdx: number,
+): Promise<void> {
+  // Create drizzle migrations table
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    )
+  `);
+
+  // Read journal to get migration order
+  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  const entries = journal.entries as Array<{ idx: number; tag: string }>;
+
+  // Apply migrations up to the specified index
+  for (const entry of entries) {
+    if (entry.idx > upToIdx) break;
+
+    const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
+    const sql = await fs.readFile(sqlFile, "utf-8");
+
+    // Check if already applied
+    const result = await client.query(
+      `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
+      [entry.tag],
+    );
+
+    if (result.rows.length === 0) {
+      // Apply migration
+      await client.query(sql);
+      // Record in migrations table
+      await client.query(
+        `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
+        [entry.tag, Date.now()],
+      );
+    }
+  }
+}
+
 async function runMigrationsUpTo(
   dbUrl: string,
   upToIdx: number,
@@ -454,45 +503,346 @@ async function runMigrationsUpTo(
   await client.connect();
 
   try {
-    // Create drizzle migrations table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
-        id SERIAL PRIMARY KEY,
-        hash text NOT NULL,
-        created_at bigint
-      )
-    `);
-
-    // Read journal to get migration order
-    const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
-    const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
-    const entries = journal.entries as Array<{ idx: number; tag: string }>;
-
-    // Apply migrations up to the specified index
-    for (const entry of entries) {
-      if (entry.idx > upToIdx) break;
-
-      const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
-      const sql = await fs.readFile(sqlFile, "utf-8");
-
-      // Check if already applied
-      const result = await client.query(
-        `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
-        [entry.tag],
-      );
-
-      if (result.rows.length === 0) {
-        // Apply migration
-        await client.query(sql);
-        // Record in migrations table
-        await client.query(
-          `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
-          [entry.tag, Date.now()],
-        );
-      }
-    }
+    await applyMigrationsUpTo(client, upToIdx);
   } finally {
     await client.end();
+  }
+}
+
+async function waitForMigrationBlockedBy(
+  client: Client,
+  args: {
+    readonly blockerPid: number;
+    readonly migrationPid: number;
+  },
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const result = await client.query<{ blocked: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_stat_activity AS activity
+          WHERE activity.datname = current_database()
+            AND activity.pid = $1
+            AND $2::integer = ANY(pg_blocking_pids(activity.pid))
+        ) AS blocked
+      `,
+      [args.migrationPid, args.blockerPid],
+    );
+    if (result.rows[0]?.blocked === true) {
+      return;
+    }
+    await delay(10);
+  }
+
+  throw new Error(
+    `Migration did not block on backend ${args.blockerPid} before the synchronization deadline`,
+  );
+}
+
+async function runConnectorBackfillWithConcurrentDeletes(args: {
+  readonly dbUrl: string;
+  readonly secretConnectorId: string;
+  readonly variableConnectorId: string;
+}): Promise<void> {
+  const migrationClient = new Client({ connectionString: args.dbUrl });
+  const secretDeleteClient = new Client({ connectionString: args.dbUrl });
+  const variableDeleteClient = new Client({ connectionString: args.dbUrl });
+  await migrationClient.connect();
+  await secretDeleteClient.connect();
+  await variableDeleteClient.connect();
+
+  let secretDeleteOpen = false;
+  let variableDeleteOpen = false;
+  let migrationOutcomePromise:
+    | Promise<
+        | { readonly kind: "success" }
+        | { readonly kind: "failure"; readonly error: unknown }
+      >
+    | undefined;
+  try {
+    const secretDeletePidResult = await secretDeleteClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const variableDeletePidResult = await variableDeleteClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const migrationPidResult = await migrationClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const secretDeletePid = secretDeletePidResult.rows[0]?.pid;
+    const variableDeletePid = variableDeletePidResult.rows[0]?.pid;
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    if (
+      secretDeletePid === undefined ||
+      variableDeletePid === undefined ||
+      migrationPid === undefined
+    ) {
+      throw new Error("Failed to read concurrent delete backend identifiers");
+    }
+
+    await secretDeleteClient.query("BEGIN");
+    secretDeleteOpen = true;
+    const secretDelete = await secretDeleteClient.query(
+      `DELETE FROM "connectors" WHERE "id" = $1`,
+      [args.secretConnectorId],
+    );
+    assert.equal(secretDelete.rowCount, 1);
+
+    await variableDeleteClient.query("BEGIN");
+    variableDeleteOpen = true;
+    const variableDelete = await variableDeleteClient.query(
+      `DELETE FROM "connectors" WHERE "id" = $1`,
+      [args.variableConnectorId],
+    );
+    assert.equal(variableDelete.rowCount, 1);
+
+    migrationOutcomePromise = applyMigrationsUpTo(migrationClient, 628).then(
+      () => {
+        return { kind: "success" } as const;
+      },
+      (error: unknown) => {
+        return { kind: "failure", error } as const;
+      },
+    );
+
+    await waitForMigrationBlockedBy(secretDeleteClient, {
+      blockerPid: secretDeletePid,
+      migrationPid,
+    });
+    await secretDeleteClient.query("COMMIT");
+    secretDeleteOpen = false;
+
+    await waitForMigrationBlockedBy(secretDeleteClient, {
+      blockerPid: variableDeletePid,
+      migrationPid,
+    });
+    await variableDeleteClient.query("COMMIT");
+    variableDeleteOpen = false;
+
+    const migrationOutcome = await migrationOutcomePromise;
+    if (migrationOutcome.kind === "failure") {
+      throw migrationOutcome.error;
+    }
+  } finally {
+    if (secretDeleteOpen) {
+      await secretDeleteClient.query("ROLLBACK");
+    }
+    if (variableDeleteOpen) {
+      await variableDeleteClient.query("ROLLBACK");
+    }
+    if (migrationOutcomePromise !== undefined) {
+      await migrationOutcomePromise;
+    }
+    await migrationClient.end();
+    await secretDeleteClient.end();
+    await variableDeleteClient.end();
+  }
+}
+
+async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.25: Validate connector credential ownership backfill ===\n",
+  );
+  const testDb = "migration_connector_credential_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectorIds = {
+    github: "00000000-0000-4000-8000-000000000001",
+    gumroad: "00000000-0000-4000-8000-000000000002",
+    unknown: "00000000-0000-4000-8000-000000000003",
+    steam: "00000000-0000-4000-8000-000000000004",
+    unknownMethod: "00000000-0000-4000-8000-000000000005",
+    concurrentSecretDelete: "00000000-0000-4000-8000-000000000006",
+    concurrentVariableDelete: "00000000-0000-4000-8000-000000000007",
+  } as const;
+  const secretIds = {
+    github: "10000000-0000-4000-8000-000000000001",
+    staleMethod: "10000000-0000-4000-8000-000000000002",
+    unknown: "10000000-0000-4000-8000-000000000003",
+    user: "10000000-0000-4000-8000-000000000004",
+    preowned: "10000000-0000-4000-8000-000000000005",
+    unknownMethod: "10000000-0000-4000-8000-000000000006",
+    concurrentDelete: "10000000-0000-4000-8000-000000000007",
+  } as const;
+  const variableIds = {
+    steam: "20000000-0000-4000-8000-000000000001",
+    unknown: "20000000-0000-4000-8000-000000000002",
+    user: "20000000-0000-4000-8000-000000000003",
+    concurrentDelete: "20000000-0000-4000-8000-000000000004",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 627);
+    const seedClient = new Client({ connectionString: testDbUrl });
+    await seedClient.connect();
+    try {
+      await seedClient.query(
+        `
+          INSERT INTO "connectors"
+            ("id", "type", "auth_method", "storage_version", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'github', 'oauth', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'gumroad', 'oauth', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'unknown-ref', 'api-token', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'steam', 'openid', 7, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($5, 'github', 'missing-method', NULL, 'backfill-org', 'other-user', '2020-01-01'),
+            ($6, 'github', 'missing-method', NULL, 'backfill-org', 'concurrent-secret-delete-user', '2020-01-01'),
+            ($7, 'steam', 'missing-method', NULL, 'backfill-org', 'concurrent-variable-delete-user', '2020-01-01')
+        `,
+        Object.values(connectorIds),
+      );
+      await seedClient.query(
+        `
+          INSERT INTO "secrets"
+            ("id", "name", "encrypted_value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'GITHUB_ACCESS_TOKEN', 'github-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'GUMROAD_TOKEN', 'stale-method-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'UNKNOWN_CONNECTOR_SECRET', 'unknown-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'GITHUB_ACCESS_TOKEN', 'user-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($5, 'PREOWNED_CONNECTOR_SECRET', 'preowned-value', 'connector', $8, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($6, 'GITHUB_ACCESS_TOKEN', 'unknown-method-value', 'connector', NULL, 'backfill-org', 'other-user', '2020-01-01'),
+            ($7, 'GITHUB_ACCESS_TOKEN', 'concurrent-delete-value', 'connector', NULL, 'backfill-org', 'concurrent-secret-delete-user', '2020-01-01')
+        `,
+        [...Object.values(secretIds), connectorIds.gumroad],
+      );
+      await seedClient.query(
+        `
+          INSERT INTO "variables"
+            ("id", "name", "value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'STEAM_ID', 'steam-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'UNKNOWN_CONNECTOR_VARIABLE', 'unknown-variable-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'STEAM_ID', 'user-variable-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'STEAM_ID', 'concurrent-delete-variable-value', 'connector', NULL, 'backfill-org', 'concurrent-variable-delete-user', '2020-01-01')
+        `,
+        Object.values(variableIds),
+      );
+    } finally {
+      await seedClient.end();
+    }
+
+    await runConnectorBackfillWithConcurrentDeletes({
+      dbUrl: testDbUrl,
+      secretConnectorId: connectorIds.concurrentSecretDelete,
+      variableConnectorId: connectorIds.concurrentVariableDelete,
+    });
+    const assertionClient = new Client({ connectionString: testDbUrl });
+    await assertionClient.connect();
+    try {
+      const connectorRows = await assertionClient.query<{
+        id: string;
+        storage_version: string | null;
+        updated_at: string;
+      }>(
+        `SELECT "id", "storage_version", "updated_at"::text AS "updated_at" FROM "connectors" ORDER BY "id"`,
+      );
+      const connectorVersions = new Map(
+        connectorRows.rows.map((row) => {
+          return [row.id, row.storage_version] as const;
+        }),
+      );
+      assert.equal(connectorVersions.get(connectorIds.github), "1");
+      assert.equal(connectorVersions.get(connectorIds.gumroad), "1");
+      assert.equal(connectorVersions.get(connectorIds.unknown), null);
+      assert.equal(connectorVersions.get(connectorIds.steam), "7");
+      assert.equal(connectorVersions.get(connectorIds.unknownMethod), null);
+      assert.equal(
+        connectorVersions.get(connectorIds.concurrentSecretDelete),
+        undefined,
+      );
+      assert.equal(
+        connectorVersions.get(connectorIds.concurrentVariableDelete),
+        undefined,
+      );
+      for (const row of connectorRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+
+      const secretRows = await assertionClient.query<{
+        connector_id: string | null;
+        encrypted_value: string;
+        id: string;
+        updated_at: string;
+      }>(
+        `SELECT "id", "connector_id", "encrypted_value", "updated_at"::text AS "updated_at" FROM "secrets" WHERE "id"::text LIKE '10000000-%' ORDER BY "id"`,
+      );
+      const secretOwners = new Map(
+        secretRows.rows.map((row) => {
+          return [row.id, row.connector_id] as const;
+        }),
+      );
+      assert.equal(secretOwners.get(secretIds.github), connectorIds.github);
+      assert.equal(
+        secretOwners.get(secretIds.staleMethod),
+        connectorIds.gumroad,
+      );
+      assert.equal(secretOwners.get(secretIds.unknown), null);
+      assert.equal(secretOwners.get(secretIds.user), null);
+      assert.equal(secretOwners.get(secretIds.preowned), connectorIds.gumroad);
+      assert.equal(
+        secretOwners.get(secretIds.unknownMethod),
+        connectorIds.unknownMethod,
+      );
+      assert.equal(secretOwners.get(secretIds.concurrentDelete), null);
+      assert.deepEqual(
+        secretRows.rows.map((row) => {
+          return row.encrypted_value;
+        }),
+        [
+          "github-value",
+          "stale-method-value",
+          "unknown-value",
+          "user-value",
+          "preowned-value",
+          "unknown-method-value",
+          "concurrent-delete-value",
+        ],
+      );
+      for (const row of secretRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+
+      const variableRows = await assertionClient.query<{
+        connector_id: string | null;
+        id: string;
+        updated_at: string;
+        value: string;
+      }>(
+        `SELECT "id", "connector_id", "value", "updated_at"::text AS "updated_at" FROM "variables" WHERE "id"::text LIKE '20000000-%' ORDER BY "id"`,
+      );
+      const variableOwners = new Map(
+        variableRows.rows.map((row) => {
+          return [row.id, row.connector_id] as const;
+        }),
+      );
+      assert.equal(variableOwners.get(variableIds.steam), connectorIds.steam);
+      assert.equal(variableOwners.get(variableIds.unknown), null);
+      assert.equal(variableOwners.get(variableIds.user), null);
+      assert.equal(variableOwners.get(variableIds.concurrentDelete), null);
+      assert.deepEqual(
+        variableRows.rows.map((row) => {
+          return row.value;
+        }),
+        [
+          "steam-value",
+          "unknown-variable-value",
+          "user-variable-value",
+          "concurrent-delete-variable-value",
+        ],
+      );
+      for (const row of variableRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+    } finally {
+      await assertionClient.end();
+    }
+    console.log(
+      "   ✅ Backfill updates only recognized connector versions and owners and serializes concurrent deletes\n",
+    );
+  } finally {
+    await dropDatabase(testDb);
   }
 }
 
@@ -803,6 +1153,7 @@ async function main(): Promise<void> {
 
   const TEST_DB_1 = "migration_test_existing";
   const TEST_DB_2 = "migration_test_generated";
+  let migrationsBackedUp = false;
 
   try {
     // Step 0: Validate snapshot files
@@ -810,6 +1161,8 @@ async function main(): Promise<void> {
 
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
+
+    await validateConnectorCredentialOwnershipBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -826,6 +1179,7 @@ async function main(): Promise<void> {
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
     await backupMigrations();
+    migrationsBackedUp = true;
     await generateFreshMigrations();
 
     // Step 3: Test with regenerated migrations
@@ -836,6 +1190,7 @@ async function main(): Promise<void> {
 
     // Step 4: Restore original migrations
     await restoreMigrations();
+    migrationsBackedUp = false;
 
     // Step 5: Run normalized comparison (using pg library)
     console.log("=== Phase 4: Normalized schema comparison ===\n");
@@ -895,7 +1250,9 @@ async function main(): Promise<void> {
 
     // Try to cleanup
     try {
-      await restoreMigrations();
+      if (migrationsBackedUp) {
+        await restoreMigrations();
+      }
       await dropDatabase(TEST_DB_1);
       await dropDatabase(TEST_DB_2);
     } catch (cleanupError) {

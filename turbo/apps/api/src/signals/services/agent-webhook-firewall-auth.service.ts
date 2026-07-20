@@ -8,11 +8,9 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
-import {
-  connectorCatalogAuthMethodIdSchema,
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+import type {
+  ConnectorCatalogAuthMethodId,
+  ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodAccessMetadata,
@@ -89,7 +87,6 @@ import {
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
 import {
-  getConnectorRuntimeMethod,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
@@ -98,6 +95,12 @@ import {
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
+import {
+  connectorCredentialSecretReadCondition,
+  connectorCredentialVariableReadCondition,
+  resolveConnectorCredentialAccess,
+  type ConnectorCredentialAccess,
+} from "./connector-credential-access.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -523,9 +526,10 @@ interface RefreshSourceState {
 }
 
 interface ConnectorAccessState extends RefreshSourceState {
+  readonly access: ConnectorCredentialAccess;
   readonly connectorId: string;
   readonly authMethod: ConnectorCatalogAuthMethodId;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
   readonly runtimeMetadata: ConnectorAuthMethodRuntimeMetadata;
@@ -766,7 +770,44 @@ function isReconnectRequiredRefreshErrorCode(
   );
 }
 
+async function getConnectorSecretValues(args: {
+  readonly access: ConnectorCredentialAccess;
+  readonly db: Db;
+  readonly names: readonly string[];
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<ReadonlyMap<string, string>> {
+  if (args.names.length === 0) {
+    return new Map();
+  }
+  // Keep multi-secret credentials (for example AWS SigV4) on one statement
+  // snapshot so a same-method replacement cannot combine two stored states.
+  const rows = await args.db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [{ access: args.access, names: args.names }],
+      }),
+    );
+  const values = new Map<string, string>();
+  for (const row of rows) {
+    values.set(
+      row.name,
+      await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      ),
+    );
+  }
+  return values;
+}
+
 async function getSecretValue(args: {
+  readonly connectorAccess?: ConnectorCredentialAccess;
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -774,6 +815,18 @@ async function getSecretValue(args: {
   readonly type: SecretType;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<string | null> {
+  if (args.type === "connector") {
+    if (args.connectorAccess === undefined) {
+      return null;
+    }
+    const values = await getConnectorSecretValues({
+      access: args.connectorAccess,
+      db: args.db,
+      names: [args.name],
+      featureSwitchContext: args.featureSwitchContext,
+    });
+    return values.get(args.name) ?? null;
+  }
   const [row] = await args.db
     .select({ encryptedValue: secretsTable.encryptedValue })
     .from(secretsTable)
@@ -795,21 +848,28 @@ async function getSecretValue(args: {
 }
 
 async function getVariableValue(args: {
+  readonly connectorAccess?: ConnectorCredentialAccess;
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
 }): Promise<string | null> {
+  if (args.connectorAccess === undefined) {
+    return null;
+  }
   const [row] = await args.db
     .select({ value: variablesTable.value })
     .from(variablesTable)
     .where(
-      and(
-        eq(variablesTable.orgId, args.orgId),
-        eq(variablesTable.userId, args.userId),
-        eq(variablesTable.name, args.name),
-        eq(variablesTable.type, "connector"),
-      ),
+      connectorCredentialVariableReadCondition({
+        db: args.db,
+        groups: [
+          {
+            access: args.connectorAccess,
+            names: [args.name],
+          },
+        ],
+      }),
     )
     .limit(1);
   return row?.value ?? null;
@@ -951,19 +1011,34 @@ async function getCurrentAccessSecrets(
     args.userId,
     args.sourceUserId,
   );
-  const values = new Map<string, string | null>();
-  for (const secretName of new Set(Object.values(runtimeOutputSecrets))) {
-    values.set(
-      secretName,
-      await getSecretValue({
+  const secretNames = [...new Set(Object.values(runtimeOutputSecrets))];
+  let values: ReadonlyMap<string, string>;
+  if (args.sourceType === "connector") {
+    const access = args.connectorAccessByType.get(args.connectorType)?.access;
+    values = access
+      ? await getConnectorSecretValues({
+          access,
+          db: args.db,
+          names: secretNames,
+          featureSwitchContext: args.featureSwitchContext,
+        })
+      : new Map();
+  } else {
+    const modelProviderValues = new Map<string, string>();
+    for (const secretName of secretNames) {
+      const value = await getSecretValue({
         db: args.db,
         orgId: args.orgId,
         userId: secretUserId,
         name: secretName,
         type: args.sourceType,
         featureSwitchContext: args.featureSwitchContext,
-      }),
-    );
+      });
+      if (value !== null) {
+        modelProviderValues.set(secretName, value);
+      }
+    }
+    values = modelProviderValues;
   }
   return Object.fromEntries(
     Object.entries(runtimeOutputSecrets).map(([envName, secretName]) => {
@@ -1003,26 +1078,27 @@ async function loadConnectorAccessStates(
     );
 
   for (const row of rows) {
-    const connectorRef = connectorCatalogRefSchema.safeParse(row.type);
-    const authMethodId = connectorCatalogAuthMethodIdSchema.safeParse(
-      row.authMethod,
-    );
-    if (!connectorRef.success || !authMethodId.success) {
-      continue;
-    }
-    const runtimeMethod = getConnectorRuntimeMethod({
+    const accessResult = resolveConnectorCredentialAccess({
       snapshot,
-      connectorRef: connectorRef.data,
-      authMethodId: authMethodId.data,
-      requireExecutable: true,
+      stored: {
+        authMethodId: row.authMethod,
+        connectorId: row.connectorId,
+        connectorRef: row.type,
+        orgId,
+        storageVersion: row.storageVersion,
+        userId,
+      },
     });
-    if (!runtimeMethod) {
+    if (accessResult.kind !== "ok") {
       continue;
     }
+    const { access } = accessResult;
+    const runtimeMethod = access.runtimeMethod;
     result.set(row.type, {
+      access,
       connectorId: row.connectorId,
-      authMethod: authMethodId.data,
-      storageVersion: row.storageVersion,
+      authMethod: runtimeMethod.authMethodId,
+      storageVersion: access.storageVersion,
       runtimeMethod,
       accessMetadata: connectorAuthMethodAccessMetadata(runtimeMethod.method),
       runtimeMetadata: connectorAuthMethodRuntimeMetadata(runtimeMethod.method),
@@ -1360,14 +1436,6 @@ function prepareRefreshTokenContext(
   if (connectorAccess.runtimeMethod.method.access.kind !== "refresh-token") {
     return { ok: false, reason: "not-refreshable" };
   }
-  if (
-    connectorAccess.storageVersion !== null &&
-    connectorAccess.storageVersion !==
-      connectorAccess.runtimeMethod.method.storage.version
-  ) {
-    return { ok: false, reason: "source-missing" };
-  }
-
   const context: RefreshTokenContext = {
     inputSources: connectorRefreshInputSources(accessMetadata),
     outputTargets: connectorRefreshOutputTargets(accessMetadata),
@@ -1749,9 +1817,14 @@ async function loadRefreshState(
     return null;
   }
 
+  const connectorAccess =
+    args.sourceType === "connector"
+      ? args.connectorAccessByType.get(args.connectorType)?.access
+      : undefined;
   const outputValues: Record<string, string | null> = {};
   for (const secretName of requiredRuntimeOutputSecretNames(context)) {
     outputValues[secretName] = await getSecretValue({
+      connectorAccess,
       db,
       orgId: args.orgId,
       userId: context.secretUserId,
@@ -1766,6 +1839,7 @@ async function loadRefreshState(
     inputValues[inputName] =
       inputSource.kind === "secret"
         ? await getSecretValue({
+            connectorAccess,
             db,
             orgId: args.orgId,
             userId: context.secretUserId,
@@ -1774,6 +1848,7 @@ async function loadRefreshState(
             featureSwitchContext: args.featureSwitchContext,
           })
         : await getVariableValue({
+            connectorAccess,
             db,
             orgId: args.orgId,
             userId: context.secretUserId,
@@ -2061,8 +2136,7 @@ function preparedRefreshSourceMatchesState(
     args.connectorType === prepared.connectorRef &&
     state.connectorId === prepared.connectorId &&
     state.authMethod === prepared.authMethodId &&
-    (state.storageVersion === null ||
-      state.storageVersion === prepared.runtimeMethod.method.storage.version)
+    state.storageVersion === prepared.runtimeMethod.method.storage.version
   );
 }
 
@@ -2611,12 +2685,32 @@ async function syncStoredConnectorRuntimeSecrets(args: {
     ) {
       return [];
     }
-    return secretName ? [{ key, secretName }] : [];
+    return secretName
+      ? [{ access: connectorAccess.access, key, secretName }]
+      : [];
   });
   if (lookups.length === 0) {
     return;
   }
 
+  const namesByConnectorId = new Map<
+    string,
+    {
+      readonly access: ConnectorCredentialAccess;
+      readonly names: Set<string>;
+    }
+  >();
+  for (const lookup of lookups) {
+    const existing = namesByConnectorId.get(lookup.access.connectorId);
+    if (existing) {
+      existing.names.add(lookup.secretName);
+    } else {
+      namesByConnectorId.set(lookup.access.connectorId, {
+        access: lookup.access,
+        names: new Set([lookup.secretName]),
+      });
+    }
+  }
   const rows = await args.db
     .select({
       name: secretsTable.name,
@@ -2624,18 +2718,12 @@ async function syncStoredConnectorRuntimeSecrets(args: {
     })
     .from(secretsTable)
     .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "connector"),
-        inArray(secretsTable.name, [
-          ...new Set(
-            lookups.map((lookup) => {
-              return lookup.secretName;
-            }),
-          ),
-        ]),
-      ),
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [...namesByConnectorId.values()].map((group) => {
+          return { access: group.access, names: [...group.names] };
+        }),
+      }),
     );
 
   const valuesByName = new Map<string, string>();

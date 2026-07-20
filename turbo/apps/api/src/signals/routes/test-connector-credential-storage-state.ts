@@ -135,6 +135,22 @@ async function seedLegacySecret(
   return actionOk();
 }
 
+async function seedLegacyVariable(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-legacy-variable">,
+  signal: AbortSignal,
+) {
+  await db.insert(variables).values({
+    orgId: body.org_id,
+    userId: body.user_id,
+    name: body.name,
+    value: body.value,
+    type: "connector",
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function seedOwnedSecret(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-owned-secret">,
@@ -226,6 +242,58 @@ async function setConnectorState(
       };
 }
 
+async function setSecretOwner(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-secret-owner">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(secrets)
+    .set({ connectorId: body.connector_id })
+    .where(
+      and(
+        eq(secrets.orgId, body.org_id),
+        eq(secrets.userId, body.user_id),
+        eq(secrets.name, body.name),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .returning({ id: secrets.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector secret test fixture was not found" },
+      };
+}
+
+async function setVariableOwner(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-variable-owner">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(variables)
+    .set({ connectorId: body.connector_id })
+    .where(
+      and(
+        eq(variables.orgId, body.org_id),
+        eq(variables.userId, body.user_id),
+        eq(variables.name, body.name),
+        eq(variables.type, "connector"),
+      ),
+    )
+    .returning({ id: variables.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector variable test fixture was not found" },
+      };
+}
+
 const mutateConnectorCredentialStorageState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -247,6 +315,9 @@ const mutateConnectorCredentialStorageState$ = command(
       case "seed-legacy-secret": {
         return await seedLegacySecret(db, body, signal);
       }
+      case "seed-legacy-variable": {
+        return await seedLegacyVariable(db, body, signal);
+      }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);
       }
@@ -255,6 +326,12 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "set-connector-state": {
         return await setConnectorState(db, body, signal);
+      }
+      case "set-secret-owner": {
+        return await setSecretOwner(db, body, signal);
+      }
+      case "set-variable-owner": {
+        return await setVariableOwner(db, body, signal);
       }
     }
   },

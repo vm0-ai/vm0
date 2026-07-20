@@ -16,6 +16,11 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
+  seedConnectorStorageRow,
+  setConnectorCredentialStorageState,
+  setConnectorVariableOwner,
+} from "./helpers/connector-credential-storage-state";
+import {
   deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
@@ -35,7 +40,7 @@ const store = createStore();
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
-  readonly type: "reap";
+  readonly type: "github" | "reap";
 }
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
@@ -138,12 +143,18 @@ function zeroToken(
 async function connectReap(
   actor: ApiTestUser,
   apiBaseUrl: string,
-): Promise<void> {
-  await connectorsApi.connectManualGrant(actor, "reap", "api-token", {
-    apiKey: "reap-test-api-key",
-    apiBaseUrl,
-  });
+): Promise<string> {
+  const connector = await connectorsApi.connectManualGrant(
+    actor,
+    "reap",
+    "api-token",
+    {
+      apiKey: "reap-test-api-key",
+      apiBaseUrl,
+    },
+  );
   await trackConnectedFixture(Promise.resolve({ actor, type: "reap" }));
+  return connector.id;
 }
 
 async function createOwnedRun(actor: ApiTestUser): Promise<string> {
@@ -532,7 +543,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       connector: { connectorRef: "reap" },
     });
 
-    await connectReap(owner, storedBase);
+    const reapConnectorId = await connectReap(owner, storedBase);
     const resolved = await checkWithSession(owner, request);
     expect(resolved.body).toMatchObject({
       outcome: "resolved",
@@ -544,6 +555,58 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     const serialized = JSON.stringify(resolved.body);
     expect(serialized).not.toContain("REAP_API_BASE_URL");
     expect(serialized).not.toContain("reap-test-api-key");
+
+    await setConnectorCredentialStorageState(context, {
+      connectorRef: "reap",
+      orgId,
+      storageVersion: 2,
+      userId: owner.userId,
+    });
+    const incompatible = await checkWithSession(owner, request);
+    expect(incompatible.body).toMatchObject({
+      outcome: "unresolved-dynamic-base",
+      connector: { connectorRef: "reap" },
+    });
+    await setConnectorCredentialStorageState(context, {
+      connectorRef: "reap",
+      orgId,
+      storageVersion: 1,
+      userId: owner.userId,
+    });
+    await expect(checkWithSession(owner, request)).resolves.toMatchObject({
+      body: { outcome: "resolved", base: storedBase },
+    });
+
+    const foreignConnectorId = await seedConnectorStorageRow(context, {
+      authMethod: "oauth",
+      connectorRef: "github",
+      orgId,
+      storageVersion: 1,
+      userId: owner.userId,
+    });
+    await trackConnectedFixture(
+      Promise.resolve({ actor: owner, type: "github" }),
+    );
+    await setConnectorVariableOwner(context, {
+      connectorId: foreignConnectorId,
+      name: "REAP_API_BASE_URL",
+      orgId,
+      userId: owner.userId,
+    });
+    const wrongOwner = await checkWithSession(owner, request);
+    expect(wrongOwner.body).toMatchObject({
+      outcome: "unresolved-dynamic-base",
+      connector: { connectorRef: "reap" },
+    });
+    await setConnectorVariableOwner(context, {
+      connectorId: reapConnectorId,
+      name: "REAP_API_BASE_URL",
+      orgId,
+      userId: owner.userId,
+    });
+    await expect(checkWithSession(owner, request)).resolves.toMatchObject({
+      body: { outcome: "resolved", base: storedBase },
+    });
 
     for (const actor of [sameOrgOtherUser, sameUserOtherOrg]) {
       const isolated = await checkWithSession(actor, request);

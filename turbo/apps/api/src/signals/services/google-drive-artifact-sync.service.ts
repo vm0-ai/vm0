@@ -154,9 +154,8 @@ async function loadDriveTokens(
     return null;
   }
   const values = await loadConnectorCredentialValues({
+    connection,
     db,
-    orgId,
-    userId,
     featureSwitchContext,
     valueRefs: [accessTokenValueRef],
   });

@@ -59,6 +59,11 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  setConnectorCredentialStorageState,
+  setConnectorSecretOwner,
+  setConnectorVariableOwner,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
@@ -5518,6 +5523,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       accessToken: "test-oauth-bdd-access",
       refreshToken: "test-oauth-bdd-refresh",
     });
+    await setConnectorSecretOwner(context, {
+      connectorId: null,
+      name: "TEST_OAUTH_ACCESS_TOKEN",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    await setConnectorVariableOwner(context, {
+      connectorId: null,
+      name: "TEST_OAUTH_API_TENANT_ID",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -5545,6 +5562,56 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
       "test-oauth-oauth-tenantId",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("omits a stored connector with an incompatible storage version", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "incompatible-access",
+      refreshToken: "incompatible-refresh",
+    });
+    await setConnectorCredentialStorageState(context, {
+      connectorRef: "test-oauth",
+      orgId: actor.orgId ?? "",
+      storageVersion: 2,
+      userId: actor.userId,
+    });
+    const composeName = `bdd-incompatible-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "do not materialize incompatible connector state",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "test-oauth")).toBeUndefined();
+    expect(claim.environment ?? {}).not.toHaveProperty("TEST_OAUTH_TOKEN");
+    expect(claim.environment ?? {}).not.toHaveProperty("TEST_OAUTH_TENANT_ID");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty(
+      "TEST_OAUTH_TOKEN",
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);

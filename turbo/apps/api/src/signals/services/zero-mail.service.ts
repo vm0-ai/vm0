@@ -28,10 +28,10 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { tapError } from "../utils";
 import {
-  getConnectorRuntimeMethod,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import { resolveConnectorCredentialAccess } from "./connector-credential-access.service";
 import {
   connectorCredentialRuntimeValueRef,
   loadConnectorCredentialValues,
@@ -294,20 +294,28 @@ async function loadMailConnections(args: {
     if (row.connectorType !== "gmail" || !row.externalEmail) {
       return [];
     }
-    const runtimeMethod = getConnectorRuntimeMethod({
+    const accessResult = resolveConnectorCredentialAccess({
       snapshot: args.snapshot,
-      connectorRef: row.connectorType,
-      authMethodId: row.authMethod,
-      requireExecutable: true,
+      stored: {
+        authMethodId: row.authMethod,
+        connectorId: row.connectorId,
+        connectorRef: row.connectorType,
+        orgId: args.orgId,
+        storageVersion: row.storageVersion,
+        userId: args.userId,
+      },
     });
-    if (!runtimeMethod) {
+    if (accessResult.kind !== "ok") {
       return [];
     }
+    const { access } = accessResult;
+    const runtimeMethod = access.runtimeMethod;
     const oauthScopes = row.oauthScopes
       ? oauthScopesSchema.parse(JSON.parse(row.oauthScopes))
       : null;
     return [
       {
+        access,
         connectorId: row.connectorId,
         connectorRef: row.connectorType,
         runtimeMethod,
@@ -317,7 +325,7 @@ async function loadMailConnections(args: {
         needsReconnect: row.needsReconnect,
         oauthScopes,
         stateRevision: row.stateRevision,
-        storageVersion: row.storageVersion,
+        storageVersion: access.storageVersion,
         scopesReady: connectorAuthMethodHasRequiredScopes(
           runtimeMethod.method,
           oauthScopes,
@@ -451,9 +459,8 @@ async function resolveMailAccessToken(args: {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
   }
   const values = await loadConnectorCredentialValues({
+    connection: args.connection,
     db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
     valueRefs: [accessTokenValueRef],
   });
   const expiresAt = args.connection.tokenExpiresAt?.getTime() ?? 0;

@@ -303,9 +303,8 @@ async function resolveGmailAccess(args: {
     };
   }
   const values = await loadConnectorCredentialValues({
+    connection,
     db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
     valueRefs: [accessTokenValueRef],
   });
   args.signal.throwIfAborted();

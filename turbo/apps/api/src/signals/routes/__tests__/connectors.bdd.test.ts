@@ -38,6 +38,10 @@ import {
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
+import {
+  seedConnectorStorageRow,
+  setConnectorSecretOwner,
+} from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -262,6 +266,32 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       },
     });
     expectNoVisibleSecret(secretList, "sk-bdd-manual-secret");
+
+    const foreignConnectorId = await seedConnectorStorageRow(context, {
+      authMethod: "oauth",
+      connectorRef: "github",
+      orgId: actor.orgId ?? "",
+      storageVersion: 1,
+      userId: actor.userId,
+    });
+    await setConnectorSecretOwner(context, {
+      connectorId: foreignConnectorId,
+      name: "OPENAI_TOKEN",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const wrongOwnerSecretList = await authOrgApi.listSecrets(actor);
+    expect(
+      wrongOwnerSecretList.secrets.find((secret) => {
+        return secret.name === "OPENAI_TOKEN";
+      })?.connectorDisplay,
+    ).toBeNull();
+    await setConnectorSecretOwner(context, {
+      connectorId: connected.id,
+      name: "OPENAI_TOKEN",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
 
     await expect(
       connectorsApi.readScopeDiff(actor, "openai"),

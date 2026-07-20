@@ -41,7 +41,12 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import {
   readConnectorCredentialStorageState,
+  seedConnectorStorageRow,
+  seedLegacyConnectorSecret,
+  seedLegacyConnectorVariable,
   setConnectorCredentialStorageState,
+  setConnectorSecretOwner,
+  setConnectorVariableOwner,
 } from "./helpers/connector-credential-storage-state";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
@@ -1169,6 +1174,12 @@ describe("connector catalog cron authentication and initial state", () => {
       active: null,
       lastAttempt: null,
       lastSuccessAt: null,
+      credentialStorage: {
+        missingConnectorVersions: expect.any(Number),
+        unownedConnectorSecrets: expect.any(Number),
+        unownedConnectorVariables: expect.any(Number),
+        unresolvedBridgeCredentials: expect.any(Number),
+      },
       filtering: {
         capabilityDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
         evaluatedAt: null,
@@ -1176,6 +1187,82 @@ describe("connector catalog cron authentication and initial state", () => {
         filteredAuthMethods: [],
       },
     });
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("reports aggregate-only connector credential readiness", async () => {
+    configureSource();
+    const actor = bdd.user();
+    const orgId = actor.orgId ?? "";
+    const connectorId = await seedConnectorStorageRow(context, {
+      authMethod: "oauth",
+      connectorRef: "test-oauth",
+      orgId,
+      storageVersion: 1,
+      userId: actor.userId,
+    });
+    await setConnectorCredentialStorageState(context, {
+      connectorRef: "test-oauth",
+      orgId,
+      storageVersion: null,
+      userId: actor.userId,
+    });
+    const suffix = randomUUID().replaceAll("-", "").toUpperCase();
+    const secretName = `UNRESOLVED_SECRET_${suffix}`;
+    const variableName = `UNRESOLVED_VARIABLE_${suffix}`;
+    await seedLegacyConnectorSecret(context, {
+      description: "private readiness description",
+      encryptedValue: "private readiness secret",
+      name: secretName,
+      orgId,
+      userId: actor.userId,
+    });
+    await seedLegacyConnectorVariable(context, {
+      name: variableName,
+      orgId,
+      userId: actor.userId,
+      value: "private readiness variable",
+    });
+    onTestFinished(async () => {
+      await setConnectorSecretOwner(context, {
+        connectorId,
+        name: secretName,
+        orgId,
+        userId: actor.userId,
+      });
+      await setConnectorVariableOwner(context, {
+        connectorId,
+        name: variableName,
+        orgId,
+        userId: actor.userId,
+      });
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth",
+        [204, 404],
+      );
+    });
+
+    const response = await readStatus();
+    expect(response.body.credentialStorage).toMatchObject({
+      missingConnectorVersions: expect.any(Number),
+      unownedConnectorSecrets: expect.any(Number),
+      unownedConnectorVariables: expect.any(Number),
+      unresolvedBridgeCredentials: expect.any(Number),
+    });
+    expect(
+      response.body.credentialStorage.missingConnectorVersions,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      response.body.credentialStorage.unownedConnectorSecrets,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      response.body.credentialStorage.unownedConnectorVariables,
+    ).toBeGreaterThanOrEqual(1);
+    const serialized = JSON.stringify(response.body.credentialStorage);
+    expect(serialized).not.toContain(secretName);
+    expect(serialized).not.toContain(variableName);
+    expect(serialized).not.toContain(actor.userId);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 });
@@ -1516,16 +1603,56 @@ describe("connector catalog valid lifecycle", () => {
 
   it("executes an external manual grant with catalog-owned storage", async () => {
     configureSource();
+    const optionalSecretName = "EXTERNAL_OPTIONAL_TOKEN";
     const release = buildRelease({
       version: "2026-07-15.external-manual-grant",
       connectorRef: "agora",
       label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        arrayValue(method.manualFields, "manualFields").push({
+          id: "optionalCredential",
+          label: "Optional credential",
+          required: false,
+          placeholder: null,
+          inputType: "password",
+        });
+      },
+      mutatePrivate: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        arrayValue(
+          recordValue(method.storage, "storage").secrets,
+          "secrets",
+        ).push(optionalSecretName);
+        arrayValue(recordValue(method.grant, "grant").fields, "fields").push({
+          privateName: optionalSecretName,
+          publicId: "optionalCredential",
+          storage: "secret",
+        });
+        recordValue(
+          recordValue(method.access, "access").envBindings,
+          "envBindings",
+        ).OPTIONAL_SERVICE_TOKEN = `$secrets.${optionalSecretName}`;
+      },
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
     const actor = bdd.user();
+    await seedLegacyConnectorSecret(context, {
+      description: "unresolved optional external state",
+      encryptedValue: "unresolved-optional-value",
+      name: optionalSecretName,
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     onTestFinished(async () => {
       await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
     });
@@ -1562,6 +1689,26 @@ describe("connector catalog valid lifecycle", () => {
       expect.objectContaining({ name: PRIVATE_VALUE, type: "connector" }),
     );
     expect(JSON.stringify(secrets.body)).not.toContain("catalog-manual-secret");
+    const storageState = await readConnectorCredentialStorageState(context, {
+      connectorRef: "agora",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      secretNames: [optionalSecretName],
+    });
+    expect(storageState.secrets).toStrictEqual([
+      {
+        connector_id: null,
+        description: "unresolved optional external state",
+        encrypted_value: "unresolved-optional-value",
+        name: optionalSecretName,
+      },
+    ]);
+    await setConnectorSecretOwner(context, {
+      connectorId: connected.id,
+      name: optionalSecretName,
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
@@ -1776,7 +1923,7 @@ describe("connector catalog valid lifecycle", () => {
     ).not.toContain("CURRENT_CREDENTIAL");
   });
 
-  it("fails stored connector replacement and deletion closed when its method is removed", async () => {
+  it("replaces and deletes stored connector state when its method is removed", async () => {
     configureSource();
     const legacyMethod = publicAuthMethod({
       id: "legacy",
@@ -1848,10 +1995,10 @@ describe("connector catalog valid lifecycle", () => {
       "agora",
       "current",
       { credential: "current-catalog-secret" },
-      { statuses: [500] },
+      { statuses: [200] },
     );
-    expect(replacement.status).toBe(500);
-    await connectorsApi.deleteConnectorByType(actor, "agora", [404]);
+    expect(replacement.status).toBe(200);
+    await connectorsApi.deleteConnectorByType(actor, "agora", [204]);
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await accept(
@@ -1860,20 +2007,14 @@ describe("connector catalog valid lifecycle", () => {
       }),
       [200],
     );
-    expect(
-      secrets.body.secrets.map((secret) => {
-        return secret.name;
-      }),
-    ).toContain("LEGACY_CREDENTIAL");
-
-    serveObjects(catalogObjects([initial, removed], initial));
-    await syncCatalog();
-    await expect(
-      connectorsApi.readConnectorByType(actor, "agora"),
-    ).resolves.toMatchObject({ authMethod: "legacy" });
+    const secretNames = secrets.body.secrets.map((secret) => {
+      return secret.name;
+    });
+    expect(secretNames).not.toContain("LEGACY_CREDENTIAL");
+    expect(secretNames).not.toContain("CURRENT_CREDENTIAL");
   });
 
-  it("fails token replacement closed when the stored method is removed", async () => {
+  it("replaces token state when the stored method is removed", async () => {
     configureSource();
     const initial = buildRelease({
       version: "2026-07-15.external-token-stored-method-present",
@@ -1938,7 +2079,7 @@ describe("connector catalog valid lifecycle", () => {
       state,
     });
     const callbackLocation = new URL(callback.headers.get("location") ?? "");
-    expect(callbackLocation.pathname).toBe("/connector/error");
+    expect(callbackLocation.pathname).toBe("/connector/success");
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await accept(
@@ -1950,15 +2091,12 @@ describe("connector catalog valid lifecycle", () => {
     const secretNames = secrets.body.secrets.map((secret) => {
       return secret.name;
     });
-    expect(secretNames).toContain("LEGACY_GMAIL_CREDENTIAL");
-    expect(secretNames).not.toContain("CATALOG_GMAIL_ACCESS_TOKEN");
-    expect(secretNames).not.toContain("CATALOG_GMAIL_REFRESH_TOKEN");
-
-    serveObjects(catalogObjects([initial, replacement], initial));
-    await syncCatalog();
+    expect(secretNames).not.toContain("LEGACY_GMAIL_CREDENTIAL");
+    expect(secretNames).toContain("CATALOG_GMAIL_ACCESS_TOKEN");
+    expect(secretNames).toContain("CATALOG_GMAIL_REFRESH_TOKEN");
     await expect(
       connectorsApi.readConnectorByType(actor, "gmail"),
-    ).resolves.toMatchObject({ authMethod: "legacy" });
+    ).resolves.toMatchObject({ authMethod: "oauth" });
   });
 
   it("materializes external runtime bindings for runs and firewall auth", async () => {
@@ -2567,7 +2705,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
-  it("uses one external release for readiness status and fallback metadata", async () => {
+  it("uses one external release for readiness status and connector metadata", async () => {
     mockGmailConnectorOAuth({ email: "readiness@example.test" });
     configureSource();
     const connectedRelease = buildRelease({
@@ -2648,12 +2786,6 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.completeOauthCallback("gmail", {
       code: "external-readiness",
       state: oauthState,
-    });
-    await setConnectorCredentialStorageState(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-      connectorRef: "gmail",
-      storageVersion: null,
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };

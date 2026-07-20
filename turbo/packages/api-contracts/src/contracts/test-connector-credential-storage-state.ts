@@ -40,6 +40,13 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       description: z.string().nullable(),
     }),
     z.object({
+      action: z.literal("seed-legacy-variable"),
+      org_id: z.string(),
+      user_id: z.string(),
+      name: z.string(),
+      value: z.string(),
+    }),
+    z.object({
       action: z.literal("seed-owned-secret"),
       org_id: z.string(),
       user_id: z.string(),
@@ -65,6 +72,20 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       connector_ref: z.string(),
       storage_version: z.number().int().positive().nullable(),
       token_expires_at: z.iso.datetime().nullable().optional(),
+    }),
+    z.object({
+      action: z.literal("set-secret-owner"),
+      org_id: z.string(),
+      user_id: z.string(),
+      name: z.string(),
+      connector_id: z.uuid().nullable(),
+    }),
+    z.object({
+      action: z.literal("set-variable-owner"),
+      org_id: z.string(),
+      user_id: z.string(),
+      name: z.string(),
+      connector_id: z.uuid().nullable(),
     }),
   ]);
 

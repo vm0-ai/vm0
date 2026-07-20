@@ -404,9 +404,8 @@ export const steamPlayerData$ = command(
       return null;
     }
     const values = await loadConnectorCredentialValues({
+      connection: loaded.connection,
       db,
-      orgId: args.orgId,
-      userId: args.userId,
       valueRefs: [steamIdValueRef],
     });
     signal.throwIfAborted();

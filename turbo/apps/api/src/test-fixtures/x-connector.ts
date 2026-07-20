@@ -7,6 +7,7 @@
  * that consume an already-connected X account.
  */
 import { createStore } from "ccstate";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 
@@ -20,17 +21,25 @@ export async function seedConnectedXConnector(values: {
   readonly userId: string;
 }): Promise<void> {
   const db = createStore().set(writeDb$);
-  await db.insert(connectors).values({
-    type: "x",
-    authMethod: "oauth",
-    orgId: values.orgId,
-    userId: values.userId,
-    externalId: "x-user-id",
-    externalUsername: "zero_user",
-    oauthScopes: JSON.stringify(["tweet.write", "media.write"]),
-    tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
-  });
+  const [connector] = await db
+    .insert(connectors)
+    .values({
+      type: "x",
+      authMethod: "oauth",
+      storageVersion: CONNECTOR_TYPES.x.authMethods.oauth.storage.version,
+      orgId: values.orgId,
+      userId: values.userId,
+      externalId: "x-user-id",
+      externalUsername: "zero_user",
+      oauthScopes: JSON.stringify(["tweet.write", "media.write"]),
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    })
+    .returning({ id: connectors.id });
+  if (!connector) {
+    throw new Error("Failed to seed X connector");
+  }
   await db.insert(secrets).values({
+    connectorId: connector.id,
     orgId: values.orgId,
     userId: values.userId,
     name: "X_ACCESS_TOKEN",
