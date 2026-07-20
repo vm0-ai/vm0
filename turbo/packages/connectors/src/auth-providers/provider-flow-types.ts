@@ -213,6 +213,24 @@ export type ConnectorExternalCodeAuthorizationCompleteArgs<
     readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
   };
 
+export type ConnectorAuthCodeGrantRollbackArgs<
+  T extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
+    ConnectorAuthCodeGrantAuthMethodId<T>,
+> = ConnectorAuthMethodClientArgs<T, Method> & {
+  readonly result: ConnectorAuthProviderGrantResultForMethod<T, Method>;
+  readonly signal: AbortSignal;
+};
+
+export type ConnectorExternalCodeGrantRollbackArgs<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
+    ConnectorExternalCodeGrantAuthMethodId<T>,
+> = ConnectorAuthMethodClientArgs<T, Method> & {
+  readonly result: ConnectorAuthProviderGrantResultForMethod<T, Method>;
+  readonly signal: AbortSignal;
+};
+
 export type ConnectorAuthProviderRevokeArgs<
   T extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =

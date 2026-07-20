@@ -30,6 +30,8 @@ import type {
   ConnectorExternalCodeAuthorizationCompleteArgs,
   ConnectorExternalCodeAuthorizationStartArgs,
   ConnectorAuthCodeExchangeArgs,
+  ConnectorAuthCodeGrantRollbackArgs,
+  ConnectorExternalCodeGrantRollbackArgs,
   ConnectorOpenIdAuthorizeArgs,
   ConnectorOpenIdVerifyArgs,
   ConnectorAuthProviderRevokeArgs,
@@ -56,6 +58,9 @@ export interface AuthCodeGrantProvider<
   exchangeCode(
     args: ConnectorAuthCodeExchangeArgs<T, Method>,
   ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
+  rollbackGrant?(
+    args: ConnectorAuthCodeGrantRollbackArgs<T, Method>,
+  ): Promise<void>;
 }
 
 export interface OpenIdAuthGrantProvider<
@@ -98,6 +103,9 @@ export interface ExternalCodeGrantProvider<
   completeExternalCodeAuthorization(
     args: ConnectorExternalCodeAuthorizationCompleteArgs<T, Method>,
   ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
+  rollbackGrant?(
+    args: ConnectorExternalCodeGrantRollbackArgs<T, Method>,
+  ): Promise<void>;
 }
 
 export interface NoneAccessProvider {

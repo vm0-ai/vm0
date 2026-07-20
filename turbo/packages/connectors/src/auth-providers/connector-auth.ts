@@ -149,11 +149,19 @@ export type {
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
 };
+export {
+  connectorGrantCleanupError,
+  connectorGrantPrimaryError,
+} from "./grant-compensation";
 export type { ProviderEnv };
 export { providerEnvFromObject };
 
 export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "revoked" }
+  | { readonly status: "unsupported" };
+
+export type ConnectorAuthProviderGrantRollbackResult =
+  | { readonly status: "compensated" }
   | { readonly status: "unsupported" };
 
 type ConnectorAuthMethodIdsWithoutProviderGrant<Type extends ConnectorType> =
@@ -202,6 +210,7 @@ type RuntimeAuthCodeGrantProvider = {
     args: never,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(args: never): Promise<ConnectorAuthProviderGrantResult>;
+  rollbackGrant?(args: never): Promise<void>;
 };
 
 type RuntimeDeviceAuthGrantProvider = {
@@ -226,6 +235,7 @@ type RuntimeExternalCodeGrantProvider = {
   completeExternalCodeAuthorization(
     args: never,
   ): Promise<ConnectorAuthProviderGrantResult>;
+  rollbackGrant?(args: never): Promise<void>;
 };
 
 type RuntimeGrantProvider =
@@ -1250,6 +1260,12 @@ interface RuntimeTokenRevokeArgs {
   readonly signal: AbortSignal;
 }
 
+interface RuntimeGrantRollbackArgs {
+  readonly authClient: ConnectorAuthClient;
+  readonly result: ConnectorAuthProviderGrantResult;
+  readonly signal: AbortSignal;
+}
+
 function getStaticConnectorAuthProviderMethod(
   type: ConnectorType,
   authMethod: string,
@@ -1479,6 +1495,37 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
   });
   assertGrantOutputs({ selection: args, result });
   return result;
+}
+
+export async function rollbackConnectorAuthGrantWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly result: ConnectorAuthProviderGrantResult;
+    readonly signal: AbortSignal;
+  },
+): Promise<ConnectorAuthProviderGrantRollbackResult> {
+  const registration = connectorAuthProviderRegistrationFor(args);
+  const { grant } = registration.entry;
+  if (
+    (grant?.kind !== "auth-code" && grant?.kind !== "external-code") ||
+    grant.rollbackGrant === undefined
+  ) {
+    return { status: "unsupported" };
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  assertGrantOutputs({ selection: args, result: args.result });
+  await invokeRuntimeProvider<RuntimeGrantRollbackArgs, Promise<void>>(
+    grant.rollbackGrant,
+    {
+      authClient: args.authClient,
+      result: args.result,
+      signal: args.signal,
+    },
+  );
+  return { status: "compensated" };
 }
 
 export async function startConnectorDeviceAuthorizationWithMethod(

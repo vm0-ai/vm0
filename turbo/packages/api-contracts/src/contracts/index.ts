@@ -315,6 +315,12 @@ export {
   type TestOAuthProviderTokenResponse,
 } from "./test-oauth-provider-token";
 export {
+  testOAuthProviderRevokeContract,
+  testOAuthProviderRevokeErrorSchema,
+  testOAuthProviderRevokeResponseSchema,
+  type TestOAuthProviderRevokeContract,
+} from "./test-oauth-provider-revoke";
+export {
   testOAuthProviderDeviceAuthContract,
   testOAuthProviderDeviceAuthErrorSchema,
   testOAuthProviderDeviceAuthResponseSchema,

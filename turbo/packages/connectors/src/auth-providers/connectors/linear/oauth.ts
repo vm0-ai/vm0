@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import { withConnectorGrantCompensation } from "../../grant-compensation";
 import { throwOAuthError } from "../../oauth/error";
 
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -100,11 +101,19 @@ export async function exchangeLinearCode(
   if (!data.access_token) {
     throw new Error("No access token in Linear response");
   }
+  const accessToken = data.access_token;
 
-  const userInfo = await fetchLinearUserInfo(data.access_token);
+  const userInfo = await withConnectorGrantCompensation(
+    () => {
+      return fetchLinearUserInfo(accessToken);
+    },
+    (signal) => {
+      return revokeLinearToken(clientId, clientSecret, accessToken, signal);
+    },
+  );
 
   return {
-    accessToken: data.access_token,
+    accessToken,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(",") : [],
@@ -229,9 +238,11 @@ export async function revokeLinearToken(
   clientId: string,
   clientSecret: string,
   accessToken: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const response = await fetch("https://api.linear.app/oauth/revoke", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,

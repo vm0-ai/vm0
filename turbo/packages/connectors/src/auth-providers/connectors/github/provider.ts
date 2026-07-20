@@ -1,9 +1,10 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
+import { requiredConnectorGrantOutput } from "../../grant-compensation";
 import {
   buildGitHubAuthorizationUrl,
-  exchangeGitHubCode,
-  fetchGitHubUserInfo,
+  exchangeGitHubGrant,
   revokeGitHubGrant,
+  revokeGitHubToken,
 } from "./oauth";
 export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
   grant: {
@@ -19,17 +20,22 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      const code = args.code;
-      const redirectUri = args.redirectUri;
-      const { accessToken, scopes } = await exchangeGitHubCode(
-        args.authCodeGrant,
+      return await exchangeGitHubGrant({
+        authCodeGrant: args.authCodeGrant,
         clientId,
         clientSecret,
-        code,
-        redirectUri,
+        code: args.code,
+        redirectUri: args.redirectUri,
+      });
+    },
+    rollbackGrant: (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return revokeGitHubToken(
+        clientId,
+        clientSecret,
+        requiredConnectorGrantOutput(args.result.outputs, "accessToken"),
+        args.signal,
       );
-      const userInfo = await fetchGitHubUserInfo(accessToken);
-      return { outputs: { accessToken }, scopes, userInfo };
     },
   },
   access: {
@@ -39,7 +45,12 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeGitHubGrant(clientId, clientSecret, args.inputs.accessToken);
+      return revokeGitHubGrant(
+        clientId,
+        clientSecret,
+        args.inputs.accessToken,
+        args.signal,
+      );
     },
   },
 };

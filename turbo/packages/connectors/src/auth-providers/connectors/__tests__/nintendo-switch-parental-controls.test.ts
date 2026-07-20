@@ -286,6 +286,75 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
     });
   });
 
+  it("logs out the generated smart device when federation is cancelled", async () => {
+    const { result: started, providerState } =
+      await startNintendoSwitchParentalControlsSession();
+    const requestAbort = new AbortController();
+    const idToken = jwtPayload({
+      sub: "nintendo-cancelled-account",
+      email: "cancelled@example.com",
+    });
+    let federatedSmartDeviceId: string | null = null;
+    let logoutBody: unknown;
+    let logoutHeaders: Headers | undefined;
+
+    server.use(
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN_URL, () => {
+        return HttpResponse.json({ session_token: "cancelled-session-token" });
+      }),
+      http.post(NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "cancelled-access-token",
+          expires_in: 3600,
+          id_token: idToken,
+          token_type: "Bearer",
+        });
+      }),
+      http.get(NINTENDO_SWITCH_PARENTAL_CONTROLS_PROFILE_URL, () => {
+        return HttpResponse.json({ country: "US", language: "en" });
+      }),
+      http.post(
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL,
+        ({ request }) => {
+          federatedSmartDeviceId = request.headers.get(
+            "x-moon-smart-device-id",
+          );
+          requestAbort.abort();
+          return HttpResponse.json({
+            loginInfo: { ownedDevices: [] },
+          });
+        },
+      ),
+      http.post(
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL,
+        async ({ request }) => {
+          logoutBody = await request.json();
+          logoutHeaders = request.headers;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "nintendo-switch-parental-controls",
+        authMethod: "api",
+        authClient: nintendoSwitchParentalControlsAuthClient(),
+        providerState: started.providerState,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.redirectUri}#session_token_code=cancelled-code&state=${providerState.state}`,
+        signal: requestAbort.signal,
+      }),
+    ).rejects.toThrow();
+    expect(federatedSmartDeviceId).toStrictEqual(expect.any(String));
+    expect(logoutBody).toStrictEqual({
+      smartDeviceId: federatedSmartDeviceId,
+    });
+    expect(logoutHeaders?.get("authorization")).toBe(`Bearer ${idToken}`);
+    expect(logoutHeaders?.get("x-moon-smart-device-id")).toBe(
+      federatedSmartDeviceId,
+    );
+  });
+
   it("refreshes both tokens and omits only a transiently unavailable catalog", async () => {
     let catalogRequests = 0;
     let tokenRequests = 0;

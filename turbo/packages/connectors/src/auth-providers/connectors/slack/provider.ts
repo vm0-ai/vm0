@@ -1,5 +1,9 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
+  requiredConnectorGrantOutput,
+  withConnectorGrantCompensation,
+} from "../../grant-compensation";
+import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
   fetchSlackUserInfo,
@@ -28,9 +32,21 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
         code,
         redirectUri,
       );
-      const slackUser = await fetchSlackUserInfo(
-        slackResult.userId,
-        slackResult.accessToken,
+      const slackUser = await withConnectorGrantCompensation(
+        () => {
+          return fetchSlackUserInfo(
+            slackResult.userId,
+            slackResult.accessToken,
+          );
+        },
+        (signal) => {
+          return revokeSlackToken(
+            clientId,
+            clientSecret,
+            slackResult.accessToken,
+            signal,
+          );
+        },
       );
       return {
         outputs: {
@@ -44,6 +60,15 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
         },
       };
     },
+    rollbackGrant: (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return revokeSlackToken(
+        clientId,
+        clientSecret,
+        requiredConnectorGrantOutput(args.result.outputs, "accessToken"),
+        args.signal,
+      );
+    },
   },
   access: {
     kind: "none",
@@ -52,7 +77,12 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeSlackToken(clientId, clientSecret, args.inputs.accessToken);
+      return revokeSlackToken(
+        clientId,
+        clientSecret,
+        args.inputs.accessToken,
+        args.signal,
+      );
     },
   },
 };

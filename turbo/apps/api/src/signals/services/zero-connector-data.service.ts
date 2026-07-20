@@ -35,10 +35,11 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { bestEffort } from "../utils";
+import { bestEffort, settleIncludingAbort } from "../utils";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -90,7 +91,46 @@ type StoredConnectorRow = {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
+const CONNECTOR_POST_COMMIT_TIMEOUT_MS = 5000;
+const L = logger("ZeroConnectorDataService");
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
+
+type ConnectorTokenPersistenceCommitStatus =
+  | "not_committed"
+  | "unknown"
+  | "committed";
+
+export class ConnectorTokenPersistenceError extends Error {
+  readonly commitStatus: ConnectorTokenPersistenceCommitStatus;
+  readonly originalError: unknown;
+
+  constructor(
+    commitStatus: ConnectorTokenPersistenceCommitStatus,
+    originalError: unknown,
+  ) {
+    super(`Connector token persistence failed (${commitStatus})`, {
+      cause: originalError,
+    });
+    this.name = "ConnectorTokenPersistenceError";
+    this.commitStatus = commitStatus;
+    this.originalError = originalError;
+  }
+}
+
+async function classifyConnectorTokenPersistence<T>(
+  operation: Promise<T>,
+  commitStatus: () => ConnectorTokenPersistenceCommitStatus,
+): Promise<T> {
+  const persistence = await settleIncludingAbort(operation);
+  if (persistence.ok) {
+    return persistence.value;
+  }
+  const error = persistence.error;
+  if (error instanceof ConnectorTokenPersistenceError) {
+    throw error;
+  }
+  throw new ConnectorTokenPersistenceError(commitStatus(), error);
+}
 
 interface ExternalUserInfo {
   readonly id: string;
@@ -299,6 +339,45 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
     postCommitAbort ??= args.signal.reason;
   }
   throwCapturedAbort(postCommitAbort);
+}
+
+function loggedConnectorPostCommitError(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+async function finalizeConnectorTokenStateAfterCommit(args: {
+  readonly userId: string;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+}): Promise<void> {
+  if (args.pendingTokenRevoke) {
+    const cleanup = await settleIncludingAbort(
+      revokePendingConnectorTokenOnce({
+        pending: args.pendingTokenRevoke,
+        signal: AbortSignal.timeout(CONNECTOR_POST_COMMIT_TIMEOUT_MS),
+      }),
+    );
+    if (!cleanup.ok) {
+      L.warn("Connector post-commit token cleanup failed", {
+        connectorRef: args.runtimeMethod.connectorRef,
+        authMethodId: args.runtimeMethod.authMethodId,
+        operation: "revoke_replaced_token",
+        error: loggedConnectorPostCommitError(cleanup.error),
+      });
+    }
+  }
+
+  const publication = await settleIncludingAbort(
+    publishUserSignal([args.userId], "connector:changed"),
+  );
+  if (!publication.ok) {
+    L.warn("Connector post-commit publication failed", {
+      connectorRef: args.runtimeMethod.connectorRef,
+      authMethodId: args.runtimeMethod.authMethodId,
+      operation: "publish_connector_changed",
+      error: loggedConnectorPostCommitError(publication.error),
+    });
+  }
 }
 
 function prepareManualGrantConnect(
@@ -703,21 +782,26 @@ async function revokePendingConnectorToken(args: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   // Provider revocation is best-effort; local cleanup still owns visible state.
-  await bestEffort(
-    revokeConnectorAuthMethodAccessTokenWithMethod({
-      connectorRef: args.pending.runtimeMethod.connectorRef,
-      authMethodId: args.pending.runtimeMethod.authMethodId,
-      method: args.pending.runtimeMethod.method,
-      readEnv: optionalEnv,
-      signal: args.signal,
-      loadInputs: () => {
-        return decryptConnectorRevokeInputs({
-          encryptedInputs: args.pending.encryptedInputs,
-          featureSwitchContext: args.pending.featureSwitchContext,
-        });
-      },
-    }),
-  );
+  await bestEffort(revokePendingConnectorTokenOnce(args));
+}
+
+async function revokePendingConnectorTokenOnce(args: {
+  readonly pending: PendingConnectorTokenRevoke;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await revokeConnectorAuthMethodAccessTokenWithMethod({
+    connectorRef: args.pending.runtimeMethod.connectorRef,
+    authMethodId: args.pending.runtimeMethod.authMethodId,
+    method: args.pending.runtimeMethod.method,
+    readEnv: optionalEnv,
+    signal: args.signal,
+    loadInputs: () => {
+      return decryptConnectorRevokeInputs({
+        encryptedInputs: args.pending.encryptedInputs,
+        featureSwitchContext: args.pending.featureSwitchContext,
+      });
+    },
+  });
 }
 
 async function deleteManualGrantConnectorLocalState(args: {
@@ -2058,7 +2142,7 @@ async function commitConnectorTokenConnection(args: {
 }
 
 export const upsertConnectorTokenConnection$ = command(
-  async (
+  (
     { get, set },
     args: {
       readonly orgId: string;
@@ -2076,80 +2160,95 @@ export const upsertConnectorTokenConnection$ = command(
     readonly connector: ConnectorResponse;
     readonly created: boolean;
   }> => {
-    const writeDb = set(writeDb$);
-    const outputMetadata = connectorTokenOutputMetadataForAuthMethod({
-      runtimeMethod: args.runtimeMethod,
-    });
-    if (!outputMetadata) {
-      throw new Error(
-        `${args.runtimeMethod.connectorRef} connector auth method ${args.runtimeMethod.authMethodId} does not expose token outputs`,
-      );
-    }
-    const tokenExpiresAt = connectorTokenExpiresAt({
-      isRefreshable: outputMetadata.isRefreshable,
-      expiresIn: args.expiresIn,
-    });
-    const extraSecrets = validateExtraConnectorTokenSecrets({
-      connectorRef: args.runtimeMethod.connectorRef,
-      method: args.runtimeMethod.method,
-      extraConnectorSecrets: args.extraConnectorSecrets,
-      outputTargets: outputMetadata.outputTargets,
-    });
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
+    let commitStatus: ConnectorTokenPersistenceCommitStatus = "not_committed";
+    return classifyConnectorTokenPersistence(
+      (async () => {
+        const writeDb = set(writeDb$);
+        const outputMetadata = connectorTokenOutputMetadataForAuthMethod({
+          runtimeMethod: args.runtimeMethod,
+        });
+        if (!outputMetadata) {
+          throw new Error(
+            `${args.runtimeMethod.connectorRef} connector auth method ${args.runtimeMethod.authMethodId} does not expose token outputs`,
+          );
+        }
+        const tokenExpiresAt = connectorTokenExpiresAt({
+          isRefreshable: outputMetadata.isRefreshable,
+          expiresIn: args.expiresIn,
+        });
+        const extraSecrets = validateExtraConnectorTokenSecrets({
+          connectorRef: args.runtimeMethod.connectorRef,
+          method: args.runtimeMethod.method,
+          extraConnectorSecrets: args.extraConnectorSecrets,
+          outputTargets: outputMetadata.outputTargets,
+        });
+        const featureSwitchContext = await get(
+          userFeatureSwitchContext(args.orgId, args.userId),
+        );
+        signal.throwIfAborted();
+
+        const connectorTokenState = await prepareConnectorTokenState({
+          type: args.runtimeMethod.connectorRef,
+          outputTargets: outputMetadata.outputTargets,
+          requiredOutputNames: outputMetadata.requiredOutputNames,
+          requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
+          outputs: args.outputs,
+          extraSecrets,
+          featureSwitchContext,
+          signal,
+        });
+        signal.throwIfAborted();
+
+        let transactionCallbackCompleted = false;
+        const transaction = await settleIncludingAbort(
+          writeDb.transaction(async (tx) => {
+            const result = await commitConnectorTokenConnection({
+              db: tx,
+              orgId: args.orgId,
+              userId: args.userId,
+              runtimeMethod: args.runtimeMethod,
+              snapshot: args.snapshot,
+              connectorTokenState,
+              featureSwitchContext,
+              userInfo: args.userInfo,
+              oauthScopes: args.oauthScopes,
+              tokenExpiresAt,
+              signal,
+            });
+            transactionCallbackCompleted = true;
+            return result;
+          }),
+        );
+        if (!transaction.ok) {
+          if (transactionCallbackCompleted) {
+            commitStatus = "unknown";
+          }
+          throw transaction.error;
+        }
+        const connectionResult = transaction.value;
+        commitStatus = "committed";
+
+        await finalizeConnectorTokenStateAfterCommit({
+          userId: args.userId,
+          runtimeMethod: args.runtimeMethod,
+          pendingTokenRevoke: connectionResult.pendingTokenRevoke,
+        });
+
+        return {
+          connector: storedConnectorRowToResponse(
+            connectionResult.connectorRow,
+            args.runtimeMethod,
+            nowDate(),
+          ),
+          created:
+            connectionResult.connectorRow.createdAt.getTime() ===
+            connectionResult.connectorRow.updatedAt.getTime(),
+        };
+      })(),
+      () => {
+        return commitStatus;
+      },
     );
-    signal.throwIfAborted();
-
-    const connectorTokenState = await prepareConnectorTokenState({
-      type: args.runtimeMethod.connectorRef,
-      outputTargets: outputMetadata.outputTargets,
-      requiredOutputNames: outputMetadata.requiredOutputNames,
-      requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
-      outputs: args.outputs,
-      extraSecrets,
-      featureSwitchContext,
-      signal,
-    });
-    signal.throwIfAborted();
-
-    let postCommitAbort: unknown = null;
-    const connectionResult = await writeDb.transaction(async (tx) => {
-      return await commitConnectorTokenConnection({
-        db: tx,
-        orgId: args.orgId,
-        userId: args.userId,
-        runtimeMethod: args.runtimeMethod,
-        snapshot: args.snapshot,
-        connectorTokenState,
-        featureSwitchContext,
-        userInfo: args.userInfo,
-        oauthScopes: args.oauthScopes,
-        tokenExpiresAt,
-        signal,
-      });
-    });
-    if (signal.aborted) {
-      postCommitAbort ??= signal.reason;
-    }
-
-    await finalizeConnectorStateChangeAfterCommit({
-      userId: args.userId,
-      pendingTokenRevoke: connectionResult.pendingTokenRevoke,
-      signal,
-      postCommitAbort,
-    });
-    signal.throwIfAborted();
-
-    return {
-      connector: storedConnectorRowToResponse(
-        connectionResult.connectorRow,
-        args.runtimeMethod,
-        nowDate(),
-      ),
-      created:
-        connectionResult.connectorRow.createdAt.getTime() ===
-        connectionResult.connectorRow.updatedAt.getTime(),
-    };
   },
 );
 

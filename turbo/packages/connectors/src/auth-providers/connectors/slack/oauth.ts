@@ -153,9 +153,11 @@ export async function revokeSlackToken(
   _clientId: string,
   _clientSecret: string,
   accessToken: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const response = await fetch("https://slack.com/api/auth.revoke", {
     method: "POST",
+    signal,
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },

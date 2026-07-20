@@ -24,6 +24,7 @@ export {
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
+const TEST_OAUTH_REVOKE_URL = "/api/test/oauth-provider/revoke";
 
 interface TokenResponse {
   accessToken: string;
@@ -142,6 +143,10 @@ function getAuthorizationUrl(): string {
 
 function getTestOAuthTokenUrl(): string {
   return resolveTestOAuthProviderUrl("tokenUrl", TEST_OAUTH_TOKEN_URL);
+}
+
+function getTestOAuthRevokeUrl(): string {
+  return resolveTestOAuthProviderUrl("revokeUrl", TEST_OAUTH_REVOKE_URL);
 }
 
 export function buildTestOAuthAuthorizationUrl(
@@ -266,4 +271,28 @@ export async function fetchTestOAuthUserInfo(
     username: data.username ?? null,
     email: data.email ?? null,
   };
+}
+
+export async function revokeTestOAuthToken(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(getTestOAuthRevokeUrl(), {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...testOAuthPreviewBypassHeaders(),
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      token: accessToken,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Test OAuth token revocation failed: ${response.status}`);
+  }
 }

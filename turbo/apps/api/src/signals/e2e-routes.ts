@@ -3,6 +3,7 @@ import { cliAuthTestRoutes } from "./routes/cli-auth-test";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-device-auth";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
+import { testOAuthProviderRevokeRoutes } from "./routes/test-oauth-provider-revoke";
 import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
 import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
@@ -46,6 +47,7 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderDeviceAuthRoutes,
   ...testOAuthProviderEchoRoutes,
+  ...testOAuthProviderRevokeRoutes,
   ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,
   ...testSlackDispatchProbeRoutes,

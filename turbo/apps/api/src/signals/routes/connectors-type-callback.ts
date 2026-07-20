@@ -7,9 +7,11 @@ import {
 import {
   connectorGrantScopes,
   resolveConnectorAuthClient,
+  type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   exchangeConnectorAuthCodeWithMethod,
+  rollbackConnectorAuthGrantWithMethod,
   verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
@@ -38,10 +40,14 @@ import {
 } from "../services/connector-catalog-runtime.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import {
+  observeConnectorGrantError,
+  persistConnectorGrant,
+} from "../services/connector-grant-lifecycle.service";
+import {
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,
 } from "../services/github-oauth.service";
-import { safeJsonParse, tapError } from "../utils";
+import { onRejection, safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   getConnectorOAuthCanonicalRedirectUrlForMethods,
@@ -187,7 +193,10 @@ async function exchangeTokenForConnector(args: {
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<ConnectorAuthProviderGrantResult> {
+}): Promise<{
+  readonly token: ConnectorAuthProviderGrantResult;
+  readonly authClient: ConnectorAuthClient;
+}> {
   if (
     args.resolvedMethod.method.grant.kind !== "auth-code" ||
     args.resolvedMethod.method.client === undefined
@@ -204,17 +213,29 @@ async function exchangeTokenForConnector(args: {
     );
   }
 
-  return await exchangeConnectorAuthCodeWithMethod({
-    connectorRef: args.resolvedMethod.connectorRef,
-    authMethodId: args.resolvedMethod.authMethodId,
-    method: args.resolvedMethod.method,
-    authClient,
-    code: args.code,
-    redirectUri: args.redirectUri,
-    state: args.state,
-    codeVerifier: args.codeVerifier,
-    oauthContext: args.oauthContext,
-  });
+  const token = await onRejection(
+    exchangeConnectorAuthCodeWithMethod({
+      connectorRef: args.resolvedMethod.connectorRef,
+      authMethodId: args.resolvedMethod.authMethodId,
+      method: args.resolvedMethod.method,
+      authClient,
+      code: args.code,
+      redirectUri: args.redirectUri,
+      state: args.state,
+      codeVerifier: args.codeVerifier,
+      oauthContext: args.oauthContext,
+    }),
+    (error) => {
+      throw observeConnectorGrantError(
+        {
+          connectorRef: args.resolvedMethod.connectorRef,
+          authMethodId: args.resolvedMethod.authMethodId,
+        },
+        error,
+      );
+    },
+  );
+  return { token, authClient };
 }
 
 async function verifyOpenIdForConnector(args: {
@@ -233,6 +254,76 @@ async function verifyOpenIdForConnector(args: {
     expectedRealm: args.expectedRealm,
     signal: args.signal,
   });
+}
+
+async function exchangeAndPersistOAuthConnector<T>(args: {
+  readonly input: CompleteOAuthCallbackInput;
+  readonly persist: (
+    token: ConnectorAuthProviderGrantResult,
+    signal: AbortSignal,
+  ) => Promise<T>;
+}): Promise<{
+  readonly token: ConnectorAuthProviderGrantResult;
+  readonly result: T;
+}> {
+  const exchange = await exchangeTokenForConnector({
+    resolvedMethod: args.input.resolvedMethod,
+    code: args.input.code,
+    redirectUri: args.input.redirectUri,
+    state: args.input.state,
+    codeVerifier: args.input.codeVerifier,
+    oauthContext: args.input.oauthContext,
+  });
+  const result = await persistConnectorGrant({
+    context: {
+      connectorRef: args.input.resolvedMethod.connectorRef,
+      authMethodId: args.input.resolvedMethod.authMethodId,
+    },
+    persist: (persistSignal) => {
+      return args.persist(exchange.token, persistSignal);
+    },
+    rollback: (rollbackSignal) => {
+      return rollbackConnectorAuthGrantWithMethod({
+        connectorRef: args.input.resolvedMethod.connectorRef,
+        authMethodId: args.input.resolvedMethod.authMethodId,
+        method: args.input.resolvedMethod.method,
+        authClient: exchange.authClient,
+        result: exchange.token,
+        signal: rollbackSignal,
+      });
+    },
+  });
+  return { token: exchange.token, result };
+}
+
+async function verifyAndPersistOpenIdConnector<T>(args: {
+  readonly input: CompleteOpenIdCallbackInput;
+  readonly signal: AbortSignal;
+  readonly persist: (
+    token: ConnectorAuthProviderGrantResult,
+    signal: AbortSignal,
+  ) => Promise<T>;
+}): Promise<{
+  readonly token: ConnectorAuthProviderGrantResult;
+  readonly result: T;
+}> {
+  const token = await verifyOpenIdForConnector({
+    resolvedMethod: args.input.resolvedMethod,
+    callbackParams: args.input.callbackParams,
+    expectedReturnTo: args.input.expectedReturnTo,
+    expectedRealm: args.input.expectedRealm,
+    signal: args.signal,
+  });
+  const result = await persistConnectorGrant({
+    context: {
+      connectorRef: args.input.resolvedMethod.connectorRef,
+      authMethodId: args.input.resolvedMethod.authMethodId,
+    },
+    persist: (persistSignal) => {
+      return args.persist(token, persistSignal);
+    },
+  });
+  return { token, result };
 }
 
 function resolveConnectorWithGrant(args: {
@@ -451,31 +542,26 @@ const completeOAuthCallback$ = command(
     args: CompleteOAuthCallbackInput,
     signal: AbortSignal,
   ): Promise<Response> => {
-    const token = await exchangeTokenForConnector({
-      resolvedMethod: args.resolvedMethod,
-      code: args.code,
-      redirectUri: args.redirectUri,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      oauthContext: args.oauthContext,
-    });
-    signal.throwIfAborted();
-
-    const result = await set(
-      upsertConnectorTokenConnection$,
-      {
-        orgId: args.identity.orgId,
-        userId: args.identity.userId,
-        runtimeMethod: args.resolvedMethod.runtimeMethod,
-        snapshot: args.resolvedMethod.snapshot,
-        outputs: token.outputs,
-        userInfo: token.userInfo,
-        oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
-        expiresIn: token.expiresIn,
-        extraConnectorSecrets: token.extraConnectorSecrets,
+    const { result, token } = await exchangeAndPersistOAuthConnector({
+      input: args,
+      persist: (grant, persistSignal) => {
+        return set(
+          upsertConnectorTokenConnection$,
+          {
+            orgId: args.identity.orgId,
+            userId: args.identity.userId,
+            runtimeMethod: args.resolvedMethod.runtimeMethod,
+            snapshot: args.resolvedMethod.snapshot,
+            outputs: grant.outputs,
+            userInfo: grant.userInfo,
+            oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
+            expiresIn: grant.expiresIn,
+            extraConnectorSecrets: grant.extraConnectorSecrets,
+          },
+          persistSignal,
+        );
       },
-      signal,
-    );
+    });
     signal.throwIfAborted();
 
     if (args.authorizeAgent) {
@@ -522,30 +608,27 @@ const completeOpenIdCallback$ = command(
     args: CompleteOpenIdCallbackInput,
     signal: AbortSignal,
   ): Promise<Response> => {
-    const token = await verifyOpenIdForConnector({
-      resolvedMethod: args.resolvedMethod,
-      callbackParams: args.callbackParams,
-      expectedReturnTo: args.expectedReturnTo,
-      expectedRealm: args.expectedRealm,
+    const { result } = await verifyAndPersistOpenIdConnector({
+      input: args,
       signal,
-    });
-    signal.throwIfAborted();
-
-    const result = await set(
-      upsertConnectorTokenConnection$,
-      {
-        orgId: args.identity.orgId,
-        userId: args.identity.userId,
-        runtimeMethod: args.resolvedMethod.runtimeMethod,
-        snapshot: args.resolvedMethod.snapshot,
-        outputs: token.outputs,
-        userInfo: token.userInfo,
-        oauthScopes: token.scopes,
-        expiresIn: token.expiresIn,
-        extraConnectorSecrets: token.extraConnectorSecrets,
+      persist: (token, persistSignal) => {
+        return set(
+          upsertConnectorTokenConnection$,
+          {
+            orgId: args.identity.orgId,
+            userId: args.identity.userId,
+            runtimeMethod: args.resolvedMethod.runtimeMethod,
+            snapshot: args.resolvedMethod.snapshot,
+            outputs: token.outputs,
+            userInfo: token.userInfo,
+            oauthScopes: token.scopes,
+            expiresIn: token.expiresIn,
+            extraConnectorSecrets: token.extraConnectorSecrets,
+          },
+          persistSignal,
+        );
       },
-      signal,
-    );
+    });
     signal.throwIfAborted();
 
     if (args.authorizeAgent) {

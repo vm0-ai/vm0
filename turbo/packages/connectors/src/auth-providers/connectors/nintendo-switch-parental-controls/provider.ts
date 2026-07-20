@@ -7,6 +7,10 @@ import type {
   RefreshTokenAccessProvider,
   TokenRevokeProvider,
 } from "../../types";
+import {
+  requiredConnectorGrantOutput,
+  withConnectorGrantCompensation,
+} from "../../grant-compensation";
 import { isOAuthProviderHttpError } from "../../oauth/error";
 import {
   buildNintendoSwitchParentalControlsAuthorizationUrl,
@@ -69,13 +73,24 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
         signal: args.signal,
       });
       const smartDeviceId = randomUUID();
-      const deviceCatalog =
-        await federateNintendoSwitchParentalControlsSmartDevice({
-          idToken: token.idToken,
-          smartDeviceId,
-          language: profile.language,
-          signal: args.signal,
-        });
+      const deviceCatalog = await withConnectorGrantCompensation(
+        () => {
+          return federateNintendoSwitchParentalControlsSmartDevice({
+            idToken: token.idToken,
+            smartDeviceId,
+            language: profile.language,
+            signal: args.signal,
+          });
+        },
+        (signal) => {
+          return logoutNintendoSwitchParentalControlsSmartDevice({
+            idToken: token.idToken,
+            smartDeviceId,
+            language: profile.language,
+            signal,
+          });
+        },
+      );
       return {
         outputs: {
           sessionToken: session.sessionToken,
@@ -93,6 +108,17 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
             : args.externalCodeGrant.scopes,
         userInfo: nintendoSwitchParentalControlsUserInfo(token.idToken),
       };
+    },
+    rollbackGrant: (args) => {
+      return logoutNintendoSwitchParentalControlsSmartDevice({
+        idToken: requiredConnectorGrantOutput(args.result.outputs, "idToken"),
+        smartDeviceId: requiredConnectorGrantOutput(
+          args.result.outputs,
+          "smartDeviceId",
+        ),
+        language: requiredConnectorGrantOutput(args.result.outputs, "language"),
+        signal: args.signal,
+      });
     },
   };
 }

@@ -16,8 +16,10 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -2752,7 +2754,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expectApiError(afterTokenFail.body);
     expect(afterTokenFail.body.error.code).toBe("NOT_FOUND");
 
-    mockTestOAuthAuthCodeProvider({ userinfoError: true });
+    const userinfoFailureProvider = mockTestOAuthAuthCodeProvider({
+      userinfoError: true,
+    });
     const userinfoFailStart = await connectorsApi.startOauth(
       actor,
       "test-oauth",
@@ -2776,8 +2780,216 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     );
     expectApiError(afterUserinfoFail.body);
     expect(afterUserinfoFail.body.error.code).toBe("NOT_FOUND");
+    expect(
+      userinfoFailureProvider.revokeBodies.map((body) => {
+        return body.get("token");
+      }),
+    ).toStrictEqual(["bdd-test-oauth-access-token"]);
 
     await connectorsApi.deleteConnectorByType(actor, "slack");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+});
+
+describe("CONN-02: auth-code grant compensation", () => {
+  it("rolls back the issued token after a known pre-commit persistence failure", async () => {
+    const provider = mockTestOAuthAuthCodeProvider({
+      accessToken: "bdd-precommit-access-token",
+    });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const callback = await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-precommit-failure",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(callback, {
+      type: "test-oauth",
+      message: "OAuth authorization failed. Please try again.",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+    expect(
+      provider.revokeBodies.map((body) => {
+        return body.get("token");
+      }),
+    ).toStrictEqual(["bdd-precommit-access-token"]);
+    const missing = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "test-oauth",
+      [404],
+    );
+    expectApiError(missing.body);
+
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("keeps the persistence failure primary when rollback also fails", async () => {
+    const accessToken = "bdd-rollback-failure-access-token";
+    const provider = mockTestOAuthAuthCodeProvider({
+      accessToken,
+      revokeError: true,
+    });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const callback = await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-rollback-failure",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(callback, {
+      type: "test-oauth",
+      message: "OAuth authorization failed. Please try again.",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+    expect(provider.revokeBodies).toHaveLength(1);
+    const warnings = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
+    expect(warnings).toContain("Connector grant rollback failed");
+    expect(warnings).not.toContain(accessToken);
+
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("finishes persistence after the request is cancelled following provider success", async () => {
+    const requestAbort = new AbortController();
+    const provider = mockTestOAuthAuthCodeProvider({
+      accessToken: "bdd-cancelled-request-access-token",
+      onUserinfo: () => {
+        requestAbort.abort();
+      },
+    });
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    await Promise.allSettled([
+      requestOauthCallbackRaw(context, {
+        origin: "https://www.vm0.ai",
+        type: "test-oauth",
+        query: {
+          code: "bdd-cancelled-request",
+          state: stateFromAuthorizationUrl(start.authorizationUrl),
+        },
+        signal: requestAbort.signal,
+      }),
+    ]);
+
+    const connector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(connector.connectionStatus).toBe("connected");
+    expect(provider.revokeBodies).toStrictEqual([]);
+
+    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("does not roll back an acknowledged commit when realtime publication fails", async () => {
+    const accessToken = "bdd-postcommit-publication-access-token";
+    const provider = mockTestOAuthAuthCodeProvider({ accessToken });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Synthetic realtime publication failure"),
+    );
+
+    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const callback = await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-postcommit-publication",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+    expect(redirectLocation(callback).pathname).toBe("/connector/success");
+    const connector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(connector.connectionStatus).toBe("connected");
+    expect(provider.revokeBodies).toStrictEqual([]);
+    const warnings = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
+    expect(warnings).toContain("Connector post-commit publication failed");
+    expect(warnings).not.toContain(accessToken);
+
+    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("rolls back only the failed attempt while a newer attempt commits", async () => {
+    const rollbackGate = createDeferredPromise<void>(context.signal);
+    const provider = mockTestOAuthAuthCodeProvider({
+      accessTokenForCode: (code) => {
+        return `bdd-concurrent-access-${code}`;
+      },
+      revokeWaitUntil: rollbackGate.promise,
+    });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const firstStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "attempt-a",
+      state: stateFromAuthorizationUrl(firstStart.authorizationUrl),
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    const secondStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    const secondCallback = await connectorsApi.completeOauthCallback(
+      "test-oauth",
+      {
+        code: "attempt-b",
+        state: stateFromAuthorizationUrl(secondStart.authorizationUrl),
+      },
+    );
+    expect(redirectLocation(secondCallback).pathname).toBe(
+      "/connector/success",
+    );
+
+    rollbackGate.resolve(undefined);
+    await flushWaitUntilForTest();
+    expect(
+      provider.revokeBodies.map((body) => {
+        return body.get("token");
+      }),
+    ).toStrictEqual(["bdd-concurrent-access-attempt-a"]);
+    const connector = await connectorsApi.readConnectorByType(
+      actor,
+      "test-oauth",
+    );
+    expect(connector.connectionStatus).toBe("connected");
+
+    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 });
@@ -2871,6 +3083,96 @@ describe("CONN-02: device-auth method switching", () => {
 });
 
 describe("CONN-02: GitHub installation link after connector OAuth", () => {
+  it("separates failed-attempt token rollback from ordinary grant revocation", async () => {
+    const provider = mockGitHubConnectorOAuth();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+
+    const failedStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+    );
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await connectorsApi.completeOauthCallback("github", {
+      code: "failed-attempt",
+      state: stateFromAuthorizationUrl(failedStart.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(failed, {
+      type: "github",
+      message: "OAuth authorization failed. Please try again.",
+    });
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+
+    expect(provider.tokenRollbackClientIds).toStrictEqual(["github-client-id"]);
+    expect(provider.tokenRollbackBodies).toStrictEqual([
+      { access_token: "github-access-failed-attempt" },
+    ]);
+    expect(provider.grantRevokeBodies).toStrictEqual([]);
+
+    const connectedStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("github", {
+      code: "connected-attempt",
+      state: stateFromAuthorizationUrl(connectedStart.authorizationUrl),
+    });
+    await connectorsApi.deleteConnectorByType(actor, "github");
+
+    expect(provider.grantRevokeClientIds).toStrictEqual(["github-client-id"]);
+    expect(provider.grantRevokeBodies).toStrictEqual([
+      { access_token: "github-access-connected-attempt" },
+    ]);
+    expect(provider.tokenRollbackBodies).toHaveLength(1);
+  });
+
+  it("uses the GitHub App OAuth client and omits redirect_uri during setup rollback", async () => {
+    const provider = mockGitHubConnectorOAuth({
+      onUserinfo: () => {
+        mockEnv("SECRETS_KMS_KEY_ID", undefined);
+      },
+    });
+    mockOptionalEnv("GITHUB_APP_CLIENT_ID", "github-app-client-id");
+    mockOptionalEnv("GITHUB_APP_CLIENT_SECRET", "github-app-client-secret");
+    const installationId = String(randomInt(100_000_000, 999_999_999));
+    const targetId = String(randomInt(100_000_000, 999_999_999));
+    mockGithubAppInstallProvider({ installationId, targetId });
+
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user();
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD GitHub App OAuth Rollback Agent",
+    });
+
+    await expect(
+      connectorsApi.installGithubAppViaApi(
+        admin,
+        agent.agentId,
+        installationId,
+        "github-app-setup-code",
+      ),
+    ).rejects.toThrow();
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+
+    const appExchange = provider.tokenBodies.find((body) => {
+      return body.get("code") === "github-app-setup-code";
+    });
+    expect(appExchange?.get("client_id")).toBe("github-app-client-id");
+    expect(appExchange?.get("client_secret")).toBe("github-app-client-secret");
+    expect(appExchange?.has("redirect_uri")).toBeFalsy();
+    expect(provider.tokenRollbackClientIds).toStrictEqual([
+      "github-app-client-id",
+    ]);
+    expect(provider.tokenRollbackBodies).toStrictEqual([
+      { access_token: "github-access-github-app-setup-code" },
+    ]);
+  });
+
   it("links the org GitHub installation when the GitHub connector completes OAuth", async () => {
     mockGitHubConnectorOAuth();
     const installationId = String(randomInt(100_000_000, 999_999_999));

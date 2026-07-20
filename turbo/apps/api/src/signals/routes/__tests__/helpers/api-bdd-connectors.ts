@@ -81,6 +81,8 @@ const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
+const TEST_OAUTH_REVOKE_URL =
+  "http://localhost:3000/api/test/oauth-provider/revoke";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
@@ -117,14 +119,32 @@ function expectStatus<
   }
 }
 
-export function mockGitHubConnectorOAuth(): void {
+interface GitHubConnectorOAuthRecorder {
+  readonly tokenBodies: URLSearchParams[];
+  readonly tokenRollbackBodies: Readonly<Record<string, unknown>>[];
+  readonly tokenRollbackClientIds: string[];
+  readonly grantRevokeBodies: Readonly<Record<string, unknown>>[];
+  readonly grantRevokeClientIds: string[];
+}
+
+export function mockGitHubConnectorOAuth(
+  options: { readonly onUserinfo?: () => void } = {},
+): GitHubConnectorOAuthRecorder {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
 
+  const recorder: GitHubConnectorOAuthRecorder = {
+    tokenBodies: [],
+    tokenRollbackBodies: [],
+    tokenRollbackClientIds: [],
+    grantRevokeBodies: [],
+    grantRevokeClientIds: [],
+  };
   server.use(
     http.post(GITHUB_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
+      recorder.tokenBodies.push(body);
       const code = body.get("code") ?? "missing-code";
       return HttpResponse.json({
         access_token: `github-access-${code}`,
@@ -132,13 +152,35 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
     http.get(GITHUB_USER_URL, () => {
+      options.onUserinfo?.();
       return HttpResponse.json({
         id: 42,
         login: "bdd-github-user",
         email: "bdd-github@example.test",
       });
     }),
+    http.delete(
+      "https://api.github.com/applications/:clientId/token",
+      async ({ params, request }) => {
+        recorder.tokenRollbackClientIds.push(String(params.clientId));
+        recorder.tokenRollbackBodies.push(
+          z.record(z.string(), z.unknown()).parse(await request.json()),
+        );
+        return new HttpResponse(null, { status: 204 });
+      },
+    ),
+    http.delete(
+      "https://api.github.com/applications/:clientId/grant",
+      async ({ params, request }) => {
+        recorder.grantRevokeClientIds.push(String(params.clientId));
+        recorder.grantRevokeBodies.push(
+          z.record(z.string(), z.unknown()).parse(await request.json()),
+        );
+        return new HttpResponse(null, { status: 204 });
+      },
+    ),
   );
+  return recorder;
 }
 
 interface DatadogOAuthProviderRecorder {
@@ -174,10 +216,15 @@ interface TestOAuthAuthCodeProviderOptions {
   readonly scope?: string;
   readonly tokenError?: boolean;
   readonly userinfoError?: boolean;
+  readonly accessTokenForCode?: (code: string) => string;
+  readonly onUserinfo?: () => void;
+  readonly revokeError?: boolean;
+  readonly revokeWaitUntil?: Promise<void>;
 }
 
 interface TestOAuthAuthCodeProviderRecorder {
   readonly tokenBodies: URLSearchParams[];
+  readonly revokeBodies: URLSearchParams[];
 }
 
 /**
@@ -189,7 +236,10 @@ interface TestOAuthAuthCodeProviderRecorder {
 export function mockTestOAuthAuthCodeProvider(
   options: TestOAuthAuthCodeProviderOptions = {},
 ): TestOAuthAuthCodeProviderRecorder {
-  const recorded: TestOAuthAuthCodeProviderRecorder = { tokenBodies: [] };
+  const recorded: TestOAuthAuthCodeProviderRecorder = {
+    tokenBodies: [],
+    revokeBodies: [],
+  };
 
   server.use(
     http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
@@ -204,8 +254,12 @@ export function mockTestOAuthAuthCodeProvider(
         );
       }
       const refreshToken = options.refreshToken ?? null;
+      const code = recorded.tokenBodies.at(-1)?.get("code") ?? "";
       return HttpResponse.json({
-        access_token: options.accessToken ?? "bdd-test-oauth-access-token",
+        access_token:
+          options.accessTokenForCode?.(code) ??
+          options.accessToken ??
+          "bdd-test-oauth-access-token",
         ...(refreshToken === null ? {} : { refresh_token: refreshToken }),
         ...(options.omitExpiresIn
           ? {}
@@ -215,6 +269,7 @@ export function mockTestOAuthAuthCodeProvider(
       });
     }),
     http.get(TEST_OAUTH_USERINFO_URL, () => {
+      options.onUserinfo?.();
       if (options.userinfoError) {
         return HttpResponse.json(
           { error: "userinfo_lookup_failed" },
@@ -226,6 +281,14 @@ export function mockTestOAuthAuthCodeProvider(
         username: "bdd-test-oauth",
         email: "bdd-test-oauth@example.test",
       });
+    }),
+    http.post(TEST_OAUTH_REVOKE_URL, async ({ request }) => {
+      recorded.revokeBodies.push(new URLSearchParams(await request.text()));
+      await options.revokeWaitUntil;
+      if (options.revokeError) {
+        return HttpResponse.json({ error: "revoke_failed" }, { status: 500 });
+      }
+      return HttpResponse.json({ revoked: true });
     }),
   );
 
@@ -551,13 +614,14 @@ export async function requestOauthCallbackRaw(
     readonly type: string;
     readonly query: Readonly<Record<string, string>>;
     readonly headers?: Readonly<Record<string, string>>;
+    readonly signal?: AbortSignal;
   },
 ): Promise<Response> {
   const url = new URL(`/api/connectors/${args.type}/callback`, args.origin);
   for (const [name, value] of Object.entries(args.query)) {
     url.searchParams.set(name, value);
   }
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: args.signal ?? context.signal });
   return await app.request(url.toString(), { headers: args.headers });
 }
 
@@ -1320,6 +1384,7 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
       installationId: string,
+      code?: string,
     ): Promise<void> {
       if (!actor.orgId) {
         throw new Error("GitHub App install requires an actor with an org");
@@ -1368,6 +1433,7 @@ export function createConnectorBddApi(context: TestContext) {
             installation_id: installationId,
             setup_action: "install",
             state,
+            ...(code ? { code } : {}),
           },
         }),
         [307],

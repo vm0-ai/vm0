@@ -9,10 +9,14 @@ import {
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
-import { exchangeConnectorAuthCodeWithMethod } from "@vm0/connectors/auth-providers";
 import {
-  exchangeGitHubCode,
-  fetchGitHubUserInfo,
+  exchangeConnectorAuthCodeWithMethod,
+  rollbackConnectorAuthGrantWithMethod,
+  type ConnectorAuthProviderGrantResult,
+} from "@vm0/connectors/auth-providers";
+import {
+  exchangeGitHubGrant,
+  type GitHubGrantResult,
 } from "@vm0/connectors/auth-providers/connectors/github/oauth";
 
 import { requiredAuthContext$ } from "../auth/auth-context";
@@ -48,8 +52,12 @@ import {
   verifyGithubConnectSignature,
 } from "../services/github-oauth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  observeConnectorGrantError,
+  persistConnectorGrant,
+} from "../services/connector-grant-lifecycle.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
-import { settle } from "../utils";
+import { settleIncludingAbort } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
@@ -129,6 +137,62 @@ async function resolveGithubOauthMethodForNewAction(
     expectedGrantKind: "auth-code",
   });
   return resolved.ok ? resolved : null;
+}
+
+async function exchangeAndPersistGithubUserGrant(args: {
+  readonly authClient: StaticConfidentialConnectorAuthClient;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly state: string | undefined;
+  readonly persistConnector: (
+    token: ConnectorAuthProviderGrantResult,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
+}): Promise<ConnectorAuthProviderGrantResult> {
+  const tokenResult = await settleIncludingAbort(
+    exchangeConnectorAuthCodeWithMethod({
+      connectorRef: args.resolvedMethod.connectorRef,
+      authMethodId: args.resolvedMethod.authMethodId,
+      method: args.resolvedMethod.method,
+      authClient: args.authClient,
+      code: args.code,
+      redirectUri: args.redirectUri,
+      state: args.state,
+      codeVerifier: undefined,
+      oauthContext: undefined,
+    }),
+  );
+  if (!tokenResult.ok) {
+    throw observeConnectorGrantError(
+      {
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+      },
+      tokenResult.error,
+    );
+  }
+  const token = tokenResult.value;
+  await persistConnectorGrant({
+    context: {
+      connectorRef: args.resolvedMethod.connectorRef,
+      authMethodId: args.resolvedMethod.authMethodId,
+    },
+    persist: (persistSignal) => {
+      return args.persistConnector(token, persistSignal);
+    },
+    rollback: (rollbackSignal) => {
+      return rollbackConnectorAuthGrantWithMethod({
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+        method: args.resolvedMethod.method,
+        authClient: args.authClient,
+        result: token,
+        signal: rollbackSignal,
+      });
+    },
+  });
+  return token;
 }
 
 function githubAppUserOauthCredentials():
@@ -356,6 +420,143 @@ async function linkGithubUserWithoutSetupCode(
   return { ok: true, connected: githubUserId !== null };
 }
 
+async function exchangeGithubSetupGrant(args: {
+  readonly code: string;
+  readonly codeExchangeLogContext: ReturnType<
+    typeof githubSetupCodeExchangeLogContext
+  >;
+  readonly credentials: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+  };
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+}): Promise<
+  | {
+      readonly ok: true;
+      readonly authClient: StaticConfidentialConnectorAuthClient;
+      readonly token: GitHubGrantResult;
+    }
+  | { readonly ok: false; readonly response: Response }
+> {
+  if (args.resolvedMethod.method.grant.kind !== "auth-code") {
+    return {
+      ok: false,
+      response: worksErrorRedirect("GitHub OAuth is not available"),
+    };
+  }
+  L.warn("Starting GitHub setup code exchange", {
+    ...args.codeExchangeLogContext,
+    client: "github_app",
+    sendsRedirectUri: false,
+  });
+  const authClient: StaticConfidentialConnectorAuthClient = {
+    clientRegistration: "static",
+    clientType: "confidential",
+    clientId: args.credentials.clientId,
+    clientSecret: args.credentials.clientSecret,
+  };
+  const tokenResult = await settleIncludingAbort(
+    exchangeGitHubGrant({
+      authCodeGrant: args.resolvedMethod.method.grant,
+      clientId: authClient.clientId,
+      clientSecret: authClient.clientSecret,
+      code: args.code,
+    }),
+  );
+  if (!tokenResult.ok) {
+    const providerError = observeConnectorGrantError(
+      {
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+      },
+      tokenResult.error,
+    );
+    L.warn("GitHub setup code exchange failed", {
+      ...args.codeExchangeLogContext,
+      error: errorMessageFromUnknown(providerError),
+    });
+    return {
+      ok: false,
+      response: worksErrorRedirect(errorMessageFromUnknown(providerError)),
+    };
+  }
+  L.warn("GitHub setup code exchange succeeded", {
+    ...args.codeExchangeLogContext,
+    githubUserId: tokenResult.value.userInfo.id,
+    githubUsername: tokenResult.value.userInfo.username,
+    scopes: tokenResult.value.scopes,
+  });
+  return { ok: true, authClient, token: tokenResult.value };
+}
+
+async function connectGithubUserWithSetupGrant(args: {
+  readonly code: string;
+  readonly codeExchangeLogContext: ReturnType<
+    typeof githubSetupCodeExchangeLogContext
+  >;
+  readonly credentials: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+  };
+  readonly installRecordId: string;
+  readonly orgId: string;
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly signal: AbortSignal;
+  readonly userId: string;
+  readonly db: Db;
+  readonly persistConnector: (
+    token: GitHubGrantResult,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
+}): Promise<GithubSetupUserConnectionResolution> {
+  const grant = await exchangeGithubSetupGrant(args);
+  if (!grant.ok) {
+    return grant;
+  }
+  const { authClient, token } = grant;
+  await persistConnectorGrant({
+    context: {
+      connectorRef: args.resolvedMethod.connectorRef,
+      authMethodId: args.resolvedMethod.authMethodId,
+    },
+    persist: (persistSignal) => {
+      return args.persistConnector(token, persistSignal);
+    },
+    rollback: (rollbackSignal) => {
+      return rollbackConnectorAuthGrantWithMethod({
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+        method: args.resolvedMethod.method,
+        authClient,
+        result: token,
+        signal: rollbackSignal,
+      });
+    },
+  });
+  args.signal.throwIfAborted();
+
+  const githubUserId = await linkGithubVm0User({
+    db: args.db,
+    installRecordId: args.installRecordId,
+    vm0UserId: args.userId,
+    knownGithubUserId: token.userInfo.id,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (!githubUserId) {
+    return {
+      ok: false,
+      response: worksErrorRedirect(
+        "This GitHub account is already linked to the installation",
+      ),
+    };
+  }
+
+  await publishUserSignal([args.userId], "github:changed");
+  args.signal.throwIfAborted();
+  return { ok: true, connected: true };
+}
+
 const connectGithubUserAfterSetup$ = command(
   async (
     { get, set },
@@ -387,99 +588,47 @@ const connectGithubUserAfterSetup$ = command(
         };
       }
 
-      L.warn("Starting GitHub setup code exchange", {
-        ...codeExchangeLogContext,
-        client: "github_app",
-        sendsRedirectUri: false,
-      });
-
       const resolver = await get(connectorActionResolver());
       signal.throwIfAborted();
       const resolvedMethod = await resolveGithubOauthMethod(resolver);
       signal.throwIfAborted();
-      if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
+      if (!resolvedMethod) {
         return {
           ok: false,
           response: worksErrorRedirect("GitHub OAuth is not available"),
         };
       }
-      const authCodeGrant = resolvedMethod.method.grant;
-      const tokenResult = await settle(
-        (async () => {
-          const { accessToken, scopes } = await exchangeGitHubCode(
-            authCodeGrant,
-            credentials.clientId,
-            credentials.clientSecret,
-            code,
-          );
-          signal.throwIfAborted();
-          const userInfo = await fetchGitHubUserInfo(accessToken);
-          signal.throwIfAborted();
-          return { accessToken, scopes, userInfo };
-        })(),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!tokenResult.ok) {
-        L.warn("GitHub setup code exchange failed", {
-          ...codeExchangeLogContext,
-          error: errorMessageFromUnknown(tokenResult.error),
-        });
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            errorMessageFromUnknown(tokenResult.error),
-          ),
-        };
-      }
-      const { accessToken, scopes, userInfo } = tokenResult.value;
-      L.warn("GitHub setup code exchange succeeded", {
-        ...codeExchangeLogContext,
-        githubUserId: userInfo.id,
-        githubUsername: userInfo.username,
-        scopes,
-      });
-
-      await set(
-        upsertConnectorTokenConnection$,
-        {
-          orgId: args.orgId,
-          userId: vm0UserId,
-          runtimeMethod: resolvedMethod.runtimeMethod,
-          snapshot: resolvedMethod.snapshot,
-          outputs: { accessToken },
-          userInfo,
-          oauthScopes:
-            scopes.length > 0
-              ? scopes
-              : connectorGrantScopes(resolvedMethod.method.grant),
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-
-      const githubUserId = await linkGithubVm0User({
-        db: args.db,
+      const connection = await connectGithubUserWithSetupGrant({
+        code,
+        codeExchangeLogContext,
+        credentials,
         installRecordId: args.installRecordId,
-        vm0UserId,
-        knownGithubUserId: userInfo.id,
+        orgId: args.orgId,
+        resolvedMethod,
         signal,
+        userId: vm0UserId,
+        db: args.db,
+        persistConnector: (token, persistSignal) => {
+          return set(
+            upsertConnectorTokenConnection$,
+            {
+              orgId: args.orgId,
+              userId: vm0UserId,
+              runtimeMethod: resolvedMethod.runtimeMethod,
+              snapshot: resolvedMethod.snapshot,
+              outputs: token.outputs,
+              userInfo: token.userInfo,
+              oauthScopes:
+                token.scopes.length > 0
+                  ? token.scopes
+                  : connectorGrantScopes(resolvedMethod.method.grant),
+            },
+            persistSignal,
+          );
+        },
       });
       signal.throwIfAborted();
-
-      if (!githubUserId) {
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            "This GitHub account is already linked to the installation",
-          ),
-        };
-      }
-
-      await publishUserSignal([vm0UserId], "github:changed");
-      signal.throwIfAborted();
-
-      return { ok: true, connected: true };
+      return connection;
     }
 
     return await linkGithubUserWithoutSetupCode(args, vm0UserId, signal);
@@ -775,6 +924,8 @@ const callbackGithubUserOauth$ = command(
         "Invalid OAuth state. Please try connecting again from the Platform.",
       );
     }
+    const orgId = state.orgId;
+    const vm0UserId = state.vm0UserId;
 
     if (
       !(await isGithubOauthStateSignatureValid({
@@ -799,51 +950,47 @@ const callbackGithubUserOauth$ = command(
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
-    const origin = getOAuthWebOrigin(request);
-    const redirectUri = githubUserConnectCallbackRedirectUri(origin);
-    const token = await exchangeConnectorAuthCodeWithMethod({
-      connectorRef: resolvedMethod.connectorRef,
-      authMethodId: resolvedMethod.authMethodId,
-      method: resolvedMethod.method,
-      authClient,
-      code: query.code,
-      redirectUri,
-      state: query.state,
-      codeVerifier: undefined,
-      oauthContext: undefined,
-    });
-    signal.throwIfAborted();
-
     const db = set(writeDb$);
     const installation = await loadActiveGithubInstallationForOrg({
       db,
-      orgId: state.orgId,
+      orgId,
       signal,
     });
     if (!installation) {
       return worksErrorRedirect("No GitHub installation found");
     }
 
-    await set(
-      upsertConnectorTokenConnection$,
-      {
-        orgId: state.orgId,
-        userId: state.vm0UserId,
-        runtimeMethod: resolvedMethod.runtimeMethod,
-        snapshot: resolvedMethod.snapshot,
-        outputs: token.outputs,
-        userInfo: token.userInfo,
-        oauthScopes: connectorGrantScopes(resolvedMethod.method.grant),
-        extraConnectorSecrets: token.extraConnectorSecrets,
+    const origin = getOAuthWebOrigin(request);
+    const redirectUri = githubUserConnectCallbackRedirectUri(origin);
+    const token = await exchangeAndPersistGithubUserGrant({
+      authClient,
+      code: query.code,
+      redirectUri,
+      resolvedMethod,
+      state: query.state,
+      persistConnector: (grant, persistSignal) => {
+        return set(
+          upsertConnectorTokenConnection$,
+          {
+            orgId,
+            userId: vm0UserId,
+            runtimeMethod: resolvedMethod.runtimeMethod,
+            snapshot: resolvedMethod.snapshot,
+            outputs: grant.outputs,
+            userInfo: grant.userInfo,
+            oauthScopes: connectorGrantScopes(resolvedMethod.method.grant),
+            extraConnectorSecrets: grant.extraConnectorSecrets,
+          },
+          persistSignal,
+        );
       },
-      signal,
-    );
+    });
     signal.throwIfAborted();
 
     const githubUserId = await linkGithubVm0User({
       db,
       installRecordId: installation.id,
-      vm0UserId: state.vm0UserId,
+      vm0UserId,
       knownGithubUserId: token.userInfo.id,
       signal,
     });
@@ -855,7 +1002,7 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    await publishUserSignal([state.vm0UserId], "github:changed");
+    await publishUserSignal([vm0UserId], "github:changed");
     signal.throwIfAborted();
 
     return redirectResponse(appUrl("/workflows"));

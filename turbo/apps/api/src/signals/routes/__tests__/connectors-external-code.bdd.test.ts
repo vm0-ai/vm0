@@ -21,8 +21,10 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
   expectApiError,
@@ -155,7 +157,12 @@ function mockNintendoStoreExternalCodeProvider(): {
   return { sessionTokenBodies, tokenBodies };
 }
 
-function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
+function mockNintendoSwitchParentalControlsExternalCodeProvider(
+  options: {
+    readonly federationResponse?: "valid" | "malformed";
+    readonly onFederation?: () => void;
+  } = {},
+): {
   readonly federatedSmartDeviceIds: string[];
   readonly federationBodies: unknown[];
   readonly failLogout: () => void;
@@ -259,6 +266,10 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
         }
         federationBodies.push(body);
         federatedSmartDeviceIds.push(body["smartDeviceInfo"]["id"]);
+        options.onFederation?.();
+        if (options.federationResponse === "malformed") {
+          return HttpResponse.json({ loginInfo: {} });
+        }
         return HttpResponse.json({
           loginInfo: {
             ownedDevices: [
@@ -304,6 +315,19 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
     sessionTokenBodies,
     tokenBodies,
   };
+}
+
+function nintendoSwitchParentalControlsCompletionCode(
+  authorizationUrl: string,
+  sessionTokenCode: string,
+): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error(
+      "Expected Nintendo Switch Parental Controls authorization state",
+    );
+  }
+  return `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=${sessionTokenCode}&state=${state}`;
 }
 
 describe("CONN-02: external-code session lifecycle", () => {
@@ -690,6 +714,126 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteConnectorByType(actor, "nintendo-store");
   });
 
+  it("logs out a Nintendo smart device when federation returns malformed data", async () => {
+    const provider = mockNintendoSwitchParentalControlsExternalCodeProvider({
+      federationResponse: "malformed",
+    });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const session = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+
+    const response = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: nintendoSwitchParentalControlsCompletionCode(
+          session.authorizationUrl,
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE,
+        ),
+      },
+      [500],
+    );
+    expect(response.status).toBe(500);
+    expect(provider.federatedSmartDeviceIds).toHaveLength(1);
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+    ]);
+    expect(provider.logoutAuthorizations).toStrictEqual([
+      `Bearer ${provider.initialIdToken}`,
+    ]);
+    const missing = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "nintendo-switch-parental-controls",
+      [404],
+    );
+    expectApiError(missing.body);
+  });
+
+  it("preserves a malformed Nintendo federation failure when logout also fails", async () => {
+    const provider = mockNintendoSwitchParentalControlsExternalCodeProvider({
+      federationResponse: "malformed",
+    });
+    provider.failLogout();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const session = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+
+    const response = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: nintendoSwitchParentalControlsCompletionCode(
+          session.authorizationUrl,
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE,
+        ),
+      },
+      [500],
+    );
+    expect(response.status).toBe(500);
+    expect(provider.logoutBodies).toHaveLength(1);
+    const warnings = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
+    expect(warnings).toContain("Connector provider grant cleanup failed");
+    expect(warnings).not.toContain(provider.initialIdToken);
+  });
+
+  it("logs out the exact Nintendo smart device after a known local write failure", async () => {
+    const provider = mockNintendoSwitchParentalControlsExternalCodeProvider({
+      onFederation: () => {
+        mockEnv("SECRETS_KMS_KEY_ID", undefined);
+      },
+    });
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const session = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+
+    const response = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: nintendoSwitchParentalControlsCompletionCode(
+          session.authorizationUrl,
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE,
+        ),
+      },
+      [500],
+    );
+    expect(response.status).toBe(500);
+
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+    await flushWaitUntilForTest();
+    expect(provider.federatedSmartDeviceIds).toHaveLength(1);
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+    ]);
+    expect(provider.logoutAuthorizations).toStrictEqual([
+      `Bearer ${provider.initialIdToken}`,
+    ]);
+    const missing = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "nintendo-switch-parental-controls",
+      [404],
+    );
+    expectApiError(missing.body);
+  });
+
   it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
     const provider = mockNintendoSwitchParentalControlsExternalCodeProvider();
     const bdd = createBddApi(context);
@@ -773,6 +917,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expectNoVisibleSecret(complete, "bdd-serial-must-not-leak");
     expectNoVisibleSecret(complete, "1234");
+    expect(provider.logoutBodies).toStrictEqual([]);
 
     const listed = await connectorsApi.listConnectors(actor);
     for (const name of [

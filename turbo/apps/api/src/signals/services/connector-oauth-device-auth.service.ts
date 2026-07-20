@@ -43,6 +43,7 @@ import {
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
+import { persistConnectorGrant } from "./connector-grant-lifecycle.service";
 import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
@@ -800,9 +801,9 @@ async function runClaimedSession(
       ? {}
       : { pollState: providerState.pollState }),
   });
-  args.signal.throwIfAborted();
 
   if (pollResult.status === "pending" || pollResult.status === "slow_down") {
+    args.signal.throwIfAborted();
     const intervalSeconds =
       pollResult.status === "pending"
         ? (pollResult.interval ?? args.session.intervalSeconds)
@@ -828,6 +829,7 @@ async function runClaimedSession(
   }
 
   if (pollResult.status !== "complete") {
+    args.signal.throwIfAborted();
     return await markClaimTerminal({
       writeDb: args.writeDb,
       session: args.session,
@@ -845,7 +847,7 @@ async function runClaimedSession(
     userId: args.userId,
     session: args.session,
     claimStartedAt: args.claimStartedAt,
-    signal: args.signal,
+    signal: new AbortController().signal,
     persistConnector: args.persistConnector,
     result: pollResult,
   });
@@ -1102,23 +1104,31 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       session: claimedSession,
       claimStartedAt,
       signal,
-      persistConnector: async ({ result }) => {
-        const connectorResult = await set(
-          upsertConnectorTokenConnection$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            runtimeMethod: resolvedMethod.runtimeMethod,
-            snapshot: resolvedMethod.snapshot,
-            outputs: result.token.outputs,
-            userInfo: result.token.userInfo,
-            oauthScopes: result.token.scopes,
-            expiresIn: result.token.expiresIn,
-            extraConnectorSecrets: result.token.extraConnectorSecrets,
+      persistConnector: ({ result }) => {
+        return persistConnectorGrant({
+          context: {
+            connectorRef: resolvedMethod.connectorRef,
+            authMethodId: resolvedMethod.authMethodId,
           },
-          signal,
-        );
-        return connectorResult.connector;
+          persist: async (persistSignal) => {
+            const connectorResult = await set(
+              upsertConnectorTokenConnection$,
+              {
+                orgId: args.orgId,
+                userId: args.userId,
+                runtimeMethod: resolvedMethod.runtimeMethod,
+                snapshot: resolvedMethod.snapshot,
+                outputs: result.token.outputs,
+                userInfo: result.token.userInfo,
+                oauthScopes: result.token.scopes,
+                expiresIn: result.token.expiresIn,
+                extraConnectorSecrets: result.token.extraConnectorSecrets,
+              },
+              persistSignal,
+            );
+            return connectorResult.connector;
+          },
+        });
       },
     });
     if (response.body.status !== "complete") {

@@ -166,7 +166,12 @@ describe("connector/providers/slack", () => {
       server.use(handler);
 
       await expect(
-        revokeSlackToken("client-id", "client-secret", "xoxp-token"),
+        revokeSlackToken(
+          "client-id",
+          "client-secret",
+          "xoxp-token",
+          new AbortController().signal,
+        ),
       ).resolves.toBeUndefined();
     });
 
@@ -177,7 +182,12 @@ describe("connector/providers/slack", () => {
       server.use(handler);
 
       await expect(
-        revokeSlackToken("client-id", "client-secret", "xoxp-token"),
+        revokeSlackToken(
+          "client-id",
+          "client-secret",
+          "xoxp-token",
+          new AbortController().signal,
+        ),
       ).rejects.toThrow("token_revoked");
     });
   });

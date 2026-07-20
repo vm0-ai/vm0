@@ -1,4 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
+import { requiredConnectorGrantOutput } from "../../grant-compensation";
 import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
@@ -43,6 +44,15 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
         },
       };
     },
+    rollbackGrant: (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return revokeLinearToken(
+        clientId,
+        clientSecret,
+        requiredConnectorGrantOutput(args.result.outputs, "accessToken"),
+        args.signal,
+      );
+    },
   },
   access: {
     kind: "refresh-token",
@@ -62,7 +72,12 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeLinearToken(clientId, clientSecret, args.inputs.accessToken);
+      return revokeLinearToken(
+        clientId,
+        clientSecret,
+        args.inputs.accessToken,
+        args.signal,
+      );
     },
   },
 };

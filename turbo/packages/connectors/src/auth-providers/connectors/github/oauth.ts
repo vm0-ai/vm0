@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import { withConnectorGrantCompensation } from "../../grant-compensation";
+import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -13,6 +15,14 @@ interface GitHubUserInfo {
   id: string;
   username: string;
   email: string | null;
+}
+
+export interface GitHubGrantResult {
+  readonly outputs: {
+    readonly accessToken: string;
+  };
+  readonly scopes: readonly string[];
+  readonly userInfo: ConnectorAuthProviderGrantUserInfo;
 }
 
 /**
@@ -122,6 +132,36 @@ export async function fetchGitHubUserInfo(
   };
 }
 
+export async function exchangeGitHubGrant(args: {
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly code: string;
+  readonly redirectUri?: string;
+}): Promise<GitHubGrantResult> {
+  const { accessToken, scopes } = await exchangeGitHubCode(
+    args.authCodeGrant,
+    args.clientId,
+    args.clientSecret,
+    args.code,
+    args.redirectUri,
+  );
+  const userInfo = await withConnectorGrantCompensation(
+    () => {
+      return fetchGitHubUserInfo(accessToken);
+    },
+    (signal) => {
+      return revokeGitHubToken(
+        args.clientId,
+        args.clientSecret,
+        accessToken,
+        signal,
+      );
+    },
+  );
+  return { outputs: { accessToken }, scopes, userInfo };
+}
+
 /**
  * Revoke GitHub OAuth app authorization grant.
  * Uses the grant revocation endpoint (not token) to force re-consent on next connect.
@@ -131,11 +171,13 @@ export async function revokeGitHubGrant(
   clientId: string,
   clientSecret: string,
   accessToken: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const response = await fetch(
     `${GITHUB_API_BASE}/applications/${clientId}/grant`,
     {
       method: "DELETE",
+      signal,
       headers: {
         Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
         Accept: "application/vnd.github+json",
@@ -148,6 +190,36 @@ export async function revokeGitHubGrant(
 
   if (!response.ok) {
     throw new Error(`GitHub grant revocation failed: ${response.status}`);
+  }
+}
+
+/**
+ * Delete one exact GitHub OAuth token without revoking the app grant.
+ * Ref: https://docs.github.com/en/rest/apps/oauth-applications#delete-an-app-token
+ */
+export async function revokeGitHubToken(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(
+    `${GITHUB_API_BASE}/applications/${clientId}/token`,
+    {
+      method: "DELETE",
+      signal,
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({ access_token: accessToken }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitHub token revocation failed: ${response.status}`);
   }
 }
 

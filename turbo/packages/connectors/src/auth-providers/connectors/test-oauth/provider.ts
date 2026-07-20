@@ -8,7 +8,12 @@ import {
   exchangeTestOAuthCode,
   fetchTestOAuthUserInfo,
   refreshTestOAuthToken,
+  revokeTestOAuthToken,
 } from "./oauth";
+import {
+  requiredConnectorGrantOutput,
+  withConnectorGrantCompensation,
+} from "../../grant-compensation";
 import { oauthRefreshResultToProviderResult } from "../../oauth/types";
 import type {
   ConnectorAuthProviderGrantResult,
@@ -63,7 +68,19 @@ async function exchangeTestOauthToken(args: {
     args.code,
     args.redirectUri,
   );
-  const user = await fetchTestOAuthUserInfo(token.accessToken);
+  const user = await withConnectorGrantCompensation(
+    () => {
+      return fetchTestOAuthUserInfo(token.accessToken);
+    },
+    (signal) => {
+      return revokeTestOAuthToken(
+        args.clientId,
+        args.clientSecret,
+        token.accessToken,
+        signal,
+      );
+    },
+  );
   return {
     accessToken: token.accessToken,
     refreshToken: token.refreshToken,
@@ -132,6 +149,18 @@ function createTestOauthGrant(): AuthCodeGrantProvider<"test-oauth", "oauth"> {
         redirectUri: exchangeArgs.redirectUri,
       });
     },
+    rollbackGrant: (rollbackArgs) => {
+      const { clientId, clientSecret } = rollbackArgs.authClient;
+      return revokeTestOAuthToken(
+        clientId,
+        clientSecret,
+        requiredConnectorGrantOutput(
+          rollbackArgs.result.outputs,
+          "accessToken",
+        ),
+        rollbackArgs.signal,
+      );
+    },
   };
 }
 
@@ -155,6 +184,18 @@ function createTestOauthApiGrant(): AuthCodeGrantProvider<"test-oauth", "api"> {
         code: exchangeArgs.code,
         redirectUri: exchangeArgs.redirectUri,
       });
+    },
+    rollbackGrant: (rollbackArgs) => {
+      const { clientId, clientSecret } = rollbackArgs.authClient;
+      return revokeTestOAuthToken(
+        clientId,
+        clientSecret,
+        requiredConnectorGrantOutput(
+          rollbackArgs.result.outputs,
+          "initialAccessToken",
+        ),
+        rollbackArgs.signal,
+      );
     },
   };
 }

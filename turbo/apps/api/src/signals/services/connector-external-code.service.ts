@@ -17,6 +17,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   completeConnectorExternalCodeAuthorizationWithMethod,
+  rollbackConnectorAuthGrantWithMethod,
   startConnectorExternalCodeAuthorizationWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
@@ -30,7 +31,7 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { onRejection, settle, throwIfAbort } from "../utils";
+import { onRejection, settleIncludingAbort, throwIfAbort } from "../utils";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -41,6 +42,10 @@ import {
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
+import {
+  observeConnectorGrantError,
+  persistConnectorGrant,
+} from "./connector-grant-lifecycle.service";
 import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
@@ -620,7 +625,7 @@ async function completeClaimedExternalCodeSession(
     }) => Promise<ConnectorResponse>;
   },
 ) {
-  const providerResult = await settle(
+  const providerResult = await settleIncludingAbort(
     (async () => {
       const providerState = await parseEncryptedProviderState({
         session: args.session,
@@ -636,18 +641,25 @@ async function completeClaimedExternalCodeSession(
         signal: args.signal,
       });
     })(),
-    args.signal,
   );
   if (!providerResult.ok) {
-    if (shouldRestorePendingAfterProviderError(providerResult.error)) {
+    const providerError = observeConnectorGrantError(
+      {
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+      },
+      providerResult.error,
+    );
+    args.signal.throwIfAborted();
+    if (shouldRestorePendingAfterProviderError(providerError)) {
       await markClaimPending({
         writeDb: args.writeDb,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
-        errorMessage: errorMessage(providerResult.error),
+        errorMessage: errorMessage(providerError),
         signal: args.signal,
       });
-      const badRequest = providerBadRequest(providerResult.error);
+      const badRequest = providerBadRequest(providerError);
       if (badRequest) {
         return badRequest;
       }
@@ -656,11 +668,11 @@ async function completeClaimedExternalCodeSession(
         writeDb: args.writeDb,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
-        errorMessage: errorMessage(providerResult.error),
+        errorMessage: errorMessage(providerError),
         signal: args.signal,
       });
     }
-    throw providerResult.error;
+    throw providerError;
   }
 
   // The provider code may already be consumed; finish DB commit even if the
@@ -675,7 +687,30 @@ async function completeClaimedExternalCodeSession(
       userId: args.userId,
       session: args.session,
       claimStartedAt: args.claimStartedAt,
-      persistConnector: args.persistConnector,
+      persistConnector: ({ token }) => {
+        return persistConnectorGrant({
+          context: {
+            connectorRef: args.resolvedMethod.connectorRef,
+            authMethodId: args.resolvedMethod.authMethodId,
+          },
+          persist: (persistSignal) => {
+            return args.persistConnector({
+              token,
+              signal: persistSignal,
+            });
+          },
+          rollback: (rollbackSignal) => {
+            return rollbackConnectorAuthGrantWithMethod({
+              connectorRef: args.resolvedMethod.connectorRef,
+              authMethodId: args.resolvedMethod.authMethodId,
+              method: args.resolvedMethod.method,
+              authClient: args.authClient,
+              result: token,
+              signal: rollbackSignal,
+            });
+          },
+        });
+      },
       token: providerResult.value,
       signal: commitSignal,
     }),
