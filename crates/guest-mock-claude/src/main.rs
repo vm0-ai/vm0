@@ -46,6 +46,7 @@
 //!                               emit result, and exit(0)
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
 //!                               lines as JSONL and emit them unchanged.
+//!   @ECHO-HANG@               - Same as @ECHO@, then remain alive until reaped.
 //!   @active-input-smoke:<n>   - Stream-json stdin marker. Emit a first result,
 //!                               then read n later user frames from the same
 //!                               stdin stream and emit a deterministic final result.

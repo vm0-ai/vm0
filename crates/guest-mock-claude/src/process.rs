@@ -101,7 +101,8 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
             eprintln!("{}", invalid_active_input_count_message(count));
             ExitCode::from(1)
         }
-        MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),
+        MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload, false),
+        MockScenario::EchoJsonlAndHang(payload) => run_echo_jsonl_mode(payload, true),
         MockScenario::FailNoNewline(msg) => {
             eprint!("{msg}");
             let _ = std::io::stderr().flush();
@@ -318,7 +319,7 @@ fn run_active_input_smoke_scenario(
     ExitCode::SUCCESS
 }
 
-fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
+fn run_echo_jsonl_mode(payload: &str, hang_after_output: bool) -> ExitCode {
     let events = match parse_echo_jsonl(payload) {
         Ok(events) => events,
         Err(msg) => {
@@ -343,6 +344,9 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
         transcript.write_session_history(session_id);
     }
     let _ = std::io::stdout().flush();
+    if hang_after_output {
+        hang_until_reaped();
+    }
     ExitCode::SUCCESS
 }
 
