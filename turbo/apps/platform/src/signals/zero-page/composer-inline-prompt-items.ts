@@ -31,6 +31,8 @@ export type InlinePromptLineSegment =
       readonly type: "file";
       readonly filename: string;
       readonly url: string;
+      readonly promptReference?: string;
+      readonly clientId?: string;
     }
   | {
       readonly type: "thread";
@@ -42,6 +44,9 @@ const INLINE_TEMPLATE_COMMENT_PATTERN =
   /<!-- zero-template:v1 type="([^"]+)" id="([^"]+)"(?: color="([^"]+)")?; .*? -->/g;
 const MARKDOWN_LINK_PATTERN =
   /\[((?:\\[\\[\]]|[^[\]\\])+)\]\((https:\/\/cdn\.(?:vm0|vm7)\.io\/artifacts\/[^)\s]+)\)/g;
+const INLINE_ATTACHMENT_REFERENCE_FRAGMENT = "#vm0-attachment-reference=";
+const INLINE_ATTACHMENT_REFERENCE_CLIENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function inlineTemplateMetadataFromRequest(
   request: GenerationTemplateRequest,
@@ -253,6 +258,36 @@ export function serializeInlineFilePromptItem(
   return `[${escapedFilename}](${url})`;
 }
 
+export function serializeInlineAttachmentReferencePromptItem(
+  promptReference: string,
+  url: string,
+  clientId: string,
+): string {
+  if (!INLINE_ATTACHMENT_REFERENCE_CLIENT_ID_PATTERN.test(clientId)) {
+    throw new Error("Inline attachment reference client ID is invalid");
+  }
+  const referenceUrl = new URL(url);
+  referenceUrl.hash = `vm0-attachment-reference=${clientId}`;
+  return serializeInlineFilePromptItem(promptReference, referenceUrl.href);
+}
+
+function inlineAttachmentReferenceFromUrl(url: string): {
+  readonly url: string;
+  readonly clientId: string;
+} | null {
+  const markerIndex = url.lastIndexOf(INLINE_ATTACHMENT_REFERENCE_FRAGMENT);
+  if (markerIndex === -1) {
+    return null;
+  }
+  const clientId = url.slice(
+    markerIndex + INLINE_ATTACHMENT_REFERENCE_FRAGMENT.length,
+  );
+  if (!INLINE_ATTACHMENT_REFERENCE_CLIENT_ID_PATTERN.test(clientId)) {
+    return null;
+  }
+  return { url: url.slice(0, markerIndex), clientId };
+}
+
 function isVm0ArtifactUrl(url: string): boolean {
   if (!URL.canParse(url)) {
     return false;
@@ -296,10 +331,18 @@ function appendFileAndThreadSegments(
       continue;
     }
     appendChatThreadSegments(segments, value.slice(lastIndex, index));
+    const filename = (match[1] ?? "").replace(/\\([\\[\]])/g, "$1");
+    const reference = inlineAttachmentReferenceFromUrl(url);
     segments.push({
       type: "file",
-      filename: (match[1] ?? "").replace(/\\([\\[\]])/g, "$1"),
-      url,
+      filename,
+      url: reference?.url ?? url,
+      ...(reference
+        ? {
+            promptReference: filename,
+            clientId: reference.clientId,
+          }
+        : {}),
     });
     lastIndex = index + match[0].length;
   }

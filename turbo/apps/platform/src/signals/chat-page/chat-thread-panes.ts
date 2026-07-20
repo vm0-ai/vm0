@@ -8,7 +8,7 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { createRestoredDraftAttachments } from "../zero-page/chat-draft.ts";
 import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
@@ -85,8 +85,9 @@ const loadDraft$ = command(
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
-      const restoredAttachments = (draftAttachments ?? []).map(
-        createRestoredAttachment,
+      const restoredAttachments = createRestoredDraftAttachments(
+        threadDraft.draftContent ?? "",
+        draftAttachments ?? [],
       );
       set(
         thread.draft.seed$,

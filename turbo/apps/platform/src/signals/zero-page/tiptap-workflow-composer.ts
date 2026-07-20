@@ -48,6 +48,7 @@ import {
 } from "./template-preview-runtime.ts";
 import {
   inlineTemplateMetadataFromRequest,
+  serializeInlineAttachmentReferencePromptItem,
   serializeInlineFilePromptItem,
   serializeInlineTemplatePromptItem,
   splitInlinePromptLine,
@@ -747,6 +748,13 @@ function inlineFileNodeAttributes(
 function inlineFileNodeText(node: ProseMirrorNode): string {
   const attributes = inlineFileNodeAttributes(node);
   const label = attributes.promptReference ?? attributes.filename;
+  if (attributes.promptReference && attributes.url) {
+    return serializeInlineAttachmentReferencePromptItem(
+      label,
+      attributes.url,
+      attributes.clientId,
+    );
+  }
   return attributes.url
     ? serializeInlineFilePromptItem(label, attributes.url)
     : label;
@@ -1377,19 +1385,16 @@ function inlinePromptSegmentToJson(
       };
     }
     case "file": {
-      const promptReference = /^(?:image|file)\d+$/.test(segment.filename)
-        ? segment.filename
-        : null;
       return {
         type: INLINE_FILE_NODE_NAME,
         attrs: {
-          clientId: segment.url,
+          clientId: segment.clientId ?? segment.url,
           filename: segment.filename,
           contentType: "application/octet-stream",
           size: 0,
           fileId: null,
           url: segment.url,
-          promptReference,
+          promptReference: segment.promptReference ?? null,
         },
       };
     }

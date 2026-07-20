@@ -346,6 +346,7 @@ describe("chat drafts", () => {
   it("shows numbered text references and attachment chips", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000103";
+    const draftPatches: Record<string, unknown>[] = [];
     const uploadResults = [
       {
         id: "upload-image-one",
@@ -388,6 +389,10 @@ describe("chat drafts", () => {
         submitted = body;
       },
     });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
@@ -427,6 +432,18 @@ describe("chat drafts", () => {
       expect(screen.getByLabelText("Remove first.pdf")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove second.pdf")).toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await waitFor(() => {
+      const persistedContent = draftPatches.find((patch) => {
+        return (
+          typeof patch.draftContent === "string" &&
+          patch.draftContent.includes("#vm0-attachment-reference=")
+        );
+      })?.draftContent;
+      expect(persistedContent).toBeTypeOf("string");
+      expect(
+        (persistedContent as string).match(/#vm0-attachment-reference=/g),
+      ).toHaveLength(4);
     });
     await user.click(screen.getByLabelText("Send"));
 
@@ -515,6 +532,8 @@ describe("chat drafts", () => {
     const imageUrl =
       "https://cdn.vm7.io/artifacts/test/drafts/reference-image.png";
     const fileUrl = "https://cdn.vm7.io/artifacts/test/drafts/reference.pdf";
+    const imageClientId = "11111111-1111-4111-8111-111111111111";
+    const fileClientId = "22222222-2222-4222-8222-222222222222";
     let submitted:
       | {
           prompt?: string;
@@ -529,7 +548,9 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: `Compare [image1](${imageUrl}) with [file1](${fileUrl})`,
+        draftContent:
+          `Compare [image1](${imageUrl}#vm0-attachment-reference=${imageClientId}) with ` +
+          `[file1](${fileUrl}#vm0-attachment-reference=${fileClientId})`,
         draftAttachments: [
           {
             id: "draft-image-reference",
@@ -569,13 +590,73 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Remove reference.pdf")).toBeInTheDocument();
     });
+    await user.click(screen.getByLabelText("Remove reference.pdf"));
+    await waitFor(() => {
+      expect(textarea()).toHaveTextContent("Compare image1 with");
+      expect(textarea()).not.toHaveTextContent("file1");
+      expect(
+        screen.queryByLabelText("Remove reference.pdf"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Remove reference-image.png"),
+      ).toBeInTheDocument();
+    });
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(submitted).toBeDefined();
     });
-    expect(submitted?.prompt).toBe("Compare image1 with file1");
-    expect(submitted?.attachFiles).toHaveLength(2);
+    expect(submitted?.prompt).toBe("Compare image1 with");
+    expect(submitted?.attachFiles).toStrictEqual([
+      expect.objectContaining({ id: "draft-image-reference" }),
+    ]);
+  });
+
+  it("keeps a legacy inline attachment named like a numbered reference", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000106";
+    const fileUrl =
+      "https://cdn.vm7.io/artifacts/test/drafts/legacy-file-one.pdf";
+    let submitted:
+      | {
+          prompt?: string;
+          attachFiles?: readonly { id?: string }[];
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        submitted = body;
+      },
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: `[file1](${fileUrl})`,
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveTextContent("file1");
+      expect(screen.getByLabelText("Remove file file1")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Remove file1")).not.toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submitted).toBeDefined();
+    });
+    expect(submitted?.prompt).toBe(`[file1](${fileUrl})`);
+    expect(submitted?.attachFiles).toBeUndefined();
   });
 
   it("persists edited draft attachments and clears the server draft after sending", async () => {

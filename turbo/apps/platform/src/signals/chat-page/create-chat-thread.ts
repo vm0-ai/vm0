@@ -3537,7 +3537,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
       set(
         draft.seed$,
         message.content ?? "",
-        (message.attachFiles ?? []).map(createRestoredAttachment),
+        (message.attachFiles ?? []).map((attachment) => {
+          return createRestoredAttachment(attachment);
+        }),
       );
 
       const persistedMessage = await set(
