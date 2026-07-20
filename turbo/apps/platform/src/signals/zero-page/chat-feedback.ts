@@ -293,32 +293,17 @@ function createFeedbackSelectionState(threadId: string) {
   const selection$ = computed((get) => {
     return get(selectionState$);
   });
-  const hideSelectionToolbar$ = command(({ set }) => {
+  const closeSelectionToolbar$ = command(({ set }) => {
     set(resetSelectionToolbarSignal$);
     set(selectionState$, null);
   });
-  const closeSelectionToolbar$ = command(({ get, set }) => {
-    if (get(selectionState$) === null) {
-      return;
-    }
-    set(hideSelectionToolbar$);
-    window.getSelection()?.removeAllRanges();
-  });
-  const captureSelection$ = command(({ get, set }) => {
+  const captureSelection$ = command(({ set }) => {
     const selection = readFeedbackSelection();
     if (!selection || selection.threadId !== threadId) {
-      if (get(selectionState$) !== null) {
-        set(hideSelectionToolbar$);
-      }
+      set(closeSelectionToolbar$);
       return;
     }
     set(selectionState$, selection);
-  });
-  const captureSelectionIfPresent$ = command(({ set }) => {
-    const selection = readFeedbackSelection();
-    if (selection?.threadId === threadId) {
-      set(selectionState$, selection);
-    }
   });
   const dismissSelectionOnScroll$ = command(({ get, set }) => {
     if (get(selectionState$) !== null) {
@@ -342,10 +327,8 @@ function createFeedbackSelectionState(threadId: string) {
     selectionState$,
     resetSelectionToolbarSignal$,
     selection$,
-    hideSelectionToolbar$,
     closeSelectionToolbar$,
     captureSelection$,
-    captureSelectionIfPresent$,
     dismissSelectionOnScroll$,
     copySelection$,
   };
@@ -355,12 +338,12 @@ function createFeedbackItemSignals({
   threadId,
   editor,
   selectionState$,
-  hideSelectionToolbar$,
+  closeSelectionToolbar$,
 }: {
   threadId: string;
   editor: FeedbackEditorAdapter;
   selectionState$: State<FeedbackSelection | null>;
-  hideSelectionToolbar$: Command<void, []>;
+  closeSelectionToolbar$: Command<void, []>;
 }) {
   const itemsState$ = state<readonly FeedbackItem[]>([]);
   const rangesState$ = state<ReadonlyMap<number, Range>>(new Map());
@@ -405,7 +388,7 @@ function createFeedbackItemSignals({
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
     editor.insertItem(item);
-    set(hideSelectionToolbar$);
+    set(closeSelectionToolbar$);
   });
   const removeFeedback$ = command(({ get, set }, id: number) => {
     const items = get(itemsState$).filter((item) => {
@@ -448,9 +431,8 @@ function createSelectionToolbarRef({
             return;
           }
           if (matchShortcut("mod+c", event)) {
-            // Let the browser copy the native selection before clearing it.
-            // Closing synchronously here would leave the default copy action
-            // with no selected text to put on the clipboard.
+            // Preserve the browser's native copy action, then dismiss only the
+            // feedback state without changing the document selection.
             await delay(0, { signal: toolbarSignal });
             set(closeSelectionToolbar$);
             return;
@@ -482,157 +464,68 @@ function createSelectionToolbarRef({
   );
 }
 
-interface SelectionListenerRuntime {
-  pendingDismissWhenEmpty: boolean;
-  mouseIsDown: boolean;
-  suppressSelectionCapture: boolean;
-}
-
 function createPointerSelectionListeners({
   selectionState$,
-  hideSelectionToolbar$,
+  closeSelectionToolbar$,
 }: {
   selectionState$: State<FeedbackSelection | null>;
-  hideSelectionToolbar$: Command<void, []>;
+  closeSelectionToolbar$: Command<void, []>;
 }) {
-  const clearSuppressedCaptureSignal$ = resetSignal();
-  return command(
-    (
-      { get, set },
-      doc: Document,
-      runtime: SelectionListenerRuntime,
-      signal: AbortSignal,
-    ) => {
-      // Touch/pen selections settle one macrotask after pointerup; keep the
-      // capture suppressed until then. Rescheduling aborts the previous
-      // pending clear.
-      const clearSuppressedSelectionCaptureSoon = onDomEventFn(async () => {
-        await delay(0, { signal: set(clearSuppressedCaptureSignal$, signal) });
-        runtime.suppressSelectionCapture = false;
-      });
-      doc.addEventListener(
-        "pointerdown",
-        (event) => {
-          if (
-            get(selectionState$) !== null &&
-            shouldDismissSelectionForInteractionTarget(event.target)
-          ) {
-            runtime.suppressSelectionCapture = true;
-            set(hideSelectionToolbar$);
-          }
-        },
-        { capture: true, signal },
-      );
-      doc.addEventListener(
-        "pointerup",
-        (event) => {
-          if ((event as PointerEvent).pointerType !== "mouse") {
-            clearSuppressedSelectionCaptureSoon(event);
-          }
-        },
-        { signal },
-      );
-      doc.addEventListener(
-        "pointercancel",
-        clearSuppressedSelectionCaptureSoon,
-        { signal },
-      );
-      doc.addEventListener(
-        "mousedown",
-        () => {
-          runtime.mouseIsDown = true;
-        },
-        { capture: true, signal },
-      );
-    },
-  );
+  return command(({ get, set }, doc: Document, signal: AbortSignal) => {
+    doc.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (
+          get(selectionState$) !== null &&
+          shouldDismissSelectionForInteractionTarget(event.target)
+        ) {
+          set(closeSelectionToolbar$);
+        }
+      },
+      { capture: true, signal },
+    );
+  });
 }
 
 function createDocumentSelectionListeners({
   threadId,
   captureSelection$,
-  captureSelectionIfPresent$,
   dismissSelectionOnScroll$,
 }: {
   threadId: string;
   captureSelection$: Command<void, []>;
-  captureSelectionIfPresent$: Command<void, []>;
   dismissSelectionOnScroll$: Command<void, []>;
 }) {
   const deferredCaptureSignal$ = resetSignal();
-  return command(
-    (
-      { set },
-      doc: Document,
-      runtime: SelectionListenerRuntime,
-      signal: AbortSignal,
-    ) => {
-      const capture = () => {
-        set(captureSelection$);
-      };
-      const captureIfPresent = () => {
-        set(captureSelectionIfPresent$);
-      };
-      // The browser finalizes the selection after the triggering event, so
-      // read it one macrotask later. Rescheduling aborts the previous pending
-      // read, coalescing event bursts into a single capture.
-      const captureDeferred = async (dismissWhenEmpty: boolean) => {
-        runtime.pendingDismissWhenEmpty ||= dismissWhenEmpty;
-        await delay(0, { signal: set(deferredCaptureSignal$, signal) });
-        const shouldDismissWhenEmpty = runtime.pendingDismissWhenEmpty;
-        runtime.pendingDismissWhenEmpty = false;
-        if (shouldDismissWhenEmpty) {
-          capture();
-        } else {
-          captureIfPresent();
-        }
-      };
-      doc.addEventListener(
-        "mouseup",
-        onDomEventFn(async () => {
-          runtime.mouseIsDown = false;
-          if (runtime.suppressSelectionCapture) {
-            runtime.suppressSelectionCapture = false;
-            return;
-          }
-          await captureDeferred(true);
-        }),
-        { signal },
-      );
-      doc.addEventListener(
-        "dblclick",
-        onDomEventFn(async () => {
-          runtime.mouseIsDown = false;
-          await captureDeferred(false);
-        }),
-        { signal },
-      );
-      doc.addEventListener(
-        "selectionchange",
-        onDomEventFn(async () => {
-          if (!runtime.mouseIsDown && !runtime.suppressSelectionCapture) {
-            await captureDeferred(false);
-          }
-        }),
-        { signal },
-      );
-      doc.addEventListener("keyup", capture, { signal });
-      doc.addEventListener(
-        "scroll",
-        () => {
-          set(dismissSelectionOnScroll$);
-        },
-        { capture: true, passive: true, signal },
-      );
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(setFeedbackHighlight$, threadId, new Map());
-        },
-        { once: true },
-      );
-    },
-  );
+  return command(({ set }, doc: Document, signal: AbortSignal) => {
+    // Read the selection one macrotask after selectionchange. Rescheduling
+    // aborts the previous read, coalescing event bursts into one capture.
+    const captureDeferred = async () => {
+      await delay(0, { signal: set(deferredCaptureSignal$, signal) });
+      set(captureSelection$);
+    };
+    doc.addEventListener(
+      "selectionchange",
+      onDomEventFn(async () => {
+        await captureDeferred();
+      }),
+      { signal },
+    );
+    doc.addEventListener(
+      "scroll",
+      () => {
+        set(dismissSelectionOnScroll$);
+      },
+      { capture: true, passive: true, signal },
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(setFeedbackHighlight$, threadId, new Map());
+      },
+      { once: true },
+    );
+  });
 }
 
 function createSelectionListenersRef({
@@ -644,13 +537,8 @@ function createSelectionListenersRef({
 }) {
   return onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      const runtime: SelectionListenerRuntime = {
-        pendingDismissWhenEmpty: false,
-        mouseIsDown: false,
-        suppressSelectionCapture: false,
-      };
-      set(pointerListeners$, el.ownerDocument, runtime, signal);
-      set(documentListeners$, el.ownerDocument, runtime, signal);
+      set(pointerListeners$, el.ownerDocument, signal);
+      set(documentListeners$, el.ownerDocument, signal);
     }),
   );
 }
@@ -664,7 +552,7 @@ export function createFeedbackSignals(
     threadId,
     editor,
     selectionState$: selection.selectionState$,
-    hideSelectionToolbar$: selection.hideSelectionToolbar$,
+    closeSelectionToolbar$: selection.closeSelectionToolbar$,
   });
   const setSelectionToolbarRef$ = createSelectionToolbarRef({
     resetSelectionToolbarSignal$: selection.resetSelectionToolbarSignal$,
@@ -674,12 +562,11 @@ export function createFeedbackSignals(
   });
   const pointerListeners$ = createPointerSelectionListeners({
     selectionState$: selection.selectionState$,
-    hideSelectionToolbar$: selection.hideSelectionToolbar$,
+    closeSelectionToolbar$: selection.closeSelectionToolbar$,
   });
   const documentListeners$ = createDocumentSelectionListeners({
     threadId,
     captureSelection$: selection.captureSelection$,
-    captureSelectionIfPresent$: selection.captureSelectionIfPresent$,
     dismissSelectionOnScroll$: selection.dismissSelectionOnScroll$,
   });
   const setSelectionListenersRef$ = createSelectionListenersRef({
