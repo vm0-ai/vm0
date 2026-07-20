@@ -996,6 +996,41 @@ class TestForwardRequestAsyncWrapper:
         assert body == b"ok"
         assert list(headers.items(multi=True)) == []
 
+    async def test_worker_start_failure_releases_tracking_and_capacity(self):
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            fake_forwarder_upstream(),
+        ):
+            with (
+                patch.object(
+                    forwarder.threading.Thread,
+                    "start",
+                    side_effect=RuntimeError("can't start new thread"),
+                ),
+                pytest.raises(RuntimeError, match="can't start new thread"),
+            ):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "POST",
+                    [],
+                    b"request body",
+                )
+
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+            with forwarder._forward_request_pending_futures_lock:
+                assert not forwarder._forward_request_pending_futures
+            with forwarder._forward_request_workers_lock:
+                assert not forwarder._forward_request_workers
+
+            status, body, headers = await asyncio.wait_for(
+                forwarder.forward_request("https://example.com", "GET", [], None),
+                timeout=2,
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
+
     async def test_limits_concurrent_forwarding_work(self):
         active = 0
         max_active = 0
