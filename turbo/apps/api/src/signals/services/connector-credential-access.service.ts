@@ -6,15 +6,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import {
-  and,
-  eq,
-  exists,
-  inArray,
-  isNull,
-  or,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, exists, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { ReadonlyDb } from "../external/db";
