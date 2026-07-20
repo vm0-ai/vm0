@@ -131,8 +131,7 @@ pub fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
     )
 }
 
-/// Resolve Claude session-history availability from explicit run paths.
-pub fn claude_history_target_status_for_config(
+fn claude_history_target_status_for_config(
     config: &env::GuestConfig,
     runtime_paths: &paths::GuestPaths,
 ) -> SessionHistoryStatus {
@@ -443,7 +442,7 @@ fn is_claude_monthly_spend_limit_error(normalized: &str) -> bool {
 
 fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
     if !error_message.contains("TOKEN_REFRESH_FAILED")
-        || !error_message.contains("codex-oauth-token")
+        || !error_message.contains(failure_patterns::CODEX_OAUTH_TOKEN_CONNECTOR)
         || !error_message.contains("reconnect_required")
     {
         return false;
@@ -510,7 +509,6 @@ fn history_target_status(path: &Path) -> SessionHistoryStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct CliFailureMessage {
     message: String,
     source: FailureDetailSource,

@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
+pub(crate) const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 const CODEX_MODEL_CAPACITY_MESSAGE: &str =
     "selected model is at capacity. please try a different model.";
 const CODEX_CONTEXT_WINDOW_EXHAUSTED_PREFIX: &str =

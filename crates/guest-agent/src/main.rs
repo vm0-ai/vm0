@@ -430,7 +430,7 @@ async fn execute(
             } else if http.has_api() && is_claude_zero_turn_result(config.framework, &cli_result) {
                 let history_check_start = Instant::now();
                 let session_history_status =
-                    failure_diagnostics::claude_history_target_status_for_config(
+                    failure_diagnostics::diagnostic_session_history_status_for_config(
                         config,
                         runtime_paths,
                     );
