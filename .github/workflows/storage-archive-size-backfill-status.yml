@@ -1,0 +1,74 @@
+name: Check storage archive size backfill status
+
+run-name: Check production storage archive size backfill status
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/storage-archive-size-backfill-status.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Check production backfill status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Query status endpoint
+        shell: bash
+        env:
+          VM0_API_BACKEND_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${VM0_API_BACKEND_URL}" ]]; then
+            echo "::error::VM0_API_BACKEND_URL is not configured"
+            exit 1
+          fi
+          if [[ -z "${CRON_SECRET}" ]]; then
+            echo "::error::CRON_SECRET is not configured"
+            exit 1
+          fi
+
+          response_path="${RUNNER_TEMP}/storage-archive-size-backfill-status.json"
+          trap 'rm -f "${response_path}"' EXIT
+
+          http_status="$(
+            curl --silent --show-error \
+              --output "${response_path}" \
+              --write-out "%{http_code}" \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              "${VM0_API_BACKEND_URL%/}/api/cron/storage-archive-size-backfill-status"
+          )"
+
+          if ! jq . "${response_path}"; then
+            echo "::error::Status endpoint returned invalid JSON"
+            exit 1
+          fi
+
+          {
+            echo "## Storage archive size backfill status"
+            echo
+            echo '```json'
+            jq . "${response_path}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${http_status}" != "200" ]]; then
+            echo "::error::Status endpoint returned HTTP ${http_status}"
+            exit 1
+          fi
+
+          state="$(jq -r '.state' "${response_path}")"
+          complete="$(jq -r '.complete // false' "${response_path}")"
+          if [[ "${state}" == "active" && "${complete}" == "true" ]]; then
+            echo "::notice::Storage archive size backfill is complete"
+          elif [[ "${state}" == "active" ]]; then
+            echo "::warning::Storage archive size backfill is not complete"
+          else
+            echo "::warning::Storage archive size backfill runtime is retired"
+          fi
