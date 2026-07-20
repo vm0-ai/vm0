@@ -11,7 +11,6 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
-  type SessionHistoryGenerationRelationship,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import {
@@ -711,62 +710,6 @@ interface ActiveRunNetworkPolicyScope {
 }
 
 type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
-
-type SessionHistoryGenerationClaimOutcome =
-  | "accepted"
-  | "unavailable"
-  | "preclaim_error";
-
-function recordSessionHistoryGenerationClaimAttempt(args: {
-  readonly runId: string;
-  readonly relationship: SessionHistoryGenerationRelationship | undefined;
-  readonly outcome: SessionHistoryGenerationClaimOutcome;
-  readonly authType: RunnerAuthContext["type"];
-  readonly runnerGroup?: string;
-  readonly profile?: string;
-}): void {
-  if (!args.relationship) {
-    return;
-  }
-  const dimensions: Record<string, string> = {
-    generation_relationship: args.relationship,
-    claim_outcome: args.outcome,
-    auth_type: args.authType,
-  };
-  if (args.runnerGroup) {
-    dimensions.runner_group = args.runnerGroup;
-  }
-  if (args.profile) {
-    dimensions.profile = args.profile;
-  }
-  recordSandboxOperations([
-    {
-      sandboxType: "runner",
-      actionType: "runner_session_history_generation_claim_attempt",
-      durationMs: 0,
-      success: args.outcome === "accepted",
-      runId: args.runId,
-      dimensions,
-    },
-  ]);
-}
-
-function recordSessionHistoryGenerationClaimAttemptForJob(args: {
-  readonly runId: string;
-  readonly relationship: SessionHistoryGenerationRelationship | undefined;
-  readonly outcome: SessionHistoryGenerationClaimOutcome;
-  readonly authType: RunnerAuthContext["type"];
-  readonly job: ClaimableJob["job"];
-}): void {
-  recordSessionHistoryGenerationClaimAttempt({
-    runId: args.runId,
-    relationship: args.relationship,
-    outcome: args.outcome,
-    authType: args.authType,
-    runnerGroup: args.job.runnerGroup,
-    profile: args.job.profile,
-  });
-}
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
@@ -2068,9 +2011,6 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
-      readonly generationRelationship:
-        | SessionHistoryGenerationRelationship
-        | undefined;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -2079,15 +2019,6 @@ const claimAuthorizedJob$ = command(
   ) => {
     const { db, runId, jobWithRun, claimRouteTiming, signal } = args;
     const run = jobWithRun.run;
-    const recordAttempt = (outcome: SessionHistoryGenerationClaimOutcome) => {
-      recordSessionHistoryGenerationClaimAttemptForJob({
-        runId,
-        relationship: args.generationRelationship,
-        outcome,
-        authType: args.authType,
-        job: jobWithRun.job,
-      });
-    };
 
     const contextParseStartedAt = now();
     const storedContextResult = storedExecutionContextSchema.safeParse(
@@ -2104,7 +2035,7 @@ const claimAuthorizedJob$ = command(
         runId,
         storedContextResult.error.issues,
       );
-      const response = await failClaimForInvalidStoredExecutionContext({
+      return await failClaimForInvalidStoredExecutionContext({
         db,
         runId,
         userId: run.userId,
@@ -2114,8 +2045,6 @@ const claimAuthorizedJob$ = command(
           set(scheduleClaimFailedSideEffects$, failedArgs);
         },
       });
-      recordAttempt("preclaim_error");
-      return response;
     }
     const storedContext = storedContextResult.data;
 
@@ -2130,8 +2059,7 @@ const claimAuthorizedJob$ = command(
       signal,
     );
     if (!responseBodyResult.ok) {
-      recordAttempt("preclaim_error");
-      const response = await claimResponseBuildErrorResponse({
+      return await claimResponseBuildErrorResponse({
         db,
         run,
         runId,
@@ -2141,7 +2069,6 @@ const claimAuthorizedJob$ = command(
           set(scheduleClaimFailedSideEffects$, failedArgs);
         },
       });
-      return response;
     }
     signal.throwIfAborted();
 
@@ -2159,11 +2086,9 @@ const claimAuthorizedJob$ = command(
     );
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {
-      recordAttempt("unavailable");
       return claimTransitionErrorResponse(claimResult);
     }
 
-    recordAttempt("accepted");
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2194,8 +2119,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
-  const generationRelationship =
-    body.data.telemetry?.sessionHistoryGenerationRelationship;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -2206,14 +2129,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const lookupAuthorizationStartedAt = now();
   const jobWithRun = await getClaimableJob(db, runId, signal);
   if (!isClaimableJob(jobWithRun)) {
-    if (auth.type === "official-runner") {
-      recordSessionHistoryGenerationClaimAttempt({
-        runId,
-        relationship: generationRelationship,
-        outcome: "unavailable",
-        authType: auth.type,
-      });
-    }
     return jobWithRun;
   }
   const authError = claimAuthorizationError(auth, jobWithRun);
@@ -2231,7 +2146,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     runId,
     authType: auth.type,
     jobWithRun,
-    generationRelationship,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

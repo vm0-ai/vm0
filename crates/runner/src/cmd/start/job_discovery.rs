@@ -37,7 +37,6 @@ use crate::ids::RunId;
 use crate::paths::short_digest;
 use crate::provider::{
     ClaimedJob, JobCandidate, LocalAdmissionResourceKind, SessionAffinityLocalResource,
-    SessionHistoryGenerationRelationship,
 };
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
@@ -83,27 +82,6 @@ impl LocalAdmissionResource {
         match self {
             Self::Fresh(_) => LocalAdmissionResourceKind::Fresh,
             Self::Reusable(_) => LocalAdmissionResourceKind::ReusableSandbox,
-        }
-    }
-
-    fn session_history_generation_relationship(
-        &self,
-        target_generation_run_id: Option<RunId>,
-    ) -> SessionHistoryGenerationRelationship {
-        let Some(target_generation_run_id) = target_generation_run_id else {
-            return SessionHistoryGenerationRelationship::UnknownTarget;
-        };
-        match self {
-            Self::Fresh(_) => SessionHistoryGenerationRelationship::Fresh,
-            Self::Reusable(reservation) => match reservation.history_generation_run_id() {
-                Some(reserved_generation_run_id)
-                    if reserved_generation_run_id == target_generation_run_id =>
-                {
-                    SessionHistoryGenerationRelationship::Exact
-                }
-                Some(_) => SessionHistoryGenerationRelationship::Different,
-                None => SessionHistoryGenerationRelationship::UnknownReserved,
-            },
         }
     }
 }
@@ -554,11 +532,6 @@ async fn claim_with_local_admission(
             return None;
         }
     }
-    let target_generation_run_id = candidate.history_generation_run_id();
-    let relationship = admission
-        .resource
-        .session_history_generation_relationship(target_generation_run_id);
-    candidate.set_session_history_generation_relationship(relationship);
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {

@@ -187,16 +187,6 @@ async fn claim_failure_rolls_back_budget() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id_1, Duration::from_secs(5)).await;
     assert_eq!(budget.allocated().2, 0);
-    let claim_candidates = env.handle.claim_candidates();
-    let unavailable_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == run_id_1)
-        .expect("unavailable candidate should reach claim");
-    assert_eq!(
-        unavailable_candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::Fresh)
-    );
-
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();
     push_job(
@@ -214,16 +204,6 @@ async fn claim_failure_rolls_back_budget() {
         completion.is_some(),
         "second job should complete (budget freed after unavailable claim)"
     );
-    let claim_candidates = env.handle.claim_candidates();
-    let followup_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == run_id_2)
-        .expect("follow-up candidate should reach claim");
-    assert_eq!(
-        followup_candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownTarget)
-    );
-
     shutdown(&env, run_handle).await;
 }
 
@@ -323,16 +303,6 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
         (2, 4096, 1),
         "restored reservation should retain its original budget lease"
     );
-    let claim_candidates = env.handle.claim_candidates();
-    let conflict_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == conflict_run_id)
-        .expect("claim conflict candidate should reach claim");
-    assert_eq!(
-        conflict_candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::Exact)
-    );
-
     let followup_run_id = RunId::new_v4();
     let followup_target_generation_run_id = RunId::new_v4();
     env.provider.set_claim_result(
@@ -352,16 +322,6 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
         .await
         .expect("restored idle reservation should serve the next claim");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    let claim_candidates = env.handle.claim_candidates();
-    let followup_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == followup_run_id)
-        .expect("follow-up candidate should reach claim");
-    assert_eq!(
-        followup_candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::Different)
-    );
-
     shutdown(&env, run_handle).await;
 }
 
@@ -446,10 +406,6 @@ async fn reusable_claim_without_generation_target_reports_selected_resources() {
         .iter()
         .find(|candidate| candidate.run_id() == run_id)
         .expect("missing-target reusable candidate should reach claim");
-    assert_eq!(
-        candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownTarget)
-    );
     assert_eq!(
         candidate.session_affinity_resource(),
         Some(SessionAffinityResource::ReusableSandbox)
@@ -828,10 +784,6 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     assert_eq!(
         claimed_candidate.local_admission_resource(),
         Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
-    );
-    assert_eq!(
-        claimed_candidate.session_history_generation_relationship(),
-        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownReserved)
     );
     assert!(
         claimed_candidate

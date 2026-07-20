@@ -75,27 +75,6 @@ impl LocalAdmissionResourceKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionHistoryGenerationRelationship {
-    Exact,
-    Different,
-    Fresh,
-    UnknownTarget,
-    UnknownReserved,
-}
-
-impl SessionHistoryGenerationRelationship {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Exact => "exact",
-            Self::Different => "different",
-            Self::Fresh => "fresh",
-            Self::UnknownTarget => "unknown_target",
-            Self::UnknownReserved => "unknown_reserved",
-        }
-    }
-}
-
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -119,7 +98,6 @@ pub struct JobCandidate {
     session_affinity_local_resource: Option<SessionAffinityLocalResource>,
     local_admission_resource: Option<LocalAdmissionResourceKind>,
     history_generation_run_id: Option<RunId>,
-    session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
@@ -155,7 +133,6 @@ impl JobCandidate {
             session_affinity_local_resource: None,
             local_admission_resource: None,
             history_generation_run_id: None,
-            session_history_generation_relationship: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
@@ -263,12 +240,6 @@ impl JobCandidate {
         self.history_generation_run_id
     }
 
-    pub(crate) fn session_history_generation_relationship(
-        &self,
-    ) -> Option<SessionHistoryGenerationRelationship> {
-        self.session_history_generation_relationship
-    }
-
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
         protection_remaining(self.affinity_protected_until)
     }
@@ -327,13 +298,6 @@ impl JobCandidate {
             .as_deref()
             .and_then(parse_affinity_protected_until);
         self
-    }
-
-    pub(crate) fn set_session_history_generation_relationship(
-        &mut self,
-        relationship: SessionHistoryGenerationRelationship,
-    ) {
-        self.session_history_generation_relationship = Some(relationship);
     }
 
     pub(crate) fn set_session_affinity_local_resource(

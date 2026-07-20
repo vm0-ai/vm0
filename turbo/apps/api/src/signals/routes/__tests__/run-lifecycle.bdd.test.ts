@@ -2099,12 +2099,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const claims = await Promise.all([
-      api.requestClaimRunnerJob(true, run.runId, [200, 404], {
-        telemetry: { sessionHistoryGenerationRelationship: "different" },
-      }),
-      api.requestClaimRunnerJob(true, run.runId, [200, 404], {
-        telemetry: { sessionHistoryGenerationRelationship: "different" },
-      }),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
     ]);
     expect(
       claims
@@ -2115,27 +2111,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           return left - right;
         }),
     ).toStrictEqual([200, 404]);
-    const claimAttemptEvents = sandboxOperationEventsForRunByAction(
-      run.runId,
-      "runner_session_history_generation_claim_attempt",
-    );
-    expect(claimAttemptEvents).toHaveLength(2);
-    expect(
-      claimAttemptEvents
-        .map((event) => {
-          return event.claim_outcome;
-        })
-        .sort(),
-    ).toStrictEqual(["accepted", "unavailable"]);
-    for (const event of claimAttemptEvents) {
-      expect(event).toStrictEqual(
-        expect.objectContaining({
-          generation_relationship: "different",
-          auth_type: "official-runner",
-        }),
-      );
-    }
-
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
@@ -6227,9 +6202,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       true,
       missingRun.runId,
       [400],
-      {
-        telemetry: { sessionHistoryGenerationRelationship: "unknown_target" },
-      },
     );
     expectApiError(missingClaim.body);
     expect(missingClaim.body.error.message).toBe(
@@ -6243,21 +6215,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(failedMissingRun.error).toBe(
       "Runner job missing valid execution context",
     );
-    expect(
-      sandboxOperationEventsForRunByAction(
-        missingRun.runId,
-        "runner_session_history_generation_claim_attempt",
-      ),
-    ).toStrictEqual([
-      expect.objectContaining({
-        success: false,
-        duration_ms: 0,
-        generation_relationship: "unknown_target",
-        claim_outcome: "preclaim_error",
-        auth_type: "official-runner",
-      }),
-    ]);
-
     const invalidRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "materialize invalid masking metadata",
@@ -8044,178 +8001,33 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
-  it("records trusted terminal generation claim attempts without user-token pollution", async () => {
-    const bdd = createBddApi(context);
+  it("accepts retired runner claim attribution telemetry", async () => {
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const actorRunnerKey = await api.createApiKey(actor);
-    const actorBearer = `Bearer ${actorRunnerKey.token}`;
+    const { actor, agentId } = await entitledRunActor();
 
-    const attributed = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
-      prompt: "attribute terminal generation claims",
+      prompt: "accept retired claim attribution telemetry",
       modelProvider: "anthropic-api-key",
     });
-    const accepted = await api.requestRawClaimRunnerJob(
-      true,
-      attributed.runId,
-      [200],
-      {
-        telemetry: {
-          sessionHistoryGenerationRelationship: "different",
-          sessionHistoryGenerationLocalAvailability:
-            "parked_before_discovery_lt_heartbeat_period",
-          workspaceSessionHistorySidecarRelationship: "different",
-          workspaceSessionHistorySidecarRawSizeBucket: "256_kib_1_mib",
-        },
+    const claim = await api.requestRawClaimRunnerJob(true, run.runId, [200], {
+      telemetry: {
+        sessionHistoryGenerationRelationship: "different",
+        sessionHistoryGenerationLocalAvailability:
+          "parked_before_discovery_lt_heartbeat_period",
+        workspaceSessionHistorySidecarRelationship: "different",
+        workspaceSessionHistorySidecarRawSizeBucket: "256_kib_1_mib",
       },
-    );
-    expect(accepted.status).toBe(200);
-
-    const lateUser = await api.requestRawClaimRunnerJobAs(
-      actorBearer,
-      attributed.runId,
-      [404],
-      {
-        telemetry: {
-          sessionHistoryGenerationRelationship: "exact",
-          sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
-          workspaceSessionHistorySidecarRelationship: "exact",
-          workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
-        },
-      },
-    );
-    expectApiError(lateUser.body);
-    expect(
-      sandboxOperationEventsForRunByAction(
-        attributed.runId,
-        "runner_session_history_generation_claim_attempt",
-      ),
-    ).toHaveLength(1);
-
-    const lateOfficial = await api.requestRawClaimRunnerJob(
-      true,
-      attributed.runId,
-      [404],
-      {
-        telemetry: {
-          sessionHistoryGenerationRelationship: "exact",
-          sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
-          workspaceSessionHistorySidecarRelationship: "exact",
-          workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
-        },
-      },
-    );
-    expectApiError(lateOfficial.body);
-    const attributedEvents = sandboxOperationEventsForRunByAction(
-      attributed.runId,
-      "runner_session_history_generation_claim_attempt",
-    );
-    expect(attributedEvents).toStrictEqual([
-      expect.objectContaining({
-        success: true,
-        duration_ms: 0,
-        generation_relationship: "different",
-        claim_outcome: "accepted",
-        auth_type: "official-runner",
-        runner_group: runnerGroup,
-        profile: "vm0/default",
-      }),
-      expect.objectContaining({
-        success: false,
-        duration_ms: 0,
-        generation_relationship: "exact",
-        claim_outcome: "unavailable",
-        auth_type: "official-runner",
-      }),
-    ]);
-    for (const event of attributedEvents) {
-      expect(event).not.toHaveProperty("history_generation_run_id");
-      expect(event).not.toHaveProperty("session_id");
-      expect(event).not.toHaveProperty("history_hash");
-      expect(event).not.toHaveProperty("parked_at");
-      expect(event).not.toHaveProperty("discovered_at");
-      expect(event).not.toHaveProperty("generation_local_availability");
-      expect(event).not.toHaveProperty("generation_local_availability_ms");
-      expect(event).not.toHaveProperty("workspace_sidecar_generation_run_id");
-      expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bytes");
-      expect(event).not.toHaveProperty("workspace_sidecar_relationship");
-      expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bucket");
-      expect(JSON.stringify(event)).not.toContain(actorRunnerKey.token);
-    }
-    const guarded = await api.createRun(actor, {
-      agentId,
-      prompt: "reject untrusted generation attribution",
-      modelProvider: "anthropic-api-key",
     });
-    const outsider = bdd.user();
-    const outsiderKey = await api.createApiKey(outsider);
-    const forbiddenClaim = await api.requestClaimRunnerJobAs(
-      `Bearer ${outsiderKey.token}`,
-      guarded.runId,
-      [403],
-      {
-        telemetry: { sessionHistoryGenerationRelationship: "exact" },
-      },
-    );
-    expectApiError(forbiddenClaim.body);
-    expect(
-      sandboxOperationEventsForRunByAction(
-        guarded.runId,
-        "runner_session_history_generation_claim_attempt",
-      ),
-    ).toHaveLength(0);
+    expect(claim.status).toBe(200);
 
-    const oldRunnerClaim = await api.requestClaimRunnerJob(
-      true,
-      guarded.runId,
-      [200],
-    );
-    expect(oldRunnerClaim.status).toBe(200);
-    expect(
-      sandboxOperationEventsForRunByAction(
-        guarded.runId,
-        "runner_session_history_generation_claim_attempt",
-      ),
-    ).toHaveLength(0);
-    await api.requestCancelRun(actor, attributed.runId, [200]);
-    await api.requestCancelRun(actor, guarded.runId, [200]);
-
-    const previousRunner = await api.createRun(actor, {
-      agentId,
-      prompt: "accept prior generation attribution without local availability",
-      modelProvider: "anthropic-api-key",
-    });
-    const previousRunnerClaim = await api.requestClaimRunnerJob(
-      true,
-      previousRunner.runId,
-      [200],
-      {
-        telemetry: { sessionHistoryGenerationRelationship: "fresh" },
-      },
-    );
-    expect(previousRunnerClaim.status).toBe(200);
-    const previousRunnerEvents = sandboxOperationEventsForRunByAction(
-      previousRunner.runId,
-      "runner_session_history_generation_claim_attempt",
-    );
-    expect(previousRunnerEvents).toStrictEqual([
-      expect.objectContaining({
-        generation_relationship: "fresh",
-        claim_outcome: "accepted",
-      }),
-    ]);
-    expect(previousRunnerEvents[0]).not.toHaveProperty(
-      "generation_local_availability",
-    );
-
-    await api.requestCancelRun(actor, previousRunner.runId, [200]);
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("records generic preclaim response construction failures", async () => {
+  it("returns 500 when claim response construction fails", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
 
     const source = await api.createRun(actor, {
       agentId,
@@ -8251,42 +8063,12 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     context.mocks.s3.send.mockRejectedValueOnce(
       new Error("session history metadata unavailable"),
     );
-    const failedClaim = await api.requestRawClaimRunnerJob(
+    const failedClaim = await api.requestClaimRunnerJob(
       true,
       resumed.runId,
       [500],
-      {
-        telemetry: {
-          sessionHistoryGenerationRelationship: "exact",
-          sessionHistoryGenerationLocalAvailability:
-            "parked_before_discovery_ge_heartbeat_period",
-          workspaceSessionHistorySidecarRelationship: "legacy",
-          workspaceSessionHistorySidecarRawSizeBucket: "1_4_mib",
-        },
-      },
     );
     expect(failedClaim.status).toBe(500);
-
-    const events = sandboxOperationEventsForRunByAction(
-      resumed.runId,
-      "runner_session_history_generation_claim_attempt",
-    );
-    expect(events).toStrictEqual([
-      expect.objectContaining({
-        success: false,
-        duration_ms: 0,
-        generation_relationship: "exact",
-        claim_outcome: "preclaim_error",
-        auth_type: "official-runner",
-        runner_group: runnerGroup,
-        profile: "vm0/default",
-      }),
-    ]);
-    expect(JSON.stringify(events)).not.toContain(source.runId);
-    expect(JSON.stringify(events)).not.toContain(historyHash);
-    expect(events[0]).not.toHaveProperty("generation_local_availability");
-    expect(events[0]).not.toHaveProperty("workspace_sidecar_relationship");
-    expect(events[0]).not.toHaveProperty("workspace_sidecar_raw_size_bucket");
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
