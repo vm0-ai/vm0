@@ -1784,6 +1784,10 @@ mod tests {
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
+        assert_eq!(
+            candidate.history_generation_run_id(),
+            Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
+        );
         assert!(candidate.is_affinity_protected());
         assert!(candidate.is_history_generation_affinity_protected());
         assert_eq!(
