@@ -1166,6 +1166,31 @@ async function artifactSyncUntil(db: Db): Promise<string> {
   return row.sync_until;
 }
 
+function toArtifactChangesPage(args: {
+  readonly rows: readonly ArtifactListSqlRow[];
+  readonly limit: number;
+  readonly syncUntil: string;
+}): ZeroArtifactsResult {
+  const hasMore = args.rows.length > args.limit;
+  const pageRows = hasMore ? args.rows.slice(0, args.limit) : args.rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow?.cursor_updated_at
+      ? encodeArtifactCursor({
+          updatedAt: lastRow.cursor_updated_at,
+          rowId: lastRow.row_id,
+          syncUntil: args.syncUntil,
+        })
+      : null;
+
+  return {
+    artifacts: pageRows.map(toArtifactItem),
+    truncated: hasMore,
+    nextCursor,
+    syncUntil: args.syncUntil,
+  };
+}
+
 async function listChangedArtifacts(args: {
   readonly db: Db;
   readonly query: ZeroArtifactsArgs;
@@ -1288,25 +1313,7 @@ async function listChangedArtifacts(args: {
     artifactListSqlRowSchema,
   );
   args.signal.throwIfAborted();
-
-  const hasMore = rows.length > args.limit;
-  const pageRows = hasMore ? rows.slice(0, args.limit) : rows;
-  const lastRow = pageRows.at(-1);
-  const nextCursor =
-    hasMore && lastRow?.cursor_updated_at
-      ? encodeArtifactCursor({
-          updatedAt: lastRow.cursor_updated_at,
-          rowId: lastRow.row_id,
-          syncUntil: args.syncUntil,
-        })
-      : null;
-
-  return {
-    artifacts: pageRows.map(toArtifactItem),
-    truncated: hasMore,
-    nextCursor,
-    syncUntil: args.syncUntil,
-  };
+  return toArtifactChangesPage({ rows, ...args });
 }
 
 async function listArtifactHistory(args: {
