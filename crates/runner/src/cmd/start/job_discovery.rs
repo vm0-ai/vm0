@@ -33,9 +33,7 @@ use crate::idle_pool::{
 };
 use crate::ids::RunId;
 use crate::paths::short_digest;
-use crate::provider::{
-    ClaimedJob, JobCandidate, LocalAdmissionResourceKind, SessionAffinityLocalResource,
-};
+use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
@@ -70,15 +68,6 @@ struct LocalAdmission {
 enum LocalAdmissionResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
-}
-
-impl LocalAdmissionResource {
-    fn kind(&self) -> LocalAdmissionResourceKind {
-        match self {
-            Self::Fresh(_) => LocalAdmissionResourceKind::Fresh,
-            Self::Reusable(_) => LocalAdmissionResourceKind::ReusableSandbox,
-        }
-    }
 }
 
 struct AdmittedClaim {
@@ -373,8 +362,6 @@ async fn claim_with_local_admission(
             .await?
         }
     };
-    candidate.set_local_admission_resource(resource.kind());
-
     // Insert cancel token before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
     // find the active job. Skip duplicate discoveries; overwriting would break
@@ -467,9 +454,6 @@ async fn prepare_affinity_protected_candidate(
         )
         .await
         {
-            let mut candidate = candidate;
-            candidate
-                .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
             return Some(PreparedAffinityCandidate {
                 candidate,
                 resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
@@ -520,10 +504,6 @@ async fn prepare_affinity_protected_candidate(
             )
             .await
             {
-                let mut candidate = candidate;
-                candidate.set_session_affinity_local_resource(
-                    SessionAffinityLocalResource::ReusableSandbox,
-                );
                 return Some(PreparedAffinityCandidate {
                     candidate,
                     resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
@@ -540,10 +520,6 @@ async fn prepare_affinity_protected_candidate(
             )
             .await
             {
-                let mut candidate = candidate;
-                candidate.set_session_affinity_local_resource(
-                    SessionAffinityLocalResource::ReusableSandbox,
-                );
                 return Some(PreparedAffinityCandidate {
                     candidate,
                     resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
@@ -563,10 +539,6 @@ async fn prepare_affinity_protected_candidate(
                 && let Some(lease) =
                     ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
             {
-                let mut candidate = candidate;
-                candidate.set_session_affinity_local_resource(
-                    SessionAffinityLocalResource::WorkspaceCache,
-                );
                 return Some(PreparedAffinityCandidate {
                     candidate,
                     resource: Some(LocalAdmissionResource::Fresh(lease)),

@@ -1617,9 +1617,6 @@ interface ClaimTimingTelemetry {
   readonly directCandidateInboxWaitMs?: number;
   readonly providerDiscoveryToMainLoopMs?: number;
   readonly mainLoopToLocalAdmissionMs?: number;
-  readonly sessionAffinityResource?: string;
-  readonly sessionAffinityLocalResource?: string;
-  readonly localAdmissionResource?: string;
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
@@ -1672,9 +1669,6 @@ function scheduleSuccessfulClaimSideEffects(args: {
     providerDiscoveryToMainLoopMs:
       args.telemetry?.providerDiscoveryToMainLoopMs,
     mainLoopToLocalAdmissionMs: args.telemetry?.mainLoopToLocalAdmissionMs,
-    sessionAffinityResource: args.telemetry?.sessionAffinityResource,
-    sessionAffinityLocalResource: args.telemetry?.sessionAffinityLocalResource,
-    localAdmissionResource: args.telemetry?.localAdmissionResource,
     discoverySource: args.telemetry?.discoverySource,
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
@@ -1700,9 +1694,6 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly directCandidateInboxWaitMs: number | undefined;
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
-  readonly sessionAffinityResource: string | undefined;
-  readonly sessionAffinityLocalResource: string | undefined;
-  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1738,9 +1729,6 @@ interface ClaimTimingMetricArgs {
   readonly directCandidateInboxWaitMs: number | undefined;
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
-  readonly sessionAffinityResource: string | undefined;
-  readonly sessionAffinityLocalResource: string | undefined;
-  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1838,16 +1826,6 @@ function claimTimingDimensions(
   }
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
-  }
-  if (args.sessionAffinityResource) {
-    dimensions.session_affinity_resource = args.sessionAffinityResource;
-  }
-  if (args.sessionAffinityLocalResource) {
-    dimensions.session_affinity_local_resource =
-      args.sessionAffinityLocalResource;
-  }
-  if (args.localAdmissionResource) {
-    dimensions.local_admission_resource = args.localAdmissionResource;
   }
   return dimensions;
 }

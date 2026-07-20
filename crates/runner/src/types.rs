@@ -54,15 +54,6 @@ pub enum SessionAffinityResource {
     WorkspaceCache,
 }
 
-impl SessionAffinityResource {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::ReusableSandbox => "reusableSandbox",
-            Self::WorkspaceCache => "workspaceCache",
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Claim (execution context)
 // ---------------------------------------------------------------------------

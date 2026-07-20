@@ -138,8 +138,6 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "mountPath",
   "runner_id",
   "runnerId",
-  "target_runner_id",
-  "targetRunnerId",
   "cli_agent_session_id",
   "cliAgentSessionId",
   "sandbox_token",

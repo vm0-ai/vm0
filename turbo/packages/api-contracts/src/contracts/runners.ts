@@ -81,11 +81,6 @@ export const sessionAffinityResourceSchema = z.enum([
   "reusableSandbox",
   "workspaceCache",
 ]);
-const sessionAffinityLocalResourceSchema = z.enum([
-  "reusableSandbox",
-  "workspaceCache",
-]);
-const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerClaimTelemetrySchema = z.object({
@@ -100,9 +95,6 @@ const runnerClaimTelemetrySchema = z.object({
   directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
-  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
-  sessionAffinityLocalResource: sessionAffinityLocalResourceSchema.optional(),
-  localAdmissionResource: runnerLocalAdmissionResourceSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),

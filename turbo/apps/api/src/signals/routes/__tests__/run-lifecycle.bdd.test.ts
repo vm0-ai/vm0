@@ -362,8 +362,6 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "mountPath",
   "runner_id",
   "runnerId",
-  "target_runner_id",
-  "targetRunnerId",
   "cli_agent_session_id",
   "cliAgentSessionId",
   "sandbox_token",
@@ -7917,7 +7915,7 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
-  it("accepts a previous runner generation relationship", async () => {
+  it("accepts previous runner telemetry", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -7928,6 +7926,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     const claim = await api.requestRawClaimRunnerJob(true, run.runId, [200], {
       telemetry: {
+        sessionAffinityResource: "workspaceCache",
+        sessionAffinityLocalResource: "workspaceCache",
+        localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "different",
       },
     });
@@ -8020,9 +8021,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           discoverySource: "poll",
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
-          sessionAffinityResource: "workspaceCache",
-          sessionAffinityLocalResource: "reusableSandbox",
-          localAdmissionResource: "reusableSandbox",
           pollDueToJobDiscoveredMs: 789,
           pollHttpRequestMs: 321,
           pollReason: "deferred",
@@ -8118,9 +8116,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         auth_type: "user",
         discovery_source: "poll",
         poll_reason: "deferred",
-        session_affinity_resource: "workspaceCache",
-        session_affinity_local_resource: "reusableSandbox",
-        local_admission_resource: "reusableSandbox",
       }),
     );
     expect(
@@ -8138,9 +8133,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         auth_type: "user",
         discovery_source: "poll",
         poll_reason: "deferred",
-        session_affinity_resource: "workspaceCache",
-        session_affinity_local_resource: "reusableSandbox",
-        local_admission_resource: "reusableSandbox",
       }),
     );
     for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
@@ -8187,9 +8179,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           auth_type: "user",
           discovery_source: "poll",
           poll_reason: "deferred",
-          session_affinity_resource: "workspaceCache",
-          session_affinity_local_resource: "reusableSandbox",
-          local_admission_resource: "reusableSandbox",
         }),
       );
     }
