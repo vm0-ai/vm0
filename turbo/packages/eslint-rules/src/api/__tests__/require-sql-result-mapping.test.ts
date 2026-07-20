@@ -305,16 +305,39 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         function sql<T>(strings: TemplateStringsArray): T {
           throw new Error(strings[0]);
         }
-        interface SQL<T> {
-          readonly value: T;
+        declare const strings: TemplateStringsArray;
+        class SQL<T> {
+          constructor(readonly value: T) {}
+        }
+        namespace SQL {
+          export class Aliased<T> {
+            constructor(readonly value: T) {}
+          }
         }
         const localValue = sql<string>\`value\`;
         const localTag = sql<string>;
         const instantiatedLocalValue = localTag\`value\`;
-        const localTyped: SQL<string> = { value: "value" };
+        const calledLocalValue = sql<string>(strings);
+        const localCall = sql;
+        const aliasedCalledLocalValue = localCall<string>(strings);
+        const localTyped: SQL<string> = new SQL("value");
+        const constructedLocalValue = new SQL<string>("value");
+        const constructedLocalAlias = new SQL.Aliased<string>("value");
+        const LocalConstructor = SQL<string>;
+        const instantiatedLocalConstructor = new LocalConstructor("value");
+        class LocalSubclass extends SQL<string> {}
+        interface LocalInterface extends SQL<string> {}
+        declare const localInterfaceValue: LocalInterface;
         void localValue;
         void instantiatedLocalValue;
+        void calledLocalValue;
+        void aliasedCalledLocalValue;
         void localTyped;
+        void constructedLocalValue;
+        void constructedLocalAlias;
+        void instantiatedLocalConstructor;
+        void LocalSubclass;
+        void localInterfaceValue;
       `,
     },
     {
@@ -381,6 +404,42 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         repository.select(
           ...[{ value: sql\`upper(\${users.name})\` }] as const,
         );
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function mapped<T>(value: T) {
+          return sql\`upper(\${users.name})\`.mapWith(() => value);
+        }
+        db.select({ value: mapped<string>("value") });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class MetadataSql<T> extends SQL {
+          constructor(readonly metadata: T) {
+            super([]);
+          }
+        }
+        const predicate = new MetadataSql<string>("metadata");
+        await db.select().from(users).where(predicate);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class TypedSql extends SQL {
+          override _: { brand: "SQL"; type: string } = {
+            brand: "SQL",
+            type: "",
+          };
+        }
+        const predicate = new TypedSql([]);
+        const mapped = new TypedSql([]).mapWith(String);
+        await db.select().from(users).where(predicate);
+        db.select({ value: mapped });
       `,
     },
   ],
@@ -463,7 +522,141 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
+        declare const strings: TemplateStringsArray;
+        db.select({ value: sql<string>(strings) });
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const strings: TemplateStringsArray;
+        const tag = sql;
+        db.select({ value: tag<string>(strings) });
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const strings: TemplateStringsArray;
+        const tag = sql.bind(undefined);
+        db.select({ value: tag<string>(strings) });
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        db.select({ value: new SQL<string>([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import * as drizzle from "drizzle-orm";
+        db.select({
+          value: new drizzle.SQL.Aliased<string>(
+            drizzle.sql\`value\`,
+            "value",
+          ),
+        });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        const SqlConstructor = SQL;
+        db.select({ value: new SqlConstructor<string>([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        const SqlConstructor = SQL.bind(null);
+        db.select({ value: new SqlConstructor<string>([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        const TypedSql = SQL<string>;
+        db.select({ value: new TypedSql([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        const SqlConstructor = SQL;
+        const TypedSql = SqlConstructor<string>;
+        db.select({ value: new TypedSql([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class TypedSql extends SQL<string> {}
+        db.select({ value: new TypedSql([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        const SqlConstructor = SQL;
+        const TypedSql = class extends SqlConstructor<string> {};
+        db.select({ value: new TypedSql([]) });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        declare const value: import("drizzle-orm").SQL<string>;
+        db.select({ value });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        interface TypedSql extends SQL<string> {}
+        declare const value: TypedSql;
+        db.select({ value });
+      `,
+      errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class TypedSql extends SQL {
+          override _: { brand: "SQL"; type: string } = {
+            brand: "SQL",
+            type: "",
+          };
+        }
+        db.select({ value: new TypedSql([]) });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
         const value = sql\`upper(\${users.name})\`.as<string>("value");
+      `,
+      errors: [{ messageId: "sqlAliasTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const expression = sql\`upper(\${users.name})\`;
+        const alias = expression.as.bind(expression);
+        const value = alias<string>("value");
+        db.select({ value });
       `,
       errors: [{ messageId: "sqlAliasTypeArgument" }],
     },

@@ -116,9 +116,12 @@ function sqlOutputType(
   location: Node,
 ): Type | null {
   const metadataSymbol = checker.getPropertyOfType(type, "_");
+  const metadataDeclarations = metadataSymbol?.declarations;
   if (
     metadataSymbol === undefined ||
-    metadataSymbol.declarations?.some(isDrizzleDeclaration) !== true
+    metadataDeclarations === undefined ||
+    metadataDeclarations.length === 0 ||
+    !metadataDeclarations.every(isDrizzleDeclaration)
   ) {
     return null;
   }
@@ -147,6 +150,28 @@ function isDrizzleWrapper(checker: TypeChecker, type: Type): boolean {
   return isDrizzleSymbol(checker, checker.getPropertyOfType(type, "getSQL"));
 }
 
+function hasUntrustedSqlMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  if (
+    checker.getPropertyOfType(type, "_") === undefined ||
+    !isDrizzleWrapper(checker, type)
+  ) {
+    return false;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return false;
+  }
+  const brandType = propertyType(checker, metadataType, "brand", location);
+  return (
+    brandType?.isStringLiteral() === true &&
+    (brandType.value === "SQL" || brandType.value === "SQL.Aliased")
+  );
+}
+
 function containsUntrustedSql(
   checker: TypeChecker,
   type: Type,
@@ -167,6 +192,9 @@ function containsUntrustedSql(
   const outputType = sqlOutputType(checker, type, location);
   if (outputType !== null) {
     return isUntrustedOutput(outputType);
+  }
+  if (hasUntrustedSqlMetadata(checker, type, location)) {
+    return true;
   }
 
   if (
@@ -346,6 +374,32 @@ export const requireSqlResultMapping = createRule({
         checker.getTypeAtLocation(tsNode),
         tsNode,
         new Set<Type>(),
+      );
+    }
+
+    function isDrizzleSqlConstructor(node: TSESTree.Expression): boolean {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return checker
+        .getTypeAtLocation(tsNode)
+        .getConstructSignatures()
+        .some((signature) => {
+          return (
+            signature.declaration !== undefined &&
+            isDrizzleDeclaration(signature.declaration) &&
+            sqlOutputType(
+              checker,
+              checker.getReturnTypeOfSignature(signature),
+              tsNode,
+            ) !== null
+          );
+        });
+    }
+
+    function isDrizzleSqlTypeName(node: TSESTree.Node): boolean {
+      const symbol = resolvedSymbol(checker, symbolAt(node));
+      return (
+        (symbol?.getName() === "SQL" || symbol?.getName() === "Aliased") &&
+        isDrizzleSymbol(checker, symbol)
       );
     }
 
@@ -706,6 +760,18 @@ export const requireSqlResultMapping = createRule({
       );
     }
 
+    function checkGenericSqlSuperclass(
+      node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+    ): void {
+      if (
+        node.superTypeArguments?.params.length &&
+        node.superClass !== null &&
+        isDrizzleSqlConstructor(node.superClass)
+      ) {
+        context.report({ node, messageId: "sqlTypeReference" });
+      }
+    }
+
     function checkAssertion(
       node: TSESTree.TSAsExpression | TSESTree.TSTypeAssertion,
     ): void {
@@ -741,11 +807,26 @@ export const requireSqlResultMapping = createRule({
         }
       },
       TSTypeReference(node: TSESTree.TSTypeReference): void {
-        const symbol = resolvedSymbol(checker, symbolAt(node.typeName));
         if (
           node.typeArguments?.params.length &&
-          (symbol?.getName() === "SQL" || symbol?.getName() === "Aliased") &&
-          isDrizzleSymbol(checker, symbol)
+          isDrizzleSqlTypeName(node.typeName)
+        ) {
+          context.report({ node, messageId: "sqlTypeReference" });
+        }
+      },
+      TSImportType(node: TSESTree.TSImportType): void {
+        if (
+          node.typeArguments?.params.length &&
+          node.qualifier !== null &&
+          isDrizzleSqlTypeName(node.qualifier)
+        ) {
+          context.report({ node, messageId: "sqlTypeReference" });
+        }
+      },
+      TSInterfaceHeritage(node: TSESTree.TSInterfaceHeritage): void {
+        if (
+          node.typeArguments?.params.length &&
+          isDrizzleSqlTypeName(node.expression)
         ) {
           context.report({ node, messageId: "sqlTypeReference" });
         }
@@ -760,10 +841,17 @@ export const requireSqlResultMapping = createRule({
           context.report({ node, messageId: "sqlTypeArgument" });
         } else if (isDrizzleSqlAliasCallee(node.expression)) {
           context.report({ node, messageId: "sqlAliasTypeArgument" });
+        } else if (isDrizzleSqlConstructor(node.expression)) {
+          context.report({ node, messageId: "sqlTypeReference" });
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
-        if (isGenericDrizzleSqlAlias(node)) {
+        if (
+          node.typeArguments?.params.length === 1 &&
+          isDrizzleSqlTag(node.callee)
+        ) {
+          context.report({ node, messageId: "sqlTypeArgument" });
+        } else if (isGenericDrizzleSqlAlias(node)) {
           context.report({ node, messageId: "sqlAliasTypeArgument" });
         }
 
@@ -839,6 +927,20 @@ export const requireSqlResultMapping = createRule({
         for (const field of unmapped) {
           context.report({ node: field, messageId: "unmappedResult" });
         }
+      },
+      NewExpression(node: TSESTree.NewExpression): void {
+        if (
+          node.typeArguments?.params.length &&
+          isDrizzleSqlConstructor(node.callee)
+        ) {
+          context.report({ node, messageId: "sqlTypeReference" });
+        }
+      },
+      ClassDeclaration(node: TSESTree.ClassDeclaration): void {
+        checkGenericSqlSuperclass(node);
+      },
+      ClassExpression(node: TSESTree.ClassExpression): void {
+        checkGenericSqlSuperclass(node);
       },
       "MemberExpression[computed=false][property.name='findFirst']":
         checkResultMethodReference,
