@@ -723,7 +723,6 @@ describe("runner claim capability contract", () => {
         sessionAffinityResource: "workspaceCache",
         sessionAffinityLocalResource: "workspaceCache",
         localAdmissionResource: "fresh",
-        sessionHistoryGenerationRelationship: "exact",
       },
     });
 
@@ -742,9 +741,7 @@ describe("runner claim capability contract", () => {
       },
     });
 
-    expect(body.telemetry).toEqual({
-      sessionHistoryGenerationRelationship: "fresh",
-    });
+    expect(body.telemetry).toEqual({});
   });
 
   it("accepts old claim bodies without generation telemetry", () => {

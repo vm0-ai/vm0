@@ -25,7 +25,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    LocalAdmissionResourceKind, SessionAffinityLocalResource, SessionHistoryGenerationRelationship,
+    LocalAdmissionResourceKind, SessionAffinityLocalResource,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -66,8 +66,6 @@ struct ClaimRequestTelemetry {
     session_affinity_local_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_admission_resource: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_generation_relationship: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -855,9 +853,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             local_admission_resource: candidate
                 .local_admission_resource()
                 .map(LocalAdmissionResourceKind::as_str),
-            session_history_generation_relationship: candidate
-                .session_history_generation_relationship()
-                .map(SessionHistoryGenerationRelationship::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1660,9 +1655,6 @@ mod tests {
         .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
-        candidate.set_session_history_generation_relationship(
-            SessionHistoryGenerationRelationship::Exact,
-        );
         candidate
             .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
         candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
@@ -1695,9 +1687,10 @@ mod tests {
             body["telemetry"]["localAdmissionResource"],
             "reusableSandbox"
         );
-        assert_eq!(
-            body["telemetry"]["sessionHistoryGenerationRelationship"],
-            "exact"
+        assert!(
+            body["telemetry"]
+                .get("sessionHistoryGenerationRelationship")
+                .is_none()
         );
         assert!(
             !body
