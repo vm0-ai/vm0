@@ -9,11 +9,13 @@ import {
   heldSessionStateSchema,
   jobSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
+  RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
+  runnersPollContract,
   storageManifestSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
@@ -730,6 +732,81 @@ describe("runner claim capability contract", () => {
         localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "fresh",
       },
+    });
+
+    expect(body.telemetry).toEqual({});
+  });
+
+  it("discards malformed diagnostic telemetry without weakening capabilities", () => {
+    const body = runnersJobClaimContract.claim.body.parse({
+      telemetry: {
+        pollReason: "future-reason",
+        jobDiscoveredToClaimRequestMs: -1,
+      },
+    });
+
+    expect(body.telemetry).toEqual({});
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({
+        capabilities: [123],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("runner poll request contract", () => {
+  const group = "vm0/test";
+  const supportedProfiles = ["vm0/default"];
+  const runId = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("accepts bounded optional run exclusions", () => {
+    expect(
+      runnersPollContract.poll.body.parse({
+        group,
+        supportedProfiles,
+        excludedRunIds: [runId],
+      }),
+    ).toEqual({
+      group,
+      supportedProfiles,
+      excludedRunIds: [runId],
+    });
+
+    expect(
+      runnersPollContract.poll.body.safeParse({
+        group,
+        supportedProfiles,
+        excludedRunIds: Array.from(
+          { length: RUNNER_POLL_EXCLUDED_RUN_IDS_MAX + 1 },
+          () => {
+            return runId;
+          },
+        ),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects malformed exclusions and behavior-bearing routing fields", () => {
+    expect(
+      runnersPollContract.poll.body.safeParse({
+        group,
+        supportedProfiles,
+        excludedRunIds: ["not-a-run-id"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersPollContract.poll.body.safeParse({
+        group,
+        supportedProfiles: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("discards malformed diagnostic telemetry", () => {
+    const body = runnersPollContract.poll.body.parse({
+      group,
+      supportedProfiles,
+      telemetry: { pollReason: "future-reason" },
     });
 
     expect(body.telemetry).toEqual({});

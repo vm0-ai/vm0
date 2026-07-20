@@ -26,7 +26,17 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  lt,
+  notInArray,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
@@ -555,7 +565,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const { group, supportedProfiles } = body.data;
+  const { group, supportedProfiles, excludedRunIds } = body.data;
   const whereConditions: SQL[] = [
     eq(runnerJobQueue.runnerGroup, group),
     gt(runnerJobQueue.expiresAt, sql`now()`),
@@ -574,6 +584,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
+  if (excludedRunIds && excludedRunIds.length > 0) {
+    whereConditions.push(notInArray(runnerJobQueue.runId, excludedRunIds));
+  }
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();

@@ -15,9 +15,6 @@ pub enum RunnerError {
     #[error("api error: {0}")]
     ApiTransport(Box<ApiTransportError>),
 
-    #[error("job already claimed by another runner")]
-    AlreadyClaimed,
-
     #[error("sandbox error: {0}")]
     Sandbox(#[from] sandbox::SandboxError),
 

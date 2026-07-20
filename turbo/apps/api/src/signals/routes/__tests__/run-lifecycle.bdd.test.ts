@@ -2180,6 +2180,86 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
+  it("skips runner-local exclusions without mutating shared queue state", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const firstCreatedAt = now();
+    mockNow(firstCreatedAt);
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "first temporarily rejected runner job",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(firstCreatedAt + 1);
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "second eligible runner job",
+      modelProvider: "anthropic-api-key",
+    });
+    const pollBody = {
+      group: runnerGroup,
+      supportedProfiles: ["vm0/default"],
+    };
+
+    const initial = await api.requestRawPollRunner(
+      true,
+      {
+        ...pollBody,
+        telemetry: { pollReason: "future-runner-reason" },
+      },
+      [200],
+    );
+    if (initial.status !== 200) {
+      throw new Error("Expected initial runner poll to succeed");
+    }
+    expect(initial.body.job?.runId).toBe(first.runId);
+
+    const skippedFirst = await api.requestPollRunner(
+      true,
+      { ...pollBody, excludedRunIds: [first.runId] },
+      [200],
+    );
+    if (skippedFirst.status !== 200) {
+      throw new Error("Expected excluded runner poll to succeed");
+    }
+    expect(skippedFirst.body.job?.runId).toBe(second.runId);
+
+    const skippedAll = await api.requestPollRunner(
+      true,
+      {
+        ...pollBody,
+        excludedRunIds: [first.runId, second.runId],
+      },
+      [200],
+    );
+    if (skippedAll.status !== 200) {
+      throw new Error("Expected fully excluded runner poll to succeed");
+    }
+    expect(skippedAll.body.job).toBeNull();
+
+    const unchanged = await api.requestPollRunner(true, pollBody, [200]);
+    if (unchanged.status !== 200) {
+      throw new Error("Expected unchanged runner poll to succeed");
+    }
+    expect(unchanged.body.job?.runId).toBe(first.runId);
+
+    const claimed = await api.requestRawClaimRunnerJob(
+      true,
+      first.runId,
+      [200],
+      {
+        telemetry: {
+          pollReason: "future-runner-reason",
+          jobDiscoveredToClaimRequestMs: -1,
+        },
+      },
+    );
+    expect(claimed.status).toBe(200);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("resumes the previous session when a run is created with the same sessionId", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();

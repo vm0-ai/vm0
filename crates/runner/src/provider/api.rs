@@ -8,13 +8,14 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use api_contracts::generated::routes;
+use api_contracts::generated::{constants::runners::RUNNER_POLL_EXCLUDED_RUN_IDS_MAX, routes};
 use reqwest::{Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
+use super::api_claim_cooldowns::{ClaimCooldownRecord, ClaimCooldowns};
 use super::api_direct_candidates::{
     DIRECT_CANDIDATE_STALE_AFTER, DirectCandidateInbox, DirectCandidatePruneSnapshot,
     DirectJobCandidate,
@@ -67,6 +68,66 @@ struct ClaimRequestTelemetry {
     poll_reason: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PollRequestBody<'a> {
+    runner_id: &'a str,
+    group: &'a str,
+    supported_profiles: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    excluded_run_ids: Option<&'a [RunId]>,
+    telemetry: PollRequestTelemetry,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PollRequestTelemetry {
+    poll_reason: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ClaimApiError {
+    #[error(transparent)]
+    Request(#[from] RunnerError),
+    #[error("claim response body read failed: {0}")]
+    ResponseRead(String),
+    #[error("claim response decode failed: {0}")]
+    ResponseDecode(String),
+}
+
+#[derive(Clone, Copy)]
+enum ClaimFailureClass {
+    HttpTransient,
+    HttpDeterministic,
+    Transport,
+    Local,
+    ResponseRead,
+    ResponseDecode,
+    ResponseInvariant,
+}
+
+impl ClaimFailureClass {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::HttpTransient => "http_transient",
+            Self::HttpDeterministic => "http_deterministic",
+            Self::Transport => "transport",
+            Self::Local => "local",
+            Self::ResponseRead => "response_read",
+            Self::ResponseDecode => "response_decode",
+            Self::ResponseInvariant => "response_invariant",
+        }
+    }
+}
+
+struct ClaimFailureDecision {
+    class: ClaimFailureClass,
+    cooldown: Duration,
+    status: Option<StatusCode>,
+    transport_kind: Option<&'static str>,
+    response_run_id: Option<RunId>,
+}
+
 const CLAIM_TELEMETRY_DURATION_MS_MAX: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug)]
@@ -86,6 +147,9 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
+const CLAIM_COOLDOWN_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
+const CLAIM_TRANSIENT_COOLDOWN: Duration = POLL_FAST;
+const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
 const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -117,6 +181,8 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
+    /// Runs temporarily ineligible for this runner after a failed claim.
+    claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: SharedRunCancellationMap,
@@ -173,6 +239,7 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
+            claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
             network_policy_refresh,
@@ -186,14 +253,86 @@ impl ApiProvider {
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        let outcome = self.direct_candidates.try_pop_with_prune().await;
-        if let Some(pruned) = outcome.pruned {
-            Self::log_direct_candidate_pruned("pop", pruned);
-            if outcome.candidate.is_none() {
-                self.poll_wakeups.request_immediate_poll().await;
+        loop {
+            let outcome = self.direct_candidates.try_pop_with_prune().await;
+            if let Some(pruned) = outcome.pruned {
+                Self::log_direct_candidate_pruned("pop", pruned);
+                if outcome.candidate.is_none() {
+                    self.poll_wakeups.request_immediate_poll().await;
+                }
+            }
+            let candidate = outcome.candidate?;
+            let run_id = candidate.run_id();
+            let Some(retry_after) = self.claim_cooldowns.remaining(run_id).await else {
+                return Some(candidate);
+            };
+
+            info!(
+                run_id = %run_id,
+                retry_after_ms = duration_ms(retry_after),
+                "ably: direct candidate skipped during claim cooldown"
+            );
+            self.poll_wakeups.request_immediate_poll().await;
+            if self.cancel.is_cancelled() {
+                return None;
             }
         }
-        outcome.candidate
+    }
+
+    async fn defer_until_next_claim_retry(&self) {
+        let snapshot = self.claim_cooldowns.snapshot().await;
+        if let Some(retry_after) = snapshot.retry_after {
+            self.poll_wakeups
+                .request_deferred_poll_after(retry_after)
+                .await;
+        }
+    }
+
+    async fn record_claim_failure(&self, run_id: RunId, decision: ClaimFailureDecision) {
+        let status = decision
+            .status
+            .map_or_else(String::new, |status| status.as_u16().to_string());
+        let transport_kind = decision.transport_kind.unwrap_or("");
+        let response_run_id = decision
+            .response_run_id
+            .map_or_else(String::new, |run_id| run_id.to_string());
+        match self.claim_cooldowns.record(run_id, decision.cooldown).await {
+            ClaimCooldownRecord::Recorded { active_count } => {
+                error!(
+                    run_id = %run_id,
+                    failure_class = decision.class.as_str(),
+                    status = %status,
+                    transport_kind,
+                    response_run_id = %response_run_id,
+                    retry_after_ms = duration_ms(decision.cooldown),
+                    retry_scope = "candidate",
+                    retry_scheduled = true,
+                    active_cooldowns = active_count,
+                    cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
+                    "claim failed, candidate cooling down"
+                );
+                self.poll_wakeups.request_immediate_poll().await;
+            }
+            ClaimCooldownRecord::Saturated { active_count } => {
+                self.claim_cooldowns.block_all(POLL_FAST).await;
+                error!(
+                    run_id = %run_id,
+                    failure_class = decision.class.as_str(),
+                    status = %status,
+                    transport_kind,
+                    response_run_id = %response_run_id,
+                    retry_after_ms = duration_ms(POLL_FAST),
+                    retry_scope = "provider",
+                    retry_scheduled = true,
+                    active_cooldowns = active_count,
+                    cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
+                    "claim failed, candidate cooldown capacity reached"
+                );
+                self.poll_wakeups
+                    .request_deferred_poll_after(POLL_FAST)
+                    .await;
+            }
+        }
     }
 
     async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -299,6 +438,7 @@ impl JobProvider for ApiProvider {
             };
             let reason = due.reason();
             let poll_due_started_at = Instant::now();
+            let excluded_run_ids = self.claim_cooldowns.snapshot().await.run_ids;
 
             let poll_result = tokio::select! {
                 biased;
@@ -326,6 +466,7 @@ impl JobProvider for ApiProvider {
                     &self.runner_id,
                     &self.group,
                     &self.supported_profiles,
+                    &excluded_run_ids,
                     reason,
                 ) => result,
             };
@@ -335,6 +476,19 @@ impl JobProvider for ApiProvider {
                     job: Some(job),
                     http_request_elapsed,
                 }) => {
+                    if let Some(retry_after) = self.claim_cooldowns.remaining(job.run_id).await {
+                        self.poll_wakeups
+                            .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+                            .await;
+                        warn!(
+                            run_id = %job.run_id,
+                            retry_after_ms = duration_ms(retry_after),
+                            excluded_run_count = excluded_run_ids.len(),
+                            "poll: API returned candidate excluded by claim cooldown"
+                        );
+                        self.defer_until_next_claim_retry().await;
+                        continue;
+                    }
                     let record = self
                         .poll_wakeups
                         .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
@@ -380,6 +534,7 @@ impl JobProvider for ApiProvider {
                     self.poll_wakeups
                         .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                         .await;
+                    self.defer_until_next_claim_retry().await;
                 }
                 Err(e) => {
                     self.poll_wakeups
@@ -408,28 +563,37 @@ impl JobProvider for ApiProvider {
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         match self.api.claim(&candidate).await {
-            Ok(ctx) => {
+            Ok(Some(ctx)) => {
                 let claimed = match ClaimedJob::api(run_id, ctx) {
                     Ok(claimed) => claimed,
-                    Err(err) => {
-                        error!(
-                            run_id = %err.expected_run_id,
-                            context_run_id = %err.context_run_id,
-                            "claim response run_id mismatch"
-                        );
+                    Err(error) => {
+                        self.record_claim_failure(
+                            run_id,
+                            ClaimFailureDecision {
+                                class: ClaimFailureClass::ResponseInvariant,
+                                cooldown: CLAIM_DETERMINISTIC_COOLDOWN,
+                                status: None,
+                                transport_kind: None,
+                                response_run_id: Some(error.context_run_id),
+                            },
+                        )
+                        .await;
                         return None;
                     }
                 };
+                self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "job claimed");
                 Some(claimed)
             }
-            Err(RunnerError::AlreadyClaimed) => {
+            Ok(None) => {
+                self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "already claimed, skipping");
+                self.poll_wakeups.request_immediate_poll().await;
                 None
             }
             Err(e) => {
-                error!(run_id = %run_id, error = %e, "claim failed");
-                self.poll_wakeups.request_immediate_poll().await;
+                self.record_claim_failure(run_id, classify_claim_failure(&e))
+                    .await;
                 None
             }
         }
@@ -557,6 +721,64 @@ impl JobProvider for ApiProvider {
     }
 }
 
+fn classify_claim_failure(error: &ClaimApiError) -> ClaimFailureDecision {
+    match error {
+        ClaimApiError::Request(RunnerError::ApiStatus(api_error)) => {
+            let status = api_error.status;
+            let transient = matches!(
+                status,
+                StatusCode::REQUEST_TIMEOUT
+                    | StatusCode::MISDIRECTED_REQUEST
+                    | StatusCode::TOO_EARLY
+                    | StatusCode::TOO_MANY_REQUESTS
+            ) || status.is_server_error();
+            ClaimFailureDecision {
+                class: if transient {
+                    ClaimFailureClass::HttpTransient
+                } else {
+                    ClaimFailureClass::HttpDeterministic
+                },
+                cooldown: if transient {
+                    CLAIM_TRANSIENT_COOLDOWN
+                } else {
+                    CLAIM_DETERMINISTIC_COOLDOWN
+                },
+                status: Some(status),
+                transport_kind: None,
+                response_run_id: None,
+            }
+        }
+        ClaimApiError::Request(RunnerError::ApiTransport(api_error)) => ClaimFailureDecision {
+            class: ClaimFailureClass::Transport,
+            cooldown: CLAIM_TRANSIENT_COOLDOWN,
+            status: None,
+            transport_kind: Some(api_error.failure_kind.as_str()),
+            response_run_id: None,
+        },
+        ClaimApiError::Request(_) => ClaimFailureDecision {
+            class: ClaimFailureClass::Local,
+            cooldown: CLAIM_DETERMINISTIC_COOLDOWN,
+            status: None,
+            transport_kind: None,
+            response_run_id: None,
+        },
+        ClaimApiError::ResponseRead(_) => ClaimFailureDecision {
+            class: ClaimFailureClass::ResponseRead,
+            cooldown: CLAIM_TRANSIENT_COOLDOWN,
+            status: None,
+            transport_kind: None,
+            response_run_id: None,
+        },
+        ClaimApiError::ResponseDecode(_) => ClaimFailureDecision {
+            class: ClaimFailureClass::ResponseDecode,
+            cooldown: CLAIM_DETERMINISTIC_COOLDOWN,
+            status: None,
+            transport_kind: None,
+            response_run_id: None,
+        },
+    }
+}
+
 fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
     let sessions = state.held_session_states.len();
     if let RunnerError::ApiTransport(api_error) = error {
@@ -617,9 +839,16 @@ impl ApiClient {
         runner_id: &str,
         group: &str,
         supported_profiles: &[String],
+        excluded_run_ids: &[RunId],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(runner_id, group, supported_profiles, reason);
+        let body = poll_request_body(
+            runner_id,
+            group,
+            supported_profiles,
+            excluded_run_ids,
+            reason,
+        );
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -656,9 +885,12 @@ impl ApiClient {
     }
 
     /// Claim a job for execution. Treats the current HTTP 404 unavailable
-    /// response and the legacy HTTP 409 conflict response as
-    /// [`RunnerError::AlreadyClaimed`] so callers can continue gracefully.
-    async fn claim(&self, candidate: &JobCandidate) -> RunnerResult<ExecutionContext> {
+    /// response and the legacy HTTP 409 conflict response as a lost race so
+    /// callers can continue gracefully.
+    async fn claim(
+        &self,
+        candidate: &JobCandidate,
+    ) -> Result<Option<ExecutionContext>, ClaimApiError> {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate);
         let run_id = run_id.to_string();
@@ -678,17 +910,21 @@ impl ApiClient {
         .await?;
 
         if resp.status() == StatusCode::CONFLICT {
-            return Err(RunnerError::AlreadyClaimed);
+            return Ok(None);
         }
 
         if resp.status() == StatusCode::NOT_FOUND {
-            return Err(RunnerError::AlreadyClaimed);
+            return Ok(None);
         }
 
         let resp = check_api_status(resp, "claim").await?;
-        let ctx: ExecutionContext = decode_api_json(resp, "claim").await?;
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|error| ClaimApiError::ResponseRead(error.to_string()))?;
+        let ctx = decode_api_json_bytes(&body).map_err(ClaimApiError::ResponseDecode)?;
 
-        Ok(ctx)
+        Ok(Some(ctx))
     }
 
     /// Report job completion. Uses the per-job **sandbox token** for auth.
@@ -854,20 +1090,22 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
     duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
-fn poll_request_body(
-    runner_id: &str,
-    group: &str,
-    supported_profiles: &[String],
+fn poll_request_body<'a>(
+    runner_id: &'a str,
+    group: &'a str,
+    supported_profiles: &'a [String],
+    excluded_run_ids: &'a [RunId],
     reason: PollReason,
-) -> serde_json::Value {
-    serde_json::json!({
-        "runnerId": runner_id,
-        "group": group,
-        "supportedProfiles": supported_profiles,
-        "telemetry": {
-            "pollReason": poll_reason_value(reason),
+) -> PollRequestBody<'a> {
+    PollRequestBody {
+        runner_id,
+        group,
+        supported_profiles,
+        excluded_run_ids: (!excluded_run_ids.is_empty()).then_some(excluded_run_ids),
+        telemetry: PollRequestTelemetry {
+            poll_reason: poll_reason_value(reason),
         },
-    })
+    }
 }
 
 fn poll_reason_value(reason: PollReason) -> &'static str {
@@ -1360,6 +1598,20 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
+        api_provider_for_test_with_claim_cooldown_capacity(
+            api_url,
+            cancel,
+            poll_wakeups,
+            CLAIM_COOLDOWN_CAPACITY,
+        )
+    }
+
+    fn api_provider_for_test_with_claim_cooldown_capacity(
+        api_url: String,
+        cancel: CancellationToken,
+        poll_wakeups: Arc<PollWakeups>,
+        claim_cooldown_capacity: usize,
+    ) -> Arc<ApiProvider> {
         let api = ApiClient::new(
             HttpClient::new(HttpClientConfig {
                 api_url,
@@ -1381,6 +1633,7 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
+            claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             cancel,
@@ -1507,6 +1760,15 @@ mod tests {
         socket.write_all(response.as_bytes()).await.unwrap();
     }
 
+    async fn write_json_response(socket: &mut tokio::net::TcpStream, body: &str) {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    }
+
     async fn complete_sequence_server(
         statuses: Vec<u16>,
     ) -> (String, mpsc::UnboundedReceiver<String>, JoinHandle<()>) {
@@ -1603,12 +1865,14 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
-        let body = poll_request_body(
+        let body = serde_json::to_value(poll_request_body(
             "550e8400-e29b-41d4-a716-446655440000",
             "vm0/test",
             &profiles,
+            &[],
             PollReason::Immediate,
-        );
+        ))
+        .unwrap();
 
         assert_eq!(body["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(body["group"], "vm0/test");
@@ -2095,14 +2359,107 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claim_failure_after_ably_direct_candidate_wakes_poll_fallback() {
+    async fn deterministic_claim_failure_excludes_run_and_polls_next_candidate() {
         let server = MockServer::start_async().await;
-        let run_id: RunId = "00000000-0000-0000-0000-000000000009".parse().unwrap();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let rejected_run_id: RunId = "00000000-0000-0000-0000-000000000009".parse().unwrap();
+        let next_run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let rejected_claim_path = format!("/api/runners/jobs/{rejected_run_id}/claim");
+        let rejected_claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(rejected_claim_path.as_str());
+                then.status(400).body("sensitive-claim-rejection-body");
+            })
+            .await;
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
+                        "group": "default",
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "excludedRunIds": [rejected_run_id],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": next_run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let next_claim_path = format!("/api/runners/jobs/{next_run_id}/claim");
+        let next_claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(next_claim_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(RUNNER_CLAIM_RESPONSE_FIXTURE);
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(rejected_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should receive direct candidate")
+            .unwrap();
+        assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
+        let (claim, events) = capture_api_provider_events(provider.claim(direct)).await;
+        assert!(claim.is_none());
+        let event = captured_event(&events, "claim failed, candidate cooling down");
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event_field(event, "failure_class"), "http_deterministic");
+        assert_eq!(event_field(event, "status"), "400");
+        assert_eq!(event_field(event, "retry_after_ms"), "30000");
+        assert_eq!(event_field(event, "retry_scope"), "candidate");
+        assert!(
+            !format!("{event:#?}").contains("sensitive-claim-rejection-body"),
+            "claim failure event must not contain the response body"
+        );
+
+        let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("claim failure should poll for another candidate")
+            .unwrap();
+
+        assert_eq!(next.run_id(), next_run_id);
+        assert_eq!(next.discovery_source(), Some(JobDiscoverySource::Poll));
+        assert!(provider.claim(next).await.is_some());
+        rejected_claim_mock.assert_calls_async(1).await;
+        poll_mock.assert_async().await;
+        next_claim_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn lost_claim_race_polls_backlog_without_excluding_run() {
+        let server = MockServer::start_async().await;
+        let lost_run_id: RunId = "00000000-0000-0000-0000-00000000001b".parse().unwrap();
+        let next_run_id: RunId = "00000000-0000-0000-0000-00000000001c".parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{lost_run_id}/claim");
         let claim_mock = server
             .mock_async(|when, then| {
                 when.method(POST).path(claim_path.as_str());
-                then.status(503).body("claim unavailable");
+                then.status(404);
             })
             .await;
         let poll_mock = server
@@ -2119,7 +2476,7 @@ mod tests {
                     }));
                 then.status(200).json_body(serde_json::json!({
                     "job": {
-                        "runId": run_id,
+                        "runId": next_run_id,
                         "experimentalProfile": crate::profile::DEFAULT_PROFILE
                     }
                 }));
@@ -2140,28 +2497,299 @@ mod tests {
         );
         push_direct_candidate_for_test(
             &provider,
+            DirectJobCandidate::new(lost_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let lost = provider.discover().await.unwrap();
+        assert!(provider.claim(lost).await.is_none());
+        let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("lost race should promptly poll the backlog")
+            .unwrap();
+        assert_eq!(next.run_id(), next_run_id);
+
+        claim_mock.assert_calls_async(1).await;
+        poll_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn transient_claim_failure_retries_after_cooldown_and_recovers() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let (request_tx, mut requests) = mpsc::unbounded_channel();
+        let server_task = tokio::spawn(async move {
+            let (mut first_claim, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut first_claim).await;
+            write_http_status_response(&mut first_claim, 503).await;
+            request_tx.send(request).unwrap();
+
+            let (mut excluded_poll, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut excluded_poll).await;
+            write_json_response(&mut excluded_poll, r#"{"job":null}"#).await;
+            request_tx.send(request).unwrap();
+
+            let (mut retry_poll, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut retry_poll).await;
+            write_poll_job_response(&mut retry_poll, run_id).await;
+            request_tx.send(request).unwrap();
+
+            let (mut second_claim, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut second_claim).await;
+            write_json_response(&mut second_claim, RUNNER_CLAIM_RESPONSE_FIXTURE).await;
+            request_tx.send(request).unwrap();
+        });
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider =
+            api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
+        push_direct_candidate_for_test(
+            &provider,
             DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
         )
         .await;
 
-        let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
-            .await
-            .expect("discover should receive direct candidate")
-            .unwrap();
-        assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
+        let direct = provider.discover().await.unwrap();
         assert!(provider.claim(direct).await.is_none());
-        let rediscovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
-            .await
-            .expect("claim failure should wake immediate poll")
-            .unwrap();
+        let first_claim_request = next_request(&mut requests).await;
+        assert!(first_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
-        assert_eq!(rediscovered.run_id(), run_id);
-        assert_eq!(
-            rediscovered.discovery_source(),
-            Some(JobDiscoverySource::Poll)
+        let provider_for_discover = Arc::clone(&provider);
+        let discover_task =
+            tokio::spawn(async move { provider_for_discover.discover().await.unwrap() });
+        let excluded_poll_request = next_request(&mut requests).await;
+        assert!(excluded_poll_request.contains(r#""excludedRunIds":["#));
+        assert!(excluded_poll_request.contains(&run_id.to_string()));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), requests.recv())
+                .await
+                .is_err(),
+            "claim retry must wait for its transient cooldown"
         );
-        claim_mock.assert_async().await;
-        poll_mock.assert_async().await;
+
+        let retry_poll_request = tokio::time::timeout(
+            CLAIM_TRANSIENT_COOLDOWN + Duration::from_secs(1),
+            requests.recv(),
+        )
+        .await
+        .expect("runner should poll after the transient cooldown")
+        .expect("request channel should remain open");
+        assert!(!retry_poll_request.contains(r#""excludedRunIds""#));
+        let retry_candidate = tokio::time::timeout(Duration::from_secs(1), discover_task)
+            .await
+            .expect("retry poll should return the cooled candidate")
+            .unwrap();
+        assert_eq!(retry_candidate.run_id(), run_id);
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), provider.claim(retry_candidate))
+                .await
+                .expect("retry claim should receive its response")
+                .is_some()
+        );
+        let second_claim_request = tokio::time::timeout(Duration::from_secs(1), requests.recv())
+            .await
+            .expect("retry claim request should reach the server")
+            .expect("request channel should remain open");
+        assert!(second_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
+
+        tokio::time::timeout(Duration::from_secs(1), server_task)
+            .await
+            .expect("transient sequence server should finish")
+            .unwrap();
+        assert!(requests.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn old_api_returning_excluded_run_does_not_rediscover_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let run_id: RunId = "00000000-0000-0000-0000-00000000001a".parse().unwrap();
+        let (request_tx, mut requests) = mpsc::unbounded_channel();
+        let server_task = tokio::spawn(async move {
+            let (mut claim, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut claim).await;
+            write_http_status_response(&mut claim, 400).await;
+            request_tx.send(request).unwrap();
+
+            let (mut ignored_exclusion_poll, _) = listener.accept().await.unwrap();
+            let request = read_http_request_text(&mut ignored_exclusion_poll).await;
+            write_poll_job_response(&mut ignored_exclusion_poll, run_id).await;
+            request_tx.send(request).unwrap();
+        });
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let cancel = CancellationToken::new();
+        let provider = api_provider_for_test(api_url, cancel.clone(), Arc::clone(&wakeups));
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let direct = provider.discover().await.unwrap();
+        assert!(provider.claim(direct).await.is_none());
+        let claim_request = next_request(&mut requests).await;
+        assert!(claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
+
+        let provider_for_discover = Arc::clone(&provider);
+        let mut discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
+        let ignored_exclusion_request = next_request(&mut requests).await;
+        assert!(ignored_exclusion_request.contains(r#""excludedRunIds":["#));
+        assert!(ignored_exclusion_request.contains(&run_id.to_string()));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut discover_task)
+                .await
+                .is_err(),
+            "an excluded run returned by an old API must not be rediscovered"
+        );
+        assert!(requests.try_recv().is_err());
+
+        cancel.cancel();
+        assert!(discover_task.await.unwrap().is_none());
+        server_task.await.unwrap();
+        assert!(requests.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_direct_candidate_does_not_block_next_direct_candidate() {
+        let server = MockServer::start_async().await;
+        let rejected_run_id: RunId = "00000000-0000-0000-0000-000000000019".parse().unwrap();
+        let next_run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let rejected_path = format!("/api/runners/jobs/{rejected_run_id}/claim");
+        let rejected_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(rejected_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"runId":"truncated-response"#);
+            })
+            .await;
+        let next_path = format!("/api/runners/jobs/{next_run_id}/claim");
+        let next_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(next_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(RUNNER_CLAIM_RESPONSE_FIXTURE);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(true)),
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(rejected_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(next_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let rejected = provider.discover().await.unwrap();
+        assert_eq!(rejected.run_id(), rejected_run_id);
+        let (claim, events) = capture_api_provider_events(provider.claim(rejected)).await;
+        assert!(claim.is_none());
+        let event = captured_event(&events, "claim failed, candidate cooling down");
+        assert_eq!(event_field(event, "failure_class"), "response_decode");
+        assert_eq!(event_field(event, "retry_after_ms"), "30000");
+
+        let next = provider
+            .try_discover_ready()
+            .await
+            .expect("next direct candidate should remain ready");
+        assert_eq!(next.run_id(), next_run_id);
+        assert_eq!(next.discovery_source(), Some(JobDiscoverySource::Ably));
+        assert!(provider.claim(next).await.is_some());
+
+        rejected_mock.assert_calls_async(1).await;
+        next_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn saturated_claim_cooldowns_gate_repeated_direct_candidates() {
+        let server = MockServer::start_async().await;
+        let first_run_id: RunId = "00000000-0000-0000-0000-00000000001d".parse().unwrap();
+        let overflow_run_id: RunId = "00000000-0000-0000-0000-00000000001e".parse().unwrap();
+        let first_path = format!("/api/runners/jobs/{first_run_id}/claim");
+        let first_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(first_path.as_str());
+                then.status(400);
+            })
+            .await;
+        let overflow_path = format!("/api/runners/jobs/{overflow_run_id}/claim");
+        let overflow_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(overflow_path.as_str());
+                then.status(400);
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let provider = api_provider_for_test_with_claim_cooldown_capacity(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+            1,
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(first_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(overflow_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let first = provider.discover().await.unwrap();
+        assert!(provider.claim(first).await.is_none());
+        let overflow = provider.try_discover_ready().await.unwrap();
+        let (claim, events) = capture_api_provider_events(provider.claim(overflow)).await;
+        assert!(claim.is_none());
+        let event = captured_event(&events, "claim failed, candidate cooldown capacity reached");
+        assert_eq!(event_field(event, "retry_scope"), "provider");
+        assert_eq!(event_field(event, "retry_after_ms"), "5000");
+        assert_eq!(event_field(event, "active_cooldowns"), "1");
+        assert!(
+            wakeups.snapshot().await.deferred_poll_at.is_some(),
+            "saturation should defer HTTP polling"
+        );
+
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(first_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(overflow_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert!(
+            provider.try_discover_ready().await.is_none(),
+            "saturation fallback should gate repeated direct claims"
+        );
+
+        first_mock.assert_calls_async(1).await;
+        overflow_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]
@@ -2287,6 +2915,7 @@ mod tests {
                 "550e8400-e29b-41d4-a716-446655440000",
                 "default",
                 &[],
+                &[],
                 PollReason::Immediate,
             )
             .await
@@ -2316,6 +2945,7 @@ mod tests {
             .poll(
                 "550e8400-e29b-41d4-a716-446655440000",
                 "default",
+                &[],
                 &[],
                 PollReason::Immediate,
             )
@@ -2347,9 +2977,9 @@ mod tests {
             let api = api_client_for_server(&server);
 
             let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-            let err = api.claim(&candidate).await.unwrap_err();
+            let outcome = api.claim(&candidate).await.unwrap();
 
-            assert!(matches!(err, RunnerError::AlreadyClaimed));
+            assert!(outcome.is_none());
             mock.assert_async().await;
         }
     }
@@ -2385,11 +3015,11 @@ mod tests {
             .await
             .unwrap_err();
 
-        let RunnerError::Api(message) = err else {
-            panic!("expected RunnerError::Api");
+        let ClaimApiError::ResponseDecode(message) = err else {
+            panic!("expected ClaimApiError::ResponseDecode");
         };
         assert!(
-            message.contains("claim decode: failed at firewalls[0].kind"),
+            message.contains("failed at firewalls[0].kind"),
             "decode error should include JSON path, got: {message}"
         );
         assert!(
@@ -2434,11 +3064,11 @@ mod tests {
             .await
             .unwrap_err();
 
-        let RunnerError::Api(message) = err else {
-            panic!("expected RunnerError::Api");
+        let ClaimApiError::ResponseDecode(message) = err else {
+            panic!("expected ClaimApiError::ResponseDecode");
         };
         assert!(
-            message.contains("claim decode: failed at firewalls[0].kind"),
+            message.contains("failed at firewalls[0].kind"),
             "decode error should include JSON path, got: {message}"
         );
         assert!(
@@ -2483,11 +3113,11 @@ mod tests {
             .await
             .unwrap_err();
 
-        let RunnerError::Api(message) = err else {
-            panic!("expected RunnerError::Api");
+        let ClaimApiError::ResponseDecode(message) = err else {
+            panic!("expected ClaimApiError::ResponseDecode");
         };
         assert!(
-            message.contains("claim decode: failed at firewalls[0]"),
+            message.contains("failed at firewalls[0]"),
             "decode error should include JSON path, got: {message}"
         );
         assert!(
@@ -2535,11 +3165,11 @@ mod tests {
             .await
             .unwrap_err();
 
-        let RunnerError::Api(message) = err else {
-            panic!("expected RunnerError::Api");
+        let ClaimApiError::ResponseDecode(message) = err else {
+            panic!("expected ClaimApiError::ResponseDecode");
         };
         assert!(
-            message.contains("claim decode: failed at environment.<map-key>"),
+            message.contains("failed at environment.<map-key>"),
             "decode error should include a redacted dynamic map path, got: {message}"
         );
         assert!(
@@ -2571,6 +3201,7 @@ mod tests {
                 "550e8400-e29b-41d4-a716-446655440000",
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
+                &[],
                 PollReason::Immediate,
             )
             .await
@@ -2819,14 +3450,20 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await;
+        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
+            run_id,
+            crate::profile::DEFAULT_PROFILE.to_string(),
+        )))
+        .await;
 
         assert!(claimed.is_none());
+        let event = captured_event(&events, "claim failed, candidate cooling down");
+        assert_eq!(event_field(event, "failure_class"), "response_invariant");
+        assert_eq!(
+            event_field(event, "response_run_id"),
+            context_run_id.to_string()
+        );
+        assert_eq!(event_field(event, "retry_after_ms"), "30000");
         claim_mock.assert_calls_async(1).await;
     }
 
