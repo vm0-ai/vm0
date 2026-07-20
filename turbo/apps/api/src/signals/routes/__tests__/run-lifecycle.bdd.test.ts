@@ -15,6 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
@@ -59,6 +60,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import {
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
@@ -252,8 +254,8 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_prepare_args",
   "api_dispatch_pre_create_zero_resolve_agent_id",
   "api_dispatch_pre_create_zero_load_agent",
-  "api_dispatch_pre_create_zero_load_prompt_snapshot",
-  "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+  "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+  "api_dispatch_pre_create_zero_materialize_bootstrap_context",
   "api_dispatch_pre_create_zero_resolve_firewall_metadata",
   "api_dispatch_pre_create_zero_build_create_run_args",
 ] as const;
@@ -7617,9 +7619,39 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_load_prompt_snapshot",
-      "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+      "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+      "api_dispatch_pre_create_zero_materialize_bootstrap_context",
       "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        zero_bootstrap_total_row_count_bucket: "5_8",
+        zero_bootstrap_workflow_candidate_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        zero_bootstrap_total_row_count_bucket: "5_8",
+        zero_bootstrap_workflow_candidate_count_bucket: "1",
+        zero_bootstrap_workflow_winner_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      actor.email,
+      agent.agentId,
+      customConnector.id,
+      workflowName,
+      "chat:write",
     ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
@@ -7763,6 +7795,68 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("mounts the caller's private workflow over same-slug visible workflows", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const workflows = createWorkflowsBddApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a workflow run actor with an organization");
+    }
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD workflow priority agent",
+      visibility: "public",
+    });
+    const workflowName = `bdd-priority-${randomUUID().slice(0, 8)}`;
+    const publicWorkflowId = await workflows.createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      visibility: "public",
+    });
+    const privateWorkflowId = await workflows.createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      visibility: "private",
+    });
+    const otherActor = bdd.user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    const otherPrivateWorkflowId = await workflows.createWorkflow(otherActor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      visibility: "private",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "use the private workflow override",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const workflowMounts =
+      claim.storageManifest?.storages.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${workflowName}`
+        );
+      }) ?? [];
+
+    expect(workflowMounts).toHaveLength(1);
+    expect(workflowMounts[0]?.vasStorageName).toBe(
+      getCustomSkillStorageName(privateWorkflowId),
+    );
+    expect(workflowMounts[0]?.vasStorageName).not.toBe(
+      getCustomSkillStorageName(publicWorkflowId),
+    );
+    expect(workflowMounts[0]?.vasStorageName).not.toBe(
+      getCustomSkillStorageName(otherPrivateWorkflowId),
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
