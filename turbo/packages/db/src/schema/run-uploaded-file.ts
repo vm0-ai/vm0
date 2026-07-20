@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import type { RunUploadedFileMetadata } from "@vm0/db/jsonb-contracts/run-uploaded-file";
 
@@ -67,6 +68,9 @@ export const runUploadedFiles = pgTable(
         table.source,
         table.externalId,
       ),
+      index("idx_run_uploaded_files_updated")
+        .on(table.updatedAt, table.id)
+        .where(sql`${table.url} IS NOT NULL`),
     ];
   },
 );
