@@ -8001,22 +8001,18 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
-  it("accepts retired runner claim attribution telemetry", async () => {
+  it("accepts a previous runner generation relationship", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "accept retired claim attribution telemetry",
+      prompt: "accept previous runner generation relationship",
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.requestRawClaimRunnerJob(true, run.runId, [200], {
       telemetry: {
         sessionHistoryGenerationRelationship: "different",
-        sessionHistoryGenerationLocalAvailability:
-          "parked_before_discovery_lt_heartbeat_period",
-        workspaceSessionHistorySidecarRelationship: "different",
-        workspaceSessionHistorySidecarRawSizeBucket: "256_kib_1_mib",
       },
     });
     expect(claim.status).toBe(200);

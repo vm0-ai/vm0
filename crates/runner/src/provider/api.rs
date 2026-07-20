@@ -1688,11 +1688,6 @@ mod tests {
             "reusableSandbox"
         );
         assert!(
-            body["telemetry"]
-                .get("sessionHistoryGenerationRelationship")
-                .is_none()
-        );
-        assert!(
             !body
                 .to_string()
                 .contains(&target_generation_run_id.to_string())

@@ -924,12 +924,8 @@ mod tests {
         {
             let mut idle_pool = fixture.idle_pool.lock().await;
             let reservation = idle_pool
-                .reserve_reusable("sess-network-log-park", "vm0/default", &None)
-                .expect("finalized sandbox should be reusable");
-            assert_eq!(
-                reservation.history_generation_run_id_for_test(),
-                Some(run_id)
-            );
+                .reserve_reusable_generation("sess-network-log-park", "vm0/default", &None, run_id)
+                .expect("finalized sandbox should be reusable for its generation");
             assert!(matches!(
                 idle_pool.restore_reserved(reservation),
                 RestoreReservedIdleResult::Restored
