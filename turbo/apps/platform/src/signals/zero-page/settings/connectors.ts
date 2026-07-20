@@ -1754,10 +1754,6 @@ function createConnectorExternalCodeRequestId(type: ConnectorType): string {
   return `${type}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function externalCodeErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Connection failed";
-}
-
 function isCurrentConnectorExternalCodeRequest(
   state: ConnectorExternalCodeState,
   type: ConnectorType,
@@ -1995,21 +1991,18 @@ const completeConnectorExternalCode$ = command(
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
           apiBase: OAUTH_WEB_API_BASE,
         });
-        const completeSettled = await settle(
-          accept(
-            client.complete({
-              params: { type, sessionId: current.sessionId },
-              body: {
-                sessionToken: current.sessionToken,
-                code,
-              },
-              fetchOptions: { signal: flowSignal },
-            }),
-            [200],
-            { toast: false },
-          ),
+        const completeResult = await accept(
+          client.complete({
+            params: { type, sessionId: current.sessionId },
+            body: {
+              sessionToken: current.sessionToken,
+              code,
+            },
+            fetchOptions: { signal: flowSignal },
+          }),
+          [200, 400, 404],
         );
-        if (completeSettled.ok) {
+        if (completeResult.status === 200) {
           connectorStateChanged = true;
         }
         signal.throwIfAborted();
@@ -2026,14 +2019,14 @@ const completeConnectorExternalCode$ = command(
           return false;
         }
 
-        if (!completeSettled.ok) {
+        if (completeResult.status !== 200) {
           if (flowSignal.aborted) {
             return false;
           }
           set(internalConnectorExternalCodeState$, {
             ...latest,
             status: "pending",
-            errorMessage: externalCodeErrorMessage(completeSettled.error),
+            errorMessage: completeResult.body.error.message,
           });
           return false;
         }

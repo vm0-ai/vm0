@@ -32,7 +32,6 @@ export const fetchDownloadExtra$ = command(
           fetchOptions: { signal: _signal },
         }),
         [200, 404],
-        { toast: false },
       );
       return result.status === 200 ? result.body : undefined;
     };
@@ -43,7 +42,6 @@ export const fetchDownloadExtra$ = command(
         get(zeroClient$)(zeroRunNetworkLogsContract),
         runId,
         _signal,
-        { toast: false },
       ),
     ]);
     _signal.throwIfAborted();

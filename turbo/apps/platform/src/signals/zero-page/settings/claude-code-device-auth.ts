@@ -5,11 +5,11 @@ import {
   type ClaudeCodeDeviceAuthScope,
 } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 
-import { ApiError, accept } from "../../../lib/accept.ts";
+import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { bestEffort, resetSignal, settle, tapError } from "../../utils.ts";
+import { bestEffort, resetSignal, tapError } from "../../utils.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
 type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
@@ -54,15 +54,6 @@ function createRequestId(scope: ClaudeCodeDeviceAuthScope): string {
 
 function secondsToMilliseconds(seconds: number): number {
   return seconds * 1000;
-}
-
-function claudeCodeDeviceAuthErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  return error instanceof Error
-    ? error.message
-    : "Claude Code connection failed";
 }
 
 function openApprovalPage(browserUrl: string): boolean {
@@ -132,11 +123,10 @@ const completeClaudeCodeDeviceAuth$ = command(
         },
         fetchOptions: { signal },
       }),
-      [200],
-      { toast: false },
+      [200, 400, 404, 503],
     );
     signal.throwIfAborted();
-    return result.body;
+    return result;
   },
 );
 
@@ -151,7 +141,6 @@ const cancelClaudeCodeDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
@@ -309,13 +298,10 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
         status: "submitting",
         errorMessage: null,
       });
-      const completed = await settle(
-        set(
-          completeClaudeCodeDeviceAuth$,
-          current.sessionToken,
-          current.authorizationCode,
-          signal,
-        ),
+      const completed = await set(
+        completeClaudeCodeDeviceAuth$,
+        current.sessionToken,
+        current.authorizationCode,
         signal,
       );
       signal.throwIfAborted();
@@ -324,12 +310,9 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       if (!isCurrentActive(latest, current.requestId)) {
         return false;
       }
-      if (!completed.ok) {
-        const message = claudeCodeDeviceAuthErrorMessage(completed.error);
-        if (
-          completed.error instanceof ApiError &&
-          completed.error.status === 400
-        ) {
+      if (completed.status !== 200) {
+        const message = completed.body.error.message;
+        if (completed.status === 400) {
           set(ctx.internalFlowState$, {
             ...latest,
             status: "pending",
