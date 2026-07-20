@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.14...guest-agent-v0.53.15) (2026-07-20)
+
+
+### Refactoring
+
+* **api-contracts:** type guest checkpoint requests ([#22219](https://github.com/vm0-ai/vm0/issues/22219)) ([23ebfc5](https://github.com/vm0-ai/vm0/commit/23ebfc5c758d6b986cb3bb824fb748c6a8b6ec07))
+
 ## [0.53.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.13...guest-agent-v0.53.14) (2026-07-20)
 
 

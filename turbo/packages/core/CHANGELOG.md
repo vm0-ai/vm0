@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.443.0](https://github.com/vm0-ai/vm0/compare/core-v8.442.3...core-v8.443.0) (2026-07-20)
+
+
+### Features
+
+* add composer attachment references ([#22208](https://github.com/vm0-ai/vm0/issues/22208)) ([5e241ab](https://github.com/vm0-ai/vm0/commit/5e241abbfe591505b4b8ad9fae969254fedb3c1a))
+* add per-connector permission config entry in composer connector popover ([#21849](https://github.com/vm0-ai/vm0/issues/21849)) ([00ce45e](https://github.com/vm0-ai/vm0/commit/00ce45ed93a1238fcc0769dd7f960f2b185e1a7b))
+* gate refreshed website template packages ([#22222](https://github.com/vm0-ai/vm0/issues/22222)) ([d1059c0](https://github.com/vm0-ai/vm0/commit/d1059c0b51a98376509587161183d207b8f8952e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.5
+    * @vm0/connectors bumped to 1.173.0
+
 ## [8.442.3](https://github.com/vm0-ai/vm0/compare/core-v8.442.2...core-v8.442.3) (2026-07-20)
 
 

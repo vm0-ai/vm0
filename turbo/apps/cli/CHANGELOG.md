@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.244.0](https://github.com/vm0-ai/vm0/compare/cli-v9.243.4...cli-v9.244.0) (2026-07-20)
+
+
+### Features
+
+* gate refreshed website template packages ([#22222](https://github.com/vm0-ai/vm0/issues/22222)) ([d1059c0](https://github.com/vm0-ai/vm0/commit/d1059c0b51a98376509587161183d207b8f8952e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.202.5
+    * @vm0/connectors bumped to 1.173.0
+    * @vm0/core bumped to 8.443.0
+
 ## [9.243.4](https://github.com/vm0-ai/vm0/compare/cli-v9.243.3...cli-v9.243.4) (2026-07-20)
 
 

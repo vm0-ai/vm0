@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.16...runner-rs-v0.146.17) (2026-07-20)
+
+
+### Refactoring
+
+* **runner:** remove claim resource telemetry ([#22230](https://github.com/vm0-ai/vm0/issues/22230)) ([cbb2bf1](https://github.com/vm0-ai/vm0/commit/cbb2bf1b10c9b2364d7f13b2b8d7409f35c2f360))
+
 ## [0.146.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.15...runner-rs-v0.146.16) (2026-07-20)
 
 
