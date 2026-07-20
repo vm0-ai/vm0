@@ -719,6 +719,30 @@ describe("Slack OAuth API routes", () => {
       expect(installation).toBeUndefined();
     });
 
+    it("rejects an install OAuth response without an authenticated user ID", async () => {
+      const teamId = "T_MISSING_AUTHENTICATED_USER";
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: "xoxb-test-token",
+        bot_user_id: "B_TEST",
+        team: { id: teamId, name: "Test Workspace" },
+      });
+
+      const response = await appRequest(
+        "/api/zero/slack/oauth/callback?code=valid-code",
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain(`${APP_ORIGIN}/slack/failed`);
+      if (!location) {
+        throw new Error("Expected Slack OAuth failure redirect location");
+      }
+      expect(decodeURIComponent(location)).toContain(
+        "Failed to complete Slack installation",
+      );
+    });
+
     it("rejects a platform install when the workspace belongs to another org", async () => {
       const originalOrgId = `org_original_${now()}`;
       const requestingOrgId = `org_requesting_${now()}`;
