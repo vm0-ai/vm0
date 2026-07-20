@@ -138,6 +138,13 @@ const connectorCatalogFilteringStatusSchema = z.object({
   filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema,
 });
 
+const connectorCredentialStorageReadinessSchema = z.object({
+  missingConnectorVersions: z.number().int().nonnegative(),
+  unownedConnectorSecrets: z.number().int().nonnegative(),
+  unownedConnectorVariables: z.number().int().nonnegative(),
+  unresolvedBridgeCredentials: z.number().int().nonnegative(),
+});
+
 const connectorCatalogSyncStatusSchema = z.object({
   state: z.enum(["never-synced", "current", "stale"]),
   active: z
@@ -156,6 +163,7 @@ const connectorCatalogSyncStatusSchema = z.object({
     .nullable(),
   lastSuccessAt: z.string().datetime().nullable(),
   filtering: connectorCatalogFilteringStatusSchema,
+  credentialStorage: connectorCredentialStorageReadinessSchema,
 });
 
 const connectorCatalogSyncResponseSchema =

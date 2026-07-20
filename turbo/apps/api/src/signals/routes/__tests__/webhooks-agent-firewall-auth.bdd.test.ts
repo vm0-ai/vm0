@@ -561,7 +561,7 @@ describe("FW-3: billable firewall lease", () => {
 });
 
 describe("FW-4: test-oauth connector refresh", () => {
-  it("refreshes a legacy null-version token and records the selected version", async () => {
+  it("fails closed before the provider for a null storage version", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
@@ -577,10 +577,11 @@ describe("FW-4: test-oauth connector refresh", () => {
       connectorRef: "test-oauth",
       storageVersion: null,
     });
+    let providerCalls = 0;
     fw.mockTestOauthTokenRefresh(() => {
+      providerCalls += 1;
       return fw.oauthTokenResponse({
-        accessToken: "fresh-access-1",
-        refreshToken: "refresh-2",
+        accessToken: "must-not-be-written",
         expiresIn: 3600,
       });
     });
@@ -595,23 +596,12 @@ describe("FW-4: test-oauth connector refresh", () => {
       secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
     };
 
-    const before = Math.floor(now() / 1000);
-    const refreshed = await fw.requestFirewallAuth(headers, body, [200]);
-    if (refreshed.status !== 200) {
-      throw new Error("Expected refresh to succeed");
+    const response = await fw.requestFirewallAuth(headers, body, [424]);
+    if (response.status !== 424) {
+      throw new Error("Expected null storage version to be unavailable");
     }
-    expect(refreshed.body.headers.Authorization).toBe("Bearer fresh-access-1");
-    expect(refreshed.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(refreshed.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
-    expect(refreshed.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 3500);
-    expect(refreshed.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 3700);
-
-    const served = await fw.requestFirewallAuth(headers, body, [200]);
-    if (served.status !== 200) {
-      throw new Error("Expected stored-token resolution to succeed");
-    }
-    expect(served.body.headers.Authorization).toBe("Bearer fresh-access-1");
-    expect(served.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+    expect(providerCalls).toBe(0);
 
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: actor.orgId ?? "",
@@ -619,19 +609,7 @@ describe("FW-4: test-oauth connector refresh", () => {
       connectorRef: "test-oauth",
       secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
     });
-    expect(storageState.connector?.storage_version).toBe(1);
-    expect(storageState.secrets).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "TEST_OAUTH_ACCESS_TOKEN",
-          connector_id: storageState.connector?.id,
-        }),
-        expect.objectContaining({
-          name: "TEST_OAUTH_REFRESH_TOKEN",
-          connector_id: storageState.connector?.id,
-        }),
-      ]),
-    );
+    expect(storageState.connector?.storage_version).toBeNull();
   });
 
   it("does not call the provider for a known storage version mismatch", async () => {

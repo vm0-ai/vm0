@@ -24,7 +24,11 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import {
+  seedConnectorStorageRow,
+  setConnectorCredentialStorageState,
+  setConnectorSecretOwner,
+} from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -386,6 +390,51 @@ describe("POST /api/zero/mail/drafts/link", () => {
       storageVersion: 2,
       tokenExpiresAt: "2020-01-01T00:00:00.000Z",
     });
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "must-not-be-written",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Connect and authorize Gmail for this agent first",
+    );
+    expect(refreshCalls).toBe(0);
+  });
+
+  it("does not read Gmail credentials owned by another connector", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const foreignConnectorId = await seedConnectorStorageRow(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorRef: "github",
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    for (const name of ["GMAIL_ACCESS_TOKEN", "GMAIL_REFRESH_TOKEN"]) {
+      await setConnectorSecretOwner(context, {
+        connectorId: foreignConnectorId,
+        name,
+        orgId: fixture.actor.orgId ?? "",
+        userId: fixture.actor.userId,
+      });
+    }
     let refreshCalls = 0;
     server.use(
       http.post("https://oauth2.googleapis.com/token", () => {

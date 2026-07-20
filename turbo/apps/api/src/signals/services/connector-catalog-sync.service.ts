@@ -46,11 +46,11 @@ interface ConnectorCatalogSource {
 
 type ConnectorCatalogRawSyncStatus = Omit<
   ConnectorCatalogSyncStatus,
-  "filtering"
+  "filtering" | "credentialStorage"
 >;
 type ConnectorCatalogRawSyncResponse = Omit<
   ConnectorCatalogSyncResponse,
-  "filtering"
+  "filtering" | "credentialStorage"
 >;
 
 interface SyncStateSnapshot {

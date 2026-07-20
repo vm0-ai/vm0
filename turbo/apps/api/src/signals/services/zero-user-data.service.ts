@@ -413,10 +413,12 @@ export const setUserVariable$ = command(
   },
 );
 
-export function userSecrets({
-  orgId,
-  userId,
-}: UserScopedQuery): Computed<Promise<{ readonly secrets: SecretResponse[] }>> {
+export function userSecrets({ orgId, userId }: UserScopedQuery): Computed<
+  Promise<{
+    readonly secrets: SecretResponse[];
+    readonly connectorOwnerBySecretId: ReadonlyMap<string, string | null>;
+  }>
+> {
   return computed(async (get) => {
     const db = get(db$);
     const rows = await db
@@ -424,6 +426,7 @@ export function userSecrets({
         id: secrets.id,
         name: secrets.name,
         description: secrets.description,
+        connectorId: secrets.connectorId,
         type: secrets.type,
         createdAt: secrets.createdAt,
         updatedAt: secrets.updatedAt,
@@ -433,6 +436,11 @@ export function userSecrets({
       .orderBy(secrets.name);
 
     return {
+      connectorOwnerBySecretId: new Map(
+        rows.map((row) => {
+          return [row.id, row.connectorId] as const;
+        }),
+      ),
       secrets: rows.map((row) => {
         return {
           id: row.id,

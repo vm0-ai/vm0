@@ -28,6 +28,7 @@
  */
 
 import { execSync } from "node:child_process";
+import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -38,6 +39,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
 const MIGRATIONS_DIR = path.join(PACKAGE_DIR, "src/migrations");
 const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
+const RESTORE_DIR = path.join(dirname, "../.migrations-restore");
 
 // Parse DATABASE_URL to get connection details
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -273,8 +275,11 @@ async function backupMigrations(): Promise<void> {
 
 async function restoreMigrations(): Promise<void> {
   console.log("♻️  Restoring original migrations...");
+  await fs.access(BACKUP_DIR);
+  await fs.rm(RESTORE_DIR, { recursive: true, force: true });
+  await fs.cp(BACKUP_DIR, RESTORE_DIR, { recursive: true });
   await fs.rm(MIGRATIONS_DIR, { recursive: true, force: true });
-  await fs.cp(BACKUP_DIR, MIGRATIONS_DIR, { recursive: true });
+  await fs.rename(RESTORE_DIR, MIGRATIONS_DIR);
   await fs.rm(BACKUP_DIR, { recursive: true, force: true });
 }
 
@@ -493,6 +498,184 @@ async function runMigrationsUpTo(
     }
   } finally {
     await client.end();
+  }
+}
+
+async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.25: Validate connector credential ownership backfill ===\n",
+  );
+  const testDb = "migration_connector_credential_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectorIds = {
+    github: "00000000-0000-4000-8000-000000000001",
+    gumroad: "00000000-0000-4000-8000-000000000002",
+    unknown: "00000000-0000-4000-8000-000000000003",
+    steam: "00000000-0000-4000-8000-000000000004",
+    unknownMethod: "00000000-0000-4000-8000-000000000005",
+  } as const;
+  const secretIds = {
+    github: "10000000-0000-4000-8000-000000000001",
+    staleMethod: "10000000-0000-4000-8000-000000000002",
+    unknown: "10000000-0000-4000-8000-000000000003",
+    user: "10000000-0000-4000-8000-000000000004",
+    preowned: "10000000-0000-4000-8000-000000000005",
+    unknownMethod: "10000000-0000-4000-8000-000000000006",
+  } as const;
+  const variableIds = {
+    steam: "20000000-0000-4000-8000-000000000001",
+    unknown: "20000000-0000-4000-8000-000000000002",
+    user: "20000000-0000-4000-8000-000000000003",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 627);
+    const seedClient = new Client({ connectionString: testDbUrl });
+    await seedClient.connect();
+    try {
+      await seedClient.query(
+        `
+          INSERT INTO "connectors"
+            ("id", "type", "auth_method", "storage_version", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'github', 'oauth', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'gumroad', 'oauth', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'unknown-ref', 'api-token', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'steam', 'openid', 7, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($5, 'github', 'missing-method', NULL, 'backfill-org', 'other-user', '2020-01-01')
+        `,
+        Object.values(connectorIds),
+      );
+      await seedClient.query(
+        `
+          INSERT INTO "secrets"
+            ("id", "name", "encrypted_value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'GITHUB_ACCESS_TOKEN', 'github-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'GUMROAD_TOKEN', 'stale-method-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'UNKNOWN_CONNECTOR_SECRET', 'unknown-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'GITHUB_ACCESS_TOKEN', 'user-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($5, 'PREOWNED_CONNECTOR_SECRET', 'preowned-value', 'connector', $7, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($6, 'GITHUB_ACCESS_TOKEN', 'unknown-method-value', 'connector', NULL, 'backfill-org', 'other-user', '2020-01-01')
+        `,
+        [...Object.values(secretIds), connectorIds.gumroad],
+      );
+      await seedClient.query(
+        `
+          INSERT INTO "variables"
+            ("id", "name", "value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'STEAM_ID', 'steam-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($2, 'UNKNOWN_CONNECTOR_VARIABLE', 'unknown-variable-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($3, 'STEAM_ID', 'user-variable-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01')
+        `,
+        Object.values(variableIds),
+      );
+    } finally {
+      await seedClient.end();
+    }
+
+    await runMigrationsUpTo(testDbUrl, 628);
+    const assertionClient = new Client({ connectionString: testDbUrl });
+    await assertionClient.connect();
+    try {
+      const connectorRows = await assertionClient.query<{
+        id: string;
+        storage_version: string | null;
+        updated_at: string;
+      }>(
+        `SELECT "id", "storage_version", "updated_at"::text AS "updated_at" FROM "connectors" ORDER BY "id"`,
+      );
+      const connectorVersions = new Map(
+        connectorRows.rows.map((row) => {
+          return [row.id, row.storage_version] as const;
+        }),
+      );
+      assert.equal(connectorVersions.get(connectorIds.github), "1");
+      assert.equal(connectorVersions.get(connectorIds.gumroad), "1");
+      assert.equal(connectorVersions.get(connectorIds.unknown), null);
+      assert.equal(connectorVersions.get(connectorIds.steam), "7");
+      assert.equal(connectorVersions.get(connectorIds.unknownMethod), null);
+      for (const row of connectorRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+
+      const secretRows = await assertionClient.query<{
+        connector_id: string | null;
+        encrypted_value: string;
+        id: string;
+        updated_at: string;
+      }>(
+        `SELECT "id", "connector_id", "encrypted_value", "updated_at"::text AS "updated_at" FROM "secrets" WHERE "id"::text LIKE '10000000-%' ORDER BY "id"`,
+      );
+      const secretOwners = new Map(
+        secretRows.rows.map((row) => {
+          return [row.id, row.connector_id] as const;
+        }),
+      );
+      assert.equal(secretOwners.get(secretIds.github), connectorIds.github);
+      assert.equal(
+        secretOwners.get(secretIds.staleMethod),
+        connectorIds.gumroad,
+      );
+      assert.equal(secretOwners.get(secretIds.unknown), null);
+      assert.equal(secretOwners.get(secretIds.user), null);
+      assert.equal(secretOwners.get(secretIds.preowned), connectorIds.gumroad);
+      assert.equal(
+        secretOwners.get(secretIds.unknownMethod),
+        connectorIds.unknownMethod,
+      );
+      assert.deepEqual(
+        secretRows.rows.map((row) => {
+          return row.encrypted_value;
+        }),
+        [
+          "github-value",
+          "stale-method-value",
+          "unknown-value",
+          "user-value",
+          "preowned-value",
+          "unknown-method-value",
+        ],
+      );
+      for (const row of secretRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+
+      const variableRows = await assertionClient.query<{
+        connector_id: string | null;
+        id: string;
+        updated_at: string;
+        value: string;
+      }>(
+        `SELECT "id", "connector_id", "value", "updated_at"::text AS "updated_at" FROM "variables" WHERE "id"::text LIKE '20000000-%' ORDER BY "id"`,
+      );
+      const variableOwners = new Map(
+        variableRows.rows.map((row) => {
+          return [row.id, row.connector_id] as const;
+        }),
+      );
+      assert.equal(variableOwners.get(variableIds.steam), connectorIds.steam);
+      assert.equal(variableOwners.get(variableIds.unknown), null);
+      assert.equal(variableOwners.get(variableIds.user), null);
+      assert.deepEqual(
+        variableRows.rows.map((row) => {
+          return row.value;
+        }),
+        ["steam-value", "unknown-variable-value", "user-variable-value"],
+      );
+      for (const row of variableRows.rows) {
+        assert.equal(row.updated_at, "2020-01-01 00:00:00");
+      }
+    } finally {
+      await assertionClient.end();
+    }
+    console.log(
+      "   ✅ Backfill updates only recognized connector versions and owners\n",
+    );
+  } finally {
+    await dropDatabase(testDb);
   }
 }
 
@@ -803,6 +986,7 @@ async function main(): Promise<void> {
 
   const TEST_DB_1 = "migration_test_existing";
   const TEST_DB_2 = "migration_test_generated";
+  let migrationsBackedUp = false;
 
   try {
     // Step 0: Validate snapshot files
@@ -810,6 +994,8 @@ async function main(): Promise<void> {
 
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
+
+    await validateConnectorCredentialOwnershipBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -826,6 +1012,7 @@ async function main(): Promise<void> {
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
     await backupMigrations();
+    migrationsBackedUp = true;
     await generateFreshMigrations();
 
     // Step 3: Test with regenerated migrations
@@ -836,6 +1023,7 @@ async function main(): Promise<void> {
 
     // Step 4: Restore original migrations
     await restoreMigrations();
+    migrationsBackedUp = false;
 
     // Step 5: Run normalized comparison (using pg library)
     console.log("=== Phase 4: Normalized schema comparison ===\n");
@@ -895,7 +1083,9 @@ async function main(): Promise<void> {
 
     // Try to cleanup
     try {
-      await restoreMigrations();
+      if (migrationsBackedUp) {
+        await restoreMigrations();
+      }
       await dropDatabase(TEST_DB_1);
       await dropDatabase(TEST_DB_2);
     } catch (cleanupError) {

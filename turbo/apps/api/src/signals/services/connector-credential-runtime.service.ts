@@ -4,7 +4,7 @@ import { resolveConnectorAuthClient } from "@vm0/connectors/connector-utils";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
@@ -14,11 +14,16 @@ import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { settleIncludingAbort } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
-import {
-  getConnectorRuntimeMethod,
-  type ConnectorRuntimeMethod,
-  type ConnectorRuntimeSnapshot,
+import type {
+  ConnectorRuntimeMethod,
+  ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialSecretReadCondition,
+  connectorCredentialVariableReadCondition,
+  resolveConnectorCredentialAccess,
+  type ConnectorCredentialAccess,
+} from "./connector-credential-access.service";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -32,6 +37,7 @@ const log = logger("api:connector-credential-runtime");
 const oauthScopesSchema = z.array(z.string());
 
 export interface ConnectorCredentialConnection {
+  readonly access: ConnectorCredentialAccess;
   readonly connectorId: string;
   readonly connectorRef: string;
   readonly externalEmail: string | null;
@@ -40,7 +46,7 @@ export interface ConnectorCredentialConnection {
   readonly oauthScopes: readonly string[] | null;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly stateRevision: string;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
 }
 
@@ -150,27 +156,34 @@ export async function loadConnectorCredentialConnection(args: {
   if (!row) {
     return { kind: "missing" };
   }
-  const runtimeMethod = getConnectorRuntimeMethod({
+  const accessResult = resolveConnectorCredentialAccess({
     snapshot: args.snapshot,
-    connectorRef: args.connectorRef,
-    authMethodId: row.authMethod,
-    requireExecutable: true,
+    stored: {
+      authMethodId: row.authMethod,
+      connectorId: row.connectorId,
+      connectorRef: args.connectorRef,
+      orgId: args.orgId,
+      storageVersion: row.storageVersion,
+      userId: args.userId,
+    },
   });
-  if (!runtimeMethod) {
+  if (accessResult.kind !== "ok") {
     return { kind: "unavailable" };
   }
+  const { access } = accessResult;
   return {
     kind: "ok",
     connection: {
+      access,
       connectorId: row.connectorId,
       connectorRef: args.connectorRef,
       externalEmail: row.externalEmail,
       externalId: row.externalId,
       needsReconnect: row.needsReconnect,
       oauthScopes: parseOauthScopes(row.oauthScopes),
-      runtimeMethod,
+      runtimeMethod: access.runtimeMethod,
       stateRevision: row.stateRevision,
-      storageVersion: row.storageVersion,
+      storageVersion: access.storageVersion,
       tokenExpiresAt: row.tokenExpiresAt,
     },
   };
@@ -192,10 +205,9 @@ export function connectorCredentialRuntimeValueRef(
 }
 
 export async function loadConnectorCredentialValues(args: {
+  readonly connection: ConnectorCredentialConnection;
   readonly db: ReadonlyDb;
   readonly featureSwitchContext?: FeatureSwitchContext;
-  readonly orgId: string;
-  readonly userId: string;
   readonly valueRefs: readonly string[];
 }): Promise<ReadonlyMap<string, string>> {
   const refs = args.valueRefs.map(connectorStoredValueRef);
@@ -205,49 +217,66 @@ export async function loadConnectorCredentialValues(args: {
   const variableNames = refs.flatMap((ref) => {
     return ref.kind === "variable" ? [ref.name] : [];
   });
-  const secretRows =
-    secretNames.length === 0
-      ? []
-      : await args.db
-          .select({
-            name: secrets.name,
-            encryptedValue: secrets.encryptedValue,
-          })
-          .from(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, args.orgId),
-              eq(secrets.userId, args.userId),
-              eq(secrets.type, "connector"),
-              inArray(secrets.name, secretNames),
-            ),
-          );
-  const variableRows =
-    variableNames.length === 0
-      ? []
-      : await args.db
-          .select({ name: variables.name, value: variables.value })
-          .from(variables)
-          .where(
-            and(
-              eq(variables.orgId, args.orgId),
-              eq(variables.userId, args.userId),
-              eq(variables.type, "connector"),
-              inArray(variables.name, variableNames),
-            ),
-          );
-  const values = new Map<string, string>();
-  for (const row of secretRows) {
-    values.set(
-      `$secrets.${row.name}`,
-      await decryptStoredSecretValue(
-        row.encryptedValue,
-        args.featureSwitchContext,
-      ),
-    );
+  if (secretNames.length === 0 && variableNames.length === 0) {
+    return new Map();
   }
-  for (const row of variableRows) {
-    values.set(`$vars.${row.name}`, row.value);
+  const secretQuery = args.db
+    .select({
+      kind: sql`'secret'`.mapWith(pgTextDecoder).as("kind"),
+      name: secrets.name,
+      value: secrets.encryptedValue,
+    })
+    .from(secrets)
+    .where(
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [
+          {
+            access: args.connection.access,
+            names: secretNames,
+          },
+        ],
+      }),
+    );
+  const variableQuery = args.db
+    .select({
+      kind: sql`'variable'`.mapWith(pgTextDecoder).as("kind"),
+      name: variables.name,
+      value: variables.value,
+    })
+    .from(variables)
+    .where(
+      connectorCredentialVariableReadCondition({
+        db: args.db,
+        groups: [
+          {
+            access: args.connection.access,
+            names: variableNames,
+          },
+        ],
+      }),
+    );
+  // A single statement snapshot prevents same-contract replacement from
+  // combining a secret from one stored state with a variable from another.
+  const rows = await secretQuery.unionAll(variableQuery);
+  const values = new Map<string, string>();
+  for (const row of rows) {
+    switch (row.kind) {
+      case "secret": {
+        values.set(
+          `$secrets.${row.name}`,
+          await decryptStoredSecretValue(row.value, args.featureSwitchContext),
+        );
+        break;
+      }
+      case "variable": {
+        values.set(`$vars.${row.name}`, row.value);
+        break;
+      }
+      default: {
+        throw new Error("Invalid connector credential value kind");
+      }
+    }
   }
   return values;
 }
@@ -371,17 +400,15 @@ async function persistConnectorRefresh(args: {
         args.connection.runtimeMethod.authMethodId ||
       currentConnector.externalEmail !== args.connection.externalEmail ||
       currentConnector.externalId !== args.connection.externalId ||
-      (currentConnector.storageVersion !== null &&
-        currentConnector.storageVersion !==
-          args.connection.runtimeMethod.method.storage.version) ||
+      currentConnector.storageVersion !==
+        args.connection.runtimeMethod.method.storage.version ||
       !currentRevisionCanAcceptRefresh
     ) {
       return { kind: "connection-changed" } as const;
     }
     const currentInputValues = await loadConnectorCredentialValues({
+      connection: args.connection,
       db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
       valueRefs: Object.values(access.inputs),
       ...(args.featureSwitchContext === undefined
         ? {}
@@ -476,9 +503,8 @@ async function loadConnectorRefreshInputs(
   | { readonly kind: "missing-input" }
 > {
   const inputValues = await loadConnectorCredentialValues({
+    connection: args.connection,
     db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
     valueRefs: Object.values(access.inputs),
     ...(args.featureSwitchContext === undefined
       ? {}
@@ -522,9 +548,8 @@ export async function refreshConnectorCredentialAccess(
   args: ConnectorCredentialRefreshArgs,
 ): Promise<ConnectorCredentialRefreshResult> {
   if (
-    args.connection.storageVersion !== null &&
     args.connection.storageVersion !==
-      args.connection.runtimeMethod.method.storage.version
+    args.connection.runtimeMethod.method.storage.version
   ) {
     return { kind: "connection-changed" };
   }

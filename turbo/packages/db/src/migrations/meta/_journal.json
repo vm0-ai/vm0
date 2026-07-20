@@ -4397,6 +4397,13 @@
       "when": 1784534410768,
       "tag": "0627_expand_chat_message_queue_automation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 628,
+      "version": "7",
+      "when": 1784541390307,
+      "tag": "0628_activate_connector_credential_ownership",
+      "breakpoints": true
     }
   ]
 }

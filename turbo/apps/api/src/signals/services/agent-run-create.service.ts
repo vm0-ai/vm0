@@ -9,11 +9,9 @@ import {
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import {
-  connectorCatalogAuthMethodIdSchema,
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+import type {
+  ConnectorCatalogAuthMethodId,
+  ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   getDefaultModel,
@@ -177,11 +175,17 @@ import {
 } from "./connector-credential-status.service";
 import {
   getConnectorRuntimeConnector,
-  getConnectorRuntimeMethod,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialSecretReadCondition,
+  connectorCredentialVariableReadCondition,
+  resolveConnectorCredentialAccess,
+  type ConnectorCredentialAccess,
+  type ConnectorCredentialReadGroup,
+} from "./connector-credential-access.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -2243,6 +2247,7 @@ function filterSecretConnectorMetadataMap(args: {
 }
 
 interface StoredConnectorRuntimeRow {
+  readonly access: ConnectorCredentialAccess;
   readonly connectorType: ConnectorCatalogRef;
   readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
@@ -2251,13 +2256,18 @@ interface StoredConnectorRuntimeRow {
 }
 
 interface StoredConnectorRuntimeRowCandidate {
+  readonly connectorId: string;
   readonly type: string;
   readonly authMethod: string;
   readonly needsReconnect: boolean;
+  readonly orgId: string;
+  readonly storageVersion: number | null;
   readonly tokenExpiresAt: Date | null;
+  readonly userId: string;
 }
 
 interface ConnectorEnvBindingSet {
+  readonly access: ConnectorCredentialAccess;
   readonly connectorType: ConnectorCatalogRef;
   readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
@@ -2321,30 +2331,31 @@ function allowedStoredConnectorRows(
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
-    const connectorRef = connectorCatalogRefSchema.safeParse(row.type);
-    const authMethodId = connectorCatalogAuthMethodIdSchema.safeParse(
-      row.authMethod,
-    );
-    if (!connectorRef.success || !authMethodId.success) {
+    const accessResult = resolveConnectorCredentialAccess({
+      snapshot,
+      stored: {
+        authMethodId: row.authMethod,
+        connectorId: row.connectorId,
+        connectorRef: row.type,
+        orgId: row.orgId,
+        storageVersion: row.storageVersion,
+        userId: row.userId,
+      },
+    });
+    if (accessResult.kind !== "ok") {
       return [];
     }
-    const runtimeMethod = getConnectorRuntimeMethod({
-      snapshot,
-      connectorRef: connectorRef.data,
-      authMethodId: authMethodId.data,
-      requireExecutable: true,
-    });
-    return runtimeMethod
-      ? [
-          {
-            connectorType: connectorRef.data,
-            authMethod: authMethodId.data,
-            runtimeMethod,
-            needsReconnect: row.needsReconnect,
-            tokenExpiresAt: row.tokenExpiresAt,
-          },
-        ]
-      : [];
+    const { access } = accessResult;
+    return [
+      {
+        access,
+        connectorType: access.runtimeMethod.connectorRef,
+        authMethod: access.runtimeMethod.authMethodId,
+        runtimeMethod: access.runtimeMethod,
+        needsReconnect: row.needsReconnect,
+        tokenExpiresAt: row.tokenExpiresAt,
+      },
+    ];
   });
   return validRows.filter((row) => {
     return (
@@ -2375,6 +2386,7 @@ function connectorEnvBindingSets(
       row.runtimeMethod.method,
     );
     return {
+      access: row.access,
       connectorType: row.connectorType,
       authMethod: row.authMethod,
       runtimeBindings: metadata.runtimeBindings,
@@ -2407,6 +2419,31 @@ function collectStoredConnectorRequirements(
   }
 
   return { secretNames, variableNames };
+}
+
+function storedConnectorCredentialReadGroups(args: {
+  readonly bindingSets: readonly ConnectorEnvBindingSet[];
+  readonly kind: "secret" | "variable";
+  readonly names?: ReadonlySet<string>;
+}): readonly ConnectorCredentialReadGroup[] {
+  return args.bindingSets.flatMap((bindingSet) => {
+    const names = [
+      ...new Set(
+        bindingSet.runtimeBindings.flatMap(({ source }) => {
+          if (
+            (args.kind === "secret" && source.kind !== "connector-secret") ||
+            (args.kind === "variable" &&
+              source.kind !== "connector-variable") ||
+            (args.names !== undefined && !args.names.has(source.name))
+          ) {
+            return [];
+          }
+          return [source.name];
+        }),
+      ),
+    ];
+    return names.length === 0 ? [] : [{ access: bindingSet.access, names }];
+  });
 }
 
 function connectorSecretAliasesByStorageName(
@@ -2504,14 +2541,16 @@ async function mapWithBoundedConcurrency<TInput, TOutput>(
 async function loadStoredConnectorSecretRows(
   db: Db,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly names: ReadonlySet<string>;
+    readonly bindingSets: readonly ConnectorEnvBindingSet[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<readonly StoredConnectorSecretRow[]> {
-  if (args.names.size === 0) {
+  const groups = storedConnectorCredentialReadGroups({
+    bindingSets: args.bindingSets,
+    kind: "secret",
+  });
+  if (groups.length === 0) {
     return [];
   }
 
@@ -2523,12 +2562,10 @@ async function loadStoredConnectorSecretRows(
       })
       .from(secretsTable)
       .where(
-        and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.userId, args.userId),
-          eq(secretsTable.type, "connector"),
-          inArray(secretsTable.name, [...args.names]),
-        ),
+        connectorCredentialSecretReadCondition({
+          db,
+          groups,
+        }),
       ),
     () => {
       timing?.recordElapsed(
@@ -2556,8 +2593,7 @@ async function loadStoredConnectorSecretRows(
 async function loadStoredConnectorEncryptedSecretRows(
   db: Db,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
+    readonly bindingSets: readonly ConnectorEnvBindingSet[];
     readonly names: ReadonlySet<string>;
   },
 ): Promise<readonly StoredConnectorEncryptedSecretRow[]> {
@@ -2565,6 +2601,11 @@ async function loadStoredConnectorEncryptedSecretRows(
     return [];
   }
 
+  const groups = storedConnectorCredentialReadGroups({
+    bindingSets: args.bindingSets,
+    kind: "secret",
+    names: args.names,
+  });
   return await db
     .select({
       name: secretsTable.name,
@@ -2572,12 +2613,10 @@ async function loadStoredConnectorEncryptedSecretRows(
     })
     .from(secretsTable)
     .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "connector"),
-        inArray(secretsTable.name, [...args.names]),
-      ),
+      connectorCredentialSecretReadCondition({
+        db,
+        groups,
+      }),
     );
 }
 
@@ -2627,14 +2666,16 @@ async function decryptStoredConnectorSecretRows(
 async function loadStoredConnectorVariableRows(
   db: Db,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly names: ReadonlySet<string>;
+    readonly bindingSets: readonly ConnectorEnvBindingSet[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<readonly StoredConnectorVariableRow[]> {
-  if (args.names.size === 0) {
+  const groups = storedConnectorCredentialReadGroups({
+    bindingSets: args.bindingSets,
+    kind: "variable",
+  });
+  if (groups.length === 0) {
     return [];
   }
 
@@ -2650,12 +2691,10 @@ async function loadStoredConnectorVariableRows(
         })
         .from(variables)
         .where(
-          and(
-            eq(variables.orgId, args.orgId),
-            eq(variables.userId, args.userId),
-            eq(variables.type, "connector"),
-            inArray(variables.name, [...args.names]),
-          ),
+          connectorCredentialVariableReadCondition({
+            db,
+            groups,
+          }),
         );
     },
     args.timingDimensions,
@@ -2908,8 +2947,6 @@ async function materializeEagerStoredConnectorSecrets(
   snapshot: StoredConnectorMaterializationSnapshot | null,
   context: ConnectorRuntimeContext,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly eagerStoredEnvironment: Record<string, string> | undefined;
     readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
@@ -2937,8 +2974,7 @@ async function materializeEagerStoredConnectorSecrets(
   }
 
   const encryptedRows = await loadStoredConnectorEncryptedSecretRows(db, {
-    orgId: args.orgId,
-    userId: args.userId,
+    bindingSets: snapshot.bindingSets,
     names: eagerNames,
   });
   const connectorSecrets = await decryptStoredConnectorSecretRows(
@@ -3037,10 +3073,14 @@ async function loadStoredConnectorRows(
       );
       return await tx
         .select({
+          connectorId: connectors.id,
           type: connectors.type,
           authMethod: connectors.authMethod,
           needsReconnect: connectors.needsReconnect,
+          orgId: connectors.orgId,
+          storageVersion: connectors.storageVersion,
           tokenExpiresAt: connectors.tokenExpiresAt,
+          userId: connectors.userId,
         })
         .from(connectors)
         .where(
@@ -3193,9 +3233,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     const secretRows = await loadStoredConnectorSecretRows(
       tx,
       {
-        orgId: args.orgId,
-        userId: args.userId,
-        names: storedConnectorPlan.requirements.secretNames,
+        bindingSets: storedConnectorPlan.bindingSets,
         timingDimensions: connectorTimingDimensions,
       },
       timing,
@@ -3203,9 +3241,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     const variableRows = await loadStoredConnectorVariableRows(
       tx,
       {
-        orgId: args.orgId,
-        userId: args.userId,
-        names: storedConnectorPlan.requirements.variableNames,
+        bindingSets: storedConnectorPlan.bindingSets,
         timingDimensions: connectorTimingDimensions,
       },
       timing,
@@ -6782,8 +6818,6 @@ async function prepareRunRuntimeContext(args: {
     storedConnectorSnapshot,
     connectorContext,
     {
-      orgId: args.createArgs.orgId,
-      userId: args.createArgs.userId,
       featureSwitchContext,
       ...eagerStoredConnectorSecretInputs({
         content: resolved.content,

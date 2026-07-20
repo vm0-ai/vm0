@@ -115,9 +115,8 @@ async function resolveXAccessToken(args: {
     return xShareError("CONFLICT", "Reconnect X to post images");
   }
   const values = await loadConnectorCredentialValues({
+    connection: args.connector,
     db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
     valueRefs: [accessTokenValueRef],
   });
   args.signal.throwIfAborted();

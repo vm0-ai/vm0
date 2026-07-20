@@ -4,6 +4,8 @@ import {
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
 import type { SecretListResponse } from "@vm0/api-contracts/contracts/secrets";
+import { connectors } from "@vm0/db/schema/connector";
+import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -20,6 +22,10 @@ import {
   getConnectorRuntimeStoredSecretDisplayInfo,
   loadConnectorRuntimeSnapshot,
 } from "../services/connector-catalog-runtime.service";
+import {
+  connectorCredentialStoredSecretDisplayInfo,
+  resolveConnectorCredentialAccess,
+} from "../services/connector-credential-access.service";
 import { zeroSecretsDeleteRoutes } from "./zero-secrets-delete";
 import { zeroVariablesDeleteRoutes } from "./zero-variables-delete";
 
@@ -27,16 +33,83 @@ const setSecretBody$ = bodyResultOf(zeroSecretsContract.set);
 
 const listSecretsInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
-  const storedSecrets = await get(
-    userSecrets({ orgId: auth.orgId, userId: auth.userId }),
+  const db = get(db$);
+  const [storedSecrets, snapshot, connectorRows] = await Promise.all([
+    get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
+    loadConnectorRuntimeSnapshot(db),
+    db
+      .select({
+        authMethod: connectors.authMethod,
+        connectorId: connectors.id,
+        connectorRef: connectors.type,
+        storageVersion: connectors.storageVersion,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, auth.orgId),
+          eq(connectors.userId, auth.userId),
+        ),
+      ),
+  ]);
+  const connectorAccesses = connectorRows.flatMap((row) => {
+    const result = resolveConnectorCredentialAccess({
+      snapshot,
+      stored: {
+        authMethodId: row.authMethod,
+        connectorId: row.connectorId,
+        connectorRef: row.connectorRef,
+        orgId: auth.orgId,
+        storageVersion: row.storageVersion,
+        userId: auth.userId,
+      },
+    });
+    return result.kind === "ok" ? [result.access] : [];
+  });
+  const connectorAccessById = new Map(
+    connectorAccesses.map((access) => {
+      return [access.connectorId, access] as const;
+    }),
   );
-  const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
+
+  function connectorDisplay(
+    secretId: string,
+    secretName: string,
+  ): ReturnType<typeof connectorCredentialStoredSecretDisplayInfo> {
+    const connectorId =
+      storedSecrets.connectorOwnerBySecretId.get(secretId) ?? null;
+    if (connectorId !== null) {
+      const access = connectorAccessById.get(connectorId);
+      return access === undefined
+        ? null
+        : connectorCredentialStoredSecretDisplayInfo({
+            access,
+            name: secretName,
+            snapshot,
+          });
+    }
+    if (snapshot.identity.source !== "static") {
+      return null;
+    }
+    const candidates = connectorAccesses.flatMap((access) => {
+      const display = connectorCredentialStoredSecretDisplayInfo({
+        access,
+        name: secretName,
+        snapshot,
+      });
+      return display === null ? [] : [display];
+    });
+    return candidates.length === 1 ? (candidates[0] ?? null) : null;
+  }
+
   const body: SecretListResponse = {
     secrets: storedSecrets.secrets.map((secret) => {
       const display =
-        secret.type === "connector" || secret.type === "user"
-          ? getConnectorRuntimeStoredSecretDisplayInfo(snapshot, secret.name)
-          : null;
+        secret.type === "connector"
+          ? connectorDisplay(secret.id, secret.name)
+          : secret.type === "user"
+            ? getConnectorRuntimeStoredSecretDisplayInfo(snapshot, secret.name)
+            : null;
       return {
         ...secret,
         connectorDisplay: display
