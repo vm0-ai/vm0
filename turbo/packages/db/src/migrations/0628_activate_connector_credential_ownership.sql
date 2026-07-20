@@ -826,10 +826,10 @@ WITH connector_credential_names(connector_ref, credential_kind, credential_name)
     ('zoom', 'secret', 'ZOOM_ACCESS_TOKEN'),
     ('zoom', 'secret', 'ZOOM_REFRESH_TOKEN')
 ),
-candidate_owners AS (
+candidate_matches AS MATERIALIZED (
   SELECT
     credential."id" AS credential_id,
-    min(connector."id"::text)::uuid AS connector_id
+    connector."id" AS connector_id
   FROM "secrets" AS credential
   INNER JOIN connector_credential_names AS mapping
     ON mapping.credential_kind = 'secret'
@@ -840,8 +840,18 @@ candidate_owners AS (
     AND connector."type" = mapping.connector_ref
   WHERE credential."type" = 'connector'
     AND credential."connector_id" IS NULL
-  GROUP BY credential."id"
-  HAVING count(DISTINCT connector."id") = 1
+  -- Keep the parent alive until this migration transaction commits. Without
+  -- this lock, a concurrent disconnect can delete the connector after this
+  -- match and make the connector_id update fail its foreign key check.
+  FOR KEY SHARE OF connector
+),
+candidate_owners AS (
+  SELECT
+    credential_id,
+    min(connector_id::text)::uuid AS connector_id
+  FROM candidate_matches
+  GROUP BY credential_id
+  HAVING count(DISTINCT connector_id) = 1
 )
 UPDATE "secrets" AS credential
 SET "connector_id" = candidate.connector_id
@@ -1335,10 +1345,10 @@ WITH connector_credential_names(connector_ref, credential_kind, credential_name)
     ('zoom', 'secret', 'ZOOM_ACCESS_TOKEN'),
     ('zoom', 'secret', 'ZOOM_REFRESH_TOKEN')
 ),
-candidate_owners AS (
+candidate_matches AS MATERIALIZED (
   SELECT
     credential."id" AS credential_id,
-    min(connector."id"::text)::uuid AS connector_id
+    connector."id" AS connector_id
   FROM "variables" AS credential
   INNER JOIN connector_credential_names AS mapping
     ON mapping.credential_kind = 'variable'
@@ -1349,8 +1359,18 @@ candidate_owners AS (
     AND connector."type" = mapping.connector_ref
   WHERE credential."type" = 'connector'
     AND credential."connector_id" IS NULL
-  GROUP BY credential."id"
-  HAVING count(DISTINCT connector."id") = 1
+  -- Keep the parent alive until this migration transaction commits. Without
+  -- this lock, a concurrent disconnect can delete the connector after this
+  -- match and make the connector_id update fail its foreign key check.
+  FOR KEY SHARE OF connector
+),
+candidate_owners AS (
+  SELECT
+    credential_id,
+    min(connector_id::text)::uuid AS connector_id
+  FROM candidate_matches
+  GROUP BY credential_id
+  HAVING count(DISTINCT connector_id) = 1
 )
 UPDATE "variables" AS credential
 SET "connector_id" = candidate.connector_id

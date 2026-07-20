@@ -32,6 +32,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
@@ -451,6 +452,49 @@ async function validateSnapshotFiles(): Promise<void> {
   console.log();
 }
 
+async function applyMigrationsUpTo(
+  client: Client,
+  upToIdx: number,
+): Promise<void> {
+  // Create drizzle migrations table
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    )
+  `);
+
+  // Read journal to get migration order
+  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  const entries = journal.entries as Array<{ idx: number; tag: string }>;
+
+  // Apply migrations up to the specified index
+  for (const entry of entries) {
+    if (entry.idx > upToIdx) break;
+
+    const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
+    const sql = await fs.readFile(sqlFile, "utf-8");
+
+    // Check if already applied
+    const result = await client.query(
+      `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
+      [entry.tag],
+    );
+
+    if (result.rows.length === 0) {
+      // Apply migration
+      await client.query(sql);
+      // Record in migrations table
+      await client.query(
+        `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
+        [entry.tag, Date.now()],
+      );
+    }
+  }
+}
+
 async function runMigrationsUpTo(
   dbUrl: string,
   upToIdx: number,
@@ -459,45 +503,140 @@ async function runMigrationsUpTo(
   await client.connect();
 
   try {
-    // Create drizzle migrations table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
-        id SERIAL PRIMARY KEY,
-        hash text NOT NULL,
-        created_at bigint
-      )
-    `);
-
-    // Read journal to get migration order
-    const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
-    const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
-    const entries = journal.entries as Array<{ idx: number; tag: string }>;
-
-    // Apply migrations up to the specified index
-    for (const entry of entries) {
-      if (entry.idx > upToIdx) break;
-
-      const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
-      const sql = await fs.readFile(sqlFile, "utf-8");
-
-      // Check if already applied
-      const result = await client.query(
-        `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
-        [entry.tag],
-      );
-
-      if (result.rows.length === 0) {
-        // Apply migration
-        await client.query(sql);
-        // Record in migrations table
-        await client.query(
-          `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
-          [entry.tag, Date.now()],
-        );
-      }
-    }
+    await applyMigrationsUpTo(client, upToIdx);
   } finally {
     await client.end();
+  }
+}
+
+async function waitForMigrationBlockedBy(
+  client: Client,
+  args: {
+    readonly blockerPid: number;
+    readonly migrationPid: number;
+  },
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const result = await client.query<{ blocked: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_stat_activity AS activity
+          WHERE activity.datname = current_database()
+            AND activity.pid = $1
+            AND $2::integer = ANY(pg_blocking_pids(activity.pid))
+        ) AS blocked
+      `,
+      [args.migrationPid, args.blockerPid],
+    );
+    if (result.rows[0]?.blocked === true) {
+      return;
+    }
+    await delay(10);
+  }
+
+  throw new Error(
+    `Migration did not block on backend ${args.blockerPid} before the synchronization deadline`,
+  );
+}
+
+async function runConnectorBackfillWithConcurrentDeletes(args: {
+  readonly dbUrl: string;
+  readonly secretConnectorId: string;
+  readonly variableConnectorId: string;
+}): Promise<void> {
+  const migrationClient = new Client({ connectionString: args.dbUrl });
+  const secretDeleteClient = new Client({ connectionString: args.dbUrl });
+  const variableDeleteClient = new Client({ connectionString: args.dbUrl });
+  await migrationClient.connect();
+  await secretDeleteClient.connect();
+  await variableDeleteClient.connect();
+
+  let secretDeleteOpen = false;
+  let variableDeleteOpen = false;
+  let migrationOutcomePromise:
+    | Promise<
+        | { readonly kind: "success" }
+        | { readonly kind: "failure"; readonly error: unknown }
+      >
+    | undefined;
+  try {
+    const secretDeletePidResult = await secretDeleteClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const variableDeletePidResult = await variableDeleteClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const migrationPidResult = await migrationClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const secretDeletePid = secretDeletePidResult.rows[0]?.pid;
+    const variableDeletePid = variableDeletePidResult.rows[0]?.pid;
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    if (
+      secretDeletePid === undefined ||
+      variableDeletePid === undefined ||
+      migrationPid === undefined
+    ) {
+      throw new Error("Failed to read concurrent delete backend identifiers");
+    }
+
+    await secretDeleteClient.query("BEGIN");
+    secretDeleteOpen = true;
+    const secretDelete = await secretDeleteClient.query(
+      `DELETE FROM "connectors" WHERE "id" = $1`,
+      [args.secretConnectorId],
+    );
+    assert.equal(secretDelete.rowCount, 1);
+
+    await variableDeleteClient.query("BEGIN");
+    variableDeleteOpen = true;
+    const variableDelete = await variableDeleteClient.query(
+      `DELETE FROM "connectors" WHERE "id" = $1`,
+      [args.variableConnectorId],
+    );
+    assert.equal(variableDelete.rowCount, 1);
+
+    migrationOutcomePromise = applyMigrationsUpTo(migrationClient, 628).then(
+      () => {
+        return { kind: "success" } as const;
+      },
+      (error: unknown) => {
+        return { kind: "failure", error } as const;
+      },
+    );
+
+    await waitForMigrationBlockedBy(secretDeleteClient, {
+      blockerPid: secretDeletePid,
+      migrationPid,
+    });
+    await secretDeleteClient.query("COMMIT");
+    secretDeleteOpen = false;
+
+    await waitForMigrationBlockedBy(secretDeleteClient, {
+      blockerPid: variableDeletePid,
+      migrationPid,
+    });
+    await variableDeleteClient.query("COMMIT");
+    variableDeleteOpen = false;
+
+    const migrationOutcome = await migrationOutcomePromise;
+    if (migrationOutcome.kind === "failure") {
+      throw migrationOutcome.error;
+    }
+  } finally {
+    if (secretDeleteOpen) {
+      await secretDeleteClient.query("ROLLBACK");
+    }
+    if (variableDeleteOpen) {
+      await variableDeleteClient.query("ROLLBACK");
+    }
+    if (migrationOutcomePromise !== undefined) {
+      await migrationOutcomePromise;
+    }
+    await migrationClient.end();
+    await secretDeleteClient.end();
+    await variableDeleteClient.end();
   }
 }
 
@@ -513,6 +652,8 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
     unknown: "00000000-0000-4000-8000-000000000003",
     steam: "00000000-0000-4000-8000-000000000004",
     unknownMethod: "00000000-0000-4000-8000-000000000005",
+    concurrentSecretDelete: "00000000-0000-4000-8000-000000000006",
+    concurrentVariableDelete: "00000000-0000-4000-8000-000000000007",
   } as const;
   const secretIds = {
     github: "10000000-0000-4000-8000-000000000001",
@@ -521,11 +662,13 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
     user: "10000000-0000-4000-8000-000000000004",
     preowned: "10000000-0000-4000-8000-000000000005",
     unknownMethod: "10000000-0000-4000-8000-000000000006",
+    concurrentDelete: "10000000-0000-4000-8000-000000000007",
   } as const;
   const variableIds = {
     steam: "20000000-0000-4000-8000-000000000001",
     unknown: "20000000-0000-4000-8000-000000000002",
     user: "20000000-0000-4000-8000-000000000003",
+    concurrentDelete: "20000000-0000-4000-8000-000000000004",
   } as const;
 
   await createDatabase(testDb);
@@ -543,7 +686,9 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
             ($2, 'gumroad', 'oauth', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
             ($3, 'unknown-ref', 'api-token', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
             ($4, 'steam', 'openid', 7, 'backfill-org', 'backfill-user', '2020-01-01'),
-            ($5, 'github', 'missing-method', NULL, 'backfill-org', 'other-user', '2020-01-01')
+            ($5, 'github', 'missing-method', NULL, 'backfill-org', 'other-user', '2020-01-01'),
+            ($6, 'github', 'missing-method', NULL, 'backfill-org', 'concurrent-secret-delete-user', '2020-01-01'),
+            ($7, 'steam', 'missing-method', NULL, 'backfill-org', 'concurrent-variable-delete-user', '2020-01-01')
         `,
         Object.values(connectorIds),
       );
@@ -556,8 +701,9 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
             ($2, 'GUMROAD_TOKEN', 'stale-method-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
             ($3, 'UNKNOWN_CONNECTOR_SECRET', 'unknown-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
             ($4, 'GITHUB_ACCESS_TOKEN', 'user-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
-            ($5, 'PREOWNED_CONNECTOR_SECRET', 'preowned-value', 'connector', $7, 'backfill-org', 'backfill-user', '2020-01-01'),
-            ($6, 'GITHUB_ACCESS_TOKEN', 'unknown-method-value', 'connector', NULL, 'backfill-org', 'other-user', '2020-01-01')
+            ($5, 'PREOWNED_CONNECTOR_SECRET', 'preowned-value', 'connector', $8, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($6, 'GITHUB_ACCESS_TOKEN', 'unknown-method-value', 'connector', NULL, 'backfill-org', 'other-user', '2020-01-01'),
+            ($7, 'GITHUB_ACCESS_TOKEN', 'concurrent-delete-value', 'connector', NULL, 'backfill-org', 'concurrent-secret-delete-user', '2020-01-01')
         `,
         [...Object.values(secretIds), connectorIds.gumroad],
       );
@@ -568,7 +714,8 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
           VALUES
             ($1, 'STEAM_ID', 'steam-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
             ($2, 'UNKNOWN_CONNECTOR_VARIABLE', 'unknown-variable-value', 'connector', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
-            ($3, 'STEAM_ID', 'user-variable-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01')
+            ($3, 'STEAM_ID', 'user-variable-value', 'user', NULL, 'backfill-org', 'backfill-user', '2020-01-01'),
+            ($4, 'STEAM_ID', 'concurrent-delete-variable-value', 'connector', NULL, 'backfill-org', 'concurrent-variable-delete-user', '2020-01-01')
         `,
         Object.values(variableIds),
       );
@@ -576,7 +723,11 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
       await seedClient.end();
     }
 
-    await runMigrationsUpTo(testDbUrl, 628);
+    await runConnectorBackfillWithConcurrentDeletes({
+      dbUrl: testDbUrl,
+      secretConnectorId: connectorIds.concurrentSecretDelete,
+      variableConnectorId: connectorIds.concurrentVariableDelete,
+    });
     const assertionClient = new Client({ connectionString: testDbUrl });
     await assertionClient.connect();
     try {
@@ -597,6 +748,14 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
       assert.equal(connectorVersions.get(connectorIds.unknown), null);
       assert.equal(connectorVersions.get(connectorIds.steam), "7");
       assert.equal(connectorVersions.get(connectorIds.unknownMethod), null);
+      assert.equal(
+        connectorVersions.get(connectorIds.concurrentSecretDelete),
+        undefined,
+      );
+      assert.equal(
+        connectorVersions.get(connectorIds.concurrentVariableDelete),
+        undefined,
+      );
       for (const row of connectorRows.rows) {
         assert.equal(row.updated_at, "2020-01-01 00:00:00");
       }
@@ -626,6 +785,7 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
         secretOwners.get(secretIds.unknownMethod),
         connectorIds.unknownMethod,
       );
+      assert.equal(secretOwners.get(secretIds.concurrentDelete), null);
       assert.deepEqual(
         secretRows.rows.map((row) => {
           return row.encrypted_value;
@@ -637,6 +797,7 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
           "user-value",
           "preowned-value",
           "unknown-method-value",
+          "concurrent-delete-value",
         ],
       );
       for (const row of secretRows.rows) {
@@ -659,11 +820,17 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
       assert.equal(variableOwners.get(variableIds.steam), connectorIds.steam);
       assert.equal(variableOwners.get(variableIds.unknown), null);
       assert.equal(variableOwners.get(variableIds.user), null);
+      assert.equal(variableOwners.get(variableIds.concurrentDelete), null);
       assert.deepEqual(
         variableRows.rows.map((row) => {
           return row.value;
         }),
-        ["steam-value", "unknown-variable-value", "user-variable-value"],
+        [
+          "steam-value",
+          "unknown-variable-value",
+          "user-variable-value",
+          "concurrent-delete-variable-value",
+        ],
       );
       for (const row of variableRows.rows) {
         assert.equal(row.updated_at, "2020-01-01 00:00:00");
@@ -672,7 +839,7 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
       await assertionClient.end();
     }
     console.log(
-      "   ✅ Backfill updates only recognized connector versions and owners\n",
+      "   ✅ Backfill updates only recognized connector versions and owners and serializes concurrent deletes\n",
     );
   } finally {
     await dropDatabase(testDb);
