@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
@@ -39,9 +38,20 @@ struct GcCacheEntry {
 }
 
 #[derive(Default)]
-pub(super) struct GcEntryCleanup {
-    freed_bytes: u64,
-    removed_entry_keys: BTreeSet<String>,
+struct GcInventory {
+    pre_cleanup_freed_bytes: u64,
+    candidates: Vec<GcCandidate>,
+}
+
+#[derive(Default)]
+struct GcEntryInventory {
+    pre_cleanup_freed_bytes: u64,
+    candidate: Option<GcCandidate>,
+}
+
+enum GcWholeEntryReason {
+    Stale,
+    Unusable(String),
 }
 
 impl GcCandidate {
@@ -78,25 +88,16 @@ impl SessionWorkspaceCache {
     }
 
     pub(super) async fn gc_locked(&self, dry_run: bool) -> RunnerResult<u64> {
-        let stale_cleanup = self.gc_entries_without_current_image(dry_run).await?;
-        let unusable_cleanup = self.gc_unusable_current_entries(dry_run).await?;
-        let mut removed_entry_keys = stale_cleanup.removed_entry_keys;
-        removed_entry_keys.extend(unusable_cleanup.removed_entry_keys);
-        let temporary_freed = self
-            .gc_temporary_images(dry_run, &removed_entry_keys)
-            .await?;
+        let inventory = self.gc_inventory(dry_run).await?;
         let stats = self.fs_stats().await?;
-        let pre_cleanup_freed = temporary_freed
-            .saturating_add(stale_cleanup.freed_bytes)
-            .saturating_add(unusable_cleanup.freed_bytes);
+        let pre_cleanup_freed = inventory.pre_cleanup_freed_bytes;
         let stats_after_pre_cleanup = if dry_run {
             fs_stats_with_additional_available(stats, pre_cleanup_freed)
         } else {
             stats
         };
         let budget = CacheBudget::from_fs_stats(stats_after_pre_cleanup);
-        let mut candidates = self.gc_candidates().await?;
-        candidates.retain(|candidate| !removed_entry_keys.contains(&candidate.cache_key));
+        let mut candidates = inventory.candidates;
         let mut entry_count = candidates.len();
         let mut total: u64 = candidates
             .iter()
@@ -171,13 +172,198 @@ impl SessionWorkspaceCache {
         Ok(freed)
     }
 
+    async fn gc_inventory(&self, dry_run: bool) -> RunnerResult<GcInventory> {
+        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
+            return Ok(GcInventory::default());
+        };
+        let mut inventory = GcInventory::default();
+        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
+            let entry_inventory = match self.try_lock_gc_cache_entry(&entry).await? {
+                Some(lock) => {
+                    let result = self.gc_locked_cache_entry(&entry, dry_run).await;
+                    drop(lock);
+                    result?
+                }
+                None => GcEntryInventory {
+                    candidate: self.gc_candidate(entry.cache_key.clone()).await,
+                    ..GcEntryInventory::default()
+                },
+            };
+            inventory.pre_cleanup_freed_bytes = inventory
+                .pre_cleanup_freed_bytes
+                .saturating_add(entry_inventory.pre_cleanup_freed_bytes);
+            if let Some(candidate) = entry_inventory.candidate {
+                inventory.candidates.push(candidate);
+            }
+        }
+        Ok(inventory)
+    }
+
+    async fn gc_locked_cache_entry(
+        &self,
+        entry: &GcCacheEntry,
+        dry_run: bool,
+    ) -> RunnerResult<GcEntryInventory> {
+        let current = self.session_workspace_cache_current_image(&entry.cache_key);
+        let current_metadata = match fs::symlink_metadata(&current).await {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return self
+                    .gc_whole_cache_entry(entry, dry_run, GcWholeEntryReason::Stale)
+                    .await;
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let metadata_path = self.session_workspace_cache_metadata(&entry.cache_key);
+        let metadata = match self.read_metadata_file(&metadata_path).await {
+            Ok(metadata) => metadata,
+            Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                return self
+                    .gc_whole_cache_entry(
+                        entry,
+                        dry_run,
+                        GcWholeEntryReason::Unusable("missing metadata".into()),
+                    )
+                    .await;
+            }
+            Err(RunnerError::Internal(_)) => {
+                return self
+                    .gc_whole_cache_entry(
+                        entry,
+                        dry_run,
+                        GcWholeEntryReason::Unusable("invalid metadata".into()),
+                    )
+                    .await;
+            }
+            Err(e) => {
+                return self
+                    .gc_whole_cache_entry(
+                        entry,
+                        dry_run,
+                        GcWholeEntryReason::Unusable(format!("metadata read failed: {e}")),
+                    )
+                    .await;
+            }
+        };
+        if let Some(reason) =
+            self.unusable_current_entry_reason(&entry.cache_key, &metadata, &current_metadata)
+        {
+            return self
+                .gc_whole_cache_entry(entry, dry_run, GcWholeEntryReason::Unusable(reason.into()))
+                .await;
+        }
+
+        let pre_cleanup_freed_bytes = self.gc_temporary_paths(entry, dry_run).await?;
+        let candidate = self
+            .gc_candidate_from_observation(
+                entry.cache_key.clone(),
+                current_metadata,
+                metadata.last_used_at,
+            )
+            .await;
+        Ok(GcEntryInventory {
+            pre_cleanup_freed_bytes,
+            candidate: Some(candidate),
+        })
+    }
+
+    async fn gc_whole_cache_entry(
+        &self,
+        entry: &GcCacheEntry,
+        dry_run: bool,
+        reason: GcWholeEntryReason,
+    ) -> RunnerResult<GcEntryInventory> {
+        let allocated = workspace_cache_path_allocated_bytes(&entry.entry_dir).await;
+        if dry_run {
+            match &reason {
+                GcWholeEntryReason::Stale => info!(
+                    cache_key = entry.cache_key,
+                    allocated_bytes = allocated,
+                    "[dry-run] would delete stale workspace image cache entry"
+                ),
+                GcWholeEntryReason::Unusable(reason) => info!(
+                    cache_key = entry.cache_key,
+                    reason,
+                    allocated_bytes = allocated,
+                    "[dry-run] would delete unusable workspace image cache entry"
+                ),
+            }
+            return Ok(GcEntryInventory {
+                pre_cleanup_freed_bytes: allocated,
+                candidate: None,
+            });
+        }
+
+        match fs::remove_dir_all(&entry.entry_dir).await {
+            Ok(()) => {
+                match &reason {
+                    GcWholeEntryReason::Stale => info!(
+                        cache_key = entry.cache_key,
+                        allocated_bytes = allocated,
+                        "deleted stale workspace image cache entry"
+                    ),
+                    GcWholeEntryReason::Unusable(reason) => info!(
+                        cache_key = entry.cache_key,
+                        reason,
+                        allocated_bytes = allocated,
+                        "deleted unusable workspace image cache entry"
+                    ),
+                }
+                return Ok(GcEntryInventory {
+                    pre_cleanup_freed_bytes: allocated,
+                    candidate: None,
+                });
+            }
+            Err(e) => match &reason {
+                GcWholeEntryReason::Stale => warn!(
+                    cache_key = entry.cache_key,
+                    path = %entry.entry_dir.display(),
+                    error = %e,
+                    "failed to delete stale workspace image cache entry"
+                ),
+                GcWholeEntryReason::Unusable(reason) => warn!(
+                    cache_key = entry.cache_key,
+                    reason,
+                    path = %entry.entry_dir.display(),
+                    error = %e,
+                    "failed to delete unusable workspace image cache entry"
+                ),
+            },
+        }
+
+        let pre_cleanup_freed_bytes = self.gc_temporary_paths(entry, false).await?;
+        let candidate = self.gc_candidate(entry.cache_key.clone()).await;
+        Ok(GcEntryInventory {
+            pre_cleanup_freed_bytes,
+            candidate,
+        })
+    }
+
     async fn gc_cache_entry_reader(&self) -> RunnerResult<Option<fs::ReadDir>> {
+        #[cfg(test)]
+        self.inner
+            .gc_root_scan_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let root = self.workspace_image_cache_dir().to_path_buf();
         match fs::read_dir(&root).await {
             Ok(entries) => Ok(Some(entries)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn reset_gc_root_scan_count(&self) {
+        self.inner
+            .gc_root_scan_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(super) fn gc_root_scan_count(&self) -> usize {
+        self.inner
+            .gc_root_scan_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     async fn next_gc_cache_entry(entries: &mut fs::ReadDir) -> RunnerResult<Option<GcCacheEntry>> {
@@ -201,8 +387,8 @@ impl SessionWorkspaceCache {
 
     async fn try_lock_gc_cache_entry(
         &self,
-        entry: GcCacheEntry,
-    ) -> RunnerResult<Option<(GcCacheEntry, Flock<File>)>> {
+        entry: &GcCacheEntry,
+    ) -> RunnerResult<Option<Flock<File>>> {
         let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&entry.cache_key)).await
         else {
             return Ok(None);
@@ -210,81 +396,7 @@ impl SessionWorkspaceCache {
         if !cache_entry_dir_is_dir(&entry.entry_dir).await? {
             return Ok(None);
         }
-        Ok(Some((entry, lock)))
-    }
-
-    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
-        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
-            return Ok(GcEntryCleanup::default());
-        };
-        let mut cleanup = GcEntryCleanup::default();
-        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
-            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
-                continue;
-            };
-            let GcCacheEntry {
-                cache_key,
-                entry_dir,
-            } = entry;
-            let current = self.session_workspace_cache_current_image(&cache_key);
-            let current_metadata = match fs::symlink_metadata(&current).await {
-                Ok(metadata) => metadata,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    drop(lock);
-                    continue;
-                }
-                Err(e) => {
-                    drop(lock);
-                    return Err(e.into());
-                }
-            };
-            let metadata_path = self.session_workspace_cache_metadata(&cache_key);
-            let reason = match self.read_metadata_file(&metadata_path).await {
-                Ok(metadata) => self
-                    .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
-                    .map(str::to_owned),
-                Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                    Some("missing metadata".into())
-                }
-                Err(RunnerError::Internal(_)) => Some("invalid metadata".into()),
-                Err(e) => Some(format!("metadata read failed: {e}")),
-            };
-            let Some(reason) = reason else {
-                drop(lock);
-                continue;
-            };
-
-            let allocated = workspace_cache_path_allocated_bytes(&entry_dir).await;
-            if dry_run {
-                info!(
-                    cache_key,
-                    reason,
-                    allocated_bytes = allocated,
-                    "[dry-run] would delete unusable workspace image cache entry"
-                );
-            } else if let Err(e) = fs::remove_dir_all(&entry_dir).await {
-                warn!(
-                    cache_key,
-                    reason,
-                    path = %entry_dir.display(),
-                    error = %e,
-                    "failed to delete unusable workspace image cache entry"
-                );
-                drop(lock);
-                continue;
-            } else {
-                info!(
-                    cache_key,
-                    reason,
-                    allocated_bytes = allocated,
-                    "deleted unusable workspace image cache entry"
-                );
-            }
-            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
-            cleanup.removed_entry_keys.insert(cache_key);
-            drop(lock);
-        }
-        Ok(cleanup)
+        Ok(Some(lock))
     }
 
     pub(super) fn unusable_current_entry_reason(
@@ -322,139 +434,56 @@ impl SessionWorkspaceCache {
         None
     }
 
-    async fn gc_entries_without_current_image(
-        &self,
-        dry_run: bool,
-    ) -> RunnerResult<GcEntryCleanup> {
-        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
-            return Ok(GcEntryCleanup::default());
+    async fn gc_temporary_paths(&self, entry: &GcCacheEntry, dry_run: bool) -> RunnerResult<u64> {
+        let mut freed: u64 = 0;
+        let mut files = match fs::read_dir(&entry.entry_dir).await {
+            Ok(files) => files,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
         };
-        let mut cleanup = GcEntryCleanup::default();
-        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
-            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
+        while let Some(file) = files.next_entry().await? {
+            let file_name = file.file_name();
+            let Some(file_name) = file_name.to_str() else {
                 continue;
             };
-            let GcCacheEntry {
-                cache_key,
-                entry_dir,
-            } = entry;
-            let current = self.session_workspace_cache_current_image(&cache_key);
-            match fs::symlink_metadata(&current).await {
-                Ok(_) => {
-                    drop(lock);
-                    continue;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    drop(lock);
-                    return Err(e.into());
-                }
+            if !is_workspace_tmp_path_name(file_name) {
+                continue;
             }
-            let allocated = workspace_cache_path_allocated_bytes(&entry_dir).await;
+            let path = file.path();
+            let allocated = workspace_cache_path_allocated_bytes(&path).await;
             if dry_run {
                 info!(
-                    cache_key,
+                    cache_key = entry.cache_key,
+                    path = %path.display(),
                     allocated_bytes = allocated,
-                    "[dry-run] would delete stale workspace image cache entry"
+                    "[dry-run] would delete temporary workspace image cache path"
                 );
-            } else if let Err(e) = fs::remove_dir_all(&entry_dir).await {
-                warn!(
-                    cache_key,
-                    path = %entry_dir.display(),
-                    error = %e,
-                    "failed to delete stale workspace image cache entry"
-                );
-                drop(lock);
-                continue;
             } else {
-                info!(
-                    cache_key,
-                    allocated_bytes = allocated,
-                    "deleted stale workspace image cache entry"
-                );
-            }
-            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
-            cleanup.removed_entry_keys.insert(cache_key);
-            drop(lock);
-        }
-        Ok(cleanup)
-    }
-
-    async fn gc_temporary_images(
-        &self,
-        dry_run: bool,
-        skip_entry_keys: &BTreeSet<String>,
-    ) -> RunnerResult<u64> {
-        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
-            return Ok(0);
-        };
-        let mut freed: u64 = 0;
-        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
-            if skip_entry_keys.contains(&entry.cache_key) {
-                continue;
-            }
-            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
-                continue;
-            };
-            let GcCacheEntry {
-                cache_key,
-                entry_dir,
-            } = entry;
-            let mut files = match fs::read_dir(&entry_dir).await {
-                Ok(files) => files,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    drop(lock);
-                    continue;
-                }
-                Err(e) => {
-                    drop(lock);
-                    return Err(e.into());
-                }
-            };
-            while let Some(file) = files.next_entry().await? {
-                let file_name = file.file_name();
-                let Some(file_name) = file_name.to_str() else {
-                    continue;
-                };
-                if !is_workspace_tmp_path_name(file_name) {
-                    continue;
-                }
-                let path = file.path();
-                let allocated = workspace_cache_path_allocated_bytes(&path).await;
-                if dry_run {
-                    info!(
-                        cache_key,
+                match remove_workspace_cache_path_if_exists(&path).await {
+                    Ok(true) => info!(
+                        cache_key = entry.cache_key,
                         path = %path.display(),
                         allocated_bytes = allocated,
-                        "[dry-run] would delete temporary workspace image cache path"
-                    );
-                } else {
-                    match remove_workspace_cache_path_if_exists(&path).await {
-                        Ok(true) => info!(
-                            cache_key,
+                        "deleted temporary workspace image cache path"
+                    ),
+                    Ok(false) => continue,
+                    Err(e) => {
+                        warn!(
+                            cache_key = entry.cache_key,
                             path = %path.display(),
-                            allocated_bytes = allocated,
-                            "deleted temporary workspace image cache path"
-                        ),
-                        Ok(false) => continue,
-                        Err(e) => {
-                            warn!(
-                                cache_key,
-                                path = %path.display(),
-                                error = %e,
-                                "failed to delete temporary workspace image cache path"
-                            );
-                            continue;
-                        }
+                            error = %e,
+                            "failed to delete temporary workspace image cache path"
+                        );
+                        continue;
                     }
                 }
-                freed = freed.saturating_add(allocated);
             }
-            drop(lock);
+            freed = freed.saturating_add(allocated);
         }
         Ok(freed)
     }
 
+    #[cfg(test)]
     pub(super) async fn gc_candidates(&self) -> RunnerResult<Vec<GcCandidate>> {
         let Some(mut entries) = self.gc_cache_entry_reader().await? else {
             return Ok(Vec::new());
@@ -467,6 +496,24 @@ impl SessionWorkspaceCache {
             candidates.push(candidate);
         }
         Ok(candidates)
+    }
+
+    async fn gc_candidate_from_observation(
+        &self,
+        cache_key: String,
+        file_metadata: std::fs::Metadata,
+        last_used_at: String,
+    ) -> GcCandidate {
+        let sidecar_allocated = self
+            .session_history_sidecar_allocated_bytes(&cache_key)
+            .await;
+        GcCandidate {
+            cache_key,
+            allocated_bytes: allocated_bytes(&file_metadata).saturating_add(sidecar_allocated),
+            file_dev: file_metadata.dev(),
+            file_ino: file_metadata.ino(),
+            last_used_at,
+        }
     }
 
     pub(super) async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
@@ -485,15 +532,9 @@ impl SessionWorkspaceCache {
             Err(_) if self.inner.cache_scope.is_empty() => String::new(),
             Err(_) => return None,
         };
-        let sidecar_allocated = self
-            .session_history_sidecar_allocated_bytes(&cache_key)
-            .await;
-        Some(GcCandidate {
-            cache_key,
-            allocated_bytes: allocated_bytes(&file_metadata).saturating_add(sidecar_allocated),
-            file_dev: file_metadata.dev(),
-            file_ino: file_metadata.ino(),
-            last_used_at,
-        })
+        Some(
+            self.gc_candidate_from_observation(cache_key, file_metadata, last_used_at)
+                .await,
+        )
     }
 }

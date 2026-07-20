@@ -32,6 +32,8 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 
 use crate::paths::{HomePaths, RunnerPaths};
 
@@ -88,6 +90,8 @@ struct SessionWorkspaceCacheInner {
     cache_scope: String,
     #[cfg(test)]
     fs_stats_override: FsStats,
+    #[cfg(test)]
+    gc_root_scan_count: AtomicUsize,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -168,6 +172,7 @@ impl SessionWorkspaceCache {
                 lock_dir,
                 cache_scope: cache_scope.to_owned(),
                 fs_stats_override: fs_stats,
+                gc_root_scan_count: AtomicUsize::new(0),
             }),
         }
     }
