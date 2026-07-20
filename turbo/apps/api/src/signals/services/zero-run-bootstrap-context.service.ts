@@ -386,9 +386,7 @@ async function queryZeroRunExecutionScopeSnapshot(
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
-      args.triggerRunId
-        ? eq(agentRuns.id, args.triggerRunId)
-        : sql<boolean>`FALSE`,
+      args.triggerRunId ? eq(agentRuns.id, args.triggerRunId) : sql`FALSE`,
     );
   return await unionAll(
     builtinConnectorQuery,

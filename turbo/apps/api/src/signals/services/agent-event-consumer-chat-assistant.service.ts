@@ -219,11 +219,11 @@ export const processChatAssistantEvents$ = command(
       .onConflictDoUpdate({
         target: chatOutputMaterializations.runId,
         set: {
-          processedThroughSequence: sql<number>`greatest(${chatOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
+          processedThroughSequence: sql`greatest(${chatOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
           latestResultSequence:
             resultSequence === null
               ? chatOutputMaterializations.latestResultSequence
-              : sql<number>`greatest(coalesce(${chatOutputMaterializations.latestResultSequence}, -1), ${resultSequence})`,
+              : sql`greatest(coalesce(${chatOutputMaterializations.latestResultSequence}, -1), ${resultSequence})`,
           updatedAt,
         },
       });

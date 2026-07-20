@@ -617,7 +617,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             lt(agentRuns.createdAt, cutoff),
-            sql<boolean>`NOT EXISTS (
+            sql`NOT EXISTS (
               SELECT 1
               FROM ${agentRunQueue}
               WHERE ${agentRunQueue.runId} = ${agentRuns.id}
@@ -650,7 +650,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             inArray(agentRuns.id, candidateRunIds),
-            sql<boolean>`NOT EXISTS (
+            sql`NOT EXISTS (
               SELECT 1
               FROM ${agentRunQueue}
               WHERE ${agentRunQueue.runId} = ${agentRuns.id}

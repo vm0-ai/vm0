@@ -8,6 +8,7 @@ import { noPackageVariable } from "./rules/no-package-variable.ts";
 import { noStoreInParams } from "./rules/no-store-in-params.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
 import { requireExecuteRowSchema } from "./rules/require-execute-row-schema.ts";
+import { requireSqlResultMapping } from "./rules/require-sql-result-mapping.ts";
 import { signalCheckAwait } from "./rules/signal-check-await.ts";
 
 export const apiLintPlugin = {
@@ -26,6 +27,7 @@ export const apiLintPlugin = {
     "no-store-in-params": noStoreInParams,
     "no-test-vi-mocks": noTestViMocks,
     "require-execute-row-schema": requireExecuteRowSchema,
+    "require-sql-result-mapping": requireSqlResultMapping,
     "signal-check-await": signalCheckAwait,
   },
 };

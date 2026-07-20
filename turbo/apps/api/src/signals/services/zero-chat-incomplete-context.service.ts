@@ -44,7 +44,7 @@ async function selectIncompleteRoundFrontier(
   readonly rounds: readonly IncompleteRoundSelection[];
   readonly successfulRunId: string | null;
 }> {
-  const isSuccessfulRun = sql<boolean>`COALESCE(
+  const isSuccessfulRun = sql`COALESCE(
     ${agentRuns.result} ? 'agentSessionId'
     AND jsonb_typeof(${agentRuns.result}->'agentSessionId') = 'string',
     FALSE
@@ -132,7 +132,7 @@ async function selectIncompleteRoundFrontier(
 }
 
 function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return sql<boolean>`${chatMessages.createdAt} > COALESCE(
+  return sql`${chatMessages.createdAt} > COALESCE(
     (
       SELECT MAX(boundary_message.created_at)
       FROM chat_messages boundary_message

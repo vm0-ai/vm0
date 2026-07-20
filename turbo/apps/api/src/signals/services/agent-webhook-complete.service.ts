@@ -156,7 +156,7 @@ async function persistLastEventSequence(
   await db
     .update(agentRuns)
     .set({
-      lastEventSequence: sql<number>`greatest(coalesce(${agentRuns.lastEventSequence}, -1), ${lastEventSequence})`,
+      lastEventSequence: sql`greatest(coalesce(${agentRuns.lastEventSequence}, -1), ${lastEventSequence})`,
     })
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }

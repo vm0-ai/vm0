@@ -45,7 +45,7 @@ function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
 }
 
 function latestRunFinishCreatedAtSql() {
-  return sql<Date>`(
+  return sql`(
     SELECT ${chatMessages.createdAt}
     FROM ${chatMessages}
     WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}

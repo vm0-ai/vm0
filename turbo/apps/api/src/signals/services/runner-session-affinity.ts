@@ -19,22 +19,22 @@ function runnerSessionAffinityHolderFreshAfter(currentDate: Date): Date {
   );
 }
 
-type SessionIdSqlValue = string | SQL<string | null>;
-type ProfileSqlValue = string | SQL<string>;
-type GenerationSqlValue = string | SQL<string | null>;
+type SessionIdSqlValue = string | SQL;
+type ProfileSqlValue = string | SQL;
+type GenerationSqlValue = string | SQL;
 
 function reusableSandboxCondition(args: {
   readonly sessionId: SessionIdSqlValue;
   readonly profile: ProfileSqlValue;
   readonly historyGenerationRunId?: GenerationSqlValue;
-}): SQL<boolean> {
+}): SQL {
   const reusableSandbox = args.historyGenerationRunId
     ? sql`jsonb_build_object(
         'profile', cast(${args.profile} as text),
         'historyGenerationRunId', cast(${args.historyGenerationRunId} as text)
       )`
     : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
-  return sql<boolean>`${runnerState.heldSessionStates} @> jsonb_build_array(
+  return sql`${runnerState.heldSessionStates} @> jsonb_build_array(
     jsonb_build_object(
       'sessionId', cast(${args.sessionId} as text),
       'reusableSandbox', ${reusableSandbox}
@@ -45,8 +45,8 @@ function reusableSandboxCondition(args: {
 function capableWorkspaceCondition(args: {
   readonly sessionId: SessionIdSqlValue;
   readonly profile: ProfileSqlValue;
-}): SQL<boolean> {
-  return sql<boolean>`(
+}): SQL {
+  return sql`(
     ${runnerState.heldSessionStates} @> jsonb_build_array(
       jsonb_build_object(
         'sessionId', cast(${args.sessionId} as text),
@@ -68,12 +68,12 @@ function runnerStateHas(args: {
   readonly runnerId?: string;
   readonly runnerGroup: string;
   readonly freshAfter: Date;
-  readonly resourceCondition: SQL<boolean>;
-}): SQL<boolean> {
+  readonly resourceCondition: SQL;
+}): SQL {
   const runnerCondition = args.runnerId
     ? sql`AND ${runnerState.runnerId} = ${args.runnerId}`
     : sql``;
-  return sql<boolean>`EXISTS (
+  return sql`EXISTS (
     SELECT 1
     FROM ${runnerState}
     WHERE ${runnerState.runnerGroup} = ${args.runnerGroup}
@@ -88,7 +88,7 @@ export function runnerSessionAffinityPollPriority(args: {
   readonly runnerId: string;
   readonly runnerGroup: string;
   readonly currentDate: Date;
-}): SQL<number> {
+}): SQL {
   const protectedAfter = new Date(
     args.currentDate.getTime() - RUNNER_SESSION_AFFINITY_PROTECTION_MS,
   );
@@ -97,11 +97,9 @@ export function runnerSessionAffinityPollPriority(args: {
       RUNNER_HISTORY_GENERATION_AFFINITY_PROTECTION_MS,
   );
   const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
-  const targetGenerationRunId = sql<
-    string | null
-  >`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`;
-  const sessionId = sql<string | null>`${runnerJobQueue.cliAgentSessionId}`;
-  const profile = sql<string>`${runnerJobQueue.profile}`;
+  const targetGenerationRunId = sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`;
+  const sessionId = sql`${runnerJobQueue.cliAgentSessionId}`;
+  const profile = sql`${runnerJobQueue.profile}`;
   const exactCondition = reusableSandboxCondition({
     sessionId,
     profile,
@@ -109,14 +107,14 @@ export function runnerSessionAffinityPollPriority(args: {
   });
   const reusableCondition = reusableSandboxCondition({ sessionId, profile });
   const workspaceCondition = capableWorkspaceCondition({ sessionId, profile });
-  const global = (resourceCondition: SQL<boolean>) => {
+  const global = (resourceCondition: SQL) => {
     return runnerStateHas({
       runnerGroup: args.runnerGroup,
       freshAfter,
       resourceCondition,
     });
   };
-  const local = (resourceCondition: SQL<boolean>) => {
+  const local = (resourceCondition: SQL) => {
     return runnerStateHas({
       runnerId: args.runnerId,
       runnerGroup: args.runnerGroup,
@@ -130,7 +128,7 @@ export function runnerSessionAffinityPollPriority(args: {
   const hasLocalReusable = local(reusableCondition);
   const hasGlobalWorkspace = global(workspaceCondition);
   const hasLocalWorkspace = local(workspaceCondition);
-  return sql<number>`CASE
+  return sql`CASE
     WHEN ${runnerJobQueue.createdAt} > ${generationProtectedAfter}
     AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
     AND ${targetGenerationRunId} IS NOT NULL
@@ -237,7 +235,7 @@ async function runnerSessionAffinityHolders(args: {
         profile: args.profile,
         historyGenerationRunId: args.historyGenerationRunId,
       })
-    : sql<boolean>`false`;
+    : sql`false`;
   const [holders] = await args.db
     .select({
       hasReusableHolder:

@@ -104,7 +104,7 @@ export async function touchChatThreadLastMessageAt(
 }
 
 export function visibleChatMessageCondition() {
-  return sql<boolean>`NOT EXISTS (
+  return sql`NOT EXISTS (
       SELECT 1
       FROM ${chatMessages} AS revoker
       WHERE revoker.revokes_message_id = ${chatMessages.id}

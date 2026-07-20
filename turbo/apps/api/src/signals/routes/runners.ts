@@ -526,7 +526,7 @@ function runnerPollPriorityOrder(args: {
   readonly runnerId: string | undefined;
   readonly runnerGroup: string;
   readonly currentDate: Date;
-}): SQL<unknown>[] {
+}): SQL[] {
   if (!args.runnerId) {
     return [];
   }
@@ -556,7 +556,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { group, supportedProfiles } = body.data;
-  const whereConditions: SQL<unknown>[] = [
+  const whereConditions: SQL[] = [
     eq(runnerJobQueue.runnerGroup, group),
     gt(runnerJobQueue.expiresAt, sql`now()`),
     eq(agentRuns.status, "pending"),
