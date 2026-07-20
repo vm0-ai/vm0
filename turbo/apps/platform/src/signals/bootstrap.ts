@@ -59,7 +59,11 @@ import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
-import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
+import {
+  hideAppSkeleton$,
+  initBootstrapSkeleton$,
+  startSkeletonCycling$,
+} from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
@@ -428,6 +432,7 @@ export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
     set(initTheme$);
     set(setRootSignal$, signal);
+    set(initBootstrapSkeleton$);
 
     set(setupLoggers$);
 
