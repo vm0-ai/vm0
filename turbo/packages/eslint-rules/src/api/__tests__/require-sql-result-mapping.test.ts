@@ -142,6 +142,7 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         import { sql } from "drizzle-orm";
         await db.select()
           .from(users)
+          .leftJoin(users, sql\`\${users.id} > 0\`)
           .where(sql\`\${users.id} > 0\`)
           .groupBy(sql\`\${users.id}\`)
           .orderBy(sql\`\${users.name}\`);
@@ -149,6 +150,8 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
           name: sql\`upper(\${users.name})\`,
         });
         await db.execute(sql\`DELETE FROM users\`);
+        const { rowCount } = await db.execute(sql\`DELETE FROM users\`);
+        void rowCount;
       `,
     },
     {
