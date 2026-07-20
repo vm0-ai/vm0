@@ -1319,20 +1319,22 @@ export const connectManualGrantConnector$ = command(
       });
       signal.throwIfAborted();
 
-      await deleteConnectorScopedSecretNames(tx, {
-        connectorId: connectorRow.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: omittedSecretNames,
-        signal,
-      });
-      await deleteConnectorScopedVariableNames(tx, {
-        connectorId: connectorRow.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        names: omittedVariableNames,
-        signal,
-      });
+      if (args.snapshot.identity.source === "static") {
+        await deleteConnectorScopedSecretNames(tx, {
+          connectorId: connectorRow.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: omittedSecretNames,
+          signal,
+        });
+        await deleteConnectorScopedVariableNames(tx, {
+          connectorId: connectorRow.id,
+          orgId: args.orgId,
+          userId: args.userId,
+          names: omittedVariableNames,
+          signal,
+        });
+      }
 
       await writeManualGrantCredentials(tx, {
         connectorId: connectorRow.id,

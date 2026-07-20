@@ -1603,16 +1603,56 @@ describe("connector catalog valid lifecycle", () => {
 
   it("executes an external manual grant with catalog-owned storage", async () => {
     configureSource();
+    const optionalSecretName = "EXTERNAL_OPTIONAL_TOKEN";
     const release = buildRelease({
       version: "2026-07-15.external-manual-grant",
       connectorRef: "agora",
       label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        arrayValue(method.manualFields, "manualFields").push({
+          id: "optionalCredential",
+          label: "Optional credential",
+          required: false,
+          placeholder: null,
+          inputType: "password",
+        });
+      },
+      mutatePrivate: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        arrayValue(
+          recordValue(method.storage, "storage").secrets,
+          "secrets",
+        ).push(optionalSecretName);
+        arrayValue(recordValue(method.grant, "grant").fields, "fields").push({
+          privateName: optionalSecretName,
+          publicId: "optionalCredential",
+          storage: "secret",
+        });
+        recordValue(
+          recordValue(method.access, "access").envBindings,
+          "envBindings",
+        ).OPTIONAL_SERVICE_TOKEN = `$secrets.${optionalSecretName}`;
+      },
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
     const actor = bdd.user();
+    await seedLegacyConnectorSecret(context, {
+      description: "unresolved optional external state",
+      encryptedValue: "unresolved-optional-value",
+      name: optionalSecretName,
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     onTestFinished(async () => {
       await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
     });
@@ -1649,6 +1689,26 @@ describe("connector catalog valid lifecycle", () => {
       expect.objectContaining({ name: PRIVATE_VALUE, type: "connector" }),
     );
     expect(JSON.stringify(secrets.body)).not.toContain("catalog-manual-secret");
+    const storageState = await readConnectorCredentialStorageState(context, {
+      connectorRef: "agora",
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      secretNames: [optionalSecretName],
+    });
+    expect(storageState.secrets).toStrictEqual([
+      {
+        connector_id: null,
+        description: "unresolved optional external state",
+        encrypted_value: "unresolved-optional-value",
+        name: optionalSecretName,
+      },
+    ]);
+    await setConnectorSecretOwner(context, {
+      connectorId: connected.id,
+      name: optionalSecretName,
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
