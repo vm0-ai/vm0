@@ -6,6 +6,7 @@ import {
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
+  webhookCheckpointsContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -55,6 +56,10 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["webhooks", "agent"],
     rustDoc: ["Agent webhook DTOs exchanged between sandboxes and the API."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustDoc: ["DTOs for creating recoverable agent checkpoints."],
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -160,6 +165,57 @@ export const rustTypeBindings = [
         fields: {
           storages: ["Volume storage entries to mount for the run."],
           artifacts: ["Artifact entries to mount for the run."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsContract.create.body,
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      missingRootPolicy:
+        "crate::generated::types::runners::storage::ArtifactEntryMissingRootPolicy",
+    },
+    declarations: [
+      {
+        rustTypeName: "RequestArtifactSnapshot",
+        rustDoc: ["Artifact version captured by an agent checkpoint."],
+        fields: {
+          name: ["User-facing artifact name referenced by the run."],
+          version: ["Artifact version selected for the checkpoint."],
+          mountPath: ["Guest filesystem path where the artifact is mounted."],
+          missingRootPolicy: [
+            "Optional policy retained when the artifact mount root is missing.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestVolumeVersionsSnapshot",
+        rustDoc: ["Volume versions captured by an agent checkpoint."],
+        fields: {
+          versions: ["Volume names mapped to their captured versions."],
+        },
+      },
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for creating a recoverable agent checkpoint."],
+        fields: {
+          runId: ["Agent run identifier bound to the sandbox token."],
+          cliAgentType: ["CLI agent implementation that produced the session."],
+          cliAgentSessionId: [
+            "CLI agent session identifier being checkpointed.",
+          ],
+          cliAgentSessionHistoryHash: [
+            "SHA-256 hash of the uploaded CLI agent session history.",
+          ],
+          artifactSnapshots: [
+            "Optional artifact versions captured by the checkpoint.",
+          ],
+          volumeVersionsSnapshot: [
+            "Optional volume versions captured by the checkpoint.",
+          ],
         },
       },
     ],

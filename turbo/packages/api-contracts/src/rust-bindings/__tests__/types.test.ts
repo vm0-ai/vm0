@@ -17,6 +17,7 @@ import {
 } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
+  webhookCheckpointsContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../../contracts/webhooks";
@@ -36,6 +37,11 @@ const expectedBindings = [
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageManifest",
     direction: "response",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Request",
+    direction: "request",
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -172,6 +178,7 @@ describe("Rust type bindings", () => {
 
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod webhooks {");
+    expect(firstRender).toContain("pub mod checkpoints {");
     expect(firstRender).toContain("pub mod prepare {");
     expect(firstRender).toContain("pub struct FileEntryWithHash {");
     expect(firstRender).toContain(
@@ -207,6 +214,22 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("PreserveParentVersion,");
     expect(firstRender).toContain(
       "pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,",
+    );
+    expect(firstRender).toContain(
+      "/// Request body for creating a recoverable agent checkpoint.",
+    );
+    expect(firstRender).toContain("pub struct RequestArtifactSnapshot {");
+    expect(firstRender).toContain(
+      "pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,",
+    );
+    expect(firstRender).toMatch(
+      /pub missing_root_policy: Option<\n\s+crate::generated::types::runners::storage::ArtifactEntryMissingRootPolicy,\n\s+>,/,
+    );
+    expect(firstRender).toContain(
+      "pub volume_versions_snapshot: Option<RequestVolumeVersionsSnapshot>,",
+    );
+    expect(firstRender).toContain(
+      "pub versions: std::collections::BTreeMap<String, String>,",
     );
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
       2,
@@ -254,6 +277,18 @@ describe("Rust type bindings", () => {
 
     expect(prepareFileSchema).toEqual(requestFileSchema);
     expect(commitFileSchema).toEqual(requestFileSchema);
+  });
+
+  it("keeps checkpoint policy override aligned with the runner policy schema", () => {
+    const runnerPolicySchema = z.toJSONSchema(
+      artifactEntrySchema.shape.missingRootPolicy,
+    );
+    const checkpointPolicySchema = z.toJSONSchema(
+      webhookCheckpointsContract.create.body.shape.artifactSnapshots.unwrap()
+        .element.shape.missingRootPolicy,
+    );
+
+    expect(checkpointPolicySchema).toEqual(runnerPolicySchema);
   });
 
   it("renders common JSON schema shapes", () => {
