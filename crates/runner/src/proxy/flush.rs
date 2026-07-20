@@ -1729,6 +1729,37 @@ mod tests {
         assert!(jsonl_task.await.unwrap());
     }
 
+    #[tokio::test]
+    async fn tcp_seal_for_upload_marks_request_as_final_attempt() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        proxy.set_addon_dir_for_test(dir.path().to_path_buf());
+        let (tx, mut rx) = mpsc::channel(1);
+        let handle = proxy.tcp_seal_handle(tx);
+
+        let task_path = log_path.clone();
+        let task = tokio::spawn(async move { handle.seal_path_for_upload(&task_path).await });
+        rx.recv().await.unwrap();
+
+        let marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("tcp-seal-request")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(marker["finalAttempt"], true);
+        let state = serde_json::json!({
+            "pid": 1234,
+            "usageStateId": marker["usageStateId"],
+            "updatedAtMs": now_millis(),
+            "sealRequestId": marker["sealRequestId"],
+            "path": log_path.to_string_lossy().to_string(),
+            "pending": 0,
+        });
+        std::fs::write(dir.path().join("tcp-seal-state"), state.to_string()).unwrap();
+
+        assert!(task.await.unwrap());
+    }
+
     #[tokio::test(start_paused = true)]
     async fn concurrent_tcp_seals_share_one_total_deadline() {
         let dir = tempfile::tempdir().unwrap();
