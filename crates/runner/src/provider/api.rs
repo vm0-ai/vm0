@@ -3247,25 +3247,28 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let complete_task = tokio::spawn(async move {
-            capture_api_provider_events(provider.complete(
-                run_id,
-                1,
-                Some("boom"),
-                None,
-                None,
-                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
-            ))
-            .await
-        });
+        let completion = capture_api_provider_events(provider.complete(
+            run_id,
+            1,
+            Some("boom"),
+            None,
+            None,
+            CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+        ));
+        let observe_requests = async {
+            let first_request = next_request(&mut requests).await;
+            assert_complete_authorization(&first_request, "sandbox-token");
+            tokio::task::yield_now().await;
+            assert!(
+                requests.try_recv().is_err(),
+                "completion should wait before the retry"
+            );
+            tokio::time::advance(Duration::from_secs(2)).await;
+            let second_request = next_request(&mut requests).await;
+            assert_complete_authorization(&second_request, "sandbox-token");
+        };
 
-        let first_request = next_request(&mut requests).await;
-        assert_complete_authorization(&first_request, "sandbox-token");
-        tokio::time::advance(Duration::from_secs(2)).await;
-        let second_request = next_request(&mut requests).await;
-        assert_complete_authorization(&second_request, "sandbox-token");
-
-        let ((), events) = complete_task.await.unwrap();
+        let (((), events), ()) = tokio::join!(completion, observe_requests);
         server_task.await.unwrap();
         assert!(
             requests.recv().await.is_none(),
