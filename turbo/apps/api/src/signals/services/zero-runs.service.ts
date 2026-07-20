@@ -159,9 +159,9 @@ async function estimatedTimePerRun(
   const recentRuns = db
     .select({
       durationMs:
-        sql<number>`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`.as(
-          "duration_ms",
-        ),
+        sql`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`
+          .mapWith(Number)
+          .as("duration_ms"),
     })
     .from(agentRuns)
     .where(

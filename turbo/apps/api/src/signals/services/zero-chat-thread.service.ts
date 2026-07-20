@@ -105,14 +105,14 @@ const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
 function chatMessageOrderSequenceSql() {
-  return sql<number>`CASE
+  return sql`CASE
     WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
 }
 
 function matchedMessageCreatedAtSql(messageId: string) {
-  return sql<Date>`(
+  return sql`(
     SELECT ${matchedChatMessage.createdAt}
     FROM ${chatMessages} AS matched_chat_message
     WHERE ${matchedChatMessage.id} = ${messageId}
@@ -717,7 +717,7 @@ function activeRunStatusSqlList() {
 }
 
 function noActiveRunsForCurrentThreadCondition() {
-  return sql<boolean>`NOT EXISTS (
+  return sql`NOT EXISTS (
     SELECT 1
     FROM ${zeroRuns}
     INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
@@ -727,7 +727,7 @@ function noActiveRunsForCurrentThreadCondition() {
 }
 
 function noActiveGoalsForCurrentThreadCondition() {
-  return sql<boolean>`NOT EXISTS (
+  return sql`NOT EXISTS (
     SELECT 1
     FROM ${threadGoals}
     WHERE ${threadGoals.chatThreadId} = ${chatThreads.id}

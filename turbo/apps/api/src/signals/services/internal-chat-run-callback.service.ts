@@ -641,7 +641,7 @@ async function latestEventBackedAssistantMessage(
         eq(chatMessages.role, "assistant"),
         isNotNull(chatMessages.sequenceNumber),
         isNotNull(chatMessages.content),
-        sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
+        sql`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
         ...(options.maxSequenceNumber === undefined
           ? []
           : [lte(chatMessages.sequenceNumber, options.maxSequenceNumber)]),
