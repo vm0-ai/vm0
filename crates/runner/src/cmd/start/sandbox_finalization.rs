@@ -926,7 +926,10 @@ mod tests {
             let reservation = idle_pool
                 .reserve_reusable("sess-network-log-park", "vm0/default", &None)
                 .expect("finalized sandbox should be reusable");
-            assert_eq!(reservation.history_generation_run_id(), Some(run_id));
+            assert_eq!(
+                reservation.history_generation_run_id_for_test(),
+                Some(run_id)
+            );
             assert!(matches!(
                 idle_pool.restore_reserved(reservation),
                 RestoreReservedIdleResult::Restored
