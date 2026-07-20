@@ -1177,6 +1177,9 @@ mod tests {
     use sandbox_mock::MockSandboxControl;
 
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+    const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
 
     fn make_fc(pid: u32, sandbox_id: &str) -> FirecrackerProcessInfo {
         FirecrackerProcessInfo {
@@ -1939,6 +1942,22 @@ mod tests {
 
     #[tokio::test]
     async fn orphan_kill_validates_signals_and_waits_for_real_exit() {
+        run_ignored_child_test(
+            "cmd::kill::tests::orphan_kill_validates_signals_and_waits_for_real_exit_child",
+            (ORPHAN_KILL_CHILD_ENV, "1"),
+            &[],
+            Duration::from_secs(30),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by orphan_kill_validates_signals_and_waits_for_real_exit"]
+    async fn orphan_kill_validates_signals_and_waits_for_real_exit_child() {
+        if !ignored_child_test_env_guard_enabled((ORPHAN_KILL_CHILD_ENV, "1")) {
+            return;
+        }
+
         let base_dir = tempfile::tempdir().unwrap();
         let sandbox_id = "test-sandbox";
         let workspace = base_dir.path().join("workspaces").join(sandbox_id);
@@ -1976,7 +1995,10 @@ mod tests {
         };
 
         let outcome = kill_orphan_process_group(&target).await;
-        assert!(matches!(outcome, KillOutcome::OrphanKilled(killed) if killed == target));
+        assert!(
+            matches!(&outcome, KillOutcome::OrphanKilled(killed) if killed == &target),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
 
         let status = child.wait().await.unwrap();
         assert!(!status.success());
