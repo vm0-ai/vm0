@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.609.4](https://github.com/vm0-ai/vm0/compare/app-v0.609.3...app-v0.609.4) (2026-07-20)
+
+
+### Bug Fixes
+
+* **platform:** restore chat completion and follow-up layout ([#22168](https://github.com/vm0-ai/vm0/issues/22168)) ([c696c18](https://github.com/vm0-ai/vm0/commit/c696c18b261e87367c81c422c5c258970db6a8c3))
+
 ## [0.609.3](https://github.com/vm0-ai/vm0/compare/app-v0.609.2...app-v0.609.3) (2026-07-20)
 
 
