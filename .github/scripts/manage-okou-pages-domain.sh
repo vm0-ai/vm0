@@ -26,18 +26,20 @@ cloudflare_request() {
     --header "Content-Type: application/json"
 }
 
-dns_record_id() {
+dns_record() {
   cloudflare_request \
     "${dns_records_url}?type=CNAME&name=${domain}" |
-    jq -r '.result[0].id // empty'
+    jq -c '.result[0] // null'
 }
 
 upsert_cname() {
   local target="$1"
+  local record
   local record_id
   local body
 
-  record_id="$(dns_record_id)"
+  record="$(dns_record)"
+  record_id="$(jq -r '.id // empty' <<< "$record")"
   body="$(jq -n \
     --arg name "$domain" \
     --arg target "$target" \
@@ -51,6 +53,14 @@ upsert_cname() {
     }')"
 
   if [[ -n "$record_id" ]]; then
+    if jq -e \
+      --arg target "$target" \
+      '.type == "CNAME" and .content == $target and .proxied == true and .ttl == 1' \
+      <<< "$record" >/dev/null; then
+      echo "Cloudflare DNS record already configured: ${domain} -> ${target}"
+      return
+    fi
+
     cloudflare_request \
       --request PUT \
       "${dns_records_url}/${record_id}" \
@@ -110,7 +120,7 @@ case "$action" in
         "${pages_domains_url}/${domain}" >/dev/null
     fi
 
-    record_id="$(dns_record_id)"
+    record_id="$(dns_record | jq -r '.id // empty')"
     if [[ -n "$record_id" ]]; then
       cloudflare_request \
         --request DELETE \
