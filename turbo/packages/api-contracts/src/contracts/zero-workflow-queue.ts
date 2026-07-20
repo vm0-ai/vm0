@@ -9,6 +9,11 @@ const eventIdParams = z.object({ id: z.string().uuid() });
 
 export const workflowQueueEventSchema = z.object({
   id: z.string(),
+  // Optional during the expand release so a newly loaded client can still
+  // parse a response from an API instance that predates automationId.
+  automationId: z.string().optional(),
+  // Rollback compatibility for clients that predate automationId. Remove
+  // after the canonical API has been live for a full rollback release.
   triggerId: z.string(),
   triggerSource: z.string(),
   triggerBrief: z.string().nullable(),
@@ -24,7 +29,7 @@ export const workflowQueueRunningRunSchema = z.object({
 });
 
 /**
- * Snapshot of a chat thread's workflow queue: the in-flight trigger run (if
+ * Snapshot of a chat thread's workflow queue: the in-flight automation run (if
  * any), the pending events in FIFO order, and the pause state. Mutations
  * return the same shape so the client can render without a follow-up fetch.
  */
