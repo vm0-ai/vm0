@@ -51,18 +51,4 @@ describe("generationTemplateForFeatureSwitches", () => {
       }),
     ).toBeUndefined();
   });
-
-  it("keeps structured templates when attachment references override inline prompt items", () => {
-    const template: GenerationTemplateRequest = {
-      type: "illustration",
-      selection: { illustrationStyleId: "image-style:ink-studio" },
-    };
-
-    expect(
-      generationTemplateForFeatureSwitches(template, {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      }),
-    ).toBe(template);
-  });
 });

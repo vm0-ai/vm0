@@ -6916,8 +6916,15 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
+      const attachmentReferenceClientIds = inlineAttachmentReferences
+        ? new Set(
+            visibleAttachments.map((attachment) => {
+              return attachment.clientId;
+            }),
+          )
+        : null;
       const currentInput = await readInputForSubmission(
-        inlineAttachmentReferences,
+        attachmentReferenceClientIds,
         pageSignal,
       );
       const prompt = currentInput.trim();

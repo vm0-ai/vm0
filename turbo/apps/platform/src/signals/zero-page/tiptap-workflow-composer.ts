@@ -132,7 +132,10 @@ export interface WorkflowComposerSignals {
   readonly appendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
     Promise<string>,
-    [includeAttachmentReferences: boolean, signal: AbortSignal]
+    [
+      attachmentReferenceClientIds: ReadonlySet<string> | null,
+      signal: AbortSignal,
+    ]
   >;
   readonly setTemplateAttachmentLifecycleRef$: Command<
     (() => void) | undefined,
@@ -760,9 +763,17 @@ function inlineFileNodeText(node: ProseMirrorNode): string {
     : label;
 }
 
-function inlineFileSubmissionText(node: ProseMirrorNode): string {
+function inlineFileSubmissionText(
+  node: ProseMirrorNode,
+  attachmentReferenceClientIds: ReadonlySet<string>,
+): string {
   const attributes = inlineFileNodeAttributes(node);
-  return attributes.promptReference ?? inlineFileNodeText(node);
+  if (!attributes.promptReference) {
+    return inlineFileNodeText(node);
+  }
+  return attachmentReferenceClientIds.has(attributes.clientId)
+    ? attributes.promptReference
+    : "";
 }
 
 function createInlineFileReferenceNodeView(node: ProseMirrorNode): NodeView {
@@ -1431,7 +1442,7 @@ function valueToWorkflowComposerDoc(value: string): JSONContent {
 function nodeText(
   node: ProseMirrorNode,
   to: number = node.content.size,
-  forSubmission = false,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
 ): string {
   return node.textBetween(0, to, "\n", (leafNode) => {
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -1441,8 +1452,8 @@ function nodeText(
       return inlineTemplateNodeText(leafNode);
     }
     if (leafNode.type.name === INLINE_FILE_NODE_NAME) {
-      return forSubmission
-        ? inlineFileSubmissionText(leafNode)
+      return attachmentReferenceClientIds
+        ? inlineFileSubmissionText(leafNode, attachmentReferenceClientIds)
         : inlineFileNodeText(leafNode);
     }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
@@ -1451,7 +1462,7 @@ function nodeText(
 
 function workflowComposerDocToString(
   editor: Editor,
-  forSubmission = false,
+  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
 ): string {
   const sections: string[] = [];
   let textBlocks: string[] = [];
@@ -1494,7 +1505,9 @@ function workflowComposerDocToString(
       continue;
     }
     flushFeedbackItems();
-    textBlocks.push(nodeText(node, node.content.size, forSubmission));
+    textBlocks.push(
+      nodeText(node, node.content.size, attachmentReferenceClientIds),
+    );
   }
   flushTextBlocks();
   flushFeedbackItems();
@@ -2305,6 +2318,26 @@ function createInlinePromptItemCommands(editor: Editor) {
   };
 }
 
+function createReadInputForSubmissionCommand(
+  editor: Editor,
+  compositionGate: CompositionGate,
+) {
+  return command(
+    (
+      _context,
+      attachmentReferenceClientIds: ReadonlySet<string> | null,
+      signal: AbortSignal,
+    ) => {
+      return compositionGate.runWhenSettled(() => {
+        return workflowComposerDocToString(
+          editor,
+          attachmentReferenceClientIds,
+        );
+      }, signal);
+    },
+  );
+}
+
 export function createWorkflowComposerSignals(
   draft: DraftSignals,
   threadId?: string,
@@ -2397,12 +2430,9 @@ export function createWorkflowComposerSignals(
   const { insertText$, insertPromptMarkdown$, appendText$ } =
     createInsertTextCommands(editor);
   const inlinePromptItemCommands = createInlinePromptItemCommands(editor);
-  const readInputForSubmission$ = command(
-    (_context, includeAttachmentReferences: boolean, signal: AbortSignal) => {
-      return compositionGate.runWhenSettled(() => {
-        return workflowComposerDocToString(editor, includeAttachmentReferences);
-      }, signal);
-    },
+  const readInputForSubmission$ = createReadInputForSubmissionCommand(
+    editor,
+    compositionGate,
   );
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
