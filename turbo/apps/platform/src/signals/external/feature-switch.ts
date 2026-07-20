@@ -70,6 +70,12 @@ export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });
 
+export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false
+  );
+});
+
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const identity = await get(authenticatedIdentity$);

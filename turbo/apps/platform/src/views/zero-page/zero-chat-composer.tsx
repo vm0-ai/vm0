@@ -15,11 +15,13 @@ import {
   useLoadableState,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
+  IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconArrowUp,
   IconColorSwatch,
@@ -158,6 +160,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   codexFastModeEnabled$,
   composerUploadPopoverEnabled$,
+  composerConnectorPermissionsEnabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -171,6 +174,14 @@ import {
   authorizeConnector$,
   deauthorizeConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
+import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
+import {
+  userPermissionGrantsByAgent,
+  applyUserPermissionGrants$,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
+import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
+import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
+import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   showAddDialog$,
@@ -204,6 +215,9 @@ import {
   restoreTemplatePickerPresentationScroll$,
   setTemplatePickerPresentationScrollTop$,
   setComputerUseDownloadDialogOpen$,
+  composerPermissionConnector$,
+  setComposerPermissionConnector$,
+  composerPermissionMetadata$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
   templateCardHover$,
@@ -413,6 +427,8 @@ interface ComposerConnectorItem {
   connected: boolean;
   authorized: boolean;
   available: boolean;
+  /** True when this connector exposes configurable firewall permissions. */
+  hasPermissions: boolean;
 }
 
 function resolveComposerModelForSelection(
@@ -5600,7 +5616,65 @@ function ComputerUseConnectorMenuSection({
   );
 }
 
+function ComposerConnectorPermissionDialog({
+  agentId,
+  agentDisplayName,
+  connector,
+  onClose,
+}: {
+  agentId: string;
+  agentDisplayName: string;
+  connector: ComposerConnectorItem;
+  onClose: () => void;
+}) {
+  const grantsLoadable = useLastLoadable(
+    userPermissionGrantsByAgent({ agentId }),
+  );
+  const pageSignal = useGet(pageSignal$);
+  const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
+
+  const grants =
+    grantsLoadable.state === "hasData" ? grantsLoadable.data : undefined;
+
+  if (grants === undefined) {
+    return null;
+  }
+
+  const activeSnapshot = activeUserPermissionGrantSnapshot(grants);
+  const initialPolicies = activeSnapshot.policies ?? {};
+
+  return (
+    <PermissionsDialog
+      agentId={agentId}
+      connectorType={connector.type}
+      connectorLabel={connector.label}
+      metadata$={composerPermissionMetadata$}
+      displayName={agentDisplayName}
+      initialPolicies={initialPolicies}
+      initialGrants={activeSnapshot.grants}
+      resetEnabled
+      readOnly={false}
+      onApply={async (intent, { metadata: appliedMetadata }) => {
+        await savePermissionDraftPolicies({
+          scope: { agentId },
+          connectorRef: connector.type,
+          metadata: appliedMetadata,
+          initialPolicies,
+          initialGrants: activeSnapshot.grants,
+          intent,
+          pageSignal,
+          applyGrantPolicies,
+        });
+        toast.success("Permissions updated");
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
 function ConnectorsPopoverButton({
+  agentId,
+  agentDisplayName,
   agentConnectors,
   connectorsLoading,
   savingType,
@@ -5608,6 +5682,8 @@ function ConnectorsPopoverButton({
   onOpenAddDialog,
   onToggle,
 }: {
+  agentId: string | null;
+  agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
   connectorsLoading: boolean;
   savingType: string | null;
@@ -5621,7 +5697,16 @@ function ConnectorsPopoverButton({
   const setSortOrder = useSet(setPopoverSortOrder$);
   const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
   const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
+  const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
+  const permissionConnectorType = useGet(composerPermissionConnector$);
+  const setPermissionConnectorType = useSet(setComposerPermissionConnector$);
   const showSearch = agentConnectors.length > 20;
+  const permissionConnector =
+    permissionEntryEnabled && permissionConnectorType
+      ? agentConnectors.find((c) => {
+          return c.type === permissionConnectorType;
+        })
+      : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
@@ -5733,6 +5818,23 @@ function ConnectorsPopoverButton({
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
                       </span>
+                      {permissionEntryEnabled &&
+                        agentId &&
+                        item.authorized &&
+                        item.hasPermissions && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setPermissionConnectorType(item.type);
+                            }}
+                            aria-label={`Configure ${item.label} permissions`}
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <IconAdjustmentsHorizontal size={15} stroke={1.5} />
+                          </button>
+                        )}
                       <LoadingSwitch
                         checked={item.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
@@ -5780,6 +5882,16 @@ function ConnectorsPopoverButton({
           open={downloadDialogOpen}
           onOpenChange={setDownloadDialogOpen}
           downloadUrl={computerUse.downloadUrl}
+        />
+      )}
+      {agentId && permissionConnector && (
+        <ComposerConnectorPermissionDialog
+          agentId={agentId}
+          agentDisplayName={agentDisplayName}
+          connector={permissionConnector}
+          onClose={() => {
+            setPermissionConnectorType(null);
+          }}
         />
       )}
     </Popover>
@@ -6508,6 +6620,10 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
+function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
+  return loadable.state === "hasData" ? loadable.data : null;
+}
+
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
@@ -6810,6 +6926,9 @@ export function useZeroChatComposer({
 
   const savingType = useGet(composerSavingType$);
   const setSavingType = useSet(setComposerSavingType$);
+  const agentRecordId = loadableDataOrNull(
+    useLastLoadable(currentChatAgentRecordId$),
+  );
 
   const connectorsLoading =
     allTypesLoadable.state !== "hasData" ||
@@ -6849,6 +6968,7 @@ export function useZeroChatComposer({
       connected,
       authorized,
       available: connected && authorized,
+      hasPermissions: c.permissionSummary.hasPermissions,
     };
   });
 
@@ -7103,6 +7223,8 @@ export function useZeroChatComposer({
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
                   <ConnectorsPopoverButton
+                    agentId={agentRecordId}
+                    agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
                     savingType={savingType}

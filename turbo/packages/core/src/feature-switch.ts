@@ -498,6 +498,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
     enabled: false,
   },
+  [FeatureSwitchKey.ComposerConnectorPermissions]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
+    enabled: false,
+    userOverridable: false,
+  },
 };
 
 interface ResolvedHashes {

@@ -81,5 +81,6 @@ export enum FeatureSwitchKey {
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ConnectorActionCallback = "connectorActionCallback",
   ZeroMail = "zeroMail",
+  ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
 }
