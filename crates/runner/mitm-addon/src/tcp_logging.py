@@ -24,7 +24,7 @@ _TCP_LOG_FINALIZED = "_tcp_log_finalized"
 
 _event_loop: asyncio.AbstractEventLoop | None = None
 _active_flows_by_path: dict[str, dict[str, tcp.TCPFlow]] = {}
-_pending_seal_futures: set[Future[None]] = set()
+_pending_seal_futures: set[Future[bool]] = set()
 _pending_seal_futures_lock = threading.Lock()
 
 
@@ -60,7 +60,7 @@ def seal_path_from_thread(log_path: str, *, timeout: float) -> bool:
     if loop is None:
         raise RuntimeError("TCP logging event loop is not running")
 
-    future: Future[None] = Future()
+    future: Future[bool] = Future()
     with _pending_seal_futures_lock:
         _pending_seal_futures.add(future)
     try:
@@ -70,31 +70,30 @@ def seal_path_from_thread(log_path: str, *, timeout: float) -> bool:
         raise
 
     try:
-        future.result(timeout=timeout)
+        return future.result(timeout=timeout)
     except TimeoutError:
         future.cancel()
-        return False
+        raise
     except CancelledError:
-        return False
-    return True
+        raise RuntimeError("TCP logging path seal was cancelled") from None
 
 
-def _complete_path_seal(log_path: str, future: Future[None]) -> None:
+def _complete_path_seal(log_path: str, future: Future[bool]) -> None:
     if not future.set_running_or_notify_cancel():
         _discard_pending_seal_future(future)
         return
 
     try:
-        _seal_path(log_path)
+        sealed = _seal_path(log_path)
     except Exception as exc:
         future.set_exception(exc)
     else:
-        future.set_result(None)
+        future.set_result(sealed)
     finally:
         _discard_pending_seal_future(future)
 
 
-def _discard_pending_seal_future(future: Future[None]) -> None:
+def _discard_pending_seal_future(future: Future[bool]) -> None:
     with _pending_seal_futures_lock:
         _pending_seal_futures.discard(future)
 
@@ -173,10 +172,13 @@ def _remove_active_flow(flow: tcp.TCPFlow, log_path: str) -> None:
         _active_flows_by_path.pop(log_path, None)
 
 
-def _seal_path(log_path: str) -> None:
+def _seal_path(log_path: str) -> bool:
     active_flows = tuple(_active_flows_by_path.get(log_path, {}).values())
+    sealed = True
     for flow in active_flows:
-        _log_tcp(flow)
+        if not _log_tcp(flow):
+            sealed = False
+    return sealed
 
 
 def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
@@ -184,13 +186,6 @@ def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
     if type(value) is not int:
         return 0
     return max(0, min(value, logging_utils.NETWORK_LOG_MAX_SAFE_SIZE))
-
-
-def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
-    return (
-        type(flow.metadata.get(_TCP_REQUEST_SIZE)) is int
-        or type(flow.metadata.get(_TCP_RESPONSE_SIZE)) is int
-    )
 
 
 def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
@@ -225,45 +220,23 @@ def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
     flow.messages.clear()
 
 
-def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
-    request_size = 0
-    response_size = 0
-    for message in flow.messages:
-        if message.from_client:
-            request_size = min(
-                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
-                request_size + len(message.content),
-            )
-        else:
-            response_size = min(
-                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
-                response_size + len(message.content),
-            )
-    return request_size, response_size
-
-
 def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
-    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False) or _has_tcp_size_counters(flow):
-        _drain_tcp_messages(flow)
-        return (
-            _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
-            _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
-        )
-
-    request_size, response_size = _sum_tcp_messages(flow)
-    flow.messages.clear()
-    return request_size, response_size
+    _drain_tcp_messages(flow)
+    return (
+        _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
+        _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
+    )
 
 
-def _log_tcp(flow: tcp.TCPFlow) -> None:
+def _log_tcp(flow: tcp.TCPFlow) -> bool:
     if flow.metadata.get(_TCP_LOG_FINALIZED, False):
         _drain_tcp_messages(flow)
-        return
+        return True
 
     run_id = flow_metadata.run_id(flow.metadata)
     network_log_path = flow_metadata.network_log_path(flow.metadata)
     if not run_id or not network_log_path:
-        return
+        return False
 
     start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
     latency_ms = logging_utils.elapsed_ms(start_time)
@@ -287,6 +260,8 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     if flow.error:
         log_entry["error"] = flow.error.msg
 
-    logging_utils.log_network_entry(network_log_path, log_entry)
+    if not logging_utils.log_network_entry(network_log_path, log_entry):
+        return False
     flow.metadata[_TCP_LOG_FINALIZED] = True
     _remove_active_flow(flow, network_log_path)
+    return True

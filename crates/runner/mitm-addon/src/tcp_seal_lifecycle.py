@@ -125,8 +125,11 @@ def _seal_tcp_for_runner_request() -> None:
             timeout=RUNNER_TCP_SEAL_TIMEOUT_SECONDS,
         ):
             pending = 1
-            timed_out = True
-            ctx.log.warn("TCP network-log seal did not complete before timeout")
+            ctx.log.warn("TCP network-log seal could not admit all rows")
+    except TimeoutError:
+        pending = 1
+        timed_out = True
+        ctx.log.warn("TCP network-log seal did not complete before timeout")
     except Exception as exc:
         pending = 1
         ctx.log.warn(f"Failed to seal TCP network logs after runner request ({type(exc).__name__})")

@@ -21,7 +21,7 @@ class TestLogNetworkEntry:
         entry = {"action": "ALLOW", "host": "example.com"}
 
         with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
-            logging_utils.log_network_entry(log_path, entry)
+            assert logging_utils.log_network_entry(log_path, entry)
 
         entries = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert len(entries) == 1
@@ -57,7 +57,7 @@ class TestLogNetworkEntry:
         log = MagicMock()
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
-            logging_utils.log_network_entry("", {"payload": b"binary"})
+            assert not logging_utils.log_network_entry("", {"payload": b"binary"})
 
         log.warn.assert_not_called()
 
@@ -79,7 +79,7 @@ class TestLogNetworkEntry:
         log = MagicMock()
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
-            logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
+            assert not logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
 
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
@@ -95,7 +95,7 @@ class TestLogNetworkEntry:
             patch.object(logging_utils.jsonl_writer, "MAX_PENDING_JSONL_BYTES", 1),
             patch.object(logging_utils.ctx, "log", log, create=True),
         ):
-            logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+            assert not logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]

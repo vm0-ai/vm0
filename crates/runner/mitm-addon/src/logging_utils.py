@@ -33,17 +33,17 @@ def _utc_log_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
-    """Best-effort JSONL write for proxy-hook logging paths."""
+def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> bool:
+    """Best-effort JSONL admission for proxy-hook logging paths."""
     if not log_path:
-        return
+        return False
     try:
         line = (json.dumps(entry) + "\n").encode()
     except Exception as e:
         ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
-        return
+        return False
 
-    jsonl_writer.write_jsonl_line(log_path, line, log_name)
+    return jsonl_writer.write_jsonl_line(log_path, line, log_name)
 
 
 def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
@@ -81,12 +81,12 @@ def reset_log_writer_for_tests() -> None:
     jsonl_writer.reset_for_tests()
 
 
-def log_network_entry(log_path: str, entry: dict) -> None:
-    """Write a network log entry to the per-run JSONL file."""
+def log_network_entry(log_path: str, entry: dict) -> bool:
+    """Admit a network log entry to the per-run JSONL writer."""
     if not log_path:
-        return
+        return False
     log_entry = {**entry, "timestamp": _utc_log_timestamp()}
-    _write_jsonl_entry(log_path, log_entry, "network")
+    return _write_jsonl_entry(log_path, log_entry, "network")
 
 
 def sanitize_proxy_log_extra_value(key: str, value: object) -> object:

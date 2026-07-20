@@ -22,13 +22,13 @@ def test_worker_start_failure_does_not_publish_or_consume_retry_capacity(tmp_pat
             "start",
             side_effect=RuntimeError("can't start new thread"),
         ):
-            jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
+            assert not jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
 
         assert jsonl_writer.flush_log_path(str(log_path), timeout=0)
         assert jsonl_writer._worker is None
         assert not log_path.exists()
 
-        jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
+        assert jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
         assert jsonl_writer.flush_log_path(str(log_path), timeout=1)
 
         log.warn.assert_called_once_with("Failed to start JSONL writer for proxy log")
@@ -419,7 +419,7 @@ def test_shutdown_writer_timeout_preserves_state_for_retry(tmp_path):
 
     with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
         try:
-            jsonl_writer.write_jsonl_line(log_path, accepted_line, "network")
+            assert jsonl_writer.write_jsonl_line(log_path, accepted_line, "network")
             assert append_started.wait(timeout=1)
 
             worker = jsonl_writer._worker
@@ -431,7 +431,7 @@ def test_shutdown_writer_timeout_preserves_state_for_retry(tmp_path):
             assert worker.is_alive()
             assert jsonl_writer._stop_enqueued
 
-            jsonl_writer.write_jsonl_line(log_path, rejected_line, "network")
+            assert not jsonl_writer.write_jsonl_line(log_path, rejected_line, "network")
         finally:
             release_append.set()
 

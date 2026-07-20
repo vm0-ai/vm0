@@ -39,17 +39,21 @@ _queued_writes = 0
 _drop_warning_logged = False
 
 
-def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
-    """Queue a JSONL line for best-effort append without blocking hook latency."""
+def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> bool:
+    """Queue a JSONL line for best-effort append without blocking hook latency.
+
+    Return whether the writer accepted the line. Append failures after
+    admission remain best effort and are reported asynchronously.
+    """
     global _pending_bytes, _queued_writes
 
     if not log_path:
-        return
+        return False
 
     dropped = False
     with _condition:
         if _shutdown:
-            return
+            return False
         line_size = len(line)
         if (
             _queued_writes >= MAX_PENDING_JSONL_WRITES
@@ -58,7 +62,7 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
             dropped = True
         elif not _ensure_worker_locked():
             _warn(f"Failed to start JSONL writer for {log_name} log")
-            return
+            return False
         else:
             sequence = _accepted_by_path.get(log_path, 0) + 1
             item = _WriteItem(
@@ -74,6 +78,8 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
 
     if dropped:
         _warn_drop_once(log_name)
+        return False
+    return True
 
 
 def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:

@@ -233,6 +233,52 @@ async def test_seal_acknowledges_while_usage_flush_is_blocked(
         )
 
 
+async def test_seal_retries_row_rejected_by_jsonl_backpressure(
+    tmp_path,
+    registry_file,
+    monkeypatch,
+    mitm_ctx,
+    real_tcp_flow,
+):
+    lifecycle_file = tmp_path / "tcp_seal_lifecycle.py"
+    log_path = tmp_path / "network.jsonl"
+    state_path = _write_seal_request(
+        lifecycle_file,
+        log_path,
+        seal_request_id="seal-backpressure-first",
+    )
+    usage.set_pending_path(str(tmp_path / "usage-pending"), usage_state_id=_USAGE_STATE_ID)
+    monkeypatch.setattr(tcp_seal_lifecycle, "__file__", str(lifecycle_file))
+    monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 0)
+    flow = real_tcp_flow()
+
+    with mitm_ctx(registry_path=str(registry_file)):
+        mitm_addon.running()
+        mitm_addon.tcp_start(flow)
+        mitm_addon.tcp_message(flow)
+        await _request_seal_and_wait()
+
+        first_state = json.loads(state_path.read_text())
+        assert first_state["sealRequestId"] == "seal-backpressure-first"
+        assert first_state["pending"] == 1
+        assert not log_path.exists()
+
+        monkeypatch.setattr(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 4096)
+        _write_seal_request(
+            lifecycle_file,
+            log_path,
+            seal_request_id="seal-backpressure-retry",
+        )
+        await _request_seal_and_wait()
+
+    [entry] = read_jsonl_entries_after_flush(log_path)
+    assert entry["request_size"] == len(b"hello")
+    assert entry["response_size"] == len(b"SSH-2.0-babeld")
+    retry_state = json.loads(state_path.read_text())
+    assert retry_state["sealRequestId"] == "seal-backpressure-retry"
+    assert retry_state["pending"] == 0
+
+
 async def test_seal_timeout_writes_terminal_pending_state(
     tmp_path,
     monkeypatch,
