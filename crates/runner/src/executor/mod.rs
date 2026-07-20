@@ -32,17 +32,21 @@ mod guest_state;
 mod sandbox_run;
 mod session_history_cpu;
 mod session_history_download;
+mod session_history_restore_plan;
 mod session_id;
 mod session_restore;
 mod storage;
 mod telemetry;
 
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
-pub(crate) use agent_run::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
 pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
 pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
+pub(crate) use session_history_restore_plan::{
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, SessionHistoryRestorePlanInput,
+    build_session_history_restore_plan,
+};
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};

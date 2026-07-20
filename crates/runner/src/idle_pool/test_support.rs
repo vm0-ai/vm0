@@ -88,14 +88,6 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
-    pub(crate) fn with_restored_session_identity(
-        mut self,
-        restored_session_identity: RestoredSessionIdentity,
-    ) -> Self {
-        self.restored_session_identity = Some(restored_session_identity);
-        self
-    }
-
     pub(crate) fn with_history_generation_run_id(
         mut self,
         history_generation_run_id: RunId,

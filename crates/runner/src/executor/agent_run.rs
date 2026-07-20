@@ -52,7 +52,8 @@ use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
-    ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
+    ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, USER_ENV_FILE_ENV_KEY,
     agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_terminal_wait_timeout,
     normalize_failure_exit_code,
 };
@@ -81,36 +82,6 @@ const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
 const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionHistoryRestoreFallback {
-    NonReuse,
-    MissingIdleIdentity,
-    UnverifiedIdleIdentity,
-    StaleIdleIdentity,
-    IdentityMismatch(Option<RestoredSessionIdentityMismatchReason>),
-}
-
-impl SessionHistoryRestoreFallback {
-    const fn action_type(self) -> &'static str {
-        match self {
-            Self::NonReuse => "session_history_restore_fallback_non_reuse",
-            Self::MissingIdleIdentity => "session_history_restore_fallback_missing_idle_identity",
-            Self::UnverifiedIdleIdentity => {
-                "session_history_restore_fallback_unverified_idle_identity"
-            }
-            Self::StaleIdleIdentity => "session_history_restore_fallback_stale_idle_identity",
-            Self::IdentityMismatch(_) => "session_history_restore_fallback_identity_mismatch",
-        }
-    }
-
-    const fn identity_mismatch_reason(self) -> Option<RestoredSessionIdentityMismatchReason> {
-        match self {
-            Self::IdentityMismatch(reason) => reason,
-            _ => None,
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
@@ -455,25 +426,6 @@ async fn read_session_history_sidecar_bytes(
         ));
     }
     Ok(bytes)
-}
-
-#[derive(Default)]
-#[must_use = "restore plans decide whether resume history download can be skipped"]
-pub(crate) enum SessionHistoryRestorePlan {
-    #[default]
-    Default,
-    DeferredHashBacked {
-        fallback: Option<SessionHistoryRestoreFallback>,
-    },
-    Prestarted {
-        materializer: SessionHistoryMaterializer,
-        fallback: Option<SessionHistoryRestoreFallback>,
-    },
-    LocalSidecar {
-        sidecar: WorkspaceSessionHistorySidecar,
-        fallback: Option<SessionHistoryRestoreFallback>,
-    },
-    SkipVerified(RestoredSessionIdentity),
 }
 
 pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
