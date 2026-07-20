@@ -2808,6 +2808,124 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps the established completed-run layout across container sizes", async () => {
+    const finalReply = "The launch plan is ready.";
+    const followupPrompt = "Turn it into a presentation";
+
+    mockChatLifecycle(context, {
+      threadId: "thread-completed-run-layout",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Prepare the launch plan",
+          runId: "run-completed-run-layout",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the launch notes.",
+          runId: "run-completed-run-layout",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: finalReply,
+          runId: "run-completed-run-layout",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-completed-run-layout",
+          runLifecycleEvent: "completed",
+          recommendedFollowups: [
+            {
+              prompt: followupPrompt,
+              kind: "generate",
+              generationType: "presentation",
+            },
+          ],
+          createdAt: "2026-06-09T10:00:21Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-completed-run-layout",
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    const finalReplyElement = await screen.findByText(finalReply);
+    const assistantGroup = finalReplyElement.closest('[data-role="assistant"]');
+    expect(assistantGroup).not.toBeNull();
+
+    const responseLayout = assistantGroup!.firstElementChild;
+    expect(responseLayout).toHaveClass(
+      "flex",
+      "flex-col",
+      "gap-2",
+      "@[900px]:grid",
+      "@[900px]:grid-cols-[36px_minmax(0,1fr)]",
+      "@[900px]:-ml-[46px]",
+    );
+    expect(responseLayout).not.toHaveClass(
+      "grid",
+      "grid-cols-[28px_minmax(0,1fr)]",
+    );
+
+    const responseColumn = responseLayout!.children[1];
+    expect(responseColumn).toHaveClass("relative", "flex", "flex-col", "gap-2");
+    expect(responseColumn).not.toHaveClass("contents");
+    expect(responseColumn).toContainElement(finalReplyElement);
+
+    const completedWorkFold = expandButton.parentElement;
+    expect(completedWorkFold).toHaveAttribute("data-chat-completed-work-fold");
+    expect(completedWorkFold).toHaveClass("-mx-2", "@[900px]:-mb-[15px]");
+    expect(completedWorkFold).not.toHaveClass("border-b", "pb-2");
+    expect(responseColumn).toContainElement(completedWorkFold);
+    expect(expandButton).toHaveClass(
+      "mt-1.5",
+      "min-h-9",
+      "gap-2",
+      "px-2",
+      "py-1.5",
+    );
+    expect(expandButton).not.toHaveClass("max-w-full");
+
+    const followupButton = await waitFor(() => {
+      return buttonByText(followupPrompt);
+    });
+    const followupList = followupButton.parentElement;
+    expect(followupList).toHaveClass("-mx-2");
+    expect(followupList).not.toHaveClass("flex", "gap-1");
+    expect(followupButton).not.toHaveClass("border", "bg-background");
+
+    const finishedLabel = screen.getByText("Keep going");
+    const finishedLabelRow = finishedLabel.parentElement;
+    const finishedDivider = finishedLabelRow!.parentElement;
+    const finishedRunRow = finishedDivider!.parentElement;
+    expect(finishedRunRow).toHaveClass("flex", "flex-col", "gap-2");
+    expect(finishedRunRow).not.toHaveClass(
+      "rounded-[var(--zero-card-radius)]",
+      "bg-gray-50",
+      "p-3",
+    );
+    expect(followupList!.parentElement).toBe(finishedRunRow);
+    expect(finishedDivider!.firstElementChild).toHaveClass(
+      "h-px",
+      "w-full",
+      "bg-border/40",
+    );
+    expect(finishedDivider!.firstElementChild).not.toHaveClass("hidden");
+    expect(finishedLabelRow!.lastElementChild).toHaveClass(
+      "h-px",
+      "flex-1",
+      "bg-border/40",
+    );
+    expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
+  });
+
   it("folds completed chat work without hiding the answer before the lifecycle marker", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",
