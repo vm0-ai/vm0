@@ -254,6 +254,20 @@ const artifactIdbMock = vi.hoisted(() => {
       };
     }
 
+    get(storeName: string, key: IDBValidKey): Promise<unknown> {
+      return this.ensureStore(
+        storeName,
+        storeName === "artifact_items" ? "artifactItemId" : "id",
+      ).get(key);
+    }
+
+    put(storeName: string, value: Record<string, unknown>): Promise<void> {
+      return this.ensureStore(
+        storeName,
+        storeName === "artifact_items" ? "artifactItemId" : "id",
+      ).put(value);
+    }
+
     addEventListener(): void {
       return undefined;
     }
@@ -1507,30 +1521,78 @@ describe("artifacts page", () => {
     });
   });
 
-  it("replaces stale cached artifacts after a successful remote refresh", async () => {
+  it("merges remote changes into the cached artifact set", async () => {
     setupTeam();
     const scope = testAuthScope("remote-cache-replace");
     const staleArtifact = createArtifact({
       artifactItemId: "stale-run:file-1",
       runId: "stale-run",
       filename: "stale-summary.html",
+      url: "https://artifacts.example.com/stale-summary.html",
       createdAt: "2026-01-02T00:00:00Z",
     });
     const remoteArtifact = createArtifact({
       artifactItemId: "fresh-run:file-1",
       runId: "fresh-run",
       filename: "fresh-summary.html",
+      url: "https://artifacts.example.com/fresh-summary.html",
       createdAt: "2026-01-03T00:00:00Z",
     });
     await seedCachedArtifacts(scope, [staleArtifact]);
-    mockArtifacts([remoteArtifact]);
+    let requestedUpdatedAfter: string | undefined;
+    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
+      requestedUpdatedAfter = query.updatedAfter;
+      return respond(200, {
+        artifacts: [remoteArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: "2026-01-04T00:00:00.000Z",
+      });
+    });
 
     setupArtifactsPage({ scope });
 
     await screen.findByText("fresh-summary.html");
-    await waitFor(() => {
-      expect(screen.queryByText("stale-summary.html")).not.toBeInTheDocument();
+    expect(screen.getByText("stale-summary.html")).toBeInTheDocument();
+    expect(requestedUpdatedAfter).toBe(staleArtifact.createdAt);
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        remoteArtifact.artifactItemId,
+        staleArtifact.artifactItemId,
+      ]);
     });
+    const db = await openChatIdb(scope.userId, scope.orgId);
+    await expect(
+      createArtifactItemCacheStores(
+        resolvedChatIdb(db),
+      ).readStore.readLastSyncedAt(),
+    ).resolves.toBe("2026-01-04T00:00:00.000Z");
+  });
+
+  it("replaces the cache when the server omits incremental sync metadata", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-legacy-server");
+    const cachedArtifact = createArtifact({
+      artifactItemId: "legacy-cached:file-1",
+      runId: "legacy-cached",
+      filename: "legacy-cached.html",
+      url: "https://artifacts.example.com/legacy-cached.html",
+      createdAt: "2026-01-02T00:00:00Z",
+    });
+    const remoteArtifact = createArtifact({
+      artifactItemId: "legacy-remote:file-1",
+      runId: "legacy-remote",
+      filename: "legacy-remote.html",
+      url: "https://artifacts.example.com/legacy-remote.html",
+      createdAt: "2026-01-03T00:00:00Z",
+    });
+    await seedCachedArtifacts(scope, [cachedArtifact]);
+    mockArtifacts([remoteArtifact]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("legacy-remote.html");
+    expect(screen.queryByText("legacy-cached.html")).not.toBeInTheDocument();
     await waitFor(async () => {
       await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
         remoteArtifact.artifactItemId,
@@ -1612,7 +1674,7 @@ describe("artifacts page", () => {
         artifactItemId: `windowed-${label}:file`,
         runId: `windowed-${label}`,
         filename: `windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
       });
     });
     mockArtifacts(many);
@@ -1659,7 +1721,7 @@ describe("artifacts page", () => {
         artifactItemId: `keyboard-windowed-${label}:file`,
         runId: `keyboard-windowed-${label}`,
         filename: `keyboard-windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
       });
     });
     mockArtifacts(many);

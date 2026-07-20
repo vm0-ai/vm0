@@ -82,6 +82,7 @@ const artifactItemSchema = z.object({
 const artifactsListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(10_000).optional(),
   cursor: z.string().optional(),
+  updatedAfter: z.string().datetime().optional(),
 });
 
 const artifactsListResponseSchema = z.object({
@@ -96,6 +97,11 @@ const artifactsListResponseSchema = z.object({
    * Opaque cursor for the next page, or null when this is the last page.
    */
   nextCursor: z.string().nullable(),
+  /**
+   * Database time captured before the first page was read. Incremental clients
+   * persist it only after the complete page chain has been cached.
+   */
+  syncUntil: z.string().datetime().optional(),
 });
 
 const artifactFavoriteBodySchema = z.object({

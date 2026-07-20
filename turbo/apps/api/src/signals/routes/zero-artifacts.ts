@@ -132,6 +132,7 @@ const listArtifactsInner$ = command(
         orgId: auth.orgId,
         limit: query.limit,
         cursor: query.cursor,
+        updatedAfter: query.updatedAfter,
       },
       signal,
     );
@@ -143,6 +144,7 @@ const listArtifactsInner$ = command(
         artifacts: result.artifacts,
         truncated: result.truncated,
         nextCursor: result.nextCursor,
+        syncUntil: result.syncUntil,
       },
     };
   },
