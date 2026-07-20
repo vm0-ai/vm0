@@ -20,6 +20,16 @@ _INVALID_UNICODE = "\ud800"
 _AWS_S3_EXAMPLE_HOST = "examplebucket.s3.amazonaws.com"
 _AWS_S3_EXAMPLE_TIMESTAMP = "20130524T000000Z"
 _AWS_S3_EMPTY_PAYLOAD_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+_VALID_BOUNDARY_SIGV4_TIMESTAMP = "20000229T235959Z"
+_INVALID_SEMANTIC_SIGV4_TIMESTAMPS = (
+    "20261340T256199Z",
+    "20260229T000000Z",
+    "20261301T000000Z",
+    "20260431T000000Z",
+    "20260101T240000Z",
+    "20260101T236000Z",
+    "20260101T235960Z",
+)
 
 
 def _credentials() -> AwsSigV4Credentials:
@@ -33,13 +43,15 @@ def _aws_s3_example_credentials() -> AwsSigV4Credentials:
     )
 
 
-def _header_auth_headers() -> list[tuple[str, str]]:
+def _header_auth_headers(
+    amz_date: str = DEFAULT_SIGV4_TIMESTAMP,
+) -> list[tuple[str, str]]:
     return [
         (
             "Authorization",
-            aws_sigv4_authorization(),
+            aws_sigv4_authorization(date=amz_date[:8]),
         ),
-        ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+        ("X-Amz-Date", amz_date),
         ("Host", STS_HOST),
     ]
 
@@ -85,8 +97,66 @@ def _header_auth_headers_with_signed_test_header(value: str) -> list[tuple[str, 
     ]
 
 
-def _presigned_url(host: str) -> str:
-    return aws_sigv4_presigned_url(host)
+def _presigned_url(
+    host: str,
+    *,
+    timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
+) -> str:
+    return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+@pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
+def test_header_auth_impossible_amz_date_raises_signing_error(amz_date: str) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=r"^Malformed AWS signing date$"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers(amz_date),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
+def test_presigned_query_impossible_amz_date_raises_signing_error(amz_date: str) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=r"^Malformed AWS signing date$"):
+        sign_request(
+            method="GET",
+            url=_presigned_url("sts.amazonaws.com", timestamp=amz_date),
+            headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_header_auth_valid_boundary_amz_date_signs() -> None:
+    _url, headers = sign_request(
+        method="GET",
+        url="https://sts.amazonaws.com/",
+        headers=_header_auth_headers(_VALID_BOUNDARY_SIGV4_TIMESTAMP),
+        body=None,
+        credentials=_credentials(),
+    )
+
+    authorization = {name.lower(): value for name, value in headers}["authorization"]
+    assert "Credential=AKIDEXAMPLE/20000229/us-east-1/sts/aws4_request" in authorization
+
+
+def test_presigned_query_valid_boundary_amz_date_signs() -> None:
+    signed_url, _headers = sign_request(
+        method="GET",
+        url=_presigned_url(
+            "sts.amazonaws.com",
+            timestamp=_VALID_BOUNDARY_SIGV4_TIMESTAMP,
+        ),
+        headers=[("Host", "sts.amazonaws.com")],
+        body=None,
+        credentials=_credentials(),
+    )
+
+    query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
+    assert query["X-Amz-Date"] == _VALID_BOUNDARY_SIGV4_TIMESTAMP
+    assert query["X-Amz-Credential"] == "AKIDEXAMPLE/20000229/us-east-1/sts/aws4_request"
 
 
 def test_header_auth_malformed_url_raises_signing_error() -> None:
