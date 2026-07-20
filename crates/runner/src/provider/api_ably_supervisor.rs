@@ -1795,36 +1795,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn legacy_target_runner_id_is_ignored_for_direct_candidate() {
-        let tokens = Mutex::new(HashMap::new());
-        let wakeups = PollWakeups::new(true);
-        let direct_candidates = direct_candidate_inbox();
-        let profiles = default_profiles();
-        let _ = wakeups
-            .wait_for_poll_due(
-                &CancellationToken::new(),
-                Duration::from_secs(30),
-                Duration::from_secs(5),
-            )
-            .await;
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "targetRunnerId": "runner-1"
-            }),
-        );
-
-        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-        let candidate = pop_direct_candidate(&direct_candidates).await;
-        assert_eq!(candidate.profile_name(), "vm0/default");
-        assert_no_direct_candidate(&direct_candidates).await;
-        assert!(!wakeups.snapshot().await.poll_now);
-    }
-
-    #[tokio::test]
     async fn unsupported_profile_job_notification_is_ignored() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
@@ -1880,47 +1850,6 @@ mod tests {
         let snapshot = wakeups.snapshot().await;
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
-    }
-
-    #[tokio::test]
-    async fn legacy_target_runner_id_does_not_override_profile_routing() {
-        for (data, should_wake_poll) in [
-            (
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000001",
-                    "profile": "vm0/large",
-                    "targetRunnerId": "runner-1"
-                }),
-                false,
-            ),
-            (
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000001",
-                    "targetRunnerId": "runner-1"
-                }),
-                true,
-            ),
-        ] {
-            let tokens = Mutex::new(HashMap::new());
-            let wakeups = PollWakeups::new(true);
-            let direct_candidates = direct_candidate_inbox();
-            let profiles = default_profiles();
-            let _ = wakeups
-                .wait_for_poll_due(
-                    &CancellationToken::new(),
-                    Duration::from_secs(30),
-                    Duration::from_secs(5),
-                )
-                .await;
-            let msg = make_message(Some("job"), data);
-
-            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-            let snapshot = wakeups.snapshot().await;
-            assert_no_direct_candidate(&direct_candidates).await;
-            assert_eq!(snapshot.poll_now, should_wake_poll);
-            assert!(snapshot.deferred_poll_at.is_none());
-        }
     }
 
     #[tokio::test]
@@ -2064,79 +1993,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn legacy_target_runner_id_does_not_defer_poll() {
-        let tokens = Mutex::new(HashMap::new());
-        let wakeups = PollWakeups::new(true);
-        let direct_candidates = direct_candidate_inbox();
-        let profiles = default_profiles();
-        let _ = wakeups
-            .wait_for_poll_due(
-                &CancellationToken::new(),
-                Duration::from_secs(30),
-                Duration::from_secs(5),
-            )
-            .await;
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "targetRunnerId": "runner-2"
-            }),
-        );
-
-        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-        let candidate = pop_direct_candidate(&direct_candidates).await;
-        assert_eq!(candidate.profile_name(), "vm0/default");
-        let snapshot = wakeups.snapshot().await;
-        assert_no_direct_candidate(&direct_candidates).await;
-        assert!(!snapshot.poll_now);
-        assert!(snapshot.deferred_poll_at.is_none());
-    }
-
-    #[tokio::test]
-    async fn legacy_target_runner_id_is_ignored_before_profile_routing() {
-        for (data, should_wake_poll) in [
-            (
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000001",
-                    "profile": "vm0/large",
-                    "targetRunnerId": "runner-2"
-                }),
-                false,
-            ),
-            (
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000001",
-                    "targetRunnerId": "runner-2"
-                }),
-                true,
-            ),
-        ] {
-            let tokens = Mutex::new(HashMap::new());
-            let wakeups = PollWakeups::new(true);
-            let direct_candidates = direct_candidate_inbox();
-            let profiles = default_profiles();
-            let _ = wakeups
-                .wait_for_poll_due(
-                    &CancellationToken::new(),
-                    Duration::from_secs(30),
-                    Duration::from_secs(5),
-                )
-                .await;
-            let msg = make_message(Some("job"), data);
-
-            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-            let snapshot = wakeups.snapshot().await;
-            assert_no_direct_candidate(&direct_candidates).await;
-            assert_eq!(snapshot.poll_now, should_wake_poll);
-            assert!(snapshot.deferred_poll_at.is_none());
-        }
-    }
-
-    #[tokio::test]
     async fn invalid_job_notification_does_not_mutate_wakeup_state() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
@@ -2227,42 +2083,6 @@ mod tests {
             .await
             .expect("dropping supervisor should cancel the task")
             .unwrap();
-    }
-
-    #[test]
-    fn parse_job_notification_ignores_target_runner_id() {
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "targetRunnerId": "00000000-0000-0000-0000-000000000099",
-                "cliAgentSessionId": "sess-target",
-                "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "sessionAffinityResource": "reusableSandbox"
-            }),
-        );
-        let notif = parse_job_notification(&msg).unwrap();
-        assert_eq!(notif.profile, Some("vm0/default"));
-        assert_eq!(notif.cli_agent_session_id, Some("sess-target"));
-        assert_eq!(
-            notif.session_affinity_resource,
-            Some(SessionAffinityResource::ReusableSandbox)
-        );
-        assert_eq!(
-            notif.history_generation_run_id,
-            Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
-        );
-        assert_eq!(
-            notif.history_generation_affinity_protected_until,
-            Some("2999-01-01T00:00:00.000Z")
-        );
-        assert_eq!(
-            notif.affinity_protected_until,
-            Some("2999-01-01T00:00:00.000Z")
-        );
     }
 
     #[test]

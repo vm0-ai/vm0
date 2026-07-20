@@ -1746,14 +1746,14 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 }
 
 #[tokio::test]
-async fn session_history_sidecar_metadata_with_allocated_bytes_remains_restoreable() {
+async fn previous_session_history_sidecar_metadata_remains_restoreable() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
     let cache = SessionWorkspaceCache::new(paths.clone());
     let run_id = RunId::new_v4();
-    let session_id = "sess-sidecar-with-allocated-bytes";
-    let history = br#"{"type":"message","content":"with allocated bytes"}"#;
+    let session_id = "sess-sidecar-previous";
+    let history = br#"{"type":"message","content":"previous"}"#;
     let cache_key = write_current_cache_entry(
         &cache,
         run_id,
@@ -1770,11 +1770,15 @@ async fn session_history_sidecar_metadata_with_allocated_bytes_remains_restoreab
         .join("session-history.metadata.json");
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    let metadata = metadata.as_object_mut().unwrap();
     assert!(
         metadata
-            .as_object_mut()
-            .unwrap()
             .insert("allocatedBytes".into(), 4096_u64.into())
+            .is_none()
+    );
+    assert!(
+        metadata
+            .insert("historyGenerationRunId".into(), run_id.to_string().into(),)
             .is_none()
     );
     fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
@@ -1792,47 +1796,6 @@ async fn session_history_sidecar_metadata_with_allocated_bytes_remains_restoreab
     );
     assert_eq!(sidecar.encoded_size, history.len() as u64);
     assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
-}
-
-#[tokio::test]
-async fn previous_session_history_sidecar_metadata_remains_restoreable() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = RunnerPaths::new(dir.path().join("runner"));
-    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths.clone());
-    let run_id = RunId::new_v4();
-    let session_id = "sess-sidecar-legacy";
-    let history = br#"{"type":"message","content":"legacy"}"#;
-    let cache_key = write_current_cache_entry(
-        &cache,
-        run_id,
-        session_id,
-        CANONICAL_WORKING_DIR,
-        "2026-05-01T00:00:00.000Z",
-        "2026-05-01T00:00:00.000Z",
-    )
-    .await;
-    let identity =
-        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
-    let metadata_path = paths
-        .session_workspace_cache_entry_dir(&cache_key)
-        .join("session-history.metadata.json");
-    let mut metadata: serde_json::Value =
-        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
-    metadata
-        .as_object_mut()
-        .unwrap()
-        .insert("historyGenerationRunId".into(), run_id.to_string().into());
-    fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
-        .await
-        .unwrap();
-
-    assert!(
-        cache
-            .probe_session_history_sidecar(&cache_key, &identity)
-            .await
-            .is_ok()
-    );
 }
 
 #[tokio::test]

@@ -380,10 +380,6 @@ describe("runner resume session contract", () => {
         {
           profile: "vm0/default",
           workspaceAffinityVersion: 1,
-          sessionHistorySidecar: {
-            historyGenerationRunId,
-            rawSizeBucket: "64_256_kib",
-          },
         },
         { profile: "vm0/large" },
       ],
