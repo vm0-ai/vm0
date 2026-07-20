@@ -21,8 +21,8 @@ import {
   setCodexFastModeLocalDefault$,
 } from "./codex-fast-local-default.ts";
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
-import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "./settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogStatePersonal$ } from "./settings/codex-device-auth.ts";
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -138,10 +138,10 @@ export const configureChatPageSelectedModel$ = command(
     }
     const mode = status.status === "needs_reconnect" ? "reconnect" : "connect";
     if (status.providerType === "claude-code-oauth-token") {
-      set(setClaudeCodeDeviceAuthDialogStatePersonal$, { open: true, mode });
+      await set(openClaudeCodeDeviceAuthDialogPersonal$, mode, signal);
       return;
     }
-    set(setCodexDeviceAuthDialogStatePersonal$, { open: true, mode });
+    await set(openCodexDeviceAuthDialogPersonal$, mode, signal);
   },
 );
 
