@@ -9,10 +9,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/backfill-storage-archive-sizes",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/execute-workflow-automations",
       "schedule": "* * * * *"
     },
