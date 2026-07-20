@@ -377,6 +377,57 @@ async fn promotion_overwrites_older_cache_entry() {
     assert_eq!(current, b"new image");
 }
 
+#[tokio::test]
+async fn successful_multi_entry_promotion_scans_cache_root_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let first_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "sess-existing-1",
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let second_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "sess-existing-2",
+        "/workspace",
+        "2026-05-01T00:01:00.000Z",
+        "2026-05-01T00:01:00.000Z",
+    )
+    .await;
+    cache.reset_gc_root_scan_count();
+
+    let promoted_key = promote_current_cache_entry(
+        &cache,
+        &paths,
+        "sess-promoted",
+        b"promoted image",
+        "2026-05-01T00:02:00.000Z",
+    )
+    .await;
+
+    assert_eq!(
+        cache.gc_root_scan_count(),
+        1,
+        "successful promotion should inventory the cache root once during mandatory post-promotion GC"
+    );
+    for cache_key in [first_key, second_key, promoted_key] {
+        assert!(
+            paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists(),
+            "healthy under-budget entries should remain after post-promotion GC"
+        );
+    }
+}
+
 #[test]
 fn budget_uses_automatic_bounds() {
     let budget = CacheBudget::from_fs_stats(FsStats {
@@ -3764,7 +3815,7 @@ async fn gc_candidate_includes_current_image_without_metadata() {
 }
 
 #[tokio::test]
-async fn gc_prunes_oldest_entries_above_held_session_limit() {
+async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -3772,6 +3823,7 @@ async fn gc_prunes_oldest_entries_above_held_session_limit() {
     let run_id = RunId::new_v4();
 
     let mut oldest_key = String::new();
+    let mut second_oldest_key = String::new();
     let mut newest_key = String::new();
     for index in 0..=MAX_HELD_SESSION_STATES {
         let session_id = format!("sess-{index:04}");
@@ -3788,25 +3840,32 @@ async fn gc_prunes_oldest_entries_above_held_session_limit() {
         if index == 0 {
             oldest_key = key.clone();
         }
+        if index == 1 {
+            second_oldest_key = key.clone();
+        }
         if index == MAX_HELD_SESSION_STATES {
             newest_key = key;
         }
     }
 
+    let oldest_lock = crate::lock::acquire(cache.entry_lock_path(&oldest_key))
+        .await
+        .unwrap();
     let freed = cache.gc(false).await.unwrap();
+    drop(oldest_lock);
 
     assert!(freed > 0);
     assert!(
-        !paths
+        paths
             .session_workspace_cache_current_image(&oldest_key)
             .exists(),
-        "oldest unlocked cache entry should be removed when the cache is over the advertised limit"
+        "the oldest busy entry must remain protected by its entry lock"
     );
     assert!(
         !paths
-            .session_workspace_cache_entry_dir(&oldest_key)
+            .session_workspace_cache_entry_dir(&second_oldest_key)
             .exists(),
-        "GC should remove the whole evicted entry so stale metadata directories do not slow heartbeat scans"
+        "a valid busy entry must still count toward the cap and force eviction of the next eligible candidate"
     );
     assert!(
         paths
