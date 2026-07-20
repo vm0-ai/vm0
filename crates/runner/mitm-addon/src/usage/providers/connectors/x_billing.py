@@ -345,10 +345,10 @@ def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: s
         simple_ascii_candidate = candidate.lower()
         # Canonical A-label validation remains owned by the shared IDNA path.
         use_simple_ascii_labels = "xn--" not in simple_ascii_candidate
+        labels = (simple_ascii_candidate if use_simple_ascii_labels else candidate).split(".")
     else:
-        simple_ascii_candidate = candidate
         use_simple_ascii_labels = False
-    labels = (simple_ascii_candidate if use_simple_ascii_labels else candidate).split(".")
+        labels = candidate.split(".")
     last_label_index = len(labels) - 1
     for index, label in enumerate(labels):
         if use_simple_ascii_labels:
