@@ -770,6 +770,42 @@ function isReconnectRequiredRefreshErrorCode(
   );
 }
 
+async function getConnectorSecretValues(args: {
+  readonly access: ConnectorCredentialAccess;
+  readonly db: Db;
+  readonly names: readonly string[];
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<ReadonlyMap<string, string>> {
+  if (args.names.length === 0) {
+    return new Map();
+  }
+  // Keep multi-secret credentials (for example AWS SigV4) on one statement
+  // snapshot so a same-method replacement cannot combine two stored states.
+  const rows = await args.db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [{ access: args.access, names: args.names }],
+      }),
+    );
+  const values = new Map<string, string>();
+  for (const row of rows) {
+    values.set(
+      row.name,
+      await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      ),
+    );
+  }
+  return values;
+}
+
 async function getSecretValue(args: {
   readonly connectorAccess?: ConnectorCredentialAccess;
   readonly db: Db;
@@ -779,36 +815,29 @@ async function getSecretValue(args: {
   readonly type: SecretType;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<string | null> {
-  const connectorAccess = args.connectorAccess;
-  const condition =
-    args.type === "connector"
-      ? (() => {
-          if (connectorAccess === undefined) {
-            return null;
-          }
-          return connectorCredentialSecretReadCondition({
-            db: args.db,
-            groups: [
-              {
-                access: connectorAccess,
-                names: [args.name],
-              },
-            ],
-          });
-        })()
-      : and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.userId, args.userId),
-          eq(secretsTable.name, args.name),
-          eq(secretsTable.type, args.type),
-        );
-  if (condition === null) {
-    return null;
+  if (args.type === "connector") {
+    if (args.connectorAccess === undefined) {
+      return null;
+    }
+    const values = await getConnectorSecretValues({
+      access: args.connectorAccess,
+      db: args.db,
+      names: [args.name],
+      featureSwitchContext: args.featureSwitchContext,
+    });
+    return values.get(args.name) ?? null;
   }
   const [row] = await args.db
     .select({ encryptedValue: secretsTable.encryptedValue })
     .from(secretsTable)
-    .where(condition)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.name, args.name),
+        eq(secretsTable.type, args.type),
+      ),
+    )
     .limit(1);
   return row
     ? await decryptStoredSecretValue(
@@ -982,23 +1011,34 @@ async function getCurrentAccessSecrets(
     args.userId,
     args.sourceUserId,
   );
-  const values = new Map<string, string | null>();
-  for (const secretName of new Set(Object.values(runtimeOutputSecrets))) {
-    values.set(
-      secretName,
-      await getSecretValue({
-        connectorAccess:
-          args.sourceType === "connector"
-            ? args.connectorAccessByType.get(args.connectorType)?.access
-            : undefined,
+  const secretNames = [...new Set(Object.values(runtimeOutputSecrets))];
+  let values: ReadonlyMap<string, string>;
+  if (args.sourceType === "connector") {
+    const access = args.connectorAccessByType.get(args.connectorType)?.access;
+    values = access
+      ? await getConnectorSecretValues({
+          access,
+          db: args.db,
+          names: secretNames,
+          featureSwitchContext: args.featureSwitchContext,
+        })
+      : new Map();
+  } else {
+    const modelProviderValues = new Map<string, string>();
+    for (const secretName of secretNames) {
+      const value = await getSecretValue({
         db: args.db,
         orgId: args.orgId,
         userId: secretUserId,
         name: secretName,
         type: args.sourceType,
         featureSwitchContext: args.featureSwitchContext,
-      }),
-    );
+      });
+      if (value !== null) {
+        modelProviderValues.set(secretName, value);
+      }
+    }
+    values = modelProviderValues;
   }
   return Object.fromEntries(
     Object.entries(runtimeOutputSecrets).map(([envName, secretName]) => {
