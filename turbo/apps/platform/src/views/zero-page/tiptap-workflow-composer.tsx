@@ -251,6 +251,7 @@ interface ComposerSuggestionMenuState {
   readonly close: () => void;
   readonly workflowNames: readonly string[];
   readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
   readonly chatThreads: readonly ComposerChatThreadSuggestion[];
@@ -368,6 +369,7 @@ function useComposerSuggestionMenu({
       return workflow.name;
     }),
     workflows: workflowSuggestions,
+    workflowQuery: slashRange?.query ?? "",
     workflowsLoading: workflowsLoadable.state === "loading",
     showWorkflows,
     chatThreads,
@@ -465,6 +467,7 @@ export function TiptapWorkflowComposer({
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu
           workflows={suggestionMenu.workflows}
+          query={suggestionMenu.workflowQuery}
           loading={suggestionMenu.workflowsLoading}
           selectedIndex={suggestionMenu.selectedIndex}
           showWorkflowsPageLink
