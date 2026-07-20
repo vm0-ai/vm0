@@ -279,12 +279,14 @@ impl ApiProvider {
         }
     }
 
-    async fn defer_until_next_claim_retry(&self) {
+    async fn schedule_claim_retry_after_poll(&self, polled_with_exclusions: bool) {
         let snapshot = self.claim_cooldowns.snapshot().await;
         if let Some(retry_after) = snapshot.retry_after {
             self.poll_wakeups
                 .request_deferred_poll_after(retry_after)
                 .await;
+        } else if polled_with_exclusions {
+            self.poll_wakeups.request_immediate_poll().await;
         }
     }
 
@@ -486,7 +488,7 @@ impl JobProvider for ApiProvider {
                             excluded_run_count = excluded_run_ids.len(),
                             "poll: API returned candidate excluded by claim cooldown"
                         );
-                        self.defer_until_next_claim_retry().await;
+                        self.schedule_claim_retry_after_poll(true).await;
                         continue;
                     }
                     let record = self
@@ -534,7 +536,8 @@ impl JobProvider for ApiProvider {
                     self.poll_wakeups
                         .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                         .await;
-                    self.defer_until_next_claim_retry().await;
+                    self.schedule_claim_retry_after_poll(!excluded_run_ids.is_empty())
+                        .await;
                 }
                 Err(e) => {
                     self.poll_wakeups
@@ -2514,7 +2517,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transient_claim_failure_retries_after_cooldown_and_recovers() {
+    async fn transient_claim_failure_repolls_when_cooldown_expires_during_excluded_poll() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
@@ -2527,8 +2530,9 @@ mod tests {
 
             let (mut excluded_poll, _) = listener.accept().await.unwrap();
             let request = read_http_request_text(&mut excluded_poll).await;
-            write_json_response(&mut excluded_poll, r#"{"job":null}"#).await;
             request_tx.send(request).unwrap();
+            tokio::time::sleep(CLAIM_TRANSIENT_COOLDOWN + Duration::from_millis(50)).await;
+            write_json_response(&mut excluded_poll, r#"{"job":null}"#).await;
 
             let (mut retry_poll, _) = listener.accept().await.unwrap();
             let request = read_http_request_text(&mut retry_poll).await;
