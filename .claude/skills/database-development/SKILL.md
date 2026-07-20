@@ -73,7 +73,8 @@ PostgreSQL driver values. Never use them to declare a database result contract.
 ### Structured Selections
 
 For every raw expression selected by `select`, `selectDistinct`,
-`selectDistinctOn`, or `returning`, choose the first applicable runtime boundary:
+`selectDistinctOn`, `returning`, or relational-query `extras`, choose the first
+applicable runtime boundary:
 
 1. Prefer a schema column or a Drizzle helper such as `count()` that already
    owns the correct decoder.
@@ -108,6 +109,15 @@ not add or replace its decoder. A PostgreSQL cast such as `::int` changes the
 server-side value representation, while `.mapWith(...)` defines the client-side
 runtime decoder. A TypeScript assertion changes neither one.
 
+The same rule applies to `db.query.<table>.findMany(...)` and
+`findFirst(...)`, including callback-form `extras` and `extras` nested below
+`with`. Keep relational configs inline or in inspectable local variables so
+lint can follow every selected extra. Call `select`, `selectDistinct`,
+`selectDistinctOn`, `returning`, `findMany`, and `findFirst` directly; do not
+alias, destructure, or bind these methods, and do not spread their invocation
+arguments, because those forms hide the result boundary from static
+enforcement.
+
 For set operations, every branch must expose a compatible, concretely mapped
 output. Drizzle uses the leftmost branch's decoder for returned rows, so the
 leftmost expression owns the runtime contract; mapping later branches does not
@@ -125,7 +135,9 @@ expression, write value, discarded command, or `rowCount` command result does
 not produce a structured field and needs no result decoder. Leave those
 expressions as unparameterized `sql` and `SQL`. If a write query adds
 `.returning({...})`, map raw SQL in the returned fields independently of
-`.set({...})`.
+`.set({...})`. Likewise, raw SQL passed to `insert(...).select(...)` is the
+write source rather than a returned field; only a subsequent `returning(...)`
+introduces a result-mapping boundary.
 
 ### Raw Execute Rows
 

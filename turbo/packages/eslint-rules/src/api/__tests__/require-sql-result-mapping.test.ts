@@ -38,6 +38,39 @@ const drizzlePreamble = `
   });
 `;
 
+const relationalPreamble = `
+  import { relations } from "drizzle-orm";
+  import { integer, pgTable, text } from "drizzle-orm/pg-core";
+
+  const users = pgTable("users", {
+    id: integer("id").notNull(),
+    name: text("name").notNull(),
+  });
+  const posts = pgTable("posts", {
+    id: integer("id").notNull(),
+    authorId: integer("author_id").notNull(),
+    title: text("title").notNull(),
+  });
+  const usersRelations = relations(users, ({ many }) => ({
+    posts: many(posts),
+  }));
+  const postsRelations = relations(posts, ({ one }) => ({
+    author: one(users, {
+      fields: [posts.authorId],
+      references: [users.id],
+    }),
+  }));
+
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      users: typeof users;
+      posts: typeof posts;
+      usersRelations: typeof usersRelations;
+      postsRelations: typeof postsRelations;
+    }>;
+  declare const db: DrizzleDatabase;
+`;
+
 ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
   valid: [
     {
@@ -56,6 +89,96 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
           value: sql\`upper(\${users.name})\`.mapWith(users.name),
           aliased: sql\`lower(\${users.name})\`.mapWith(users.name).as("value"),
         });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          get value() {
+            return sql\`upper(\${users.name})\`.mapWith(users.name);
+          },
+        });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.insert(users).select(sql\`SELECT 1, 'name'\`);
+        db.insert(users).select(...[sql\`SELECT 1, 'name'\`] as const);
+        const insertSelect = db.insert(users).select;
+        const method = "select" as const;
+        db.insert(users)[method](sql\`SELECT 1, 'name'\`);
+        void insertSelect;
+      `,
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${fields.id} > 0\`,
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`
+              .mapWith(users.name)
+              .as("normalized_name"),
+          },
+          with: {
+            posts: {
+              extras: (fields, operators) => ({
+                normalizedTitle: operators.sql\`upper(\${fields.title})\`
+                  .mapWith(fields.title)
+                  .as("normalized_title"),
+              }),
+            },
+          },
+        });
+        db.query.users.findFirst({
+          extras: (fields, operators) => ({
+            normalizedName: operators.sql\`upper(\${fields.name})\`
+              .mapWith(fields.name)
+              .as("normalized_name"),
+          }),
+        });
+        db.query.users.findMany({ with: { posts: true } });
+        db.query.users.findMany(undefined);
+        db.query.users.findFirst({
+          extras: (fields, operators) => {
+            return {
+              normalizedName: operators.sql\`upper(\${fields.name})\`
+                .mapWith(fields.name)
+                .as("normalized_name"),
+            };
+          },
+        });
+      `,
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        type UsersQueryConfig = NonNullable<
+          Parameters<typeof db.query.users.findMany>[0]
+        >;
+        const columnsOnly: UsersQueryConfig = {
+          columns: { id: true },
+        };
+        const mapped: UsersQueryConfig = {
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`
+              .mapWith(users.name)
+              .as("normalized_name"),
+          },
+        };
+        const nested = {
+          extras: {
+            normalizedTitle: sql\`upper(\${posts.title})\`
+              .mapWith(posts.title)
+              .as("normalized_title"),
+          },
+        };
+        db.query.users.findMany(columnsOnly);
+        db.query.users.findMany(mapped);
+        db.query.users.findMany({ with: { posts: nested } });
       `,
     },
     {
@@ -104,6 +227,15 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
           value: sql\`'right'\`.mapWith(users.name),
         });
         left.unionAll(right);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        const subquery = db
+          .select({ name: users.name })
+          .from(users)
+          .as<"named_users">("named_users");
+        void subquery;
       `,
     },
     {
@@ -177,8 +309,11 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
           readonly value: T;
         }
         const localValue = sql<string>\`value\`;
+        const localTag = sql<string>;
+        const instantiatedLocalValue = localTag\`value\`;
         const localTyped: SQL<string> = { value: "value" };
         void localValue;
+        void instantiatedLocalValue;
         void localTyped;
       `,
     },
@@ -208,7 +343,20 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         declare const builder: Builder;
         declare const repository: Repository;
         const value = builder.as<string>("value");
+        const alias = builder.as<string>;
+        const instantiatedValue = alias("value");
         repository.select({ value });
+        void instantiatedValue;
+      `,
+    },
+    {
+      code: `
+        interface Repository {
+          findMany(config: object): readonly unknown[];
+        }
+        declare const repository: Repository;
+        const findMany = repository.findMany;
+        void findMany;
       `,
     },
     {
@@ -230,6 +378,9 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         repository.select({
           value: sql\`upper(\${users.name})\`,
         });
+        repository.select(
+          ...[{ value: sql\`upper(\${users.name})\` }] as const,
+        );
       `,
     },
   ],
@@ -245,6 +396,23 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
       code: `${drizzlePreamble}
         import { sql as drizzleSql } from "drizzle-orm";
         const value = drizzleSql<string>\`upper(\${users.name})\`;
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const tag = sql;
+        const value = tag<string>\`upper(\${users.name})\`;
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        const typedSql = sql<string>;
+        const value = typedSql\`value\`;
+        void value;
       `,
       errors: [{ messageId: "sqlTypeArgument" }],
     },
@@ -308,6 +476,34 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
     {
       code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        const expression: Pick<SQL, "as"> = sql\`upper(\${users.name})\`;
+        const value = expression.as<string>("value");
+        db.select({ value });
+      `,
+      errors: [{ messageId: "sqlAliasTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const expression = sql\`upper(\${users.name})\`;
+        const alias = expression.as;
+        const value = alias<string>("value");
+        db.select({ value });
+      `,
+      errors: [{ messageId: "sqlAliasTypeArgument" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        const expression = sql\`value\`;
+        const alias = expression.as<string>;
+        void alias;
+      `,
+      errors: [{ messageId: "sqlAliasTypeArgument" }],
+    },
+    {
+      code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         const hidden = { value: sql\`upper(\${users.name})\` } as unknown;
       `,
@@ -326,6 +522,38 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         db.select({ value: sql\`upper(\${users.name})\` });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          get value() {
+            return sql\`upper(\${users.name})\`;
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        type Fields = NonNullable<
+          Parameters<DrizzleDatabase["select"]>[0]
+        >;
+        function select<TFields extends Fields>(fields: TFields) {
+          return db.select(fields);
+        }
+        select({ value: sql\`upper(\${users.name})\` });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const method = "select" as const;
+        db[method]({ value: sql\`upper(\${users.name})\` });
       `,
       errors: [{ messageId: "unmappedResult" }],
     },
@@ -465,6 +693,253 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         void fields;
       `,
       errors: [{ messageId: "sqlTypeReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const select = db.select.bind(db);
+        select({ value: sql\`upper(\${users.name})\` });
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const args = [
+          { value: sql\`upper(\${users.name})\` },
+        ] as const;
+        db.select(...args);
+      `,
+      errors: [{ messageId: "uninspectableResultArguments" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        const method = "select" as const;
+        const select = db[method].bind(db);
+        void select;
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const database: Pick<DrizzleDatabase, "select"> = db;
+        database.select({ value: sql\`upper(\${users.name})\` });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        interface Selector {
+          readonly select: DrizzleDatabase["select"];
+        }
+        const database: Selector = db;
+        database.select({ value: sql\`upper(\${users.name})\` });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const update = db.update(users).set({ name: "updated" });
+        const writer: Pick<typeof update, "returning"> = update;
+        writer.returning({
+          value: sql\`upper(\${users.name})\`,
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        const { selectDistinct: select } = db;
+        void select;
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        const returning = db.update(users).set({ name: "updated" }).returning;
+        void returning;
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        db.query.users.findMany({
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const extras = "extras" as const;
+        db.query.users.findMany({
+          [extras]: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        type UsersQueryConfig = NonNullable<
+          Parameters<typeof db.query.users.findMany>[0]
+        >;
+        const config: UsersQueryConfig = {
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        };
+        db.query.users.findMany(config);
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const unsafe = {
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        };
+        db.query.users.findMany({ ...unsafe });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        db.query.users.findFirst({
+          extras: (fields, operators) => ({
+            normalizedName:
+              operators.sql\`upper(\${fields.name})\`.as("normalized_name"),
+          }),
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        db.query.users.findFirst({
+          extras: (fields, operators) => ({
+            normalizedName:
+              operators.sql<string>\`upper(\${fields.name})\`
+                .as("normalized_name"),
+          }),
+        });
+      `,
+      errors: [{ messageId: "sqlTypeArgument" }],
+    },
+    {
+      code: `${relationalPreamble}
+        db.query.users.findFirst({
+          extras: (fields, operators) => {
+            return {
+              normalizedName:
+                operators.sql\`upper(\${fields.name})\`.as("normalized_name"),
+            };
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const config = {
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        };
+        db.query.users.findMany(config);
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        db.query.users.findMany({
+          with: {
+            posts: {
+              extras: {
+                normalizedTitle:
+                  sql\`upper(\${posts.title})\`.as("normalized_title"),
+              },
+            },
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        const findMany = db.query.users.findMany.bind(db.query.users);
+        void findMany;
+      `,
+      errors: [{ messageId: "resultMethodReference" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const args = [{
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        }] as const;
+        db.query.users.findMany(...args);
+      `,
+      errors: [{ messageId: "uninspectableResultArguments" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const shared = {
+          normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+        };
+        db.query.users.findMany({
+          with: { posts: shared },
+          extras: shared,
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${relationalPreamble}
+        declare function config(): {};
+        db.query.users.findMany(config());
+      `,
+      errors: [{ messageId: "uninspectableRelationalConfig" }],
+    },
+    {
+      code: `${relationalPreamble}
+        function query(undefined: {}) {
+          return db.query.users.findMany(undefined);
+        }
+        void query;
+      `,
+      errors: [{ messageId: "uninspectableRelationalConfig" }],
+    },
+    {
+      code: `${relationalPreamble}
+        import { sql } from "drizzle-orm";
+        const usersQuery: Pick<
+          typeof db.query.users,
+          "findMany"
+        > = db.query.users;
+        usersQuery.findMany({
+          extras: {
+            normalizedName: sql\`upper(\${users.name})\`.as("normalized_name"),
+          },
+        });
+      `,
+      errors: [{ messageId: "unmappedResult" }],
     },
   ],
 });
