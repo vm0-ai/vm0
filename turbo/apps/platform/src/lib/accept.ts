@@ -37,30 +37,17 @@ function extractError(
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise shows a toast and throws an `ApiError`.
- *
- * Toast behavior:
- * - Write-path commands (mutations): omit `options` or pass `{}` — the toast
- *   fires automatically. The thrown `ApiError` is swallowed by `detach()`, so
- *   there is no double-notification.
- * - Use `{ toast: false }` only when the caller deliberately handles the error
- *   in a non-toast UI flow or in a non-user-facing integration callback.
  */
 async function accept<
   T extends { status: number; body: unknown },
   S extends number,
->(
-  promise: Promise<T>,
-  codes: S[],
-  options?: { toast?: boolean },
-): Promise<Extract<T, { status: S }>> {
+>(promise: Promise<T>, codes: S[]): Promise<Extract<T, { status: S }>> {
   const result = await promise;
   if ((codes as number[]).includes(result.status)) {
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  if (options?.toast !== false) {
-    toast.error(message);
-  }
+  toast.error(message);
   throw new ApiError(message, code, result.status);
 }
 

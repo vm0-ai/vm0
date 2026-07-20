@@ -6,7 +6,7 @@ import {
   type CodexDeviceAuthScope,
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 
-import { ApiError, accept } from "../../../lib/accept.ts";
+import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
@@ -14,7 +14,6 @@ import {
   bestEffort,
   onRef,
   resetSignal,
-  settle,
   setLoop,
   tapError,
 } from "../../utils.ts";
@@ -69,17 +68,17 @@ function secondsToMilliseconds(seconds: number): number {
   return seconds * 1000;
 }
 
-function codexDeviceAuthErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
-      return "Codex produced a login token format vm0 does not recognize. Update Codex and try again.";
-    }
-    if (error.code === "CODEX_FREE_PLAN_REJECTED") {
-      return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.";
-    }
-    return error.message;
+function codexDeviceAuthErrorMessage(error: {
+  readonly code: string;
+  readonly message: string;
+}): string {
+  if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
+    return "Codex produced a login token format vm0 does not recognize. Update Codex and try again.";
   }
-  return error instanceof Error ? error.message : "Codex connection failed";
+  if (error.code === "CODEX_FREE_PLAN_REJECTED") {
+    return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.";
+  }
+  return error.message;
 }
 
 function openApprovalPage(browserUrl: string): boolean {
@@ -173,11 +172,10 @@ const completeCodexDeviceAuth$ = command(
         body: { sessionToken },
         fetchOptions: { signal },
       }),
-      [200],
-      { toast: false },
+      [200, 400, 404, 503],
     );
     signal.throwIfAborted();
-    return result.body;
+    return result;
   },
 );
 
@@ -192,7 +190,6 @@ const cancelCodexDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
@@ -238,8 +235,9 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
           }
 
           set(ctx.internalFlowState$, { ...current, status: "polling" });
-          const completion = await settle(
-            set(completeCodexDeviceAuth$, current.sessionToken, loopSignal),
+          const completion = await set(
+            completeCodexDeviceAuth$,
+            current.sessionToken,
             loopSignal,
           );
           loopSignal.throwIfAborted();
@@ -249,15 +247,15 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
             return true;
           }
 
-          if (!completion.ok) {
+          if (completion.status !== 200) {
             set(ctx.internalFlowState$, {
               status: "error",
-              message: codexDeviceAuthErrorMessage(completion.error),
+              message: codexDeviceAuthErrorMessage(completion.body.error),
             });
             return true;
           }
 
-          if (completion.value.status === "complete") {
+          if (completion.body.status === "complete") {
             set(ctx.reloadProviders$);
             toast.success("ChatGPT connected");
             set(ctx.internalDialogState$, createInitialDialogState());
@@ -269,7 +267,7 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
           set(ctx.internalFlowState$, {
             ...latest,
             status: "pending",
-            errorMessage: completion.value.errorMessage,
+            errorMessage: completion.body.errorMessage,
           });
 
           const nextRemainingMs = latest.expiresAtMs - now();

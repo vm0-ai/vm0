@@ -2210,7 +2210,7 @@ describe("activity detail polling", () => {
     expect(extra.networkLogs).toStrictEqual([]);
   });
 
-  it("silences optional activity extra fetch failures during download", async () => {
+  it("toasts optional activity extra fetch failures during download", async () => {
     const runId = "a0000000-0000-4000-a000-000000000396";
     const toastError = vi.spyOn(toast, "error");
 
@@ -2242,7 +2242,7 @@ describe("activity detail polling", () => {
       );
 
       expect(extra).toStrictEqual({});
-      expect(toastError).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith("Network logs unavailable");
     } finally {
       toastError.mockRestore();
     }

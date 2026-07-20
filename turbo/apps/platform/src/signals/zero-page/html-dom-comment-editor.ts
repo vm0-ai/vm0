@@ -8,7 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { onRef, resetSignal, settle, tapError, withCleanup } from "../utils.ts";
@@ -386,7 +386,6 @@ async function requestHtmlEditDraft(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   params.signal.throwIfAborted();
 
@@ -3263,9 +3262,11 @@ export const sendHtmlDomEditRequest$ = command(
             signal,
           }),
           (error) => {
-            toast.error(
-              htmlDomEditErrorMessage(error, "Failed to generate edit"),
-            );
+            if (!(error instanceof ApiError)) {
+              toast.error(
+                htmlDomEditErrorMessage(error, "Failed to generate edit"),
+              );
+            }
           },
         );
         signal.throwIfAborted();
