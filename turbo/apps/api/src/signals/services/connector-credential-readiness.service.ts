@@ -14,7 +14,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
@@ -33,6 +33,13 @@ interface BridgeContractRow {
   readonly name: string;
   readonly storageVersion: number;
 }
+
+type ReadinessCountKind =
+  | "bridge-secrets"
+  | "bridge-variables"
+  | "missing-connector-versions"
+  | "unowned-connector-secrets"
+  | "unowned-connector-variables";
 
 function ambiguousNamesByKind(snapshot: ConnectorRuntimeSnapshot): {
   readonly secret: ReadonlySet<string>;
@@ -113,6 +120,9 @@ function bridgeContractRows(
 }
 
 function bridgeContractValues(rows: readonly BridgeContractRow[]): SQL {
+  if (rows.length === 0) {
+    return sql`VALUES (NULL::text, NULL::text, NULL::bigint, NULL::text)`;
+  }
   return sql`VALUES ${sql.join(
     rows.map((row) => {
       return sql`(
@@ -135,19 +145,23 @@ function bridgeContractTable(rows: readonly BridgeContractRow[]): SQL {
   )`;
 }
 
-async function countBridgeResolvableSecrets(
+function readinessCountKind(kind: ReadinessCountKind) {
+  return sql<ReadinessCountKind>`${kind}::text`.as("kind");
+}
+
+function bridgeResolvableSecretsQuery(
   db: ReadonlyDb,
   contracts: readonly BridgeContractRow[],
-): Promise<number> {
+) {
   const secretContracts = contracts.filter((row) => {
     return row.kind === "secret";
   });
-  if (secretContracts.length === 0) {
-    return 0;
-  }
   const candidateConnector = alias(connectors, "secret_readiness_connector");
-  const [row] = await db
-    .select({ value: countDistinct(secrets.id) })
+  return db
+    .select({
+      kind: readinessCountKind("bridge-secrets"),
+      value: countDistinct(secrets.id),
+    })
     .from(secrets)
     .innerJoin(
       bridgeContractTable(secretContracts),
@@ -164,22 +178,21 @@ async function countBridgeResolvableSecrets(
       ),
     )
     .where(and(eq(secrets.type, "connector"), isNull(secrets.connectorId)));
-  return row?.value ?? 0;
 }
 
-async function countBridgeResolvableVariables(
+function bridgeResolvableVariablesQuery(
   db: ReadonlyDb,
   contracts: readonly BridgeContractRow[],
-): Promise<number> {
+) {
   const variableContracts = contracts.filter((row) => {
     return row.kind === "variable";
   });
-  if (variableContracts.length === 0) {
-    return 0;
-  }
   const candidateConnector = alias(connectors, "variable_readiness_connector");
-  const [row] = await db
-    .select({ value: countDistinct(variables.id) })
+  return db
+    .select({
+      kind: readinessCountKind("bridge-variables"),
+      value: countDistinct(variables.id),
+    })
     .from(variables)
     .innerJoin(
       bridgeContractTable(variableContracts),
@@ -196,7 +209,6 @@ async function countBridgeResolvableVariables(
       ),
     )
     .where(and(eq(variables.type, "connector"), isNull(variables.connectorId)));
-  return row?.value ?? 0;
 }
 
 export async function loadConnectorCredentialReadiness(
@@ -204,33 +216,48 @@ export async function loadConnectorCredentialReadiness(
   snapshot: ConnectorRuntimeSnapshot | null,
 ): Promise<ConnectorCredentialReadiness> {
   const contracts = bridgeContractRows(snapshot);
-  const [
-    missingVersionRows,
-    unownedSecretRows,
-    unownedVariableRows,
-    bridgeSecrets,
-    bridgeVariables,
-  ] = await Promise.all([
+  // One UNION statement gives every count the same PostgreSQL statement
+  // snapshot, so concurrent credential claims cannot produce contradictory
+  // totals (including a transient negative unresolved count).
+  const rows = await unionAll(
     db
-      .select({ value: count() })
+      .select({
+        kind: readinessCountKind("missing-connector-versions"),
+        value: count(),
+      })
       .from(connectors)
       .where(isNull(connectors.storageVersion)),
     db
-      .select({ value: count() })
+      .select({
+        kind: readinessCountKind("unowned-connector-secrets"),
+        value: count(),
+      })
       .from(secrets)
       .where(and(eq(secrets.type, "connector"), isNull(secrets.connectorId))),
     db
-      .select({ value: count() })
+      .select({
+        kind: readinessCountKind("unowned-connector-variables"),
+        value: count(),
+      })
       .from(variables)
       .where(
         and(eq(variables.type, "connector"), isNull(variables.connectorId)),
       ),
-    countBridgeResolvableSecrets(db, contracts),
-    countBridgeResolvableVariables(db, contracts),
-  ]);
-  const missingConnectorVersions = missingVersionRows[0]?.value ?? 0;
-  const unownedConnectorSecrets = unownedSecretRows[0]?.value ?? 0;
-  const unownedConnectorVariables = unownedVariableRows[0]?.value ?? 0;
+    bridgeResolvableSecretsQuery(db, contracts),
+    bridgeResolvableVariablesQuery(db, contracts),
+  );
+  const counts = new Map(
+    rows.map((row) => {
+      return [row.kind, row.value] as const;
+    }),
+  );
+  const missingConnectorVersions =
+    counts.get("missing-connector-versions") ?? 0;
+  const unownedConnectorSecrets = counts.get("unowned-connector-secrets") ?? 0;
+  const unownedConnectorVariables =
+    counts.get("unowned-connector-variables") ?? 0;
+  const bridgeSecrets = counts.get("bridge-secrets") ?? 0;
+  const bridgeVariables = counts.get("bridge-variables") ?? 0;
   return {
     missingConnectorVersions,
     unownedConnectorSecrets,
