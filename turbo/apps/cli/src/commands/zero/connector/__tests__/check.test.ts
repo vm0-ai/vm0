@@ -609,19 +609,44 @@ describe("zero connector check command", () => {
         platformOrigin: "https://app.vm0.ai",
       },
       {
+        name: "staging API",
+        baseUrl: "https://staging-api.vm6.ai",
+        platformOrigin: "https://staging-app.omby.ai",
+      },
+      {
+        name: "staging web",
+        baseUrl: "https://staging-www.vm6.ai",
+        platformOrigin: "https://staging-app.omby.ai",
+      },
+      {
+        name: "legacy staging app",
+        baseUrl: "https://staging-app.vm6.ai",
+        platformOrigin: "https://staging-app.omby.ai",
+      },
+      {
+        name: "Cloudflare staging app",
+        baseUrl: "https://staging-app.omby.ai",
+        platformOrigin: "https://staging-app.omby.ai",
+      },
+      {
         name: "preview API",
         baseUrl: "https://pr-123-api.vm6.ai",
-        platformOrigin: "https://pr-123-app.vm6.ai",
+        platformOrigin: "https://pr-123-app.omby.ai",
       },
       {
-        name: "legacy preview web",
+        name: "preview web",
         baseUrl: "https://pr-123-www.vm6.ai",
-        platformOrigin: "https://pr-123-app.vm6.ai",
+        platformOrigin: "https://pr-123-app.omby.ai",
       },
       {
-        name: "canonical preview app",
+        name: "legacy preview app",
         baseUrl: "https://pr-123-app.vm6.ai",
-        platformOrigin: "https://pr-123-app.vm6.ai",
+        platformOrigin: "https://pr-123-app.omby.ai",
+      },
+      {
+        name: "Cloudflare preview app",
+        baseUrl: "https://pr-123-app.omby.ai",
+        platformOrigin: "https://pr-123-app.omby.ai",
       },
       {
         name: "tunnel API",

@@ -15,7 +15,7 @@
 # Usage: url_is_on_app <url> [check_url]
 #   check_url — URL to compare against (default: APP_URL from calling context)
 # Compares hostnames rather than assuming "app." prefix, so it works for all
-# environments (app.vm7.ai, staging-app.vm6.ai, etc.).
+# environments (app.vm7.ai, staging-app.omby.ai, etc.).
 # ---------------------------------------------------------------------------
 url_is_on_app() {
   local url="$1"

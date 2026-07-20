@@ -6,9 +6,10 @@ import { getApiUrl } from "../../../lib/api/config";
  *   api.vm0.ai                    → app.vm0.ai
  *   www.vm0.ai                    → app.vm0.ai
  *   platform.vm0.ai               → app.vm0.ai
- *   pr-123-api.vm6.ai             → pr-123-app.vm6.ai
+ *   staging-api.vm6.ai            → staging-app.omby.ai
+ *   pr-123-api.vm6.ai             → pr-123-app.omby.ai
  *   tunnel-user-host-www.vm7.ai   → tunnel-user-host-app.vm7.ai
- *   pr-123-app.vm6.ai             → pr-123-app.vm6.ai
+ *   pr-123-app.vm6.ai             → pr-123-app.omby.ai
  *   localhost:3000                → localhost:3000
  *   custom.example.com            → app.custom.example.com
  */
@@ -34,6 +35,16 @@ export function toPlatformUrl(apiUrl: string): URL {
     parts.unshift("app");
   }
   parsed.hostname = parts.join(".");
+  const platformServiceLabel = parts[0];
+  if (
+    parts.length === 3 &&
+    parts[1] === "vm6" &&
+    parts[2] === "ai" &&
+    platformServiceLabel !== undefined &&
+    /^(?:staging|pr-[0-9]+)-app$/.test(platformServiceLabel)
+  ) {
+    parsed.hostname = `${platformServiceLabel}.omby.ai`;
+  }
   return parsed;
 }
 

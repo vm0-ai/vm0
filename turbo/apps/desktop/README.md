@@ -74,7 +74,7 @@ is also the path included in packaged macOS artifacts.
 Point it at a local or staging platform URL with:
 
 ```bash
-VM0_DESKTOP_PLATFORM_URL=https://staging-app.vm6.ai pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @vm0/desktop dev:packaged
 VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged
 VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev:packaged
 ```
