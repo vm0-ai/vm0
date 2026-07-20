@@ -109,6 +109,70 @@ class TestResponseHeadersHandler:
         assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
     @pytest.mark.parametrize(
+        "duplicate_header",
+        ["x-vm0-usage-pricing", "x-vm0-usage-pricing-signature"],
+        ids=["pricing", "signature"],
+    )
+    def test_rejects_and_strips_duplicate_model_usage_pricing_headers(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        duplicate_header: str,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME)
+        assert flow.response is not None
+        flow.response.headers.add(duplicate_header, "duplicate")
+        assert len(flow.response.headers.get_all(duplicate_header)) == 2
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        ("price_digits", "encoded_length", "accepted"),
+        [(1377, 2048, True), (1378, 2050, False)],
+        ids=["maximum", "oversized"],
+    )
+    def test_enforces_signed_model_usage_pricing_encoded_length(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        price_digits: int,
+        encoded_length: int,
+        accepted: bool,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        unit_prices: dict[str, object] = {
+            "tokens.input": int("9" * price_digits),
+            "tokens.cache_read": 100,
+            "tokens.cache_creation": 1250,
+            "tokens.output": 6000,
+        }
+        headers = signed_usage_pricing_headers(
+            unit_prices,
+            issued_at=_FIXED_TIME,
+        )
+        assert len(headers["x-vm0-usage-pricing"]) == encoded_length
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME)
+        assert flow.response is not None
+        flow.response.headers = header_map(headers)
+
+        mitm_addon.responseheaders(flow)
+
+        if accepted:
+            assert flow.metadata[metadata_keys.MODEL_USAGE_PRICING] == {
+                "unitSize": 1_000_000,
+                "unitPrices": unit_prices,
+            }
+        else:
+            assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
         "issued_at",
         [_FIXED_TIME - 301, _FIXED_TIME + 301],
         ids=["too-old", "too-far-future"],

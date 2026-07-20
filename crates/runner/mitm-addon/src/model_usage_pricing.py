@@ -1,4 +1,7 @@
-"""Signed response-header verification for model token price schedules."""
+"""Signed response-header verification for model token price schedules.
+
+See ``docs/model-usage-pricing-protocol.md`` for the producer/runner contract.
+"""
 
 import base64
 import binascii

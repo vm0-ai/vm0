@@ -28,4 +28,6 @@ surface; the index does not replace their detailed rules.
 - [Architecture](./architecture.md): system structure and boundaries.
 - [Development workflow](./dev-workflow.md): the repository development and
   review flow.
+- [Signed model usage pricing protocol](./model-usage-pricing-protocol.md):
+  producer/runner header, signature, validation, fallback, and rollout contract.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.
