@@ -647,8 +647,7 @@ describe("zero sidebar", () => {
     });
 
     openChatListMenu();
-    click(screen.getByRole("switch", { name: "Unread" }));
-    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+    click(menuItemByText("Unread only"));
 
     await waitFor(() => {
       expect(unreadsRequests).toBeGreaterThan(0);
@@ -683,7 +682,8 @@ describe("zero sidebar", () => {
 
     openChatListMenu();
 
-    expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
+    expect(queryMenuItemByText("Unread only")).toBeNull();
+    expect(queryMenuItemByText("All chats")).toBeNull();
   });
 
   it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {

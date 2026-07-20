@@ -8,6 +8,7 @@ import {
 import type { Computed } from "ccstate";
 import {
   IconPlus,
+  IconCheck,
   IconChevronRight,
   IconTrash,
   IconPencil,
@@ -29,8 +30,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@vm0/ui";
-import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -907,14 +908,33 @@ function ChatThreadsTitle() {
                 New chat
               </DropdownMenuItem>
               {unreadFilterEnabled && (
-                <div className="flex h-9 items-center justify-between gap-3 px-2 text-sm text-popover-foreground">
-                  <span>Unread</span>
-                  <Switch
-                    checked={unreadOnly}
-                    onCheckedChange={toggleUnreadOnly}
-                    aria-label="Unread"
-                  />
-                </div>
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      toggleUnreadOnly(false);
+                    }}
+                  >
+                    <IconCheck
+                      size={16}
+                      stroke={2}
+                      className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
+                    />
+                    All chats
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      toggleUnreadOnly(true);
+                    }}
+                  >
+                    <IconCheck
+                      size={16}
+                      stroke={2}
+                      className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
+                    />
+                    Unread only
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
