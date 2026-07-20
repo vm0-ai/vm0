@@ -43,6 +43,7 @@ interface ClaudeCodeDeviceAuthScopeBundle {
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
   run: (signal: AbortSignal) => Promise<boolean>;
   submit: (signal: AbortSignal) => Promise<boolean>;
+  submitting: boolean;
   setAuthorizationCode: (value: string) => void;
 }
 
@@ -62,7 +63,7 @@ function useOrgClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundle {
   const close = useSet(closeClaudeCodeDeviceAuthDialog$);
   const openApprovalPage = useSet(openClaudeCodeDeviceAuthApprovalPage$);
   const [, run] = useLoadableSet(runClaudeCodeDeviceAuth$);
-  const [, submit] = useLoadableSet(submitClaudeCodeDeviceAuth$);
+  const [submitLoadable, submit] = useLoadableSet(submitClaudeCodeDeviceAuth$);
   const setAuthorizationCode = useSet(
     setClaudeCodeDeviceAuthAuthorizationCode$,
   );
@@ -73,6 +74,7 @@ function useOrgClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundle {
     openApprovalPage,
     run,
     submit,
+    submitting: submitLoadable.state === "loading",
     setAuthorizationCode,
   };
 }
@@ -85,7 +87,9 @@ function usePersonalClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundl
     openClaudeCodeDeviceAuthApprovalPagePersonal$,
   );
   const [, run] = useLoadableSet(runClaudeCodeDeviceAuthPersonal$);
-  const [, submit] = useLoadableSet(submitClaudeCodeDeviceAuthPersonal$);
+  const [submitLoadable, submit] = useLoadableSet(
+    submitClaudeCodeDeviceAuthPersonal$,
+  );
   const setAuthorizationCode = useSet(
     setClaudeCodeDeviceAuthAuthorizationCodePersonal$,
   );
@@ -96,6 +100,7 @@ function usePersonalClaudeCodeDeviceAuthBundle(): ClaudeCodeDeviceAuthScopeBundl
     openApprovalPage,
     run,
     submit,
+    submitting: submitLoadable.state === "loading",
     setAuthorizationCode,
   };
 }
@@ -113,6 +118,7 @@ function ClaudeCodeDeviceAuthDialogView({
     openApprovalPage,
     run,
     submit,
+    submitting,
     setAuthorizationCode,
   } = bundle;
   const title =
@@ -155,6 +161,7 @@ function ClaudeCodeDeviceAuthDialogView({
           openApprovalPage={openApprovalPage}
           pageSignal={pageSignal}
           setAuthorizationCode={setAuthorizationCode}
+          submitting={submitting}
         />
       </DialogContent>
     </Dialog>
@@ -169,6 +176,7 @@ function ClaudeCodeDeviceAuthBody({
   openApprovalPage,
   pageSignal,
   setAuthorizationCode,
+  submitting,
 }: {
   flow: ClaudeCodeDeviceAuthFlowState;
   mode: "connect" | "reconnect";
@@ -177,6 +185,7 @@ function ClaudeCodeDeviceAuthBody({
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
   pageSignal: AbortSignal;
   setAuthorizationCode: (value: string) => void;
+  submitting: boolean;
 }) {
   switch (flow.status) {
     case "idle": {
@@ -185,8 +194,7 @@ function ClaudeCodeDeviceAuthBody({
     case "starting": {
       return <ClaudeCodeDeviceAuthLoadingContent />;
     }
-    case "pending":
-    case "submitting": {
+    case "pending": {
       return (
         <form
           className="space-y-3"
@@ -224,7 +232,7 @@ function ClaudeCodeDeviceAuthBody({
               id="claude-code-device-auth-code"
               value={flow.authorizationCode}
               placeholder="Paste code from Claude"
-              readOnly={flow.status === "submitting"}
+              readOnly={submitting}
               onChange={(event) => {
                 setAuthorizationCode(event.target.value);
               }}
@@ -239,13 +247,11 @@ function ClaudeCodeDeviceAuthBody({
           <Button
             type="submit"
             className="w-full gap-2"
-            disabled={flow.status === "submitting"}
+            disabled={submitting}
             data-testid="claude-code-device-auth-submit"
           >
-            {flow.status === "submitting" && (
-              <IconLoader2 size={14} className="animate-spin" />
-            )}
-            {flow.status === "submitting" ? "Connecting..." : "Connect"}
+            {submitting && <IconLoader2 size={14} className="animate-spin" />}
+            {submitting ? "Connecting..." : "Connect"}
           </Button>
         </form>
       );

@@ -20,7 +20,7 @@ interface ClaudeCodeDeviceAuthDialogState {
 }
 
 type ActiveClaudeCodeDeviceAuthFlowState = {
-  readonly status: "pending" | "submitting";
+  readonly status: "pending";
   readonly requestId: string;
   readonly sessionToken: string;
   readonly browserUrl: string;
@@ -76,16 +76,13 @@ function isCurrentActive(
   stateValue: ClaudeCodeDeviceAuthFlowState,
   requestId: string,
 ): stateValue is ActiveClaudeCodeDeviceAuthFlowState {
-  return (
-    (stateValue.status === "pending" || stateValue.status === "submitting") &&
-    stateValue.requestId === requestId
-  );
+  return stateValue.status === "pending" && stateValue.requestId === requestId;
 }
 
 function isActive(
   stateValue: ClaudeCodeDeviceAuthFlowState,
 ): stateValue is ActiveClaudeCodeDeviceAuthFlowState {
-  return stateValue.status === "pending" || stateValue.status === "submitting";
+  return stateValue.status === "pending";
 }
 
 const startClaudeCodeDeviceAuth$ = command(
@@ -123,7 +120,7 @@ const completeClaudeCodeDeviceAuth$ = command(
         },
         fetchOptions: { signal },
       }),
-      [200, 400, 404, 503],
+      [200, 400],
     );
     signal.throwIfAborted();
     return result;
@@ -293,11 +290,7 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
         return false;
       }
 
-      set(ctx.internalFlowState$, {
-        ...current,
-        status: "submitting",
-        errorMessage: null,
-      });
+      set(ctx.internalFlowState$, { ...current, errorMessage: null });
       const completed = await set(
         completeClaudeCodeDeviceAuth$,
         current.sessionToken,
@@ -310,17 +303,11 @@ function createClaudeCodeSubmit$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       if (!isCurrentActive(latest, current.requestId)) {
         return false;
       }
-      if (completed.status !== 200) {
-        const message = completed.body.error.message;
-        if (completed.status === 400) {
-          set(ctx.internalFlowState$, {
-            ...latest,
-            status: "pending",
-            errorMessage: message,
-          });
-          return false;
-        }
-        set(ctx.internalFlowState$, { status: "error", message });
+      if (completed.status === 400) {
+        set(ctx.internalFlowState$, {
+          ...latest,
+          errorMessage: completed.body.error.message,
+        });
         return false;
       }
 
