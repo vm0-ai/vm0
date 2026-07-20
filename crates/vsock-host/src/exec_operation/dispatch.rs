@@ -125,6 +125,18 @@ fn owned_output_event(output: vsock_proto::DecodedExecOutput<'_>) -> ExecOutputE
     }
 }
 
+#[cfg(test)]
+fn run_exec_output_before_copy_hook(shared: &Arc<Shared>) {
+    let hook = shared
+        .exec_output_before_copy_hook
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take();
+    if let Some(hook) = hook {
+        hook();
+    }
+}
+
 fn owned_result(
     result: vsock_proto::DecodedExecResult<'_>,
     stream_overflowed: bool,
@@ -157,7 +169,8 @@ pub(crate) fn dispatch_incoming_frame(
 
 fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let mut first_output_slow = None;
-    {
+    let mut senders_to_drop = None;
+    let prepared_output = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { operations, .. } = &mut *guard
             && let Some(operation) = operations.get_mut(msg.seq)
@@ -171,19 +184,57 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             }
             validate_output(operation, &decoded)?;
             first_output_slow = operation.diagnostic.mark_first_output();
-            if let Some(tx) = operation.stream_tx.take() {
+            // Keep the registered sender in state so teardown can clear it
+            // while payload ownership happens outside the lock.
+            if let Some(tx) = operation.stream_tx.clone() {
                 match tx.try_reserve_owned() {
-                    Ok(permit) => {
-                        operation.stream_tx = Some(permit.send(owned_output_event(decoded)));
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
+                    Ok(permit) => Some((permit, decoded)),
+                    Err(mpsc::error::TrySendError::Full(tx)) => {
                         operation.stream_overflowed = true;
+                        senders_to_drop = Some((operation.stream_tx.take(), tx));
+                        None
                     }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {}
+                    Err(mpsc::error::TrySendError::Closed(tx)) => {
+                        senders_to_drop = Some((operation.stream_tx.take(), tx));
+                        None
+                    }
                 }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+    drop(senders_to_drop);
+
+    let returned_sender = if let Some((permit, decoded)) = prepared_output {
+        #[cfg(test)]
+        run_exec_output_before_copy_hook(shared);
+
+        let event = owned_output_event(decoded);
+        {
+            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            // Channel identity rejects a replacement operation after sequence
+            // wrap; holding state makes the check and delivery atomic with teardown.
+            let sender_matches = if let ConnectionState::Connected { operations, .. } = &mut *guard
+                && let Some(operation) = operations.get_mut(msg.seq)
+                && let Some(tx) = operation.stream_tx.as_ref()
+            {
+                permit.same_channel_as_sender(tx)
+            } else {
+                false
+            };
+            if sender_matches {
+                Some(permit.send(event))
+            } else {
+                None
             }
         }
-    }
+    } else {
+        None
+    };
+    drop(returned_sender);
 
     if let Some(snapshot) = first_output_slow {
         tracing::warn!(

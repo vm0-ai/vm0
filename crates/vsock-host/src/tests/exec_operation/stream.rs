@@ -9,10 +9,12 @@ use vsock_proto::{
 };
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, operation_count, read_guest_message,
+    assert_connection_accepts_exec_operation, is_connected, operation_count, read_guest_message,
     send_discarded_exec_result, send_exec_output, send_exec_result, setup_host_and_guest,
 };
-use crate::{ExecOperationRequest, ExecStreamRequest, exec_operation as exec_operation_impl};
+use crate::{
+    ConnectionState, ExecOperationRequest, ExecStreamRequest, exec_operation as exec_operation_impl,
+};
 
 fn stream_request(label: &str) -> ExecStreamRequest<'_> {
     ExecStreamRequest {
@@ -478,6 +480,61 @@ async fn exec_operation_stream_handles_output_and_pending_response_from_one_writ
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(!result.stream_overflowed);
     assert!(rx.recv().await.is_none());
+}
+
+#[tokio::test]
+async fn exec_output_teardown_before_copy_discards_reserved_event() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let mut handle = host
+        .exec_operation_stream(stream_request("stream-copy-teardown"))
+        .await
+        .unwrap();
+    let mut rx = handle.take_stream_receiver().unwrap();
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let seq = msg.seq;
+    let shared = Arc::downgrade(&host.shared);
+    exec_operation_impl::test_support::set_exec_output_before_copy_hook(&host.shared, move || {
+        let removed = std::thread::spawn(move || {
+            let Some(shared) = shared.upgrade() else {
+                return false;
+            };
+            let Ok(mut guard) = shared.state.try_lock() else {
+                return false;
+            };
+            let ConnectionState::Connected { operations, .. } = &mut *guard else {
+                return false;
+            };
+            operations.remove(seq);
+            true
+        })
+        .join()
+        .expect("operation teardown thread should not panic");
+        assert!(
+            removed,
+            "operation teardown should acquire the unlocked state and remove the operation"
+        );
+    });
+
+    send_exec_output(
+        &mut guest,
+        seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"teardown",
+        false,
+    )
+    .await;
+
+    let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("stream should close after operation teardown");
+    assert!(event.is_none(), "reserved output must not survive teardown");
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(operation_count(&host), 0);
+    assert!(is_connected(&host));
 }
 
 #[tokio::test]

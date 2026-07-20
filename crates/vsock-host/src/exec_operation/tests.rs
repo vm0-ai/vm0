@@ -422,6 +422,7 @@ fn shared_with_logged_operation(
         }),
         normal_operations: crate::operation_tracker::NormalOperationTracker::new(),
         close_notify: tokio::sync::Notify::new(),
+        exec_output_before_copy_hook: std::sync::Mutex::new(None),
     });
     let mut diagnostic = ExecOperationDiagnostic::new(7, label);
     diagnostic.registered_at =

@@ -96,6 +96,18 @@ pub(crate) mod test_support {
         drop(ExecOperationFrameWriteGuard::new(shared, state));
     }
 
+    pub(crate) fn set_exec_output_before_copy_hook(
+        shared: &Arc<Shared>,
+        hook: impl FnOnce() + Send + 'static,
+    ) {
+        let previous = shared
+            .exec_output_before_copy_hook
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .replace(Box::new(hook));
+        assert!(previous.is_none(), "exec output copy hook already set");
+    }
+
     pub(crate) async fn start_supervised_exec_after_start_write<F>(
         shared: &Arc<Shared>,
         request: SupervisedExecRequest<'_>,
