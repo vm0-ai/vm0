@@ -7,6 +7,8 @@ surface; the index does not replace their detailed rules.
 ## Code Review
 
 - [Bad code smells](./bad-smell.md): production-code quality rules.
+- [React effects and ccstate commands](./effect.md): choosing between computed
+  values, semantic commands, route setup, DOM lifecycles, and React effects.
 - [React and ccstate cache and lifecycle practices](./cache.md): render purity,
   state ownership, cache retention, refs, and resource teardown.
 - [Testing](./testing.md): testing strategy, patterns, and anti-patterns.

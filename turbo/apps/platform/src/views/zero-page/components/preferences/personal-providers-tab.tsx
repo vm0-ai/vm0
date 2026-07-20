@@ -22,8 +22,8 @@ import {
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { modelPlanCapabilities$ } from "../../../../signals/zero-page/model-plan-capabilities.ts";
 import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
-import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
-import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
@@ -58,11 +58,9 @@ function OAuthCredentialsSection() {
   const modelCapabilitiesLoadable = useLastLoadable(modelPlanCapabilities$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
   const openClaudeCodeDeviceAuthDialog = useSet(
-    setClaudeCodeDeviceAuthDialogStatePersonal$,
+    openClaudeCodeDeviceAuthDialogPersonal$,
   );
-  const openCodexDeviceAuthDialog = useSet(
-    setCodexDeviceAuthDialogStatePersonal$,
-  );
+  const openCodexDeviceAuthDialog = useSet(openCodexDeviceAuthDialogPersonal$);
   const disconnectCredential = useSet(disconnectPersonalOAuthCredential$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
@@ -91,22 +89,19 @@ function OAuthCredentialsSection() {
       openBillingPlans();
       return;
     }
-    const next = {
-      open: true,
-      mode: claudeCode?.needsReconnect ? "reconnect" : "connect",
-    } as const;
-    openClaudeCodeDeviceAuthDialog(next);
+    const mode = claudeCode?.needsReconnect ? "reconnect" : "connect";
+    detach(
+      openClaudeCodeDeviceAuthDialog(mode, pageSignal),
+      Reason.DomCallback,
+    );
   };
   const connectOpenAI = () => {
     if (!supportByok) {
       openBillingPlans();
       return;
     }
-    const next = {
-      open: true,
-      mode: openAI?.needsReconnect ? "reconnect" : "connect",
-    } as const;
-    openCodexDeviceAuthDialog(next);
+    const mode = openAI?.needsReconnect ? "reconnect" : "connect";
+    detach(openCodexDeviceAuthDialog(mode, pageSignal), Reason.DomCallback);
   };
 
   const confirmCodexReset = () => {
