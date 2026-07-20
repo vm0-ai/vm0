@@ -13,6 +13,7 @@ injection in ``auth._sign_flow_request_with_aws_sigv4``.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
 import re
@@ -309,6 +310,10 @@ def _validate_amz_date(amz_date: str, scope: _CredentialScope) -> None:
         raise AwsSigV4SigningError("Malformed AWS signing date")
     if not amz_date.startswith(scope.date):
         raise AwsSigV4SigningError("AWS signing date does not match credential scope")
+    try:
+        datetime.datetime.strptime(amz_date, "%Y%m%dT%H%M%SZ")
+    except ValueError as e:
+        raise AwsSigV4SigningError("Malformed AWS signing date") from e
 
 
 def _sign_header_request(
