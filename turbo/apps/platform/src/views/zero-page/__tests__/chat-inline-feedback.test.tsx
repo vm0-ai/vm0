@@ -59,11 +59,11 @@ function selectTextRangeForInlineFeedback(element: HTMLElement): void {
 
 function selectTextForInlineFeedback(element: HTMLElement): void {
   selectTextRangeForInlineFeedback(element);
-  document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  document.dispatchEvent(new Event("selectionchange"));
 }
 
-// The selection toolbar reads the selection in a deferred macrotask
-// (delay(0)) after mouseup, and the composer applies its own deferred
+// The selection toolbar reads selectionchange in a deferred macrotask
+// (delay(0)), and the composer applies its own deferred
 // DOM/selection sync after paste. vi.waitFor drives its retries from
 // macrotask timers, so requiring one failed check lets those earlier-queued
 // product tasks settle without the test owning a timer of its own.
@@ -112,7 +112,7 @@ function selectTextAcrossElementsForInlineFeedback(
   }
   selection.removeAllRanges();
   selection.addRange(range);
-  document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  document.dispatchEvent(new Event("selectionchange"));
 }
 
 function buttonByText(text: string): HTMLElement {
@@ -200,8 +200,9 @@ async function replaceFeedbackNote(
 function dispatchDocumentShortcut(
   key: string,
   init?: Omit<KeyboardEventInit, "key">,
+  type: "keydown" | "keyup" = "keydown",
 ): KeyboardEvent {
-  const event = new KeyboardEvent("keydown", {
+  const event = new KeyboardEvent(type, {
     bubbles: true,
     cancelable: true,
     ...init,
@@ -829,6 +830,7 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
+    expect(window.getSelection()?.toString()).toBe(assistantReply);
 
     const event = dispatchDocumentShortcut("c", { ctrlKey: true });
     expect(event.defaultPrevented).toBeFalsy();
@@ -836,6 +838,13 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
     });
+    expect(window.getSelection()?.toString()).toBe(assistantReply);
+
+    dispatchDocumentShortcut("c", { ctrlKey: true }, "keyup");
+    await waitForDeferredSelectionCapture();
+
+    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    expect(window.getSelection()?.toString()).toBe(assistantReply);
   });
 
   it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {
@@ -964,11 +973,9 @@ describe("chat inline feedback", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
 
-    // Click inside the selection: in a real browser mouseup fires first and the
-    // selection collapses right after. Mirror that order so the deferred read
-    // sees the cleared selection and dismisses the toolbar.
-    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    // A real browser emits selectionchange after the selection collapses.
     window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
 
     await waitFor(() => {
       expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
