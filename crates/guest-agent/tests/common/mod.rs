@@ -1,4 +1,4 @@
-//! Shared setup for CLI forced-termination integration tests.
+//! Shared setup for CLI integration tests.
 //!
 //! # Why separate test binaries instead of cases in one
 //!
@@ -633,26 +633,15 @@ fn read_codex_session_history_events_for_path(
         .collect()
 }
 
-/// Configure the process environment for a reap test. Must be called before
-/// building a `GuestRuntime` because runtime bootstrap captures the process env
-/// snapshot.
+/// Configure the process environment for one mock-Claude CLI integration-test
+/// binary. Must be called before building a `GuestRuntime` because runtime
+/// bootstrap captures the process env snapshot.
 ///
-/// `prompt` decides which mock-claude test prefix runs:
-/// - `@hang-after-result` → SIGTERM path
-/// - `@hang-after-result-deaf` → SIGKILL escalation path
-/// - `@hang-after-result-then-event` → post-result quiet refresh path
-/// - `@hang-after-result-periodic-events` → post-result total cap path
-/// - `@hang-after-error-result` → error result followed by post-result cleanup
-/// - `@exit-after-result` → happy path (no signal ever fires)
-/// - `@fail-no-newline:<message>` → stderr EOF without trailing newline
-/// - `@fail-invalid-utf8` → stderr bytes that are not valid UTF-8
-/// - `@fail-invalid-utf8-long` → invalid UTF-8 whose lossy form exceeds the limit
-/// - `@stdout-over-limit-no-newline` → oversized stdout record followed by a hang
-/// - `@stdout-over-limit-newline` → oversized LF stdout record followed by a hang
-/// - `@stdout-invalid-utf8` → invalid UTF-8 stdout followed by a hang
-/// - `@stdout-record-boundaries` → exact-limit, CRLF, and EOF stdout records
-/// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
-/// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
+/// `prompt` is interpreted by `guest-mock-claude`. See the module documentation
+/// in `crates/guest-mock-claude/src/main.rs` for the complete special-prefix
+/// catalog and `SCENARIO_RULES` in
+/// `crates/guest-mock-claude/src/scenario.rs` for authoritative matching
+/// behavior. Prompts that match no special rule use ordinary shell behavior.
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the
 /// FSM waits before each signal escalation. Signal-exit tests want
@@ -693,9 +682,9 @@ pub unsafe fn setup_env(
         );
         std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "60");
         // Derive run_id from the test binary's filename (which cargo
-        // hashes per target) so the three reap test binaries running
-        // concurrently don't collide on the run-scoped files that
-        // paths.rs creates.
+        // hashes per target) so concurrently running integration-test
+        // binaries don't collide on the run-scoped files that paths.rs
+        // creates.
         let run_id = std::env::current_exe()
             .ok()
             .as_deref()
