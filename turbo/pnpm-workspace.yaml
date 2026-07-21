@@ -2,6 +2,12 @@ packages:
   - apps/*
   - packages/*
 
+overrides:
+  brace-expansion: 5.0.7
+  js-yaml: 4.3.0
+  "protobufjs@>=7.5.0 <=7.6.4": 7.6.5
+  "protobufjs@>=8.0.0 <=8.6.5": 8.6.6
+
 ignoredBuiltDependencies:
   - esbuild
   - sharp
