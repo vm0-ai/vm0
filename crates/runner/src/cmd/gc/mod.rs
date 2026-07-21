@@ -36,10 +36,10 @@ use version_service_locks::gc_orphaned_version_service_locks;
 use versions::{analyze_version_gc, gc_versions_with_analysis};
 use workspaces::gc_workspace_orphans;
 
-/// Default TTL for completed R2 image objects. Older objects are deleted by
-/// `gc_r2`. 7 days comfortably covers our typical release cadence: an image
+/// Default TTL for completed R2 template objects. Older objects are deleted by
+/// `gc_r2`. 7 days comfortably covers our typical release cadence: a template
 /// from the last week's release is still useful for a host that just spun
-/// up. If a host has been offline >7 days and the cached image got swept,
+/// up. If a host has been offline >7 days and the cached template got swept,
 /// the next `runner build` does a one-time local rebuild + re-upload — slow
 /// but correct.
 const R2_DEFAULT_KEEP_DAYS: u64 = 7;
@@ -57,10 +57,9 @@ pub struct GcArgs {
     /// Keep the N most recent unused versions (by modification time)
     #[arg(long)]
     keep_latest: Option<usize>,
-    /// TTL for R2 image cache objects (in days). Objects older than this
-    /// are deleted from the legacy `runner-images/` prefix and the shared
-    /// `runner-templates/` prefix on R2. Default: 7 days.
-    /// Minimum: 1 — `0` would wipe even the just-uploaded image.
+    /// TTL for R2 template cache objects (in days). Objects older than this
+    /// are deleted from the `runner-templates/` prefix on R2. Default: 7 days.
+    /// Minimum: 1 — `0` would wipe even the just-uploaded template.
     #[arg(long, default_value_t = R2_DEFAULT_KEEP_DAYS, value_parser = clap::value_parser!(u64).range(1..))]
     r2_keep_days: u64,
     /// Version name to protect from GC (e.g. "v0.78.3").
@@ -109,7 +108,7 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
+    /// `--r2-keep-days 0` would wipe even just-uploaded templates. Verify the
     /// clap range validator rejects it (catches a regression if the
     /// `value_parser` annotation is dropped).
     #[derive(Parser)]

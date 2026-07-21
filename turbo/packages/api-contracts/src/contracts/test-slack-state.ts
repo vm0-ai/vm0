@@ -67,6 +67,31 @@ export const testSlackStateResponseSchema = z.object({
       createdAt: z.string(),
     }),
   ),
+  chat_thread_routes: z.array(
+    z.object({
+      id: z.string(),
+      connectionId: z.string(),
+      channelId: z.string(),
+      threadTs: z.string(),
+      userId: z.string(),
+      backend: z.enum(["legacy", "canonical"]),
+      chatThreadId: z.string().nullable(),
+      createdAt: z.string(),
+    }),
+  ),
+  chat_ingress: z.array(
+    z.object({
+      id: z.string(),
+      routeId: z.string(),
+      eventId: z.string(),
+      payload: z.string(),
+      status: z.enum(["pending", "processing", "processed", "failed"]),
+      retryCount: z.number(),
+      lastError: z.string().nullable(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  ),
   recent_runs: z.array(
     z.object({
       id: z.string(),
@@ -78,15 +103,6 @@ export const testSlackStateResponseSchema = z.object({
       promptPreview: z.string().nullable(),
     }),
   ),
-  artifact_storage: z
-    .object({
-      id: z.string(),
-      headVersionId: z.string().nullable(),
-      s3Prefix: z.string(),
-      versionId: z.string().nullable(),
-      versionS3Key: z.string().nullable(),
-    })
-    .nullable(),
   org_metadata: z
     .object({
       orgId: z.string(),
@@ -135,7 +151,6 @@ export const testSlackStateContract = c.router({
       team_id: z.string().optional(),
       empty_team_id: z.literal("1").optional(),
       org_id: z.string().optional(),
-      user_id: z.string().optional(),
     }),
     responses: {
       200: testSlackStateResponseSchema,

@@ -766,21 +766,11 @@ function skillMountPath(
 // declared in the compose — a run can execute on a provider whose framework
 // differs from the compose, and skills mounted at the wrong path are invisible
 // to the agent.
-function buildSystemSkillVolumes(
-  connectorTypes: readonly ConnectorCatalogRef[],
+function buildLegacySystemSkillVolumes(
+  skillNames: readonly string[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
-  const seedNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  // Exact catalog skill selection is owned by #21815. Until then, preserve
-  // the existing vm0-skills mounts only for locally known connector names.
-  const staticConnectorSkillNames = connectorTypes.flatMap((connectorRef) => {
-    const parsed = connectorTypeSchema.safeParse(connectorRef);
-    return parsed.success ? [parsed.data] : [];
-  });
-  const allSkillNames = [
-    ...new Set([...seedNames, ...staticConnectorSkillNames]),
-  ];
-  return allSkillNames.flatMap((skillName) => {
+  return [...new Set(skillNames)].flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
     if (!parsed) {
@@ -793,6 +783,35 @@ function buildSystemSkillVolumes(
         system: true,
       },
     ];
+  });
+}
+
+function buildExternalConnectorSkillVolumes(
+  connectorTypes: readonly ConnectorCatalogRef[],
+  snapshot: ConnectorRuntimeSnapshot,
+  framework: SupportedFramework,
+): readonly PreparedAdditionalVolume[] {
+  if (snapshot.identity.source !== "external") {
+    throw new Error("External connector skill snapshot is unavailable");
+  }
+  return connectorTypes.flatMap((connectorRef) => {
+    const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+    if (!connector?.skill) {
+      throw new Error("External connector skill metadata is unavailable");
+    }
+    if (connector.skill.kind === "none") {
+      return [];
+    }
+    const prepared: PreparedAdditionalVolume = {
+      volume: {
+        name: connector.skill.storageName,
+        version: connector.skill.versionId,
+        mountPath: skillMountPath(framework, connectorRef),
+        system: true,
+      },
+      source: "connector_skill",
+    };
+    return [prepared];
   });
 }
 
@@ -817,17 +836,43 @@ function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
     readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
+  const connectorTypes = args.allowedConnectorTypes ?? [];
+  const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
+  const systemSkillVolumes =
+    args.connectorCatalogSnapshot.identity.source === "external"
+      ? [
+          ...(prepareAdditionalVolumesWithSource(
+            buildLegacySystemSkillVolumes(seedSkillNames, framework),
+            "system_skill",
+          ) ?? []),
+          ...buildExternalConnectorSkillVolumes(
+            connectorTypes,
+            args.connectorCatalogSnapshot,
+            framework,
+          ),
+        ]
+      : (prepareAdditionalVolumesWithSource(
+          buildLegacySystemSkillVolumes(
+            [
+              ...seedSkillNames,
+              ...connectorTypes.flatMap((connectorRef) => {
+                const parsed = connectorTypeSchema.safeParse(connectorRef);
+                return parsed.success ? [parsed.data] : [];
+              }),
+            ],
+            framework,
+          ),
+          "system_skill",
+        ) ?? []);
   return [
-    ...(prepareAdditionalVolumesWithSource(
-      buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
-      "system_skill",
-    ) ?? []),
+    ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(
       buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
       "workflow_skill",
@@ -6377,6 +6422,7 @@ async function buildPreparedPermissionManifest(args: {
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -6388,6 +6434,7 @@ function preparedRunAdditionalVolumes(args: {
       {
         injectSkillVolumes: args.createArgs.injectSkillVolumes,
         allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       },
       args.framework,
     ),
@@ -6417,6 +6464,7 @@ interface PreparedRuntimeContext {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
   readonly connectorScope: EffectiveConnectorScope;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }
 
 function connectorScopeForRuntimeSnapshot(
@@ -6793,6 +6841,7 @@ async function prepareRunRuntimeContext(args: {
     billableFirewalls: modelUsageContext.billableFirewalls,
     modelUsageProvider: modelUsageContext.modelUsageProvider,
     connectorScope,
+    connectorCatalogSnapshot,
   };
 }
 
@@ -6809,6 +6858,7 @@ async function connectorCatalogSnapshotForRun(args: {
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -6821,6 +6871,7 @@ function prepareRunOutputMetadata(args: {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
     connectorScope: args.connectorScope,
+    connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     framework: args.framework,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
@@ -6934,6 +6985,7 @@ function prepareRunContext(input: {
             prepareRunOutputMetadata({
               createArgs: args,
               connectorScope: runtimeContext.connectorScope,
+              connectorCatalogSnapshot: runtimeContext.connectorCatalogSnapshot,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,

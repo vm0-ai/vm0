@@ -923,7 +923,7 @@ describe("openai-api-key codex provider", () => {
 });
 
 describe("vm0-model managed proxy", () => {
-  it("advertises a one-million-token context window", () => {
+  it("disables reasoning summaries by default", () => {
     const config = getVm0ModelCodexRuntimeConfig("https://www.vm0.ai/v1");
 
     expect(config).toMatchObject({
@@ -931,6 +931,8 @@ describe("vm0-model managed proxy", () => {
         models: [
           {
             slug: "vm0-model",
+            supports_reasoning_summaries: false,
+            default_reasoning_summary: "none",
             context_window: 1_000_000,
             max_context_window: 1_000_000,
           },

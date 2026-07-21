@@ -122,7 +122,7 @@ fn select_expired_empty_page_returns_empty() {
 /// `gc_older_than` MUST follow `continuation_token` across multiple
 /// `list_objects_v2` pages. Regression here would silently under-delete
 /// (first page processed, subsequent pages dropped) — fleet cache grows
-/// unbounded with orphaned image objects.
+/// unbounded with orphaned template objects.
 #[tokio::test]
 async fn gc_paginates_across_two_pages() {
     use aws_sdk_s3::Client;
@@ -138,14 +138,14 @@ async fn gc_paginates_across_two_pages() {
         .next_continuation_token("tok1")
         .contents(
             Object::builder()
-                .key("runner-images/a.tar.zst")
+                .key("runner-templates/a.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(100)
                 .build(),
         )
         .contents(
             Object::builder()
-                .key("runner-images/b.tar.zst")
+                .key("runner-templates/b.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(200)
                 .build(),
@@ -155,48 +155,31 @@ async fn gc_paginates_across_two_pages() {
         .is_truncated(false)
         .contents(
             Object::builder()
-                .key("runner-images/c.tar.zst")
+                .key("runner-templates/c.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(300)
                 .build(),
         )
         .build();
-    let empty_template_page = ListObjectsV2Output::builder().is_truncated(false).build();
-
-    let legacy_page1_list = mock!(Client::list_objects_v2)
-        .match_requests(|req| {
-            req.prefix() == Some("runner-images/") && req.continuation_token().is_none()
-        })
-        .sequence()
-        .output(move || page1.clone())
-        .build();
-    let legacy_page2_list = mock!(Client::list_objects_v2)
-        .match_requests(|req| {
-            req.prefix() == Some("runner-images/") && req.continuation_token() == Some("tok1")
-        })
-        .sequence()
-        .output(move || page2.clone())
-        .build();
-    let template_list = mock!(Client::list_objects_v2)
+    let page1_list = mock!(Client::list_objects_v2)
         .match_requests(|req| {
             req.prefix() == Some("runner-templates/") && req.continuation_token().is_none()
         })
         .sequence()
-        .output(move || empty_template_page.clone())
+        .output(move || page1.clone())
+        .build();
+    let page2_list = mock!(Client::list_objects_v2)
+        .match_requests(|req| {
+            req.prefix() == Some("runner-templates/") && req.continuation_token() == Some("tok1")
+        })
+        .sequence()
+        .output(move || page2.clone())
         .build();
     // Quiet-mode delete responses don't echo successes; no `errors`.
     let delete =
         mock!(Client::delete_objects).then_output(|| DeleteObjectsOutput::builder().build());
 
-    let cache = mock_cache(
-        "test-bucket",
-        &[
-            &legacy_page1_list,
-            &legacy_page2_list,
-            &template_list,
-            &delete,
-        ],
-    );
+    let cache = mock_cache("test-bucket", &[&page1_list, &page2_list, &delete]);
 
     let (deleted, freed) = cache
         .gc_older_than(std::time::Duration::from_secs(1))
@@ -206,70 +189,16 @@ async fn gc_paginates_across_two_pages() {
     assert_eq!(deleted, 3, "2 objects from page1 + 1 from page2");
     assert_eq!(freed, 600, "100 + 200 + 300");
     assert_eq!(
-        legacy_page1_list.num_calls(),
+        page1_list.num_calls(),
         1,
-        "first legacy LIST has no continuation token"
+        "first template LIST has no continuation token"
     );
     assert_eq!(
-        legacy_page2_list.num_calls(),
+        page2_list.num_calls(),
         1,
-        "second legacy LIST carries tok1"
-    );
-    assert_eq!(
-        template_list.num_calls(),
-        1,
-        "template prefix is scanned without a continuation token"
-    );
-    assert_eq!(
-        legacy_page1_list.num_calls() + legacy_page2_list.num_calls() + template_list.num_calls(),
-        3,
-        "pagination followed next_token and template prefix was scanned"
+        "second template LIST carries tok1"
     );
     assert_eq!(delete.num_calls(), 2, "one delete per non-empty page");
-}
-
-/// `gc_older_than` must also clean the shared template prefix. A
-/// regression here would leave the new cache family unbounded even though
-/// legacy `runner-images/` objects continue to be swept.
-#[tokio::test]
-async fn gc_deletes_shared_template_objects() {
-    use aws_sdk_s3::Client;
-    use aws_sdk_s3::operation::delete_objects::DeleteObjectsOutput;
-    use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
-    use aws_sdk_s3::primitives::DateTime;
-    use aws_sdk_s3::types::Object;
-
-    let empty_legacy_page = ListObjectsV2Output::builder().is_truncated(false).build();
-    let template_page = ListObjectsV2Output::builder()
-        .is_truncated(false)
-        .contents(
-            Object::builder()
-                .key("runner-templates/template.tar.zst")
-                .last_modified(DateTime::from_secs(0))
-                .size(123)
-                .build(),
-        )
-        .build();
-
-    let list = mock!(Client::list_objects_v2)
-        .sequence()
-        .output(move || empty_legacy_page.clone())
-        .output(move || template_page.clone())
-        .build();
-    let delete =
-        mock!(Client::delete_objects).then_output(|| DeleteObjectsOutput::builder().build());
-
-    let cache = mock_cache("test-bucket", &[&list, &delete]);
-
-    let (deleted, freed) = cache
-        .gc_older_than(std::time::Duration::from_secs(1))
-        .await
-        .unwrap();
-
-    assert_eq!(deleted, 1);
-    assert_eq!(freed, 123);
-    assert_eq!(list.num_calls(), 2, "legacy and template prefixes scanned");
-    assert_eq!(delete.num_calls(), 1, "template object delete issued");
 }
 
 /// `gc_older_than` MUST exclude per-key failures from `deleted_count` so
@@ -288,42 +217,37 @@ async fn gc_excludes_per_key_failures_from_count() {
         .is_truncated(false)
         .contents(
             Object::builder()
-                .key("runner-images/a.tar.zst")
+                .key("runner-templates/a.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(10)
                 .build(),
         )
         .contents(
             Object::builder()
-                .key("runner-images/b.tar.zst")
+                .key("runner-templates/b.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(20)
                 .build(),
         )
         .contents(
             Object::builder()
-                .key("runner-images/c.tar.zst")
+                .key("runner-templates/c.tar.zst")
                 .last_modified(DateTime::from_secs(0))
                 .size(30)
                 .build(),
         )
         .build();
-    let empty_template_page = ListObjectsV2Output::builder().is_truncated(false).build();
     let delete_resp = DeleteObjectsOutput::builder()
         .errors(
             S3Error::builder()
-                .key("runner-images/b.tar.zst")
+                .key("runner-templates/b.tar.zst")
                 .code("AccessDenied")
                 .message("denied")
                 .build(),
         )
         .build();
 
-    let list = mock!(Client::list_objects_v2)
-        .sequence()
-        .output(move || page.clone())
-        .output(move || empty_template_page.clone())
-        .build();
+    let list = mock!(Client::list_objects_v2).then_output(move || page.clone());
     let delete = mock!(Client::delete_objects).then_output(move || delete_resp.clone());
 
     let cache = mock_cache("test-bucket", &[&list, &delete]);

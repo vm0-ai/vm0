@@ -620,7 +620,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
             sql`NOT EXISTS (
               SELECT 1
               FROM ${agentRunQueue}
-              WHERE ${agentRunQueue.runId} = ${agentRuns.id}
+              WHERE ${eq(agentRunQueue.runId, agentRuns.id)}
             )`,
           ),
         )
@@ -653,7 +653,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
             sql`NOT EXISTS (
               SELECT 1
               FROM ${agentRunQueue}
-              WHERE ${agentRunQueue.runId} = ${agentRuns.id}
+              WHERE ${eq(agentRunQueue.runId, agentRuns.id)}
             )`,
           ),
         )

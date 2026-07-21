@@ -17,6 +17,7 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   type AttachFile,
+  type ArtifactFavoritesResponse,
   type ArtifactsListResponse,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
@@ -1063,6 +1064,18 @@ export function createChatFilesBddApi(context: TestContext) {
         artifactsClient().list({
           headers: authenticate(context, actor),
           query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async listArtifactFavorites(
+      actor: ApiTestUser,
+    ): Promise<ArtifactFavoritesResponse> {
+      const response = await accept(
+        artifactsClient().listFavorites({
+          headers: authenticate(context, actor),
         }),
         [200],
       );

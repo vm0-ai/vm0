@@ -974,6 +974,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const body = JSON.stringify({
         type: "event_callback",
         team_id: teamId,
+        event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
         event,
       });
       const response = await accept(

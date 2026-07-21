@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use ::sandbox::{Result, SandboxError, SandboxOperation, SandboxOperationReason};
 
-pub(crate) const MOCK_COPY_FILE_MAX_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MOCK_COPY_FILE_MAX_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Ignore mutex poisoning and take the lock anyway.
 ///
