@@ -3,13 +3,10 @@ import {
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
-  agentComposeApiContentSchema,
 } from "@vm0/api-contracts/contracts/composes";
-import type { z } from "zod";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type {
   GetComposeResponse,
-  CreateComposeResponse,
   GetComposeVersionResponse,
 } from "../core/types";
 
@@ -69,22 +66,4 @@ export async function getComposeVersion(
   }
 
   handleError(result, `Version not found: ${version}`);
-}
-
-export async function createOrUpdateCompose(body: {
-  content: unknown;
-}): Promise<CreateComposeResponse> {
-  const config = await getClientConfig();
-  const client = initClient(composesMainContract, config);
-
-  const result = await client.create({
-    body: body as { content: z.infer<typeof agentComposeApiContentSchema> },
-  });
-
-  // Both 200 and 201 are success cases
-  if (result.status === 200 || result.status === 201) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to create compose");
 }

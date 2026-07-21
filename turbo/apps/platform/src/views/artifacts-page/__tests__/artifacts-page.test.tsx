@@ -1519,6 +1519,7 @@ describe("artifacts page", () => {
       resolvedChatIdb(db),
     ).readStore.readRecent({ limit: 10_000 });
     expect(cached).toStrictEqual([artifact]);
+    expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
   it("normalizes older remote artifacts without a size", async () => {

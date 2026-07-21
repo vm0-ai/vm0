@@ -6,6 +6,7 @@ import {
   type AttachFile,
   type CodexServiceTier,
   type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   isCodexFastModeModel,
@@ -140,6 +141,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
+  readonly structuredPrompt?: UserMessageDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -1603,13 +1605,18 @@ function appendUnassociatedUserMessage(params: {
   readonly clientMessageId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly orgId: string;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftStructuredPrompt: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.threadId),
@@ -1627,6 +1634,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         role: "user",
         content: params.prompt,
+        structuredPrompt: params.structuredPrompt,
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1714,7 +1722,11 @@ async function clearThreadDraft(
 ): Promise<void> {
   await tx
     .update(chatThreads)
-    .set({ draftContent: null, draftAttachments: null })
+    .set({
+      draftContent: null,
+      draftStructuredPrompt: null,
+      draftAttachments: null,
+    })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 }
 
@@ -1729,6 +1741,7 @@ async function appendAssociatedUserMessage(params: {
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly revokesMessageId: string | undefined;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
   // When false, the thread's in-progress draft is preserved. Automation posts
@@ -1747,6 +1760,7 @@ async function appendAssociatedUserMessage(params: {
       chatThreadId: params.threadId,
       role: "user",
       content: params.prompt,
+      structuredPrompt: params.structuredPrompt,
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2461,6 +2475,7 @@ async function queueUnassociatedNormalMessage(params: {
     clientMessageId: params.body.clientMessageId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
+    structuredPrompt: params.body.structuredPrompt,
     generationTemplate: params.body.generationTemplate,
     orgId: params.orgId,
   });
@@ -2541,6 +2556,7 @@ function scheduleAssociatedUserMessage(params: {
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
         revokesMessageId: params.body.revokesMessageId,
+        structuredPrompt: params.body.structuredPrompt,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         clearDraft: true,
@@ -2713,6 +2729,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2747,6 +2764,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: queuedMessage.content,
+      structuredPrompt: queuedMessage.structuredPrompt,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2813,7 +2831,11 @@ async function appendInsufficientCreditsMessages(params: {
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftStructuredPrompt: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.prepared.thread.threadId),
@@ -2832,6 +2854,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: params.body.prompt,
+      structuredPrompt: params.body.structuredPrompt,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,

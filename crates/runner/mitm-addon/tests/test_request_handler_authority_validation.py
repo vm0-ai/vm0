@@ -12,13 +12,19 @@ import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+import request_classification
 import upstream_destination_binding
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.registry_helpers import write_trusted_catalog_cache_text
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _write_github_firewall_registry,
     _write_registry,
+)
+from tests.requestheaders_helpers import (
+    _assert_no_request_stream,
+    await_requestheaders_result,
 )
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
@@ -67,6 +73,7 @@ def _write_host_policy_registry(
     base: str,
     host_policy: dict[str, object],
     marked_builtin: bool = True,
+    vm_fields: dict[str, object] | None = None,
 ):
     api_entry: dict[str, object] = {
         "base": base,
@@ -89,6 +96,7 @@ def _write_host_policy_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
+            vm_fields=vm_fields,
         ),
     )
 
@@ -469,6 +477,104 @@ async def test_runtime_host_policy_allows_provider_owned_request_authority(
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     auth_fetch.assert_awaited_once()
+
+
+async def test_runtime_host_policy_blocks_requestheaders_credential_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="jira",
+        base="https://attacker.example.com",
+        host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="attacker.example.com",
+        method="POST",
+        path="/rest/api/3/myself",
+        request_headers=headers(
+            ("Host", "attacker.example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+        assert binding.host == "attacker.example.com"
+        assert binding.kinds == frozenset(("connector_auth",))
+        auth_fetch.assert_not_called()
+        _assert_no_request_stream(flow)
+        assert mitm_addon._FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS not in flow.metadata
+        assert "Authorization" not in flow.request.headers
+        assert flow.response is None
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "builtin_host_policy_denied"
+    assert body["reason"] == "provider_host_not_allowed"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_runtime_host_policy_allows_requestheaders_credential_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="jira",
+        base="https://acme.atlassian.net",
+        host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="acme.atlassian.net",
+        method="POST",
+        path="/rest/api/3/myself",
+        request_headers=headers(
+            ("Host", "acme.atlassian.net"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+        assert binding.host == "acme.atlassian.net"
+        assert binding.kinds == frozenset(("connector_auth",))
+        auth_fetch.assert_awaited_once()
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+        assert callable(flow.request.stream)
+        assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+        assert flow.metadata[mitm_addon._FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] is True
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
 async def test_resolved_host_policy_reuses_compiled_policy_across_requests(

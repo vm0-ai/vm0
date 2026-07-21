@@ -169,11 +169,7 @@ export const mainRunCommand = new Command()
           // It's an agent name - resolve to compose ID
           const compose = await getComposeByName(name);
           if (!compose) {
-            throw new Error(`Agent not found: ${identifier}`, {
-              cause: new Error(
-                "Make sure you've composed the agent with: vm0 compose",
-              ),
-            });
+            throw new Error(`Agent not found: ${identifier}`);
           }
 
           composeId = compose.id;

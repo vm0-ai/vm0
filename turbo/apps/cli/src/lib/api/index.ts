@@ -11,7 +11,6 @@ export {
   getComposeByName,
   getComposeById,
   getComposeVersion,
-  createOrUpdateCompose,
 } from "./domains/composes";
 
 // Domain modules - Runs
@@ -25,9 +24,6 @@ export {
 
 // Domain modules - Sessions
 export { getSession, getCheckpoint } from "./domains/sessions";
-
-// Domain modules - Storages
-export { prepareStorage, commitStorage } from "./domains/storages";
 
 // Domain modules - Registry Resources
 export { getRegistryResourceDownload } from "./domains/registry-resources";

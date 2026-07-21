@@ -48,7 +48,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {

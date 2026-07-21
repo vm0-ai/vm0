@@ -397,6 +397,7 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
   pagedChatMessageBaseSchema
     .extend({
       role: z.literal("user"),
+      structuredPrompt: userMessageDocumentSchema.optional(),
     })
     .strict(),
   pagedChatMessageBaseSchema.extend({
@@ -425,6 +426,7 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.object({
   draftContent: z.string().nullable(),
+  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
@@ -527,6 +529,7 @@ const chatMessageNormalSendBodySchema = z.preprocess(
      */
     model: selectedModelRequestSchema.optional(),
     runOptions: chatRunOptionsRequestSchema.optional(),
+    structuredPrompt: userMessageDocumentSchema.optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
     computerUseHostId: z.string().uuid().nullable().optional(),
     // Optional for backward compatibility: older clients that omit this field
@@ -622,7 +625,8 @@ export const chatThreadsContract = c.router({
       200: z.object({
         /**
          * Thread ids owned by the caller that currently hold an unsent draft
-         * (non-empty `draftContent` or one+ `draftAttachments`).
+         * (non-empty `draftContent`, a structured prompt, or one+
+         * `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
       }),
@@ -692,6 +696,7 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
+      draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
       draftAttachments: z
         .array(persistedAttachmentSchema)
         .nullable()
@@ -959,6 +964,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -977,6 +983,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),

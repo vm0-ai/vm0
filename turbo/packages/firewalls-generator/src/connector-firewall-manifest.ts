@@ -236,6 +236,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "tldv",
   "todoist",
   "together",
+  "topvisor",
   "tripo",
   "twenty",
   "typeform",

@@ -4,7 +4,6 @@ import "./instrument.js";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { authCommand } from "./commands/auth";
-import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
 import { whoamiCommand } from "./commands/whoami";
 
@@ -19,7 +18,6 @@ program
 
 // Register all commands
 program.addCommand(authCommand);
-program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(whoamiCommand);
 

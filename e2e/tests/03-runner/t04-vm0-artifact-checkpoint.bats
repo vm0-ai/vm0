@@ -5,9 +5,7 @@
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
 #
-# All tests are independent and parallelizable.
-# t04-1 validates compose config.
-# t04-2 runs the full checkpoint versioning workflow in a single test.
+# The test runs the full checkpoint versioning workflow in a single test.
 
 load '../../helpers/setup'
 
@@ -45,7 +43,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -60,12 +58,6 @@ teardown_file() {
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
-}
-
-@test "t04-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "t04-2: resume from checkpoint restores checkpoint version not HEAD" {
