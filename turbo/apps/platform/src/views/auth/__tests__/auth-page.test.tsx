@@ -241,8 +241,8 @@ describe("app auth pages", () => {
     const redirectUrl = new URL(
       screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
     );
-    expect(redirectUrl.origin).toBe("https://www.vm0.ai");
-    expect(redirectUrl.pathname).toBe("/onboarding/491858");
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/onboarding/make");
     expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
     expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");

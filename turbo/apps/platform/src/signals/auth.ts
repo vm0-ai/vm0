@@ -17,7 +17,7 @@ const clerkVersion$ = state(0);
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
-const VM0_ONBOARDING_PATH = "/onboarding/491858";
+const VM0_ONBOARDING_PATH = "/onboarding/make";
 const VM0_ONBOARDING_EXPERIMENT = "491858";
 const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
@@ -208,10 +208,6 @@ function appendHomepageAttributionParams(
   }
 }
 
-function onboardingBaseUrl(): string {
-  return resolveWebOrigin();
-}
-
 function setCurrentLandingContext(params: URLSearchParams): void {
   if (!params.has("landing_host")) {
     params.set("landing_host", location.hostname);
@@ -227,7 +223,7 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
     params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
   }
   setCurrentLandingContext(params);
-  const url = new URL(VM0_ONBOARDING_PATH, onboardingBaseUrl());
+  const url = new URL(VM0_ONBOARDING_PATH, resolveAppOrigin());
   url.search = params.toString();
   appendCapturedPreviewBypassToUrl(url);
   return url.toString();

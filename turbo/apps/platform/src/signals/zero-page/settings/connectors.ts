@@ -60,7 +60,6 @@ import {
 } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
-import { resetPermissionDialog$ } from "./permission-dialog.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
@@ -72,7 +71,6 @@ type ConnectorAuthMethodId = ConnectorCatalogAuthMethodId;
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 type PostConnectOptions = {
-  readonly showPermissionDialog?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
@@ -948,13 +946,6 @@ const finishConnectorConnection$ = command(
         },
       );
     }
-    if (options.showPermissionDialog) {
-      set(resetPermissionDialog$);
-      set(internalPermissionDialog$, {
-        type,
-        label: options.connectorLabel ?? type,
-      });
-    }
     if (options.clearSelectedConnector) {
       set(internalSelectedConnectorType$, null);
     }
@@ -1204,27 +1195,6 @@ export const disconnectConnector$ = command(
     });
   },
 );
-
-// ---------------------------------------------------------------------------
-// Post-connect permission dialog state
-// ---------------------------------------------------------------------------
-
-interface PermissionDialogState {
-  readonly type: ConnectorType;
-  readonly label: string;
-}
-
-const internalPermissionDialog$ = state<PermissionDialogState | null>(null);
-
-/** Connector permission dialog to show after a successful connection. */
-export const permissionDialog$ = computed((get) => {
-  return get(internalPermissionDialog$);
-});
-
-export const closePermissionDialog$ = command(({ set }) => {
-  set(resetPermissionDialog$);
-  set(internalPermissionDialog$, null);
-});
 
 function createConnectorConnectFlowState(
   type: ConnectorType,

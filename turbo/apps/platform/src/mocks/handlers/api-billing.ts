@@ -74,6 +74,10 @@ export const apiBillingHandlers = [
     });
   }),
 
+  mockApi(zeroBillingCheckoutContract.complete, ({ respond }) => {
+    return respond(200, { completed: true });
+  }),
+
   mockApi(
     zeroBillingConcurrencyCheckoutContract.create,
     ({ body, respond }) => {

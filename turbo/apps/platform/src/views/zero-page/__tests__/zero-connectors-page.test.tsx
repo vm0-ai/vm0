@@ -98,14 +98,6 @@ function menuItemByText(text: string): HTMLElement {
   return menuItem;
 }
 
-function dialogForElement(element: HTMLElement): HTMLElement {
-  const dialog = element.closest('[role="dialog"]');
-  if (!(dialog instanceof HTMLElement)) {
-    throw new Error("dialog not found for element");
-  }
-  return dialog;
-}
-
 function queryConnectorCardByLabel(label: string): HTMLElement | null {
   const labelElement = screen
     .queryAllByTestId("connector-card-label")
@@ -1697,7 +1689,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("enables a single no-auth connector without opening the connect dialog", async () => {
+  it("enables a no-auth connector for the default agent without dialogs", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -1725,6 +1717,8 @@ describe("connectors page", () => {
         connectCount += 1;
         expect(params.type).toBe("stripe");
         expect(body.authMethod).toBe("api");
+        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
           type: params.type,
@@ -1752,8 +1746,13 @@ describe("connectors page", () => {
     });
     expect(openMock.calls).toHaveLength(0);
     expect(
-      screen.getByText(/You've successfully connected with/u),
-    ).toBeInTheDocument();
+      screen.queryByText(/You've successfully connected with/u),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
     expect(screen.queryByText("Public catalog")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Enable public catalog data."),
@@ -2348,10 +2347,8 @@ describe("connectors page", () => {
     });
   });
 
-  it("clears post-connect permission selections between connector dialogs", async () => {
-    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+  it("connects manual-grant connectors without permission dialogs", async () => {
     mockConnectors([]);
-    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "axiom",
@@ -2401,6 +2398,8 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
+        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
           type: params.type,
@@ -2439,18 +2438,14 @@ describe("connectors page", () => {
     );
     click(buttonByText("Save", axiomDialog));
 
-    const axiomPermissionDialog = dialogForElement(
-      await screen.findByText(
-        "You've successfully connected with Public Axiom!",
-      ),
-    );
-    click(buttonByText("Research Agent", axiomPermissionDialog));
-    click(buttonByText("Later", axiomPermissionDialog));
     await waitFor(() => {
       expect(
-        screen.queryByText("You've successfully connected with Public Axiom!"),
-      ).not.toBeInTheDocument();
+        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText("You've successfully connected with Public Axiom!"),
+    ).not.toBeInTheDocument();
 
     await fill(screen.getByPlaceholderText("Find connectors"), "stripe");
     click(await screen.findByLabelText("Connect Public Stripe"));
@@ -2463,28 +2458,22 @@ describe("connectors page", () => {
     );
     click(buttonByText("Save", stripeDialog));
 
-    const stripePermissionDialog = dialogForElement(
-      await screen.findByText(
-        "You've successfully connected with Public Stripe!",
-      ),
-    );
-    click(buttonByText("Confirm", stripePermissionDialog));
-
     await waitFor(() => {
       expect(
-        screen.queryByText("You've successfully connected with Public Stripe!"),
-      ).not.toBeInTheDocument();
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText("You've successfully connected with Public Stripe!"),
+    ).not.toBeInTheDocument();
     expect(authorizationUpdateCount).toBe(0);
     expect(
       screen.queryByText("Public Stripe enabled for 1 agent"),
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the post-connect permission dialog open when authorization fails", async () => {
-    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+  it("does not issue a client-side authorization update after connecting", async () => {
     mockConnectors([]);
-    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "axiom",
@@ -2531,7 +2520,9 @@ describe("connectors page", () => {
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: [] });
     });
+    let authorizationUpdateCount = 0;
     context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      authorizationUpdateCount += 1;
       return respond(400, {
         error: {
           code: "CONNECTOR_ACCESS_UPDATE_FAILED",
@@ -2553,147 +2544,23 @@ describe("connectors page", () => {
     );
     click(buttonByText("Save", axiomDialog));
 
-    const permissionDialog = dialogForElement(
-      await screen.findByText(
-        "You've successfully connected with Public Axiom!",
-      ),
-    );
-    click(buttonByText("Research Agent", permissionDialog));
-    click(buttonByText("Confirm", permissionDialog));
-
     await waitFor(() => {
       expect(
-        screen.getByText("Could not update connector access"),
+        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
     });
+    expect(authorizationUpdateCount).toBe(0);
     expect(
-      screen.getByText("You've successfully connected with Public Axiom!"),
-    ).toBeInTheDocument();
+      screen.queryByText("You've successfully connected with Public Axiom!"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Could not update connector access")).toBeNull();
     expect(
       screen.queryByText("Public Axiom enabled for 1 agent"),
     ).not.toBeInTheDocument();
   });
 
-  it("skips stale agents when confirming the post-connect permission dialog", async () => {
-    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
-    const staleAgentId = "c0000000-0000-4000-a000-000000000002";
+  it("connects AWS without a post-connect permission dialog", async () => {
     mockConnectors([]);
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research Agent"),
-      teamAgent(staleAgentId, "Deleted Agent"),
-    ]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorRef: "axiom",
-        label: "Public Axiom",
-        authMethods: [
-          {
-            id: "api-token",
-            label: "Public API Token",
-            description: null,
-            grantKind: "manual",
-            manualFields: [
-              {
-                id: "apiToken",
-                label: "Public API token",
-                required: true,
-                placeholder: "public-xaat",
-                inputType: "password",
-              },
-            ],
-            startOptions: [],
-          },
-        ],
-      }),
-    ]);
-    context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
-      ({ body, params, respond }) => {
-        return respond(200, {
-          id: crypto.randomUUID(),
-          type: params.type,
-          authMethod: body.authMethod,
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          connectionStatus: "connected",
-          reconnectReason: null,
-          tokenExpiresAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      },
-    );
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
-    });
-    const authorizedAgentIds: string[] = [];
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ params, respond }) => {
-        if (params.id === staleAgentId) {
-          return respond(404, {
-            error: {
-              code: "NOT_FOUND",
-              message: "Agent not found",
-            },
-          });
-        }
-        authorizedAgentIds.push(params.id);
-        return respond(200, { enabledTypes: ["axiom"] });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
-    click(await screen.findByLabelText("Connect Public Axiom"));
-    const axiomDialog = await screen.findByRole("dialog", {
-      name: "Public Axiom",
-    });
-    await fill(
-      within(axiomDialog).getByPlaceholderText("public-xaat"),
-      "xaat-test",
-    );
-    click(buttonByText("Save", axiomDialog));
-
-    const permissionDialog = dialogForElement(
-      await screen.findByText(
-        "You've successfully connected with Public Axiom!",
-      ),
-    );
-    click(buttonByText("Research Agent", permissionDialog));
-    click(buttonByText("Deleted Agent", permissionDialog));
-    click(buttonByText("Confirm", permissionDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText("You've successfully connected with Public Axiom!"),
-      ).not.toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Public Axiom enabled for 1 agent"),
-    ).toBeInTheDocument();
-    expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
-    expect(screen.queryByText("Agent not found")).not.toBeInTheDocument();
-  });
-
-  it("connects AWS with an authorization code and authorizes an agent", async () => {
-    mockConnectors([]);
-    context.mocks.data.team([
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        ownerId: "test-user-123",
-        displayName: "Research Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        visibility: "public",
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
     context.mocks.browser.open(createMockAuthWindow());
 
     detachedSetupPage({
@@ -2737,23 +2604,14 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("You've successfully connected with AWS!"),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Research Agent"));
-    click(buttonByText("Confirm"));
-
-    await waitFor(() => {
-      expect(screen.getByText("AWS enabled for 1 agent")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(
         within(connectorCardByLabel("AWS")).getByText(
           /@arn:aws:iam::000000000000:user\/mock-aws/u,
         ),
       ).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText("You've successfully connected with AWS!"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
