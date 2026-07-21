@@ -168,7 +168,6 @@ interface WorkflowQueueAdmissionArgs {
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
   readonly params: WorkflowQueueEventParams;
-  readonly signal: AbortSignal;
 }
 
 async function attemptWorkflowQueueAdmission(
@@ -230,7 +229,6 @@ export async function admitWorkflowAutomationEvent(
 ): Promise<WorkflowQueueAdmission> {
   const { automation } = args;
   const initial = await attemptWorkflowQueueAdmission(db, args, undefined);
-  args.signal.throwIfAborted();
   if (initial.kind !== "payload-required") {
     return initial.kind;
   }
@@ -240,7 +238,6 @@ export async function admitWorkflowAutomationEvent(
       userId: automation.ownerUserId,
       orgId: automation.orgId,
     }),
-    args.signal,
   );
   if (!encryptedParamsResult.ok) {
     const retryWithoutPayload = await attemptWorkflowQueueAdmission(
@@ -248,7 +245,6 @@ export async function admitWorkflowAutomationEvent(
       args,
       undefined,
     );
-    args.signal.throwIfAborted();
     if (retryWithoutPayload.kind !== "payload-required") {
       return retryWithoutPayload.kind;
     }
@@ -260,7 +256,6 @@ export async function admitWorkflowAutomationEvent(
     args,
     encryptedParamsResult.value,
   );
-  args.signal.throwIfAborted();
   if (final.kind === "payload-required") {
     throw new Error("Workflow queue admission still required encrypted params");
   }

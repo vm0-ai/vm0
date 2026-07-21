@@ -409,7 +409,6 @@ async function enqueueWorkflowAutomationEventIfBusy(input: {
           recordLastRunId: args.recordLastRunId,
           recordLastRunAt: args.recordLastRunAt,
         },
-        signal,
       });
     },
   );

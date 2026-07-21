@@ -45,6 +45,20 @@ interface SecretKmsProbe {
   readonly generateDataKeyCalls: number;
 }
 
+function generateDataKeyOutput(
+  command: GenerateDataKeyCommand,
+): GenerateDataKeyCommandOutput {
+  return {
+    $metadata: {},
+    KeyId: command.input.KeyId,
+    CiphertextBlob: Buffer.from(
+      `encrypted-data-key:${command.input.KeyId}`,
+      "utf8",
+    ),
+    Plaintext: TEST_DATA_KEY,
+  };
+}
+
 function useSecretKmsProbe(
   overrideGenerateDataKey?: (
     command: GenerateDataKeyCommand,
@@ -66,18 +80,7 @@ function useSecretKmsProbe(
         command,
         generateDataKeyCalls,
       );
-      return (
-        overridden ??
-        Promise.resolve({
-          $metadata: {},
-          KeyId: command.input.KeyId,
-          CiphertextBlob: Buffer.from(
-            `encrypted-data-key:${command.input.KeyId}`,
-            "utf8",
-          ),
-          Plaintext: TEST_DATA_KEY,
-        })
-      );
+      return overridden ?? Promise.resolve(generateDataKeyOutput(command));
     }
 
     return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
@@ -183,10 +186,11 @@ async function createWebhookAutomation(
 async function postWorkflowWebhook(
   automation: WebhookAutomation,
   payload: string,
+  signal: AbortSignal = context.signal,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const rawBody = JSON.stringify({ event: payload });
   const timestamp = Math.floor(now() / 1000);
-  const response = await createApp({ signal: context.signal }).request(
+  const response = await createApp({ signal }).request(
     `/api/webhooks/workflow-automations/${automation.token}`,
     {
       method: "POST",
@@ -400,6 +404,59 @@ describe("workflow queue", () => {
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
+  });
+
+  it("finishes required queue persistence when the request aborts during encryption", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+    );
+
+    const kmsStarted = createDeferredPromise<void>(context.signal);
+    const releaseKms = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!kmsStarted.settled()) {
+        kmsStarted.resolve(undefined);
+      }
+      if (!releaseKms.settled()) {
+        releaseKms.resolve(undefined);
+      }
+    });
+    async function encryptAfterRelease(
+      command: GenerateDataKeyCommand,
+    ): Promise<GenerateDataKeyCommandOutput> {
+      await releaseKms.promise;
+      return generateDataKeyOutput(command);
+    }
+    const kms = useSecretKmsProbe((command, callNumber) => {
+      if (callNumber !== 1) {
+        return undefined;
+      }
+      kmsStarted.resolve(undefined);
+      return encryptAfterRelease(command);
+    });
+
+    const requestController = new AbortController();
+    const secondRequest = postWorkflowWebhook(
+      automation,
+      "second",
+      requestController.signal,
+    );
+    await kmsStarted.promise;
+    const abortError = new Error("request aborted during queue encryption");
+    abortError.name = "AbortError";
+    requestController.abort(abortError);
+    releaseKms.resolve(undefined);
+
+    await expect(secondRequest).resolves.toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    expect(kms.generateDataKeyCalls).toBe(1);
+
+    await completeRunThroughSandbox(scenario, firstRunId);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
 
   it("starts directly when failed queue encryption becomes unnecessary", async () => {
