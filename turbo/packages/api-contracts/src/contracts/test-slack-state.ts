@@ -67,6 +67,31 @@ export const testSlackStateResponseSchema = z.object({
       createdAt: z.string(),
     }),
   ),
+  chat_thread_routes: z.array(
+    z.object({
+      id: z.string(),
+      connectionId: z.string(),
+      channelId: z.string(),
+      threadTs: z.string(),
+      userId: z.string(),
+      backend: z.enum(["legacy", "canonical"]),
+      chatThreadId: z.string().nullable(),
+      createdAt: z.string(),
+    }),
+  ),
+  chat_ingress: z.array(
+    z.object({
+      id: z.string(),
+      routeId: z.string(),
+      eventId: z.string(),
+      payload: z.string(),
+      status: z.enum(["pending", "processing", "processed", "failed"]),
+      retryCount: z.number(),
+      lastError: z.string().nullable(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  ),
   recent_runs: z.array(
     z.object({
       id: z.string(),

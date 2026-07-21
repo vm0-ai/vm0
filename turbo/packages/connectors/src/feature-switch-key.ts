@@ -40,6 +40,7 @@ export enum FeatureSwitchKey {
   PexelsConnector = "pexelsConnector",
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
+  CanonicalSlackIngress = "canonicalSlackIngress",
   ZeroScrape = "zeroScrape",
   ZeroWebSearch = "zeroWebSearch",
   Banking = "banking",
