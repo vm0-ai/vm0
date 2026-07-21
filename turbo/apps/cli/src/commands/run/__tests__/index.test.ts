@@ -3346,7 +3346,7 @@ describe("run command", () => {
 
       expect(
         allErrors.some((log) => {
-          return log.includes(`vm0 logs ${errorTestRunId} --system`);
+          return log.includes(`zero logs ${errorTestRunId}`);
         }),
       ).toBe(true);
     });

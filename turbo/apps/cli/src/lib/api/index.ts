@@ -202,6 +202,10 @@ export {
 
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";
+export type {
+  RunEvent,
+  LogsSearchResponse,
+} from "@vm0/api-contracts/contracts/runs";
 
 // Domain modules - Zero Logs
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
@@ -213,19 +217,6 @@ export {
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
-
-// Domain modules - Logs
-export {
-  getSystemLog,
-  getMetrics,
-  getAgentEvents,
-  getNetworkLogs,
-  searchLogs,
-  type RunEvent,
-  type TelemetryMetric,
-  type NetworkLogEntry,
-  type LogsSearchResponse,
-} from "./domains/logs";
 
 // Domain modules - Zero Developer Support
 export {

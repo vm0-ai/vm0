@@ -25,10 +25,10 @@ Complex workflows are not built into single commands. Instead, they emerge from 
 vm0 secret set MY_API_KEY --body "sk-..."
 vm0 compose vm0.yaml
 vm0 run my-agent "analyze the dataset"
-vm0 logs <run-id>
+zero logs <run-id>
 ```
 
-The agent composes these atomic commands based on its own intent. It might skip `secret set` if the secret already exists, or run `vm0 logs` only if the run fails. The CLI does not impose a fixed workflow — the agent does.
+The agent composes these atomic commands based on its own intent. It might skip `secret set` if the secret already exists, or run `zero logs` only if the run fails. The CLI does not impose a fixed workflow — the agent does.
 
 **Guidelines:**
 - One command, one operation
