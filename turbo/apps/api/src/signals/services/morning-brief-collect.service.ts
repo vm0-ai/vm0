@@ -26,8 +26,7 @@ export const MORNING_BRIEF_CONNECTOR_REFS = [
   "gmail",
   "google-calendar",
 ] as const;
-type MorningBriefConnectorRef =
-  (typeof MORNING_BRIEF_CONNECTOR_REFS)[number];
+type MorningBriefConnectorRef = (typeof MORNING_BRIEF_CONNECTOR_REFS)[number];
 
 function connectorTokenEnvironmentName(
   connectorRef: MorningBriefConnectorRef,
@@ -455,7 +454,7 @@ function isExcludedCalendar(calendarId: string): boolean {
   return (
     calendarId.includes("#holiday") ||
     calendarId.includes("#contacts") ||
-    calendarId.endsWith("group.v.calendar.google.com")
+    calendarId.endsWith("@group.v.calendar.google.com")
   );
 }
 
