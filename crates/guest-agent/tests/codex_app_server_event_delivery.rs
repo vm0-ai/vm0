@@ -42,23 +42,18 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
     )?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
-    let sequence_0 = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/events")
-            .body_includes(r#""sequenceNumber":0"#);
-        then.status(200);
-    });
-    let sequence_1 = server.mock(|when, then| {
+    // Keep response matchers mutually exclusive: sequence 1 may share a batch
+    // with later notifications, and the whole request is one failure unit.
+    let failed_batch = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
             .body_includes(r#""sequenceNumber":1"#);
         then.status(500);
     });
-    let later_batch = server.mock(|when, then| {
+    let successful_batches = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""sequenceNumber":2"#)
-            .body_includes(r#""sequenceNumber":3"#);
+            .body_excludes(r#""sequenceNumber":1"#);
         then.status(200);
     });
 
@@ -76,9 +71,11 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
         std::fs::read_to_string(runtime.paths.event_error_flag())?,
         "1"
     );
-    sequence_0.assert_calls_async(1).await;
-    sequence_1.assert_calls_async(3).await;
-    later_batch.assert_calls_async(1).await;
+    failed_batch.assert_calls_async(3).await;
+    assert!(
+        successful_batches.calls_async().await >= 1,
+        "the sequence-zero prefix should be acknowledged before the failed batch"
+    );
 
     Ok(())
 }
