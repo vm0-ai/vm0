@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.445.0](https://github.com/vm0-ai/vm0/compare/core-v8.444.4...core-v8.445.0) (2026-07-21)
+
+
+### Features
+
+* enable Zero Mail for staff organizations ([#22360](https://github.com/vm0-ai/vm0/issues/22360)) ([350dc2c](https://github.com/vm0-ai/vm0/commit/350dc2c303affd036faf27c0a801941fb09061d3))
+
+
+### Refactoring
+
+* **platform:** remove agent detail workflows tab ([#22361](https://github.com/vm0-ai/vm0/issues/22361)) ([ea6cf92](https://github.com/vm0-ai/vm0/commit/ea6cf9246a646441986bc930ce653de2c2f947fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+
 ## [8.444.4](https://github.com/vm0-ai/vm0/compare/core-v8.444.3...core-v8.444.4) (2026-07-21)
 
 

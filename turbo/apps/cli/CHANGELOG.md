@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.244.7](https://github.com/vm0-ai/vm0/compare/cli-v9.244.6...cli-v9.244.7) (2026-07-21)
+
+
+### Refactoring
+
+* **cli:** replace vm0 compose with api fixtures ([#22366](https://github.com/vm0-ai/vm0/issues/22366)) ([1eabe0e](https://github.com/vm0-ai/vm0/commit/1eabe0e825b941854adbe04c40d94115ea5a6c8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+
 ## [9.244.6](https://github.com/vm0-ai/vm0/compare/cli-v9.244.5...cli-v9.244.6) (2026-07-21)
 
 

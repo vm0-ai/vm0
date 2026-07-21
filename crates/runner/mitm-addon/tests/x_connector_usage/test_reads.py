@@ -62,6 +62,7 @@ def test_logs_expansions_includes(x_usage, tmp_path, real_flow):
     )
     payloads = x_usage.call_and_get_billing(flow)
     by_cat = {p["category"]: p["quantity"] for p in payloads}
+    assert len(payloads) == len(by_cat)
     assert by_cat == {"posts.read": 1, "user.read": 1, "media.read": 2}
 
 
@@ -90,6 +91,7 @@ def test_posts_usage_events_as_one_batch(x_usage, tmp_path, real_flow):
     assert payload["runId"] == "run-abc-123"
     assert "idempotencyKey" not in payload
     by_cat = {event["category"]: event for event in payload["events"]}
+    assert len(payload["events"]) == len(by_cat)
     assert set(by_cat) == {"posts.read", "user.read"}
     assert by_cat["posts.read"]["kind"] == "connector"
     assert by_cat["posts.read"]["provider"] == "x"
@@ -145,12 +147,13 @@ def test_bounds_unknown_include_categories_before_buffering(x_usage, tmp_path, r
         for body in bodies
         for event in body["events"]
     )
-    by_cat = {event["category"]: event["quantity"] for body in bodies for event in body["events"]}
-    assert len(by_cat) == 65
-    assert "includes.future_0" in by_cat
-    assert "includes.future_63" in by_cat
-    assert "includes.future_64" not in by_cat
-    assert by_cat["includes.__overflow__"] == 37
+    events = [event for body in bodies for event in body["events"]]
+    by_cat = {event["category"]: event["quantity"] for event in events}
+    assert len(events) == len(by_cat)
+    assert by_cat == {
+        **{f"includes.future_{index}": 1 for index in range(64)},
+        "includes.__overflow__": 37,
+    }
     assert all(len(category) <= 100 for category in by_cat)
 
 
@@ -172,6 +175,7 @@ def test_overlong_unknown_include_key_uses_overflow_category(x_usage, tmp_path, 
     payloads = x_usage.call_and_get_billing(flow)
     by_cat = {p["category"]: p["quantity"] for p in payloads}
 
+    assert len(payloads) == len(by_cat)
     assert by_cat == {"posts.read": 1, "includes.__overflow__": 4}
     assert all(len(category) <= 100 for category in by_cat)
 
@@ -255,6 +259,7 @@ def test_logs_expansions_users_and_referenced_tweets(x_usage, tmp_path, real_flo
     )
     payloads = x_usage.call_and_get_billing(flow)
     by_cat = {p["category"]: p["quantity"] for p in payloads}
+    assert len(payloads) == len(by_cat)
     assert by_cat == {
         "posts.read": 3,  # 1 primary + 2 referenced tweets
         "user.read": 2,
@@ -283,6 +288,7 @@ def test_handles_unknown_includes_key(x_usage, tmp_path, real_flow):
     )
     payloads = x_usage.call_and_get_billing(flow)
     by_cat = {p["category"]: p["quantity"] for p in payloads}
+    assert len(payloads) == len(by_cat)
     # 1 primary (posts.read) + 1 users include (mapped to user.read)
     # + 3 unknown-widget includes (emitted as `includes.future_widget`).
     assert by_cat == {

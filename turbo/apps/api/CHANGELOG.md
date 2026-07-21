@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.293.0](https://github.com/vm0-ai/vm0/compare/api-v1.292.0...api-v1.293.0) (2026-07-21)
+
+
+### Features
+
+* add provider-neutral image attribution url ([#22367](https://github.com/vm0-ai/vm0/issues/22367)) ([5da8a96](https://github.com/vm0-ai/vm0/commit/5da8a96caedd8f35dcd1d91764bf918493d15c17))
+* **chat:** persist structured prompts through api and indexeddb ([#22357](https://github.com/vm0-ai/vm0/issues/22357)) ([655136e](https://github.com/vm0-ai/vm0/commit/655136e2d01cbe57ac67af61711b21867eea2d2a))
+* **connectors:** use accepted server firewall metadata ([#22348](https://github.com/vm0-ai/vm0/issues/22348)) ([09ec460](https://github.com/vm0-ai/vm0/commit/09ec4607884b3d8b5d16847df1eed9e10cfae28b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+    * @vm0/db bumped to 1.123.1
+
 ## [1.292.0](https://github.com/vm0-ai/vm0/compare/api-v1.291.1...api-v1.292.0) (2026-07-21)
 
 

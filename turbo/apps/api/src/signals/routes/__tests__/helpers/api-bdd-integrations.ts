@@ -1131,34 +1131,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    async configureSlackMiniMaxModelPolicy(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
-      const minimax = await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "minimax-api-key", secret: "bdd-minimax-key" },
-        }),
-        [200, 201],
-      );
-      await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
-          headers: authenticate(context, routeMocks, actor),
-          body: {
-            policies: [
-              {
-                model: "MiniMax-M3",
-                isDefault: true,
-                defaultProviderType: "minimax-api-key",
-                credentialScope: "org",
-                modelProviderId: minimax.body.provider.id,
-              },
-            ],
-          },
-        }),
-        [200],
-      );
-    },
-
     mockSlackRunResultOutput(text: string): void {
       context.mocks.axiom.query.mockResolvedValueOnce([
         { eventType: "result", eventData: { result: text } },

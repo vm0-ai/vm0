@@ -89,6 +89,7 @@ class TestXConnectorResponsePipeline:
 
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category)
         assert by_category == {"posts.read": 1, "user.read": 1}
 
     @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
@@ -108,6 +109,7 @@ class TestXConnectorResponsePipeline:
         payloads = self._call_and_get_billing(flow)
 
         by_category = {event["category"]: event["quantity"] for event in payloads}
+        assert len(payloads) == len(by_category)
         assert by_category == {"posts.read": 1, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
@@ -268,10 +270,11 @@ class TestXConnectorResponsePipeline:
         # 4. Verify billing payloads
         payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        # 3 tweets primary + 0 from includes.tweets (none here) = 3
-        assert by_cat["posts.read"] == 3
-        # 3 users from includes
-        assert by_cat["user.read"] == 3
+        assert len(payloads) == len(by_cat)
+        assert by_cat == {
+            "posts.read": 3,  # 3 primary tweets; no includes.tweets
+            "user.read": 3,  # 3 users from includes
+        }
 
     def test_full_streaming_pipeline_counts_final_line_without_newline(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -290,6 +293,7 @@ class TestXConnectorResponsePipeline:
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 2, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata
 
@@ -353,6 +357,7 @@ class TestXConnectorResponsePipeline:
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 1, "media.read": 1}
 
     @pytest.mark.parametrize(
@@ -385,6 +390,7 @@ class TestXConnectorResponsePipeline:
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 1, "user.read": 1}
 
     def test_full_streaming_pipeline_bounds_unknown_include_categories(
@@ -414,13 +420,13 @@ class TestXConnectorResponsePipeline:
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
-        assert by_cat["posts.read"] == 71
-        assert by_cat["user.read"] == 1
-        assert by_cat["includes.future_0"] == 1
-        assert by_cat["includes.future_63"] == 1
-        assert "includes.future_64" not in by_cat
-        assert by_cat["includes.__overflow__"] == 6
-        assert len(by_cat) == 67
+        assert len(payloads) == len(by_cat)
+        assert by_cat == {
+            "posts.read": 71,
+            "user.read": 1,
+            **{f"includes.future_{index}": 1 for index in range(64)},
+            "includes.__overflow__": 6,
+        }
         assert all(len(category) <= 100 for category in by_cat)
 
     def test_response_logs_incremental_x_json_parse_error(self, tmp_path, real_flow, mitm_ctx):
@@ -576,8 +582,8 @@ class TestXConnectorErrorPipeline:
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
         payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat["posts.read"] == 2  # not 3; partial trailing dropped
-        assert by_cat["user.read"] == 1
+        assert len(payloads) == len(by_cat)
+        assert by_cat == {"posts.read": 2, "user.read": 1}
         assert "connector_response_report_on_interruption" not in flow.metadata
 
     def test_full_pipeline_stream_error_counts_complete_final_line_without_newline(
@@ -598,5 +604,6 @@ class TestXConnectorErrorPipeline:
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 2, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata

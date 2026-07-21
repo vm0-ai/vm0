@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   SUPPORTED_RUN_MODELS,
@@ -18,7 +17,6 @@ export {
   getVm0ModelProviderConfig,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
-  shouldInlineModelProviderFirewall,
 } from "./model-provider-firewalls";
 export type {
   ModelProviderFramework,
@@ -72,10 +70,6 @@ export interface AuthMethodConfig {
 
 export type ModelProviderEnvBindings = Record<string, string>;
 
-export type ModelProviderFeatureStates = Partial<
-  Record<FeatureSwitchKey, boolean>
->;
-
 export const modelProviderCodexRuntimeConfigSchema = z.object({
   providerId: z.string().regex(/^[A-Za-z0-9_-]+$/),
   name: z.string().min(1),
@@ -89,66 +83,6 @@ export const modelProviderCodexRuntimeConfigSchema = z.object({
 export type ModelProviderCodexRuntimeConfig = z.infer<
   typeof modelProviderCodexRuntimeConfigSchema
 >;
-
-const MINIMAX_CODEX_BASE_URL = "https://api.minimax.io/v1";
-
-const MINIMAX_CODEX_ENV_BINDINGS = {
-  OPENAI_API_KEY: "$secret",
-  OPENAI_MODEL: "$model",
-} as const satisfies ModelProviderEnvBindings;
-
-const MINIMAX_CODEX_RUNTIME_CONFIG = {
-  providerId: "minimax",
-  name: "MiniMax",
-  baseUrl: MINIMAX_CODEX_BASE_URL,
-  envKey: "OPENAI_API_KEY",
-  wireApi: "responses",
-  supportsWebsockets: false,
-  modelCatalog: {
-    models: [
-      {
-        slug: "MiniMax-M3",
-        display_name: "MiniMax M3",
-        description: "MiniMax M3",
-        default_reasoning_level: null,
-        supported_reasoning_levels: [],
-        shell_type: "shell_command",
-        visibility: "list",
-        supported_in_api: true,
-        priority: 0,
-        additional_speed_tiers: [],
-        service_tiers: [],
-        default_service_tier: null,
-        availability_nux: null,
-        upgrade: null,
-        base_instructions: "",
-        model_messages: null,
-        include_skills_usage_instructions: false,
-        supports_reasoning_summaries: false,
-        default_reasoning_summary: "auto",
-        support_verbosity: false,
-        default_verbosity: null,
-        apply_patch_tool_type: null,
-        web_search_tool_type: "text",
-        truncation_policy: { mode: "bytes", limit: 10_000 },
-        supports_parallel_tool_calls: false,
-        supports_image_detail_original: false,
-        context_window: 1_000_000,
-        max_context_window: null,
-        auto_compact_token_limit: null,
-        comp_hash: null,
-        effective_context_window_percent: 95,
-        experimental_supported_tools: [],
-        input_modalities: ["text", "image"],
-        supports_search_tool: false,
-        use_responses_lite: false,
-        auto_review_model_override: null,
-        tool_mode: null,
-        multi_agent_version: null,
-      },
-    ],
-  },
-} as const satisfies ModelProviderCodexRuntimeConfig;
 
 export function getVm0ModelCodexRuntimeConfig(
   baseUrl: string,
@@ -205,65 +139,6 @@ export function getVm0ModelCodexRuntimeConfig(
       ],
     },
   };
-}
-
-const GATED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
-  Record<ModelProviderType, FeatureSwitchKey>
-> = {};
-
-const FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
-  Record<ModelProviderType, FeatureSwitchKey>
-> = {
-  "minimax-api-key": FeatureSwitchKey.CodexFrameworkForMinimax,
-};
-
-function isFeatureEnabledForModelProvider(
-  type: ModelProviderType,
-  featureStates: ModelProviderFeatureStates | undefined,
-  featureSwitches: Partial<Record<ModelProviderType, FeatureSwitchKey>>,
-): boolean {
-  const switchKey = featureSwitches[type];
-  return switchKey ? featureStates?.[switchKey] === true : false;
-}
-
-export function isModelProviderTypeFeatureGated(
-  type: ModelProviderType,
-): boolean {
-  return GATED_MODEL_PROVIDER_FEATURE_SWITCHES[type] !== undefined;
-}
-
-export function isModelProviderTypeEnabled(
-  type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
-): boolean {
-  const switchKey = GATED_MODEL_PROVIDER_FEATURE_SWITCHES[type];
-  return switchKey ? featureStates?.[switchKey] === true : true;
-}
-
-export function isModelProviderFrameworkFeatureSwitched(
-  type: ModelProviderType,
-): boolean {
-  return FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES[type] !== undefined;
-}
-
-export function isModelProviderFrameworkSwitchEnabled(
-  type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
-): boolean {
-  return isFeatureEnabledForModelProvider(
-    type,
-    featureStates,
-    FRAMEWORK_SWITCHED_MODEL_PROVIDER_FEATURE_SWITCHES,
-  );
-}
-
-function filterModelProviderTypesForFeatures(
-  types: readonly ModelProviderType[],
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderType[] {
-  return types.filter((type) => {
-    return isModelProviderTypeEnabled(type, featureStates);
-  });
 }
 
 /**
@@ -1228,26 +1103,19 @@ export function normalizeRunModelId(model: string): string {
   return CANONICAL_RUN_MODEL_ALIASES[model] ?? model;
 }
 
-export function getProvidersForModel(
-  model: string,
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderType[] {
+export function getProvidersForModel(model: string): ModelProviderType[] {
   const canonical = normalizeRunModelId(model);
   if (!isSupportedRunModel(canonical)) {
     return [];
   }
-  return filterModelProviderTypesForFeatures(
-    MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical],
-    featureStates,
-  );
+  return [...MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical]];
 }
 
 export function isModelSupportedByProvider(
   model: string,
   type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
 ): boolean {
-  return getProvidersForModel(model, featureStates).includes(type);
+  return getProvidersForModel(model).includes(type);
 }
 
 export function getProviderRuntimeModel(
@@ -1280,15 +1148,10 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
  * Get provider types available for user selection.
  * Excludes providers that are hidden from the UI (e.g., those without token replacement support).
  */
-export function getSelectableProviderTypes(
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderType[] {
+export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return (
-        !HIDDEN_PROVIDER_TYPES.has(type) &&
-        isModelProviderTypeEnabled(type, featureStates)
-      );
+      return !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
 }
@@ -1344,11 +1207,7 @@ export function getVm0ApiModel(model: string): string {
  */
 export function getFrameworkForType(
   type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
 ): ModelProviderFramework {
-  if (isModelProviderFrameworkSwitchEnabled(type, featureStates)) {
-    return "codex";
-  }
   return MODEL_PROVIDER_TYPES[type]?.framework ?? "claude-code";
 }
 
@@ -1433,36 +1292,16 @@ export function getSecretNamesForAuthMethod(
  */
 export function getModelProviderEnvBindings(
   type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
 ): ModelProviderEnvBindings | undefined {
-  if (isModelProviderFrameworkSwitchEnabled(type, featureStates)) {
-    if (type === "minimax-api-key") {
-      return MINIMAX_CODEX_ENV_BINDINGS;
-    }
-  }
   const config = MODEL_PROVIDER_TYPES[type];
   return "envBindings" in config ? config.envBindings : undefined;
-}
-
-export function getModelProviderCodexRuntimeConfig(
-  type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderCodexRuntimeConfig | undefined {
-  if (
-    type === "minimax-api-key" &&
-    isModelProviderFrameworkSwitchEnabled(type, featureStates)
-  ) {
-    return MINIMAX_CODEX_RUNTIME_CONFIG;
-  }
-  return undefined;
 }
 
 /**
  * Get the upstream base URL for a model provider type.
  *
- * Returns the framework-appropriate upstream base URL. Codex custom-provider
- * runtime config is authoritative when present; otherwise this falls back to
- * envBindings — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL for codex.
+ * Returns the framework-appropriate upstream base URL from envBindings —
+ * ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL for codex.
  * Returns null when the provider relies on the SDK's default
  * (Anthropic-native providers, OpenAI direct).
  *
@@ -1471,19 +1310,8 @@ export function getModelProviderCodexRuntimeConfig(
  * compatible; different URLs imply different upstreams and so a
  * potentially different request/response contract.
  */
-export function getProviderBaseUrl(
-  type: ModelProviderType,
-  featureStates?: ModelProviderFeatureStates,
-): string | null {
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
-    type,
-    featureStates,
-  );
-  if (codexRuntimeConfig) {
-    return codexRuntimeConfig.baseUrl;
-  }
-
-  const envBindings = getModelProviderEnvBindings(type, featureStates);
+export function getProviderBaseUrl(type: ModelProviderType): string | null {
+  const envBindings = getModelProviderEnvBindings(type);
   if (!envBindings) {
     return null;
   }
