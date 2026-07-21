@@ -1,0 +1,120 @@
+import { screen, waitFor } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
+
+const context = testContext();
+
+describe("structured user messages", () => {
+  it("renders ordered snapshots and keeps the legacy Markdown fallback", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000741";
+    const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured message rendering",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000741",
+          role: "user",
+          content: "Legacy structured body should stay hidden",
+          runId: "d0000000-0000-4000-a000-000000000741",
+          generationTemplate: {
+            type: "presentation",
+            selection: { templateId: "retired-template" },
+          },
+          attachFiles: [
+            {
+              id: "file-live",
+              filename: "renamed-report.pdf",
+              url: "/f/test-user/file-live/renamed-report.pdf",
+              contentType: "application/pdf",
+              size: 42,
+            },
+          ],
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Start " },
+              {
+                type: "chat_thread",
+                threadId: referencedThreadId,
+                titleSnapshot: "Archived source",
+              },
+              { type: "text", text: " with " },
+              {
+                type: "template",
+                titleSnapshot: "Archived deck",
+                template: {
+                  type: "presentation",
+                  selection: { templateId: "retired-template" },
+                },
+              },
+              { type: "text", text: " and " },
+              {
+                type: "file",
+                fileId: "file-live",
+                filenameSnapshot: "original-report.pdf",
+                contentType: "application/pdf",
+              },
+              { type: "text", text: ", then " },
+              {
+                type: "file",
+                fileId: "file-deleted",
+                filenameSnapshot: "deleted-notes.txt",
+                contentType: "text/plain",
+              },
+              { type: "text", text: ".\nUse **literal** <span>." },
+            ],
+          },
+          createdAt: "2026-07-21T10:00:00Z",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000743",
+          role: "user",
+          content: "Legacy **bold** remains",
+          runId: "d0000000-0000-4000-a000-000000000743",
+          createdAt: "2026-07-21T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const structuredMessage = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(structuredMessage.textContent).toBe(
+      "Start Archived source with Presentation·Archived deck and " +
+        "PDForiginal-report.pdf, then TXTdeleted-notes.txt.\n" +
+        "Use **literal** <span>.",
+    );
+    expect(structuredMessage.querySelector("strong")).toBeNull();
+
+    const threadLink = structuredMessage.querySelector(
+      'a[aria-label="Open chat Archived source"]',
+    );
+    expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
+    expect(
+      screen.getByLabelText("Message template Archived deck"),
+    ).toBeInTheDocument();
+    expect(
+      structuredMessage.querySelector(
+        'button[aria-label="Download original-report.pdf"]',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Legacy structured body should stay hidden"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
+    expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
+
+    const legacyBold = await screen.findByText("bold");
+    expect(legacyBold.tagName).toBe("STRONG");
+    expect(screen.getByText("Legacy", { exact: false })).toBeInTheDocument();
+  });
+});
