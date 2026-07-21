@@ -21,7 +21,9 @@ bash "$script" "$canonical_dist" "$pages_dist"
 
 test -f "${pages_dist}/index.html"
 test -f "${pages_dist}/assets/app-123.js"
+test -f "${pages_dist}/assets/404.html"
 test -f "${pages_dist}/_headers"
+test ! -e "${pages_dist}/404.html"
 test ! -e "${pages_dist}/assets/app-123.js.map"
 test ! -e "${pages_dist}/manifest.json"
 test ! -e "${pages_dist}/ready.json"
@@ -29,6 +31,7 @@ test ! -e "${pages_dist}/.gitkeep"
 grep -Fxq '/assets/*' "${pages_dist}/_headers"
 grep -Fq 'Cache-Control: public, max-age=31536000, immutable' \
   "${pages_dist}/_headers"
+grep -Fq '<title>Not Found</title>' "${pages_dist}/assets/404.html"
 
 nonempty_dist="${tmp_dir}/nonempty"
 mkdir -p "$nonempty_dist"
