@@ -223,6 +223,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.CanonicalSlackIngress]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Route newly admitted per-user Slack threads through canonical chat ingress.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -249,6 +255,22 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the Lab page for toggling experimental features",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.MorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
+  },
+  [FeatureSwitchKey.ManualMorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
   },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
@@ -316,6 +338,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.StructuredPrompt]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable structured user prompt rendering, sends, and drafts while preserving the legacy content fallback.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

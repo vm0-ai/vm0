@@ -306,7 +306,7 @@ async function createRunUploadedFile(args: {
 }
 
 describe("GET /api/cron/artifact-preview", () => {
-  it("rejects invalid cron secrets and no-ops when browser rendering is unconfigured", async () => {
+  it("rejects invalid cron secrets and returns zero without candidates", async () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
 
     const rejected = await accept(
@@ -315,7 +315,6 @@ describe("GET /api/cron/artifact-preview", () => {
     );
     expect(rejected.body.error.message).toBe("Invalid cron secret");
 
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
       [200],
@@ -323,80 +322,64 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(generated.body).toStrictEqual({ generated: 0 });
   });
 
-  it("generates stale hosted artifact previews through the cron fallback", async () => {
-    const owner = await artifactActor("Artifacts API cron preview agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected cron preview test actor to have an org");
-    }
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
-    const snapshotRequests = mockCloudflareSnapshot();
+  it.each([
+    ["hosted-site", "missing"],
+    ["presentation-html", "legacy"],
+  ] as const)(
+    "does not retry %s previews when the image is %s",
+    async (artifactKind, previewState) => {
+      const owner = await artifactActor(
+        `Artifacts API ${artifactKind} cron preview agent`,
+      );
+      if (!owner.actor.orgId) {
+        throw new Error("Expected cron preview test actor to have an org");
+      }
+      mockEnv("CRON_SECRET", CRON_SECRET);
+      mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
+      const snapshotRequests = mockCloudflareSnapshot();
 
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `cron-preview-${randomUUID().slice(0, 8)}`,
-    });
-    await flushWaitUntilForTest();
-    expect(snapshotRequests).toHaveLength(0);
+      const artifact = await createHostedArtifact({
+        actor: owner.actor,
+        agentId: owner.agentId,
+        runnerGroup: owner.runnerGroup,
+        site: `cron-preview-${randomUUID().slice(0, 8)}`,
+        artifactKind,
+      });
+      await flushWaitUntilForTest();
+      expect(snapshotRequests).toHaveLength(0);
 
-    await markHostedArtifactEligibleForPreviewCron(context, artifact, {
-      previewImageUrl: `https://cdn.vm0.io/legacy/preview-${artifact.deploymentId}.webp`,
-    });
-    const previewObjectStore = chatCallbacks.acceptChatObjectStorage();
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+      const legacyPreviewImageUrl =
+        previewState === "legacy"
+          ? `https://cdn.vm0.io/legacy/preview-${artifact.deploymentId}.webp`
+          : undefined;
+      await markHostedArtifactEligibleForPreviewCron(
+        context,
+        artifact,
+        legacyPreviewImageUrl ? { previewImageUrl: legacyPreviewImageUrl } : {},
+      );
+      mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+      mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
 
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body.generated).toBeGreaterThanOrEqual(1);
+      const generated = await accept(
+        cronClient().generate({ headers: cronHeaders() }),
+        [200],
+      );
+      expect(generated.body).toStrictEqual({ generated: 0 });
 
-    const response = await chat.listArtifacts(owner.actor);
-    const previewedArtifact = response.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(previewedArtifact?.previewImageUrl).toContain(
-      `/preview-v2-${artifact.deploymentId}.webp`,
-    );
-    expect(snapshotRequests).toContainEqual(
-      expect.objectContaining({
-        authorization: "Bearer preview-token",
-        url: `${CLOUDFLARE_SNAPSHOT_URL}?cacheTTL=0`,
-        body: expect.objectContaining({
-          url: artifact.url,
-          cookies: [
-            {
-              name: "vm0_artifact_preview",
-              value: ARTIFACT_PREVIEW_WAF_SECRET,
-              url: new URL(artifact.url).origin,
-              httpOnly: true,
-              secure: true,
-              sameSite: "Strict",
-            },
-          ],
-          formats: ["content", "screenshot"],
-          viewport: {
-            width: 1280,
-            height: 800,
-            deviceScaleFactor: 0.5,
-          },
-          screenshotOptions: { type: "webp", quality: 80 },
-        }),
-      }),
-    );
-    expect(
-      previewObjectStore.puts.some((put) => {
-        return (
-          put.bucket === "test-user-artifacts" &&
-          put.key.endsWith(`/preview-v2-${artifact.deploymentId}.webp`) &&
-          put.contentType === "image/webp"
-        );
-      }),
-    ).toBeTruthy();
-  }, 180_000);
+      const response = await chat.listArtifacts(owner.actor);
+      const previewedArtifact = response.artifacts.find((item) => {
+        return item.fileId === artifact.fileId;
+      });
+      expect(previewedArtifact).toBeDefined();
+      if (legacyPreviewImageUrl) {
+        expect(previewedArtifact?.previewImageUrl).toBe(legacyPreviewImageUrl);
+      } else {
+        expect(previewedArtifact).not.toHaveProperty("previewImageUrl");
+      }
+      expect(snapshotRequests).toHaveLength(0);
+    },
+    120_000,
+  );
 
   it("generates poster frames for generated video artifacts without previewing ordinary video uploads", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
@@ -942,13 +925,13 @@ describe("GET /api/zero/artifacts", () => {
 });
 
 describe("POST /api/zero/artifacts/favorite", () => {
-  it("creates and deletes user-scoped artifact favorite records", async () => {
+  it("stores favorite state without changing artifact synchronization", async () => {
     const owner = await artifactActor("Artifacts API favorites agent");
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `favorite-${randomUUID().slice(0, 8)}`,
+    const artifact = await createRunUploadedFile({
+      owner,
+      prompt: "create a favorite artifact",
+      filename: `favorite-${randomUUID().slice(0, 8)}.txt`,
+      contentType: "text/plain",
     });
     const baseline = await chat.listArtifacts(owner.actor);
     if (!baseline.syncUntil) {
@@ -970,16 +953,9 @@ describe("POST /api/zero/artifacts/favorite", () => {
         Date.parse(baseline.syncUntil) + 5 * 60_000,
       ).toISOString(),
     });
-    const favoritedArtifact = favorited.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!favoritedArtifact) {
-      throw new Error("Expected favorite artifact to be listed");
-    }
-    expect(favoritedArtifact.isFavorited).toBeTruthy();
-    if (!favorited.syncUntil) {
-      throw new Error("Expected favorite sync timestamp");
-    }
+    expect(favorited.artifacts).not.toContainEqual(
+      expect.objectContaining({ fileId: artifact.fileId }),
+    );
 
     await chat.unfavoriteArtifact(owner.actor, artifact.url);
 
@@ -989,16 +965,12 @@ describe("POST /api/zero/artifacts/favorite", () => {
 
     const unfavorited = await chat.listArtifacts(owner.actor, {
       updatedAfter: new Date(
-        Date.parse(favorited.syncUntil) + 5 * 60_000,
+        Date.parse(baseline.syncUntil) + 5 * 60_000,
       ).toISOString(),
     });
-    const unfavoritedArtifact = unfavorited.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!unfavoritedArtifact) {
-      throw new Error("Expected unfavorited artifact to be listed");
-    }
-    expect(unfavoritedArtifact.isFavorited).toBeFalsy();
+    expect(unfavorited.artifacts).not.toContainEqual(
+      expect.objectContaining({ fileId: artifact.fileId }),
+    );
   }, 120_000);
 
   it("rejects favorite requests for artifacts outside the caller visibility set", async () => {

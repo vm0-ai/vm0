@@ -445,7 +445,7 @@ describe("chat run queue", () => {
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
         "(see attached files)",
       );

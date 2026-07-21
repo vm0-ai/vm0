@@ -157,9 +157,9 @@ agents:
 EOF
     seed_compose_fixture "$test_dir/vm0.yaml" >/dev/null
 
-    run $VM0_CLI run "$agent_name" \
-        --model-provider-type "codex-oauth-token" \
-        -- "test"
+    run run_compose_fixture "$agent_name" \
+        "test" \
+        '{"modelProviderType":"codex-oauth-token"}'
 
     # Run MUST fail with a stale-provider signal. Tolerant to the exact
     # error code/message shape Wave 3 ships — match on any of:

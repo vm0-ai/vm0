@@ -108,7 +108,7 @@ const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
 function chatMessageOrderSequenceSql() {
   return sql`CASE
-    WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
+    WHEN ${isNotNull(chatMessages.runLifecycleEvent)} THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
 }
@@ -171,7 +171,6 @@ const artifactListSqlRowSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string().nullable(),
   agent_avatar_url: z.string().nullable(),
-  is_favorited: z.boolean(),
 });
 type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 
@@ -241,8 +240,8 @@ const messageColumns = {
   isGoalRun: sql`EXISTS (
     SELECT 1
     FROM ${zeroRuns}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
-      AND ${zeroRuns.goalId} IS NOT NULL
+    WHERE ${eq(zeroRuns.id, chatMessages.runId)}
+      AND ${isNotNull(zeroRuns.goalId)}
   )`.mapWith(pgBooleanDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
@@ -726,8 +725,8 @@ function noActiveRunsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-    WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
+    INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+    WHERE ${eq(zeroRuns.chatThreadId, chatThreads.id)}
       AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
   )`;
 }
@@ -736,7 +735,7 @@ function noActiveGoalsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${threadGoals}
-    WHERE ${threadGoals.chatThreadId} = ${chatThreads.id}
+    WHERE ${eq(threadGoals.chatThreadId, chatThreads.id)}
       AND ${threadGoals.status} = 'active'
   )`;
 }
@@ -830,7 +829,7 @@ export function zeroChatThreadUnreads(args: {
           isNotNull(lastRunFinish.id),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
@@ -870,7 +869,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
           isNotNull(lastRunFinish.id),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
@@ -930,9 +929,9 @@ export function zeroChatThreadDraftIds(
           eq(chatThreads.userId, userId),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
-            OR ${chatThreads.draftStructuredPrompt} IS NOT NULL
+            OR ${isNotNull(chatThreads.draftStructuredPrompt)}
             OR (
-              ${chatThreads.draftAttachments} IS NOT NULL
+              ${isNotNull(chatThreads.draftAttachments)}
               AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
             )
           )`,
@@ -977,8 +976,8 @@ export function zeroChatThreadArtifacts(args: {
               sql`EXISTS (
                 SELECT 1
                 FROM ${chatMessages}
-                WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-                  AND ${chatMessages.chatThreadId} = ${args.threadId}
+                WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
+                  AND ${eq(chatMessages.chatThreadId, args.threadId)}
               )`,
             ),
           ),
@@ -1047,15 +1046,15 @@ function artifactCallerVisibilityConditions(args: {
   readonly orgId: string;
 }): SQL[] {
   return [
-    sql`${agentRuns.orgId} = ${args.orgId}`,
-    sql`${chatThreads.userId} = ${args.userId}`,
-    sql`${agentComposes.orgId} = ${args.orgId}`,
+    eq(agentRuns.orgId, args.orgId),
+    eq(chatThreads.userId, args.userId),
+    eq(agentComposes.orgId, args.orgId),
   ];
 }
 
 function artifactFileVisibilityConditions(): SQL[] {
   return [
-    sql`${runUploadedFiles.url} IS NOT NULL`,
+    isNotNull(runUploadedFiles.url),
     sql`(
       NOT EXISTS (
         SELECT 1
@@ -1100,7 +1099,6 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
-    isFavorited: row.is_favorited,
     ...(artifactKind ? { artifactKind } : {}),
   };
 }
@@ -1232,22 +1230,22 @@ async function listChangedArtifacts(args: {
           ) AS metadata_updated_at
         FROM ${agentRuns}
         INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${agentRuns.id}
+          ON ${eq(zeroRuns.id, agentRuns.id)}
         INNER JOIN ${chatThreads}
           ON ${chatThreads.id} = COALESCE(
             ${zeroRuns.chatThreadId},
             (
               SELECT ${chatMessages.chatThreadId}
               FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
               ORDER BY ${chatMessages.createdAt} ASC
               LIMIT 1
             )
           )
         INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+          ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
-          ON ${zeroAgents.id} = ${agentComposes.id}
+          ON ${eq(zeroAgents.id, agentComposes.id)}
         WHERE ${sql.join(callerConditions, sql` AND `)}
       ),
       changed_artifact_ids AS MATERIALIZED (
@@ -1259,7 +1257,7 @@ async function listChangedArtifacts(args: {
           ON ${runUploadedFiles.runId} = visible_runs.run_id
         WHERE ${sql.join(fileConditions, sql` AND `)}
           AND ${lowerBoundClause}
-          AND ${effectiveUpdatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
+          AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
         ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
         LIMIT ${args.limit + 1}
       )
@@ -1286,34 +1284,29 @@ async function listChangedArtifacts(args: {
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
         COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-        ${zeroAgents.avatarUrl} AS agent_avatar_url,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+        ${zeroAgents.avatarUrl} AS agent_avatar_url
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
         ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
             ORDER BY ${chatMessages.createdAt} ASC
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
-        ON ${zeroAgents.id} = ${agentComposes.id}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.query.userId}
-        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+        ON ${eq(zeroAgents.id, agentComposes.id)}
       ORDER BY changed_artifact_ids.effective_updated_at ASC,
         changed_artifact_ids.row_id ASC
     `,
@@ -1359,32 +1352,27 @@ async function listArtifactHistory(args: {
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+        ) AS cursor_created_at
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
             ORDER BY ${chatMessages.createdAt} ASC
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
-        ON ${zeroAgents.id} = ${agentComposes.id}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.query.userId}
-        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+        ON ${eq(zeroAgents.id, agentComposes.id)}
       WHERE ${sql.join(conditions, sql` AND `)}
       ${keysetClause}
     ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
@@ -1491,7 +1479,7 @@ async function artifactUrlIsVisible(
 ): Promise<boolean> {
   const conditions = [
     ...artifactVisibilityConditions(args),
-    sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
+    eq(runUploadedFiles.url, args.artifactUrl),
   ];
   const rows = await executeRawRows(
     db,
@@ -1500,22 +1488,22 @@ async function artifactUrlIsVisible(
       SELECT 1
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
             ORDER BY ${chatMessages.createdAt} ASC
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       WHERE ${sql.join(conditions, sql` AND `)}
       LIMIT 1
       ) AS visible
@@ -1523,40 +1511,6 @@ async function artifactUrlIsVisible(
     artifactVisibilityRowSchema,
   );
   return rows[0]?.visible === true;
-}
-
-async function touchArtifactFavoriteChange(
-  db: Pick<Db, "execute">,
-  args: ArtifactFavoriteArgs,
-): Promise<void> {
-  await db.execute(sql`
-    UPDATE ${runUploadedFiles}
-    SET updated_at = clock_timestamp()
-    WHERE ${runUploadedFiles.url} = ${args.artifactUrl}
-      AND EXISTS (
-        SELECT 1
-        FROM ${agentRuns}
-        INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${agentRuns.id}
-        INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              ORDER BY ${chatMessages.createdAt} ASC
-              LIMIT 1
-            )
-          )
-        INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-        WHERE ${agentRuns.id} = ${runUploadedFiles.runId}
-          AND ${agentRuns.orgId} = ${args.orgId}
-          AND ${chatThreads.userId} = ${args.userId}
-          AND ${agentComposes.orgId} = ${args.orgId}
-      )
-  `);
 }
 
 export const favoriteArtifact$ = command(
@@ -1571,7 +1525,7 @@ export const favoriteArtifact$ = command(
         return false;
       }
 
-      const inserted = await tx
+      await tx
         .insert(userArtifactFavorites)
         .values({
           orgId: args.orgId,
@@ -1584,11 +1538,7 @@ export const favoriteArtifact$ = command(
             userArtifactFavorites.userId,
             userArtifactFavorites.artifactUrl,
           ],
-        })
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (inserted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
+        });
       return true;
     });
     signal.throwIfAborted();
@@ -1603,21 +1553,15 @@ export const unfavoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db.transaction(async (tx) => {
-      const deleted = await tx
-        .delete(userArtifactFavorites)
-        .where(
-          and(
-            eq(userArtifactFavorites.orgId, args.orgId),
-            eq(userArtifactFavorites.userId, args.userId),
-            eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-          ),
-        )
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (deleted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
-    });
+    await db
+      .delete(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+        ),
+      );
     signal.throwIfAborted();
   },
 );
@@ -1898,8 +1842,8 @@ export function zeroChatThreadMessagesPage(args: {
           ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
-        WHERE ${chatMessages.id} = ${cursorId}
-          AND ${chatMessages.chatThreadId} = ${args.threadId}
+        WHERE ${eq(chatMessages.id, cursorId)}
+          AND ${eq(chatMessages.chatThreadId, args.threadId)}
       )`;
       const cursorBeforeCondition = sql`(
         ${chatMessages.createdAt},
@@ -1910,8 +1854,8 @@ export function zeroChatThreadMessagesPage(args: {
           ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
-        WHERE ${chatMessages.id} = ${cursorId}
-          AND ${chatMessages.chatThreadId} = ${args.threadId}
+        WHERE ${eq(chatMessages.id, cursorId)}
+          AND ${eq(chatMessages.chatThreadId, args.threadId)}
       )`;
 
       if (args.sinceId !== undefined) {

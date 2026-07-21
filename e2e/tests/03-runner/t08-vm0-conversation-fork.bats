@@ -63,7 +63,7 @@ teardown_file() {
 
 @test "t08-2: run output includes conversationId" {
     # This test verifies that run completion output includes conversationId
-    # Single vm0 run - safe for 30s timeout
+    # Single direct run - safe for 30s timeout
 
     # Step 1: Create artifact
     echo "# Creating artifact..."
@@ -75,20 +75,17 @@ teardown_file() {
 
     # Step 2: Run agent (~15s)
     echo "# Running agent..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo 'hello world'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'hello world'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
-    assert_output --partial "Run completed successfully"
-    assert_output --partial "Checkpoint:"
-    assert_output --partial "Session:"
-
-    # Verify conversationId is displayed
-    assert_output --partial "Conversation:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 
     # Extract conversation ID
-    CONVERSATION_ID=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    CONVERSATION_ID=$(run_fixture_field "$output" '.conversationId')
     echo "# Conversation ID: $CONVERSATION_ID"
     [ -n "$CONVERSATION_ID" ] || {
         echo "# Failed to extract conversation ID from output"
@@ -101,7 +98,7 @@ teardown_file() {
 
 @test "t08-3: fork from conversation uses new artifact version" {
     # Self-contained test: creates conversation, pushes new artifact, forks
-    # 2 vm0 run calls (~15s each) + artifact push = ~35s, within 60s timeout
+    # 2 direct runs (~15s each) + artifact push = ~35s, within 60s timeout
 
     # Step 1: Create artifact with initial content
     echo "# Creating initial artifact..."
@@ -115,16 +112,15 @@ teardown_file() {
 
     # Step 2: Run agent to create initial conversation (~15s)
     echo "# Running agent to create conversation..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo 'original run' && cat version.txt && echo 200 > counter.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'original run' && cat version.txt && echo 200 > counter.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
-    assert_output --partial "Conversation:"
-
     # Extract conversation ID
     local conversation_id
-    conversation_id=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    conversation_id=$(run_fixture_field "$output" '.conversationId')
     echo "# Conversation ID: $conversation_id"
     [ -n "$conversation_id" ] || {
         echo "# Failed to extract conversation ID"
@@ -146,11 +142,13 @@ teardown_file() {
     # This is the key test: --conversation lets us continue conversation history
     # but with a different (newer) artifact version
     echo "# Forking from conversation with new artifact..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --conversation "$conversation_id" \
-        --verbose \
-        "cat version.txt && cat counter.txt && ls"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat version.txt && cat counter.txt && ls" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" --arg conversationId "$conversation_id" \
+            '{
+                conversationId: $conversationId,
+                artifacts: [{name: $name, mountPath: "/home/user/workspace"}]
+            }')"
 
     assert_success
     assert_output --partial "● Bash("
@@ -165,14 +163,13 @@ teardown_file() {
     assert_output --partial "new.txt"
 
     # Fork should create its own checkpoint/session/conversation
-    assert_output --partial "Run completed successfully"
-    assert_output --partial "Checkpoint:"
-    assert_output --partial "Session:"
-    assert_output --partial "Conversation:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
+    [ -n "$(run_fixture_field "$output" '.conversationId')" ]
 
     # Extract conversation ID from fork run
     local fork_conversation_id
-    fork_conversation_id=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    fork_conversation_id=$(run_fixture_field "$output" '.conversationId')
     echo "# Fork conversation ID: $fork_conversation_id"
     [ -n "$fork_conversation_id" ]
 

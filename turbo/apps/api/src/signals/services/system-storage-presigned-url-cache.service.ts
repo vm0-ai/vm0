@@ -311,7 +311,7 @@ async function touchRecentlyUsedCacheRows(
       FROM ${systemStoragePresignedUrlCache}
       WHERE
         ${systemStoragePresignedUrlCache.cacheKey} IN (${cacheKeySql})
-        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${touchCutoffTimestamp}::timestamp
+        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${touchCutoffTimestamp}::timestamp`)}
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
     )
@@ -339,9 +339,9 @@ async function pruneInactiveExpiredCacheRows(
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
       WHERE
-        ${systemStoragePresignedUrlCache.scope} = ${scope}
-        AND ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
-        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
+        ${eq(systemStoragePresignedUrlCache.scope, scope)}
+        AND ${lte(systemStoragePresignedUrlCache.expiresAt, sql`${issuedAtTimestamp}::timestamp`)}
+        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${inactiveCutoffTimestamp}::timestamp`)}
       ORDER BY
         ${systemStoragePresignedUrlCache.lastRequestedAt},
         ${systemStoragePresignedUrlCache.expiresAt},
@@ -354,9 +354,9 @@ async function pruneInactiveExpiredCacheRows(
       INNER JOIN candidates
         ON ${systemStoragePresignedUrlCache.cacheKey} = candidates."cacheKey"
       WHERE
-        ${systemStoragePresignedUrlCache.scope} = ${scope}
-        AND ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
-        AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
+        ${eq(systemStoragePresignedUrlCache.scope, scope)}
+        AND ${lte(systemStoragePresignedUrlCache.expiresAt, sql`${issuedAtTimestamp}::timestamp`)}
+        AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${inactiveCutoffTimestamp}::timestamp`)}
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
     )

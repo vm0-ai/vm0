@@ -24,6 +24,7 @@ import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
+import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronMonitorChatMessageQueueRoutes } from "./routes/cron-monitor-chat-message-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -39,6 +40,8 @@ import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
+import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
+import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
@@ -247,6 +250,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
   ...cronDrainEmailOutboxRoutes,
+  ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronMonitorChatMessageQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -261,6 +265,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...deviceTokenRoutes,
+  ...emailMorningBriefUnsubscribeRoutes,
+  ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...zeroAgentDraftRoutes,
   ...zeroAgentInstructionsRoutes,

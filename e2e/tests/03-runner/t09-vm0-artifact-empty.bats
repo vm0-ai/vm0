@@ -57,7 +57,7 @@ teardown() {
     fi
 }
 
-@test "VM0 run with empty artifact completes successfully" {
+@test "direct run with empty artifact completes successfully" {
     # Create empty artifact (no files)
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -67,18 +67,19 @@ teardown() {
 
     # Run agent with operation that doesn't create any files
     # This tests the storage webhook handling of empty zip uploads
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo 'hello world'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'hello world'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
     # Verify run completes properly with checkpoint
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 }
 
-@test "VM0 run with unchanged artifact completes successfully" {
+@test "direct run with unchanged artifact completes successfully" {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -91,16 +92,16 @@ teardown() {
 
     # Run agent that only reads files (no modifications)
     # The storage webhook should handle unchanged artifact content correctly
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "cat data.txt && cat subdir/nested.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat data.txt && cat subdir/nested.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
     # Verify run completes properly with checkpoint
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
     assert_output --partial "existing content"
     assert_output --partial "nested file"
 }

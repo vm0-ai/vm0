@@ -266,7 +266,7 @@ describe("app auth pages", () => {
   });
 
   it("drops sign-up redirects to other environments", async () => {
-    const redirectUrl = "https://staging-www.vm6.ai/onboarding/491858";
+    const redirectUrl = "https://staging-www.omby.ai/onboarding/491858";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
