@@ -339,6 +339,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.StructuredPrompt]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable structured user prompt rendering, sends, and drafts while preserving the legacy content fallback.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
