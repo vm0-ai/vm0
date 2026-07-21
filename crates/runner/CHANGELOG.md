@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.21...runner-rs-v0.146.22) (2026-07-21)
+
+
+### Bug Fixes
+
+* **connectors:** use permissionless api as routing fallback ([#22330](https://github.com/vm0-ai/vm0/issues/22330)) ([222d852](https://github.com/vm0-ai/vm0/commit/222d852615a507c03375b3aedcf50a3094b5fdcf))
+
 ## [0.146.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.20...runner-rs-v0.146.21) (2026-07-21)
 
 

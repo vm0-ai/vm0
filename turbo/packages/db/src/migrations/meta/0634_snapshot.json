@@ -1,6 +1,6 @@
 {
-  "id": "5300e56b-b960-43ee-a29a-51c24a0152f2",
-  "prevId": "4ac4e3b4-e87e-40d5-90c0-f8b79216ce32",
+  "id": "c7b1e404-3a7c-4ad1-8570-d02e2fd4f256",
+  "prevId": "c5679c3d-8834-42ec-95b0-f5746efcb5c6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2766,6 +2766,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "structured_prompt": {
+          "name": "structured_prompt",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "thinking": {
           "name": "thinking",
           "type": "text",
@@ -3345,6 +3351,12 @@
         "draft_content": {
           "name": "draft_content",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draft_structured_prompt": {
+          "name": "draft_structured_prompt",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
