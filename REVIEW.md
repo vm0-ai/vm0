@@ -49,27 +49,132 @@ practice document relevant to the changed surface. If the PR's base commit does
 not contain the index yet, continue with the explicit documents below rather
 than stopping the review.
 
+Reading the index does not count as reading the linked practice documents.
+Inspect the changed files, fetch every matching document below, and apply all
+matching categories when a PR spans more than one surface.
+
 ```bash
 gh api repos/vm0-ai/vm0/contents/docs/docs.md --jq '.content' | base64 -d
 ```
 
-Fetch the project's testing standards from the repo to use as your review reference:
+Always fetch the production-code quality rules and project-wide testing
+standards. Use the testing standards both to assess changed tests and to decide
+whether the PR has the required coverage.
 
 ```bash
+gh api repos/vm0-ai/vm0/contents/docs/bad-smell.md --jq '.content' | base64 -d
 gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
 ```
 
-Fetch the React and ccstate cache and lifecycle practices when the PR touches
-React, ccstate, caches, Store, refs, or resource lifecycles:
+#### Surface-Specific Practice Documents
+
+Fetch the React and ccstate execution, cache, and lifecycle practices when the
+PR touches `turbo/apps/platform`, React, ccstate, `computed`, commands, Store,
+signals, caches, effects, refs, or resource lifecycles:
 
 ```bash
+gh api repos/vm0-ai/vm0/contents/docs/effect.md --jq '.content' | base64 -d
 gh api repos/vm0-ai/vm0/contents/docs/cache.md --jq '.content' | base64 -d
+gh api repos/vm0-ai/vm0/contents/.claude/skills/ccstate/SKILL.md --jq '.content' | base64 -d
 ```
 
-Fetch the ccstate practice document when the PR touches `turbo/apps/api` or `turbo/apps/platform`:
+Fetch the ccstate practice document for `turbo/apps/api` changes even when the
+PR does not touch React or platform code:
 
 ```bash
 gh api repos/vm0-ai/vm0/contents/.claude/skills/ccstate/SKILL.md --jq '.content' | base64 -d
+```
+
+Fetch the deployment compatibility rules when the PR changes a deployable or
+persisted boundary: frontend/backend requests or responses, runner/backend
+protocols, queue or job payloads, database schema or migrations, persisted
+state, service-worker behavior, or rollout compatibility:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/deployment-compatibility.md --jq '.content' | base64 -d
+```
+
+Fetch the CLI design rules for `turbo/apps/cli` commands or user-visible CLI
+behavior:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/cli-design-guideline.md --jq '.content' | base64 -d
+```
+
+Fetch the chat-card rules when the PR recognizes, registers, stores, or renders
+chat cards or their resource signals:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/chat-cards.md --jq '.content' | base64 -d
+```
+
+Fetch the signed pricing protocol when the PR changes model-usage pricing
+headers, their producer, signature, runner acceptance, stripping, billing
+fallback, or protocol versioning:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/model-usage-pricing-protocol.md --jq '.content' | base64 -d
+```
+
+Fetch the runner multi-architecture contract when the PR changes runner build,
+release, deploy, promote, rollback, host inventory, target selection, or
+architecture-specific workflow logic:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/runner-multi-architecture.md --jq '.content' | base64 -d
+```
+
+Fetch the resource model when the PR changes org scoping, resource ownership,
+resource resolution, private resources, or cross-org execution:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/resource-model.md --jq '.content' | base64 -d
+```
+
+Fetch the React commit analysis guide when a PR claims to improve React
+performance, changes subscription breadth or equality, or adds performance
+measurements:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/react-commit.md --jq '.content' | base64 -d
+```
+
+Fetch the architecture document when the PR changes the compute, storage, or
+orchestration model rather than only an implementation detail within an
+existing boundary:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/architecture.md --jq '.content' | base64 -d
+```
+
+#### Testing Practice Routing
+
+When a PR changes tests, fetch the detailed guides matching the test surface.
+The project-wide `docs/testing.md` summary does not replace these guides:
+
+- General TypeScript test patterns or anti-patterns:
+  `docs/testing/patterns.md` and `docs/testing/anti-patterns.md`.
+- API route tests under `turbo/apps/api`:
+  `docs/testing/api-testing.md` and
+  `docs/testing/testing-external-behavior.md`.
+- Platform tests under `turbo/apps/platform`:
+  `docs/testing/app-testing.md` and
+  `docs/testing/testing-external-behavior.md`.
+- CLI command tests under `turbo/apps/cli`:
+  `docs/testing/cli-testing.md`.
+- BATS CLI E2E tests under `e2e/tests`:
+  `docs/testing/cli-e2e-testing.md`.
+- Desktop tests under `turbo/apps/desktop`:
+  `docs/testing/desktop-testing.md`.
+- Rust tests under `crates`:
+  `docs/testing/rust-testing.md`.
+- Python mitmproxy addon tests under `crates/runner/mitm-addon`:
+  `docs/testing/mitm-addon-testing.md`.
+
+Fetch each matching guide using the same repository contents API, for example:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/testing/api-testing.md --jq '.content' | base64 -d
 ```
 
 Use the testing docs as the authoritative source for testing conventions. Key standards to enforce:
@@ -111,6 +216,13 @@ Review the diff for:
 - Functions over ~100 lines (flag for extraction)
 - Duplicated logic that should be shared
 - Comments that explain WHAT instead of WHY (unnecessary)
+
+**Project Practice Compliance**
+
+- Check the changed code against every practice document selected in Step 4
+- Cite the relevant practice document and rule for each practice-based finding
+- Treat architecture and resource-model documents as domain constraints; assign
+  P0/P1 only when the diff violates an invariant or creates a concrete defect
 
 **Testing Coverage**
 
@@ -247,7 +359,17 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 ## Reference Links
 
 - Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
+- Production-code quality: https://github.com/vm0-ai/vm0/blob/main/docs/bad-smell.md
 - Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
+- React effects and ccstate commands: https://github.com/vm0-ai/vm0/blob/main/docs/effect.md
 - React and ccstate cache practices: https://github.com/vm0-ai/vm0/blob/main/docs/cache.md
+- Deployment compatibility: https://github.com/vm0-ai/vm0/blob/main/docs/deployment-compatibility.md
+- CLI design: https://github.com/vm0-ai/vm0/blob/main/docs/cli-design-guideline.md
+- Chat cards: https://github.com/vm0-ai/vm0/blob/main/docs/chat-cards.md
+- Signed model usage pricing protocol: https://github.com/vm0-ai/vm0/blob/main/docs/model-usage-pricing-protocol.md
+- Runner multi-architecture contract: https://github.com/vm0-ai/vm0/blob/main/docs/runner-multi-architecture.md
+- Resource model: https://github.com/vm0-ai/vm0/blob/main/docs/resource-model.md
+- React commit analysis: https://github.com/vm0-ai/vm0/blob/main/docs/react-commit.md
+- Architecture: https://github.com/vm0-ai/vm0/blob/main/docs/architecture.md
 - ccstate practices: https://github.com/vm0-ai/vm0/blob/main/.claude/skills/ccstate/SKILL.md
 - Feature switches: https://github.com/vm0-ai/vm0/blob/main/turbo/packages/core/src/feature-switch-key.ts
