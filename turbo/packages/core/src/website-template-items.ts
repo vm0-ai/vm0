@@ -12,9 +12,8 @@ export interface WebsiteTemplateItem {
   readonly target: "website";
 }
 
-// Curated user-facing website picker catalog. Keep this separate from the
-// generic Open Design website registry so feature-switched users only see vm0
-// built-in R2-backed website templates.
+// Curated user-facing website picker catalog backed by vm0 private R2
+// packages.
 const WEBSITE_TEMPLATE_PREVIEW_BASE_URL =
   "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260708-5f944f83";
 
