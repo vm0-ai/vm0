@@ -396,6 +396,7 @@ export function TiptapWorkflowComposer({
   });
   const setWorkflowNames = useSet(composer.setWorkflowNames$);
   const setEventHandlers = useSet(composer.setEventHandlers$);
+  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const containerRefSignal = singleLineOnMobile
     ? composer.setCompactContainerRef$
     : autoFocus
@@ -423,7 +424,7 @@ export function TiptapWorkflowComposer({
       clipboardData?.getData("text/plain") || clipboardData?.getData("text");
     if (plainText) {
       event.preventDefault();
-      composer.editor.commands.insertContent(plainText);
+      insertPromptMarkdown(plainText);
       return true;
     }
     return event.defaultPrevented;

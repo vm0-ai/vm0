@@ -7,7 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   Plugin,
   PluginKey,
@@ -108,6 +108,7 @@ export interface WorkflowComposerSignals {
   readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
+  readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<Promise<string>, [AbortSignal]>;
@@ -1338,6 +1339,19 @@ function createInsertTextCommands(editor: Editor) {
   const insertText$ = command((_context, value: string) => {
     editor.chain().focus().insertContent(value).run();
   });
+  const insertPromptMarkdown$ = command((_context, value: string) => {
+    const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
+    const slice = Slice.maxOpen(doc.content, true);
+    editor
+      .chain()
+      .focus()
+      .command(({ tr }) => {
+        tr.replaceSelection(slice);
+        return true;
+      })
+      .scrollIntoView()
+      .run();
+  });
   const appendText$ = command((_context, value: string) => {
     const text = value.trim();
     if (!text) {
@@ -1348,7 +1362,7 @@ function createInsertTextCommands(editor: Editor) {
     const content = textblock?.value.trimEnd() ? `\n${text}` : text;
     editor.commands.insertContent(content);
   });
-  return { insertText$, appendText$ };
+  return { insertText$, insertPromptMarkdown$, appendText$ };
 }
 
 function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
@@ -1511,7 +1525,7 @@ export function createWorkflowComposerSignals(
     editor,
     activeChatThreadSuggestionRange$,
   );
-  const { insertText$, appendText$ } = createInsertTextCommands(editor);
+  const textCommands = createInsertTextCommands(editor);
   const readInputForSubmission$ = command((_context, signal: AbortSignal) => {
     return compositionGate.runWhenSettled(() => {
       return workflowComposerDocToString(editor);
@@ -1539,8 +1553,7 @@ export function createWorkflowComposerSignals(
     setWorkflowNames$,
     insertWorkflow$,
     insertChatThread$,
-    insertText$,
-    appendText$,
+    ...textCommands,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     setEventHandlers$,
