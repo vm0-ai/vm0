@@ -193,13 +193,6 @@ function formatZodError(error: z.ZodError): string {
 }
 
 /**
- * Validates agent.name format
- */
-export function validateAgentName(name: string): boolean {
-  return cliAgentNameSchema.safeParse(name).success;
-}
-
-/**
  * Known fields in agent definition schema, derived from the Zod schema shape.
  * Used for typo detection against unknown fields in YAML config.
  */

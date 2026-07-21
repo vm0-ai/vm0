@@ -67,9 +67,7 @@ function detectPackageManager(): PackageManager {
 /**
  * Check if the package manager supports auto-upgrade
  */
-function isAutoUpgradeSupported(
-  pm: PackageManager,
-): pm is "npm" | "pnpm" {
+function isAutoUpgradeSupported(pm: PackageManager): pm is "npm" | "pnpm" {
   return pm === "npm" || pm === "pnpm";
 }
 
