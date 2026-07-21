@@ -24,6 +24,8 @@ import {
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
+import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { createComposerConnectorSignals } from "./zero-connectors.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -45,6 +47,10 @@ export const chatPageWorkflowComposer$ = computed((get) => {
     features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false,
   );
 });
+
+export const chatPageComposerConnectors = createComposerConnectorSignals(
+  currentChatAgentRecordId$,
+);
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {

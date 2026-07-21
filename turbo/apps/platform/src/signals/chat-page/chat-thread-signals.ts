@@ -16,6 +16,7 @@ import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
+import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -104,6 +105,7 @@ export interface ChatThreadSignals {
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
   workflowComposer: WorkflowComposerSignals;
+  composerConnectors: ComposerConnectorSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
     (() => void) | undefined,

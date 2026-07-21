@@ -39,6 +39,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
@@ -367,8 +368,9 @@ function mockBillingCapabilities(
 function mockAgent(options?: {
   selectedModel?: string | null;
   modelProviderId?: string | null;
+  includeOtherAgent?: boolean;
 }): void {
-  context.mocks.data.team([
+  const agents = [
     {
       id: AGENT_ID,
       displayName: "Scout",
@@ -378,17 +380,32 @@ function mockAgent(options?: {
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
-  ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    ...(options?.includeOtherAgent
+      ? [
+          {
+            id: OTHER_AGENT_ID,
+            displayName: "Other Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_2",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]
+      : []),
+  ];
+  context.mocks.data.team(agents);
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const isOtherAgent = params.id === OTHER_AGENT_ID;
     return respond(200, {
-      agentId: AGENT_ID,
+      agentId: params.id,
       ownerId: "test-user-123",
-      displayName: "Scout",
+      displayName: isOtherAgent ? "Other Agent" : "Scout",
       description: null,
       sound: null,
       avatarUrl: null,
-      modelProviderId: options?.modelProviderId ?? null,
-      selectedModel: options?.selectedModel ?? null,
+      modelProviderId: isOtherAgent ? null : (options?.modelProviderId ?? null),
+      selectedModel: isOtherAgent ? null : (options?.selectedModel ?? null),
       preferPersonalProvider: false,
     });
   });
@@ -3498,6 +3515,117 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
       expectTextBefore("GitHub", "Slack");
+    });
+  });
+
+  it("scopes connector permissions and access to each split chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const enabledByAgent = new Map<string, string[]>([
+      [AGENT_ID, []],
+      [OTHER_AGENT_ID, ["slack"]],
+    ]);
+    const authorizationAgentIds: string[] = [];
+    const permissionGrantAgentIds: string[] = [];
+    let updatedAuthorizationAgentId: string | undefined;
+    let appliedPermissionAgentId: string | undefined;
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent({ includeOtherAgent: true });
+    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        title: "Other agent thread",
+      },
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      authorizationAgentIds.push(params.id);
+      return respond(200, {
+        enabledTypes: enabledByAgent.get(params.id) ?? [],
+      });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, body, respond }) => {
+        updatedAuthorizationAgentId = params.id;
+        const enabledTypes = applyUserConnectorUpdate(
+          enabledByAgent.get(params.id) ?? [],
+          body,
+        );
+        enabledByAgent.set(params.id, enabledTypes);
+        return respond(200, { enabledTypes });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      ({ query, respond }) => {
+        permissionGrantAgentIds.push(query.agentId);
+        return respond(200, []);
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        appliedPermissionAgentId = body.agentId;
+        return respond(200, []);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerConnectorPermissions]: true,
+      },
+    });
+
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const sideThread = threadRegions[1];
+    if (!sideThread) {
+      throw new Error("Side chat thread not found");
+    }
+    const sideComposer = sideThread.querySelector("[data-chat-composer]");
+    if (!(sideComposer instanceof HTMLElement)) {
+      throw new Error("Side chat composer not found");
+    }
+
+    await waitFor(() => {
+      expect(new Set(authorizationAgentIds)).toStrictEqual(
+        new Set([AGENT_ID, OTHER_AGENT_ID]),
+      );
+    });
+    await user.click(within(sideComposer).getByLabelText("Connectors"));
+    await user.click(
+      await screen.findByLabelText("Configure Slack permissions"),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Slack permissions for Other Agent",
+    });
+    await waitFor(() => {
+      expect(permissionGrantAgentIds).not.toHaveLength(0);
+      expect(
+        permissionGrantAgentIds.every((id) => {
+          return id === OTHER_AGENT_ID;
+        }),
+      ).toBeTruthy();
+    });
+    await user.click(buttonContainingText("Deny", dialog));
+    await user.click(buttonContainingText("Apply", dialog));
+
+    await waitFor(() => {
+      expect(appliedPermissionAgentId).toBe(OTHER_AGENT_ID);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    await user.click(within(sideComposer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Remove Slack"));
+    await waitFor(() => {
+      expect(updatedAuthorizationAgentId).toBe(OTHER_AGENT_ID);
     });
   });
 });

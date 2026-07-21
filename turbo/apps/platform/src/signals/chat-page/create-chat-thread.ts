@@ -135,6 +135,7 @@ import type {
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
+import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -4117,6 +4118,7 @@ function createThreadComposer(
   draft: DraftSignals,
   threadId: string,
   featureModes: ChatThreadComposerFeatureModes,
+  agentId$: Computed<Promise<string | null>>,
 ) {
   const { inlinePromptItems = false, inlineAttachmentReferences = false } =
     featureModes;
@@ -4126,7 +4128,11 @@ function createThreadComposer(
     inlinePromptItems,
     inlineAttachmentReferences,
   );
-  return { workflowComposer, focusInput$: workflowComposer.focus$ };
+  return {
+    workflowComposer,
+    composerConnectors: createComposerConnectorSignals(agentId$),
+    focusInput$: workflowComposer.focus$,
+  };
 }
 
 export function createChatThreadSignals(
@@ -4207,7 +4213,12 @@ export function createChatThreadSignals(
     appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const composer = createThreadComposer(draft, threadId, composerFeatureModes);
+  const composer = createThreadComposer(
+    draft,
+    threadId,
+    composerFeatureModes,
+    threadOwned.agentId$,
+  );
   return {
     threadId,
     remoteThreadDetail$,
