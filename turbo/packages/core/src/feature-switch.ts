@@ -448,12 +448,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactPreviewImage]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WebsiteTemplateV2]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -476,12 +470,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
-  },
-  [FeatureSwitchKey.ConnectorActionCallback]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Resume a web chat with a callback prompt after a connector or permission action succeeds.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZeroMail]: {
     maintainer: "yuma@vm0.ai",
