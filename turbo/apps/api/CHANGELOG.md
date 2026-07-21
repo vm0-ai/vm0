@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.296.1](https://github.com/vm0-ai/vm0/compare/api-v1.296.0...api-v1.296.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* preserve github connection during morning brief ([#22457](https://github.com/vm0-ai/vm0/issues/22457)) ([735e24e](https://github.com/vm0-ai/vm0/commit/735e24e0f0a92f6ba95def54183d88255930d096))
+
 ## [1.296.0](https://github.com/vm0-ai/vm0/compare/api-v1.295.0...api-v1.296.0) (2026-07-21)
 
 
