@@ -2,8 +2,6 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   storagesPrepareContract,
   storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
 } from "@vm0/api-contracts/contracts/storages";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -61,68 +59,4 @@ export async function commitStorage(body: {
   }
 
   handleError(result, "Failed to commit storage");
-}
-
-/**
- * Get download URL for storage (volume or artifact)
- */
-export async function getStorageDownload(query: {
-  name: string;
-  type: "volume" | "artifact";
-  version?: string;
-}): Promise<
-  | {
-      url: string;
-      versionId: string;
-      fileCount: number;
-      size: number;
-    }
-  | {
-      empty: true;
-      versionId: string;
-      fileCount: 0;
-      size: 0;
-    }
-> {
-  const config = await getClientConfig();
-  const client = initClient(storagesDownloadContract, config);
-
-  const result = await client.download({
-    query: {
-      name: query.name,
-      type: query.type,
-      version: query.version,
-    },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Storage "${query.name}" not found`);
-}
-
-/**
- * List storages (volumes or artifacts)
- */
-export async function listStorages(query: {
-  type: "volume" | "artifact";
-}): Promise<
-  Array<{
-    name: string;
-    size: number;
-    fileCount: number;
-    updatedAt: string;
-  }>
-> {
-  const config = await getClientConfig();
-  const client = initClient(storagesListContract, config);
-
-  const result = await client.list({ query });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to list ${query.type}s`);
 }

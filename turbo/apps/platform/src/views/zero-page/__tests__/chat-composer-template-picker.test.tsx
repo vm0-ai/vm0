@@ -9,7 +9,7 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
 } from "@vm0/core";
-import { type GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
