@@ -201,19 +201,7 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        match file_process_identity_is_live(identity, &liveness).await {
-            Ok(true) => {}
-            Ok(false) => {
-                remove_stale_file(&path, "stale live runner instance tmp file").await;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "preserving live runner instance tmp file after liveness check failed"
-                );
-            }
-        }
+        remove_stale_tmp_file(&path, identity, &liveness).await;
     }
 
     instances.sort_by(|left, right| {
@@ -393,19 +381,7 @@ async fn remove_stale_records(home: &HomePaths) {
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        match file_process_identity_is_live(identity, &liveness).await {
-            Ok(true) => {}
-            Ok(false) => {
-                remove_stale_file(&path, "stale live runner instance tmp file").await;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "preserving live runner instance tmp file after liveness check failed"
-                );
-            }
-        }
+        remove_stale_tmp_file(&path, identity, &liveness).await;
     }
 }
 
@@ -444,6 +420,26 @@ async fn invalid_record_for_identity(
         Ok(RecordForIdentity::InvalidForLiveProcess)
     } else {
         Ok(RecordForIdentity::InvalidForStaleProcess)
+    }
+}
+
+async fn remove_stale_tmp_file(
+    path: &Path,
+    identity: FileProcessIdentity,
+    liveness: &LivenessContext,
+) {
+    match file_process_identity_is_live(identity, liveness).await {
+        Ok(true) => {}
+        Ok(false) => {
+            remove_stale_file(path, "stale live runner instance tmp file").await;
+        }
+        Err(e) => {
+            tracing::debug!(
+                path = %path.display(),
+                error = %e,
+                "preserving live runner instance tmp file after liveness check failed"
+            );
+        }
     }
 }
 
