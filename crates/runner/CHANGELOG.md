@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.23...runner-rs-v0.146.24) (2026-07-21)
+
+
+### Refactoring
+
+* **runner:** centralize session history telemetry fields ([#22373](https://github.com/vm0-ai/vm0/issues/22373)) ([c5ae2f7](https://github.com/vm0-ai/vm0/commit/c5ae2f71e02d6e02b4677bb9d168c4396c10c46f))
+
 ## [0.146.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.22...runner-rs-v0.146.23) (2026-07-21)
 
 
