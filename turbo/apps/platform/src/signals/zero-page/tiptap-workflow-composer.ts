@@ -43,6 +43,10 @@ import {
   type SlashWorkflowRange,
 } from "./workflow-composer-domain.ts";
 import {
+  CHAT_THREAD_MENTION_NODE_NAME,
+  TEMPLATE_ATTACHMENT_NODE_NAME,
+} from "./user-message-document-codec.ts";
+import {
   createTemplatePreviewRuntime,
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
@@ -144,8 +148,6 @@ export interface WorkflowComposerEventHandlers {
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
-const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
-const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 const CHAT_THREAD_MENTION_CLASS =
   "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
 
