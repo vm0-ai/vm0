@@ -69,7 +69,7 @@ const artifactItemSchema = z.object({
   url: z.string(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
-  // Remove optionality after older API instances can no longer serve responses.
+  // Require this after the API-only preparation release is deployed.
   updatedAt: z.string().optional(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
