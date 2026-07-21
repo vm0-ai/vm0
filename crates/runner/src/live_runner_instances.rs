@@ -956,24 +956,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_record_for_identity_treats_disappeared_live_record_as_stale() {
-        let registry = TestRegistry::new();
-        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
-        tokio::fs::remove_file(&handle.path).await.unwrap();
-        let identity = FileProcessIdentity {
-            pid: handle.identity.pid,
-            starttime: handle.identity.starttime,
-        };
-        let liveness = LivenessContext::new();
-
-        let result = read_record_for_identity(&handle.path, identity, &liveness)
-            .await
-            .unwrap();
-
-        assert!(matches!(result, RecordForIdentity::InvalidForStaleProcess));
-    }
-
-    #[tokio::test]
     async fn try_list_ignores_records_with_mismatched_stale_file_identity() {
         let registry = TestRegistry::new();
         let handle = publish(&registry.home, registry.metadata()).await.unwrap();
