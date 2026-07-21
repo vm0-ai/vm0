@@ -1175,11 +1175,13 @@ mod tests {
     use std::path::PathBuf;
 
     use sandbox_mock::MockSandboxControl;
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
     use super::*;
     use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
 
     const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
+    const ORPHAN_KILL_READY_LINE: &str = "vm0 orphan kill test ready";
 
     fn make_fc(pid: u32, sandbox_id: &str) -> FirecrackerProcessInfo {
         FirecrackerProcessInfo {
@@ -1963,18 +1965,30 @@ mod tests {
         let workspace = base_dir.path().join("workspaces").join(sandbox_id);
         tokio::fs::create_dir_all(&workspace).await.unwrap();
         let firecracker = base_dir.path().join("firecracker");
-        std::os::unix::fs::symlink("/bin/sleep", &firecracker).unwrap();
+        std::os::unix::fs::symlink("/bin/sh", &firecracker).unwrap();
 
         let mut child = tokio::process::Command::new(&firecracker)
-            .arg("60")
+            .arg("-c")
+            .arg("printf '%s\\n' \"$1\"; IFS= read -r _")
+            .arg("vm0-orphan-kill-test")
+            .arg(ORPHAN_KILL_READY_LINE)
             .current_dir(&workspace)
             .process_group(0)
             .kill_on_drop(true)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        let ready_line = tokio::time::timeout(Duration::from_secs(5), stdout_lines.next_line())
+            .await
+            .expect("fake firecracker readiness timed out")
+            .expect("read fake firecracker readiness")
+            .expect("fake firecracker exited before readiness");
+        assert_eq!(ready_line, ORPHAN_KILL_READY_LINE);
+
         let pid = child.id().unwrap();
         let ProcessStatRead::Found(stat) = process::read_process_stat_checked(pid).await else {
             panic!("spawned process stat should be readable");
