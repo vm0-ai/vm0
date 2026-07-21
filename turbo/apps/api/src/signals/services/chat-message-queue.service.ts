@@ -251,7 +251,17 @@ export async function claimNextWorkflowQueueEvent(
     }
 
     const [item] = await tx
-      .select()
+      .select({
+        id: chatMessageQueue.id,
+        orgId: chatMessageQueue.orgId,
+        userId: chatMessageQueue.userId,
+        automationId: chatMessageQueue.automationId,
+        chatThreadId: chatMessageQueue.chatThreadId,
+        triggerSource: chatMessageQueue.triggerSource,
+        triggerBrief: chatMessageQueue.triggerBrief,
+        encryptedParams: chatMessageQueue.encryptedParams,
+        createdAt: chatMessageQueue.createdAt,
+      })
       .from(chatMessageQueue)
       .where(
         and(
