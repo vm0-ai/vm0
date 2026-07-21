@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.146.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.26...runner-rs-v0.146.27) (2026-07-21)
+
+
+### Bug Fixes
+
+* **runner:** avoid signal reentrant flush deadlock ([#22448](https://github.com/vm0-ai/vm0/issues/22448)) ([221989f](https://github.com/vm0-ai/vm0/commit/221989f453153f541ae2a7f362c8d1b001b09423))
+
+
+### Performance Improvements
+
+* **runner:** stop scanning r2 cache during gc ([#22440](https://github.com/vm0-ai/vm0/issues/22440)) ([51cb14f](https://github.com/vm0-ai/vm0/commit/51cb14faddadc9191fcc1ad61001e8cb404650b1))
+
 ## [0.146.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.25...runner-rs-v0.146.26) (2026-07-21)
 
 
