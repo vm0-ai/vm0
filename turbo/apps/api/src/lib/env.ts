@@ -124,6 +124,11 @@ const SCHEMA = {
   MICROSOFT_TEAMS_BOT_APP_ID: z.string().min(1).optional(),
   MICROSOFT_TEAMS_BOT_APP_PASSWORD: z.string().min(1).optional(),
   MICROSOFT_TEAMS_APP_TENANT_ID: z.string().min(1).optional(),
+  FEISHU_APP_ID: z.string().min(1).optional(),
+  FEISHU_APP_SECRET: z.string().min(1).optional(),
+  FEISHU_VERIFICATION_TOKEN: z.string().min(1).optional(),
+  FEISHU_ENCRYPT_KEY: z.string().min(1).optional(),
+  FEISHU_APP_INSTALL_URL: z.url().optional(),
   // Gemini via Vertex AI (Vercel OIDC -> GCP Workload Identity Federation).
   // Production should use the GCP_* vars; dev/test may use GEMINI_API_KEY.
   GCP_PROJECT_ID: z.string().min(1).optional(),

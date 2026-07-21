@@ -31,6 +31,10 @@ import {
   handleGithubIssuesInternalCallbackWithoutCcstate,
 } from "./internal-github-issues-run-callback.service";
 import {
+  handleFeishuOrgInternalCallback$,
+  handleFeishuOrgInternalCallbackWithoutCcstate,
+} from "./internal-feishu-org-run-callback.service";
+import {
   handleSlackOrgInternalCallback$,
   handleSlackOrgInternalCallbackWithoutCcstate,
 } from "./internal-slack-org-run-callback.service";
@@ -170,6 +174,13 @@ const dispatchInternalCallback$ = command(
       case "morning-brief:email": {
         return await set(
           handleMorningBriefEmailInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "feishu:org": {
+        return await set(
+          handleFeishuOrgInternalCallback$,
           input.envelope,
           signal,
         );
@@ -537,6 +548,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "morning-brief:email": {
       return await handleMorningBriefEmailInternalCallback(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "feishu:org": {
+      return await handleFeishuOrgInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );

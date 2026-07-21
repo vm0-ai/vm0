@@ -6,6 +6,10 @@ import {
   zeroTeamsConnectContract,
   type TeamsConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import {
+  zeroFeishuConnectContract,
+  type FeishuConnectStatus,
+} from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -52,12 +56,36 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
   });
 }
 
-function setupWorksPage(options: { teamsEnabled?: boolean } = {}): void {
+function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
+  const defaults: FeishuConnectStatus = {
+    isConnected: false,
+    isInstalled: false,
+    isAdmin: true,
+    installUrl: "https://applink.feishu.cn/client/bot",
+    tenantKey: null,
+    tenantName: null,
+    defaultAgentName: "Okou",
+    environment: {
+      requiredSecrets: [],
+      requiredVars: [],
+      missingSecrets: [],
+      missingVars: [],
+    },
+  };
+  context.mocks.api(zeroFeishuConnectContract.getStatus, ({ respond }) => {
+    return respond(200, { ...defaults, ...overrides });
+  });
+}
+
+function setupWorksPage(
+  options: { teamsEnabled?: boolean; feishuEnabled?: boolean } = {},
+): void {
   detachedSetupPage({
     context,
     path: "/works",
     featureSwitches: {
       [FeatureSwitchKey.TeamsIntegration]: options.teamsEnabled ?? false,
+      [FeatureSwitchKey.FeishuIntegration]: options.feishuEnabled ?? false,
     },
   });
 }
@@ -84,6 +112,7 @@ describe("works page", () => {
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
+      expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -121,6 +150,24 @@ describe("works page", () => {
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
       expect(screen.getByText("Connected (Core Team)")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Feishu only when its integration switch is enabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockFeishuAPI({
+      isConnected: true,
+      isInstalled: true,
+      tenantKey: "tenant-feishu",
+    });
+
+    setupWorksPage({ feishuEnabled: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Feishu")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("feishu-connected-indicator"),
+      ).toHaveTextContent("Connected");
     });
   });
 

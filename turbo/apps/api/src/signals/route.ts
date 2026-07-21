@@ -166,6 +166,9 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-connect";
+import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
+import { zeroFeishuEventsRoutes } from "./routes/zero-feishu-events";
 import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
@@ -346,6 +349,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackCommandsRoutes,
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
+  ...zeroFeishuBrowserConnectRoutes,
+  ...zeroFeishuConnectRoutes,
+  ...zeroFeishuEventsRoutes,
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,

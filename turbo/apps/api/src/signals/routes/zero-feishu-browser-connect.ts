@@ -1,0 +1,145 @@
+import { command } from "ccstate";
+import { and, eq, isNull } from "drizzle-orm";
+import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
+import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+
+import { env } from "../../lib/env";
+import { requiredAuthContext$ } from "../auth/auth-context";
+import { request$ } from "../context/hono";
+import { queryOf } from "../context/request";
+import { writeDb$ } from "../external/db";
+import { nowDate } from "../external/time";
+import type { RouteEntry } from "../route-entry";
+import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
+
+const REDIRECT_STATUS = 307;
+
+function redirect(url: string): Response {
+  return new Response(null, {
+    status: REDIRECT_STATUS,
+    headers: { location: url },
+  });
+}
+
+function worksRedirect(params: Readonly<Record<string, string>>): Response {
+  return redirect(`${env("APP_URL")}/works?${new URLSearchParams(params)}`);
+}
+
+const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$);
+  const auth = await set(requiredAuthContext$, {}, signal);
+  if ("status" in auth) {
+    const signIn = new URL("/sign-in", env("APP_URL"));
+    signIn.searchParams.set("redirect_url", request.url);
+    return redirect(signIn.toString());
+  }
+  const query = get(queryOf(zeroFeishuBrowserConnectContract.connect));
+  const { tenantKey, openId, chatId, ts, sig } = query;
+  if (
+    !tenantKey ||
+    !openId ||
+    !chatId ||
+    ts === undefined ||
+    !sig ||
+    !verifyFeishuConnectToken({
+      tenantKey,
+      openId,
+      chatId,
+      timestamp: ts,
+      signature: sig,
+    })
+  ) {
+    return worksRedirect({ feishuError: "Invalid or expired connect link" });
+  }
+
+  const db = set(writeDb$);
+  const [installation] = await db
+    .select()
+    .from(feishuOrgInstallations)
+    .where(eq(feishuOrgInstallations.feishuTenantKey, tenantKey))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!installation) {
+    return worksRedirect({ feishuError: "Feishu installation not found" });
+  }
+  if (!installation.orgId) {
+    if (!auth.orgId || auth.orgRole !== "admin") {
+      return worksRedirect({
+        feishuError: "Ask your organization admin to connect first",
+      });
+    }
+    const [claimed] = await db
+      .update(feishuOrgInstallations)
+      .set({ orgId: auth.orgId, updatedAt: nowDate() })
+      .where(
+        and(
+          eq(feishuOrgInstallations.feishuTenantKey, tenantKey),
+          eq(feishuOrgInstallations.feishuAppId, installation.feishuAppId),
+          isNull(feishuOrgInstallations.orgId),
+        ),
+      )
+      .returning({ orgId: feishuOrgInstallations.orgId });
+    signal.throwIfAborted();
+    if (!claimed) {
+      const [current] = await db
+        .select({ orgId: feishuOrgInstallations.orgId })
+        .from(feishuOrgInstallations)
+        .where(eq(feishuOrgInstallations.feishuTenantKey, tenantKey))
+        .limit(1);
+      signal.throwIfAborted();
+      if (current?.orgId !== auth.orgId) {
+        return worksRedirect({
+          feishuError:
+            "Switch to the organization connected to this Feishu tenant",
+        });
+      }
+    }
+  } else if (!auth.orgId || auth.orgId !== installation.orgId) {
+    return worksRedirect({
+      feishuError: "Switch to the organization connected to this Feishu tenant",
+    });
+  }
+
+  const [inserted] = await db
+    .insert(feishuOrgConnections)
+    .values({
+      feishuOpenId: openId,
+      feishuTenantKey: tenantKey,
+      vm0UserId: auth.userId,
+    })
+    .onConflictDoNothing({
+      target: [
+        feishuOrgConnections.feishuOpenId,
+        feishuOrgConnections.feishuTenantKey,
+      ],
+    })
+    .returning({ vm0UserId: feishuOrgConnections.vm0UserId });
+  signal.throwIfAborted();
+  if (!inserted) {
+    const [existing] = await db
+      .select({ vm0UserId: feishuOrgConnections.vm0UserId })
+      .from(feishuOrgConnections)
+      .where(
+        and(
+          eq(feishuOrgConnections.feishuTenantKey, tenantKey),
+          eq(feishuOrgConnections.feishuOpenId, openId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (existing?.vm0UserId !== auth.userId) {
+      return worksRedirect({
+        feishuError: "This Feishu account is already connected",
+      });
+    }
+  }
+  return worksRedirect({ feishu: "connected" });
+});
+
+export const zeroFeishuBrowserConnectRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroFeishuBrowserConnectContract.connect,
+    handler: connect$,
+  },
+];
