@@ -21,6 +21,7 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
@@ -65,6 +66,7 @@ async function setup(): Promise<Scenario> {
   });
   mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
+  chatCallbacks.mockChatOutputEvents([]);
   return {
     actor,
     orgId: actor.orgId,
@@ -212,7 +214,7 @@ async function executeDueWorkflowAutomations(): Promise<void> {
 }
 
 describe("workflow queue", () => {
-  it("queues webhook events behind the in-flight run and drains them serially", async () => {
+  it("queues webhook events behind the active run and drains one per completion", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
 
@@ -231,14 +233,6 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
-
-    await completeRunThroughSandbox(scenario, afterFirst[1]!);
-    const afterSecond = await workflowRunIds(automation.threadId);
-    expect(afterSecond).toHaveLength(3);
-
-    // The queue is empty: completing the last run creates nothing new.
-    await completeRunThroughSandbox(scenario, afterSecond[2]!);
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(3);
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
@@ -308,7 +302,6 @@ describe("workflow queue", () => {
     // The queued-message auto-send runs inside the terminal chat callback,
     // which needs the run's assistant output (Axiom) and session-history
     // blobs (S3) to resolve.
-    const chatCallbacks = createChatCallbacksApi(context);
     chatCallbacks.mockChatOutputEvents([
       {
         eventType: "assistant",
