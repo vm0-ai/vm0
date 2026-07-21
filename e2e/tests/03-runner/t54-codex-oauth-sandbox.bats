@@ -55,8 +55,7 @@ setup_file() {
         "$TEST_DIR/$AUDIT_ARTIFACT_NAME/audit-runner.sh"
     chmod +x "$TEST_DIR/$AUDIT_ARTIFACT_NAME/audit-runner.sh"
     cd "$TEST_DIR/$AUDIT_ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$AUDIT_ARTIFACT_NAME" >/dev/null
-    $VM0_CLI artifact push >/dev/null
+    seed_storage_fixture artifact "$AUDIT_ARTIFACT_NAME" .
     cd - >/dev/null
 
     # Enable feature switch (codexOauthProvider is staff-only off by default).

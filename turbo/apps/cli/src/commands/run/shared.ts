@@ -469,9 +469,7 @@ function renderTerminalRunResult(
 
   if (run.status === "timeout") {
     console.error(chalk.red("\n✗ Run timed out"));
-    console.error(
-      chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
-    );
+    console.error(chalk.dim(`  (use "zero logs ${runId}" to view logs)`));
     return { succeeded: false, runId };
   }
 
@@ -594,7 +592,7 @@ export function showNextSteps(result: PollResult): void {
 
   // Always show logs command since we always have runId
   console.log("  View agent logs:");
-  console.log(chalk.cyan(`    vm0 logs ${runId}`));
+  console.log(chalk.cyan(`    zero logs ${runId}`));
 
   if (sessionId) {
     console.log("  Continue with session (latest conversation and artifact):");

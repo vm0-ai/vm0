@@ -34,8 +34,8 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
  *
  * Replaces the dropped `zero_workflow_queue_events` table (FIFO key was
  * org + user + workflow; the workflow-user maps 1:1 to a chat thread, so
- * keying by thread is equivalent) and, in a later phase, the
- * `chat_messages.run_id IS NULL` queued-user-message convention.
+ * keying by thread is equivalent). This table is also the sole source of
+ * queued-user-message state; `chat_messages.run_id` is attribution only.
  */
 export const chatMessageQueue = pgTable(
   "chat_message_queue",

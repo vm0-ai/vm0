@@ -21,8 +21,7 @@ setup_file() {
     cat > AGENTS.md << 'VOLEOF'
 Codex resume test instructions.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     cat > "$TEST_CONFIG" <<EOF
