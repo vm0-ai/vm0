@@ -1,5 +1,5 @@
 {
-  "id": "aa795b51-0a57-4ba5-a661-fc415694ee0a",
+  "id": "4ac4e3b4-e87e-40d5-90c0-f8b79216ce32",
   "prevId": "1f1c2778-660f-4cc5-bee9-4664f1db4bb7",
   "version": "7",
   "dialect": "postgresql",
@@ -14413,10 +14413,6 @@
         "chk_storage_versions_archive_size_nonnegative": {
           "name": "chk_storage_versions_archive_size_nonnegative",
           "value": "\"storage_versions\".\"archive_size\" >= 0"
-        },
-        "chk_storage_versions_nonempty_archive_size_positive": {
-          "name": "chk_storage_versions_nonempty_archive_size_positive",
-          "value": "\"storage_versions\".\"file_count\" = 0 OR \"storage_versions\".\"archive_size\" > 0"
         }
       },
       "isRLSEnabled": false

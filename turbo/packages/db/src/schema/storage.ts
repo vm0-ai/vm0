@@ -83,10 +83,6 @@ export const storageVersions = pgTable(
         "chk_storage_versions_archive_size_nonnegative",
         sql`${table.archiveSize} >= 0`,
       ),
-      check(
-        "chk_storage_versions_nonempty_archive_size_positive",
-        sql`${table.fileCount} = 0 OR ${table.archiveSize} > 0`,
-      ),
     ];
   },
 );
