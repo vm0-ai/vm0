@@ -11,6 +11,6 @@ describe("chatThreads schema", () => {
       }),
     );
 
-    expect(columns.get("draft_structured_prompt")).toBeFalsy();
+    expect(columns.get("draft_structured_prompt")).toBe(false);
   });
 });

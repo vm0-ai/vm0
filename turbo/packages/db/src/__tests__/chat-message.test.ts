@@ -11,7 +11,7 @@ describe("chatMessages schema", () => {
       }),
     );
 
-    expect(columns.get("structured_prompt")).toBeFalsy();
+    expect(columns.get("structured_prompt")).toBe(false);
   });
 
   it("keeps run references after runs are deleted", () => {
