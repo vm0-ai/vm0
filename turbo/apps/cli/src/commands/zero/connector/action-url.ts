@@ -1,23 +1,11 @@
 export const CALLBACK_PROMPT_PLACEHOLDER =
   "SOMETHING_AGENT_WANT_TO_BE_CALLBACK";
-const CONNECTOR_ACTION_CALLBACK_ENABLED_ENV =
-  "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED";
 
-function connectorActionCallbackFeatureEnabled(): boolean {
-  return process.env[CONNECTOR_ACTION_CALLBACK_ENABLED_ENV] === "1";
-}
-
-export function connectorActionCallbackEnabled(): boolean {
-  return (
-    connectorActionCallbackFeatureEnabled() &&
-    Boolean(process.env.ZERO_CHAT_THREAD_ID?.trim())
-  );
+export function connectorActionCallbackAvailable(): boolean {
+  return Boolean(process.env.ZERO_CHAT_THREAD_ID?.trim());
 }
 
 function currentChatThreadId(agentId: string | undefined): string | null {
-  if (!connectorActionCallbackFeatureEnabled()) {
-    return null;
-  }
   const threadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
   const currentAgentId = process.env.ZERO_AGENT_ID?.trim();
   if (!threadId || !currentAgentId || agentId !== currentAgentId) {
@@ -48,11 +36,6 @@ export function addRequestedCallbackSearchParams(
 ): void {
   if (callbackPrompt === undefined) {
     return;
-  }
-  if (!connectorActionCallbackFeatureEnabled()) {
-    throw new Error(
-      "--callback-prompt is not available in the current workspace",
-    );
   }
 
   const normalizedPrompt = callbackPrompt.trim();
