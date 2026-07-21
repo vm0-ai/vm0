@@ -602,6 +602,14 @@ describe("cron execute morning briefs", () => {
     await flushWaitUntilForTest();
     expect(triggered.body.runId).toBeTruthy();
 
+    const githubConnector = await connectors.readConnectorByType(
+      scenario.actor,
+      "github",
+    );
+    expect(githubConnector.connectionStatus).toBe("connected");
+    expect(githubConnector.reconnectReason).toBeNull();
+    expect(githubConnector.tokenExpiresAt).toBeNull();
+
     // The collection window never shrinks below the last 24 hours.
     const minWindowStartSeconds = Math.floor(
       (AFTER_SEVEN_LOCAL - 24 * 60 * 60 * 1000) / 1000,
