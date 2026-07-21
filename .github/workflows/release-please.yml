@@ -168,7 +168,7 @@ jobs:
         with:
           version: 10.33.4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -177,7 +177,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -447,7 +447,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -463,7 +463,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -593,7 +593,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -708,7 +708,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -733,7 +733,7 @@ jobs:
               steps.delete-migration-smoke-branch.outcome == 'failure'
             )
           }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -756,7 +756,7 @@ jobs:
             steps.run-migration-smoke-test.outcome != 'failure' &&
             steps.delete-migration-smoke-branch.outcome != 'failure'
           }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -805,7 +805,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -886,7 +886,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -902,7 +902,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -988,7 +988,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1036,7 +1036,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1052,7 +1052,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1153,7 +1153,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1210,7 +1210,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1226,7 +1226,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1343,7 +1343,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1528,7 +1528,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1544,7 +1544,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1759,7 +1759,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1776,7 +1776,7 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           registry-url: "https://registry.npmjs.org"
@@ -1811,7 +1811,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1827,7 +1827,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1924,7 +1924,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2048,7 +2048,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2064,7 +2064,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2152,7 +2152,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2329,7 +2329,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2345,7 +2345,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2399,7 +2399,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2524,7 +2524,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2540,7 +2540,7 @@ jobs:
 
       - name: Notify Slack - Success with warnings
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -2556,7 +2556,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
