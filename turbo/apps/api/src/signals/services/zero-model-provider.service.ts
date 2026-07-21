@@ -6,19 +6,14 @@ import {
   getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
   hasAuthMethods,
-  isModelProviderFrameworkFeatureSwitched,
   MODEL_PROVIDER_TYPES,
   type ModelProviderFramework,
-  type ModelProviderFeatureStates,
   type ModelProviderListResponse,
   type ModelProviderResponse,
   type ModelProviderType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  getAllFeatureStates,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -40,25 +35,22 @@ function hasUsableSecretValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
 }
 
-function modelProviderResponse(
-  row: {
-    readonly id: string;
-    readonly type: string;
-    readonly isDefault: boolean;
-    readonly selectedModel: string | null;
-    readonly authMethod: string | null;
-    readonly secretName: string | null;
-    readonly workspaceName: string | null;
-    readonly planType: string | null;
-    readonly subscriptionResetPeriod: string | null;
-    readonly subscriptionNextResetAt: Date | null;
-    readonly needsReconnect: boolean;
-    readonly lastRefreshErrorCode: string | null;
-    readonly createdAt: Date;
-    readonly updatedAt: Date;
-  },
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderResponse | null {
+function modelProviderResponse(row: {
+  readonly id: string;
+  readonly type: string;
+  readonly isDefault: boolean;
+  readonly selectedModel: string | null;
+  readonly authMethod: string | null;
+  readonly secretName: string | null;
+  readonly workspaceName: string | null;
+  readonly planType: string | null;
+  readonly subscriptionResetPeriod: string | null;
+  readonly subscriptionNextResetAt: Date | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}): ModelProviderResponse | null {
   const parsed = modelProviderTypeSchema.safeParse(row.type);
   if (!parsed.success) {
     return null;
@@ -68,7 +60,7 @@ function modelProviderResponse(
   return {
     id: row.id,
     type: parsed.data,
-    framework: getFrameworkForType(parsed.data, featureStates),
+    framework: getFrameworkForType(parsed.data),
     secretName: row.secretName,
     authMethod,
     secretNames: authMethod
@@ -90,7 +82,6 @@ function modelProviderResponse(
 function zeroModelProvidersForUser(
   orgId: string,
   ownerUserId: string,
-  viewerUserId: string = ownerUserId,
 ): Computed<Promise<ModelProviderListResponse>> {
   return computed(async (get): Promise<ModelProviderListResponse> => {
     const rows = await get(db$)
@@ -120,31 +111,10 @@ function zeroModelProvidersForUser(
       )
       .orderBy(modelProviders.type);
 
-    const providers = rows.flatMap((row) => {
-      const provider = modelProviderResponse(row);
-      return provider ? [provider] : [];
-    });
-    if (
-      !providers.some((provider) => {
-        return isModelProviderFrameworkFeatureSwitched(provider.type);
-      })
-    ) {
-      return { modelProviders: providers };
-    }
-
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(orgId, viewerUserId),
-    );
-    const featureStates = getAllFeatureStates(featureSwitchContext);
-
     return {
-      modelProviders: providers.flatMap((provider) => {
-        return [
-          {
-            ...provider,
-            framework: getFrameworkForType(provider.type, featureStates),
-          },
-        ];
+      modelProviders: rows.flatMap((row) => {
+        const provider = modelProviderResponse(row);
+        return provider ? [provider] : [];
       }),
     };
   });
@@ -152,9 +122,8 @@ function zeroModelProvidersForUser(
 
 export function zeroModelProviders(
   orgId: string,
-  viewerUserId: string,
 ): Computed<Promise<ModelProviderListResponse>> {
-  return zeroModelProvidersForUser(orgId, ORG_SENTINEL_USER_ID, viewerUserId);
+  return zeroModelProvidersForUser(orgId, ORG_SENTINEL_USER_ID);
 }
 
 export function zeroUserModelProviders(
@@ -308,28 +277,25 @@ export interface ModelProviderInfo {
   readonly updatedAt: Date;
 }
 
-function toModelProviderInfo(
-  params: {
-    id: string;
-    userId: string;
-    type: ModelProviderType;
-    secretName?: string | null;
-    authMethod?: string | null;
-    secretNames?: string[] | null;
-    isDefault: boolean;
-    selectedModel: string | null;
-    tokenExpiresAt?: Date | null;
-    needsReconnect?: boolean;
-    lastRefreshErrorCode?: string | null;
-    workspaceName?: string | null;
-    planType?: string | null;
-    subscriptionResetPeriod?: string | null;
-    subscriptionNextResetAt?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  },
-  featureStates?: ModelProviderFeatureStates,
-): ModelProviderInfo {
+function toModelProviderInfo(params: {
+  id: string;
+  userId: string;
+  type: ModelProviderType;
+  secretName?: string | null;
+  authMethod?: string | null;
+  secretNames?: string[] | null;
+  isDefault: boolean;
+  selectedModel: string | null;
+  tokenExpiresAt?: Date | null;
+  needsReconnect?: boolean;
+  lastRefreshErrorCode?: string | null;
+  workspaceName?: string | null;
+  planType?: string | null;
+  subscriptionResetPeriod?: string | null;
+  subscriptionNextResetAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ModelProviderInfo {
   const authMethod = params.authMethod ?? null;
   const secretNames =
     params.secretNames !== undefined
@@ -342,7 +308,7 @@ function toModelProviderInfo(
     id: params.id,
     userId: params.userId,
     type: params.type,
-    framework: getFrameworkForType(params.type, featureStates),
+    framework: getFrameworkForType(params.type),
     secretName: params.secretName ?? null,
     authMethod,
     secretNames,
@@ -367,31 +333,27 @@ function toModelProviderInfoFromRow(args: {
   readonly secretName?: string | null;
   readonly authMethod?: string | null;
   readonly secretNames?: string[] | null;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): ModelProviderInfo {
   const { provider } = args;
-  return toModelProviderInfo(
-    {
-      id: provider.id,
-      userId: args.userId,
-      type: args.type,
-      secretName: args.secretName,
-      authMethod: args.authMethod,
-      secretNames: args.secretNames,
-      isDefault: provider.isDefault,
-      selectedModel: provider.selectedModel,
-      tokenExpiresAt: provider.tokenExpiresAt,
-      needsReconnect: provider.needsReconnect,
-      lastRefreshErrorCode: provider.lastRefreshErrorCode,
-      workspaceName: provider.workspaceName,
-      planType: provider.planType,
-      subscriptionResetPeriod: provider.subscriptionResetPeriod,
-      subscriptionNextResetAt: provider.subscriptionNextResetAt,
-      createdAt: provider.createdAt,
-      updatedAt: provider.updatedAt,
-    },
-    args.featureStates,
-  );
+  return toModelProviderInfo({
+    id: provider.id,
+    userId: args.userId,
+    type: args.type,
+    secretName: args.secretName,
+    authMethod: args.authMethod,
+    secretNames: args.secretNames,
+    isDefault: provider.isDefault,
+    selectedModel: provider.selectedModel,
+    tokenExpiresAt: provider.tokenExpiresAt,
+    needsReconnect: provider.needsReconnect,
+    lastRefreshErrorCode: provider.lastRefreshErrorCode,
+    workspaceName: provider.workspaceName,
+    planType: provider.planType,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod,
+    subscriptionNextResetAt: provider.subscriptionNextResetAt,
+    createdAt: provider.createdAt,
+    updatedAt: provider.updatedAt,
+  });
 }
 
 /**
@@ -426,41 +388,6 @@ function validateSingleSecretProviderRequest(args: {
     );
   }
   return { secretName };
-}
-
-async function validateSingleSecretProviderUpsert(
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly featureSwitchUserId?: string;
-    readonly type: ModelProviderType;
-    readonly secret: string;
-  },
-  loadFeatureSwitchContext: (userId: string) => Promise<FeatureSwitchContext>,
-  signal: AbortSignal,
-): Promise<
-  | BadRequestResponse
-  | {
-      readonly secretName: string;
-      readonly featureSwitchContext: FeatureSwitchContext | undefined;
-      readonly featureStates: ModelProviderFeatureStates | undefined;
-    }
-> {
-  let featureSwitchContext: FeatureSwitchContext | undefined;
-  let featureStates: ModelProviderFeatureStates | undefined;
-  if (isModelProviderFrameworkFeatureSwitched(args.type)) {
-    featureSwitchContext = await loadFeatureSwitchContext(
-      args.featureSwitchUserId ?? args.userId,
-    );
-    signal.throwIfAborted();
-    featureStates = getAllFeatureStates(featureSwitchContext);
-  }
-
-  const validation = validateSingleSecretProviderRequest(args);
-  if ("status" in validation) {
-    return validation;
-  }
-  return { ...validation, featureSwitchContext, featureStates };
 }
 
 interface ModelProviderMetadata {
@@ -630,11 +557,10 @@ async function upsertMultiAuthSecret(
  */
 export const upsertUserModelProvider$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly featureSwitchUserId?: string;
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
@@ -656,23 +582,14 @@ export const upsertUserModelProvider$ = command(
       );
     }
 
-    const validation = await validateSingleSecretProviderUpsert(
-      args,
-      async (userId) => {
-        return await get(userFeatureSwitchContext(args.orgId, userId));
-      },
-      signal,
-    );
+    const validation = validateSingleSecretProviderRequest(args);
     if ("status" in validation) {
       return validation;
     }
-    const { secretName, featureSwitchContext, featureStates } = validation;
+    const { secretName } = validation;
     const writeDb = set(writeDb$);
 
-    const encryptedValue = await encryptStoredSecretValue(
-      args.secret,
-      featureSwitchContext,
-    );
+    const encryptedValue = await encryptStoredSecretValue(args.secret);
     signal.throwIfAborted();
 
     L.debug("upserting model provider", {
@@ -760,7 +677,6 @@ export const upsertUserModelProvider$ = command(
         userId: args.userId,
         type: args.type,
         secretName,
-        featureStates,
       }),
       created: wasCreated,
     };
@@ -1041,7 +957,6 @@ export const upsertOrgModelProvider$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly viewerUserId?: string;
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
@@ -1054,7 +969,6 @@ export const upsertOrgModelProvider$ = command(
       {
         orgId: args.orgId,
         userId: ORG_SENTINEL_USER_ID,
-        featureSwitchUserId: args.viewerUserId ?? ORG_SENTINEL_USER_ID,
         type: args.type,
         secret: args.secret,
         selectedModel: args.selectedModel,

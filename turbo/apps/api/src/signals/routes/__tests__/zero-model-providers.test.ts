@@ -5,7 +5,6 @@ import {
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 
@@ -17,7 +16,6 @@ import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -692,8 +690,8 @@ describe("POST /api/zero/model-providers", () => {
     expect(other.body.provider.type).toBe("anthropic-api-key");
   });
 
-  it("keeps MiniMax on Claude Code when the feature switch is disabled", async () => {
-    const fixture = uniqueOrgUser("zmp-minimax-framework-disabled");
+  it("keeps MiniMax on Claude Code", async () => {
+    const fixture = uniqueOrgUser("zmp-minimax-framework");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -707,40 +705,6 @@ describe("POST /api/zero/model-providers", () => {
 
     expect(response.body.provider.type).toBe("minimax-api-key");
     expect(response.body.provider.framework).toBe("claude-code");
-  });
-
-  it("creates and lists the original MiniMax provider as Codex when the feature switch is enabled", async () => {
-    const fixture = uniqueOrgUser("zmp-minimax-framework-enabled");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...fixture, orgRole: "org:admin" },
-      { [FeatureSwitchKey.CodexFrameworkForMinimax]: true },
-    );
-
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "minimax-api-key", secret: "sk-minimax-test" },
-      }),
-      [201],
-    );
-
-    expect(response.body.provider.type).toBe("minimax-api-key");
-    expect(response.body.provider.framework).toBe("codex");
-    expect(response.body.provider.secretName).toBe("MINIMAX_API_KEY");
-
-    const list = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    const provider = list.body.modelProviders.find(
-      (candidate: ModelProviderResponse) => {
-        return candidate.type === "minimax-api-key";
-      },
-    );
-    expect(provider?.id).toBe(response.body.provider.id);
-    expect(provider?.framework).toBe("codex");
   });
 
   it("does not mark provider rows as defaults across frameworks", async () => {
