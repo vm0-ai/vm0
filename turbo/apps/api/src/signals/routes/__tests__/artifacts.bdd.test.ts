@@ -955,7 +955,15 @@ describe("POST /api/zero/artifacts/favorite", () => {
       throw new Error("Expected artifact sync timestamp");
     }
 
+    await expect(
+      chat.listArtifactFavorites(owner.actor),
+    ).resolves.toStrictEqual({ artifactUrls: [] });
+
     await chat.favoriteArtifact(owner.actor, artifact.url);
+
+    await expect(
+      chat.listArtifactFavorites(owner.actor),
+    ).resolves.toStrictEqual({ artifactUrls: [artifact.url] });
 
     const favorited = await chat.listArtifacts(owner.actor, {
       updatedAfter: new Date(
@@ -974,6 +982,10 @@ describe("POST /api/zero/artifacts/favorite", () => {
     }
 
     await chat.unfavoriteArtifact(owner.actor, artifact.url);
+
+    await expect(
+      chat.listArtifactFavorites(owner.actor),
+    ).resolves.toStrictEqual({ artifactUrls: [] });
 
     const unfavorited = await chat.listArtifacts(owner.actor, {
       updatedAfter: new Date(

@@ -15,6 +15,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
+  artifactFavoriteUrls$,
   favoriteArtifact$,
   unfavoriteArtifact$,
   zeroArtifacts$,
@@ -146,6 +147,22 @@ const listArtifactsInner$ = command(
         nextCursor: result.nextCursor,
         syncUntil: result.syncUntil,
       },
+    };
+  },
+);
+
+const listArtifactFavoritesInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const artifactUrls = await set(
+      artifactFavoriteUrls$,
+      { userId: auth.userId, orgId: auth.orgId },
+      signal,
+    );
+
+    return {
+      status: 200 as const,
+      body: { artifactUrls },
     };
   },
 );
@@ -347,6 +364,17 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
         requiredCapability: "chat-message:read",
       },
       listArtifactsInner$,
+    ),
+  },
+  {
+    route: artifactsContract.listFavorites,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      listArtifactFavoritesInner$,
     ),
   },
   {

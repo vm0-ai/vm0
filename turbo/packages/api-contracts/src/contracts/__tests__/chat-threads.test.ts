@@ -269,6 +269,10 @@ describe("artifacts contract", () => {
   it("exposes an org-level generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
+    expect(artifactsContract.listFavorites.method).toBe("GET");
+    expect(artifactsContract.listFavorites.path).toBe(
+      "/api/zero/artifacts/favorites",
+    );
     expect(artifactsContract.favorite.method).toBe("POST");
     expect(artifactsContract.favorite.path).toBe(
       "/api/zero/artifacts/favorite",
