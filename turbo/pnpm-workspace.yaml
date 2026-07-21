@@ -8,8 +8,13 @@ peerDependencyRules:
     - "@solana/web3.js"
     - fastestsmallesttextencoderdecoder
 
+auditConfig:
+  ignoreGhsas:
+    # @hono/vite-build/vercel requires node-server v1. This advisory only
+    # affects serve-static on Windows; the API uses neither surface.
+    - GHSA-frvp-7c67-39w9
+
 overrides:
-  "@hono/node-server": 2.0.5
   "@babel/core": ">=7.29.6"
   "@electron/get>undici": 7.28.0
   "@esbuild-kit/core-utils>esbuild": ^0.25.4
