@@ -123,7 +123,8 @@ export function chatThreadMessagesV1(
       excludeGoalMarkerCondition(),
     );
 
-    if (args.sinceId === undefined && args.beforeId === undefined) {
+    const cursorId = args.sinceId ?? args.beforeId;
+    if (cursorId === undefined) {
       const rows = await db
         .select(messageColumns)
         .from(chatMessages)
@@ -137,14 +138,13 @@ export function chatThreadMessagesV1(
       return rows.reverse().map(toV1Message);
     }
 
-    const cursorId = args.sinceId ?? args.beforeId;
     const cursorAfter = sql`(
       ${chatMessages.createdAt},
       COALESCE(${chatMessages.sequenceNumber}, -1)
     ) > (
       SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
       FROM ${chatMessages}
-      WHERE ${chatMessages.id} = ${cursorId}
+      WHERE ${eq(chatMessages.id, cursorId)}
     )`;
     const cursorBefore = sql`(
       ${chatMessages.createdAt},
@@ -152,7 +152,7 @@ export function chatThreadMessagesV1(
     ) < (
       SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
       FROM ${chatMessages}
-      WHERE ${chatMessages.id} = ${cursorId}
+      WHERE ${eq(chatMessages.id, cursorId)}
     )`;
 
     if (args.sinceId !== undefined) {

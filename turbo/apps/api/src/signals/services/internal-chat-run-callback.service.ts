@@ -27,6 +27,8 @@ import {
   isNotNull,
   isNull,
   lte,
+  max,
+  ne,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -777,7 +779,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+      lastEventAt: max(chatMessages.createdAt).mapWith(
         nullableDriverValueDecoder(chatMessages.createdAt),
       ),
     })
@@ -1587,21 +1589,21 @@ async function activeChatRunExistsForThread(
     sql`
       SELECT ${zeroRuns.id} AS "id"
       FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+      WHERE ${eq(zeroRuns.chatThreadId, threadId)}
         AND ${agentRuns.status} IN ('queued', 'pending', 'running')
         AND (
           NOT EXISTS (
             SELECT 1
             FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
               AND ${agentRunCallbacks.internalKind} = 'chat'
               AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
           )
           OR EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            WHERE ${eq(chatMessages.runId, zeroRuns.id)}
               AND ${chatMessages.role} = 'user'
           )
         )
@@ -1860,22 +1862,22 @@ async function claimQueuedUserMessageForDispatch(args: {
       sql`
         SELECT ${zeroRuns.id} AS "id"
         FROM ${zeroRuns}
-        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-        WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
-          AND ${zeroRuns.id} <> ${args.runId}
+        INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+        WHERE ${eq(zeroRuns.chatThreadId, args.threadId)}
+          AND ${ne(zeroRuns.id, args.runId)}
           AND ${agentRuns.status} IN ('queued', 'pending', 'running')
           AND (
             NOT EXISTS (
               SELECT 1
               FROM ${agentRunCallbacks}
-              WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
                 AND ${agentRunCallbacks.internalKind} = 'chat'
                 AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
             )
             OR EXISTS (
               SELECT 1
               FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
                 AND ${chatMessages.role} = 'user'
             )
           )

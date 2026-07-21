@@ -3,13 +3,7 @@ import {
   ESLintUtils,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import {
-  SymbolFlags,
-  type Declaration,
-  type Symbol as TypeScriptSymbol,
-  type TypeChecker,
-} from "typescript";
-
+import { isDrizzleSymbol } from "../drizzle.ts";
 import { createRule } from "../utils.ts";
 
 function memberName(node: TSESTree.MemberExpression): string | null {
@@ -30,25 +24,6 @@ function propertyName(node: TSESTree.Property): string | null {
     return typeof node.key.value === "string" ? node.key.value : null;
   }
   return null;
-}
-
-function isDrizzleDeclaration(node: Declaration): boolean {
-  const sourcePath = node.getSourceFile().fileName.replaceAll("\\", "/");
-  return sourcePath.includes("/node_modules/drizzle-orm/");
-}
-
-function isDrizzleSymbol(
-  checker: TypeChecker,
-  symbol: TypeScriptSymbol | undefined,
-): boolean {
-  if (symbol?.declarations?.some(isDrizzleDeclaration) === true) {
-    return true;
-  }
-  const aliased =
-    symbol === undefined || (symbol.flags & SymbolFlags.Alias) === 0
-      ? symbol
-      : checker.getAliasedSymbol(symbol);
-  return aliased?.declarations?.some(isDrizzleDeclaration) === true;
 }
 
 export const noSqlRaw = createRule({

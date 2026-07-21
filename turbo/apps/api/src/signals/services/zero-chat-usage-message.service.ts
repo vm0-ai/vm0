@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -160,7 +160,7 @@ export const maybeEmitRunUsageMessage$ = command(
         .where(
           and(
             eq(chatMessages.runId, runId),
-            sql`${chatMessages.usagePayload} IS NOT NULL`,
+            isNotNull(chatMessages.usagePayload),
           ),
         )
         .limit(1);
