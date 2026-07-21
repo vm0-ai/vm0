@@ -4,29 +4,11 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::io;
 use std::time::Duration;
 
 const TOTAL_EVENTS: usize = 81;
-
-fn request_sequences(
-    request: &common::RecordedRequest,
-) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let body: Value = serde_json::from_str(&request.body)?;
-    body.get("events")
-        .and_then(Value::as_array)
-        .ok_or_else(|| io::Error::other("event request omitted events array"))?
-        .iter()
-        .map(|event| {
-            event
-                .get("sequenceNumber")
-                .and_then(Value::as_u64)
-                .and_then(|sequence| u32::try_from(sequence).ok())
-                .ok_or_else(|| io::Error::other("event omitted a u32 sequenceNumber").into())
-        })
-        .collect()
-}
 
 #[tokio::test]
 async fn failed_batch_retries_three_times_and_later_batches_continue()
@@ -76,7 +58,7 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
         Duration::from_secs(5),
     )
     .await?;
-    let first_sequences = request_sequences(&first_request.request)?;
+    let first_sequences = common::event_request_sequences(&first_request.request)?;
     let expected_watermark = first_sequences
         .last()
         .copied()
@@ -84,12 +66,15 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
     first_request.respond(200)?;
 
     let failed_request = server.next_request(Duration::from_secs(5)).await?;
-    let failed_sequences = request_sequences(&failed_request.request)?;
+    let failed_sequences = common::event_request_sequences(&failed_request.request)?;
     assert_eq!(failed_sequences.len(), 32);
     failed_request.respond(500)?;
     for _ in 1..3 {
         let retry = server.next_request(Duration::from_secs(5)).await?;
-        assert_eq!(request_sequences(&retry.request)?, failed_sequences);
+        assert_eq!(
+            common::event_request_sequences(&retry.request)?,
+            failed_sequences
+        );
         retry.respond(500)?;
     }
 
@@ -97,7 +82,7 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
     logical_sequences.extend(failed_sequences);
     while logical_sequences.len() < TOTAL_EVENTS {
         let request = server.next_request(Duration::from_secs(5)).await?;
-        logical_sequences.extend(request_sequences(&request.request)?);
+        logical_sequences.extend(common::event_request_sequences(&request.request)?);
         request.respond(200)?;
     }
 

@@ -83,6 +83,23 @@ pub struct RecordedRequest {
     pub body: String,
 }
 
+pub fn event_request_sequences(request: &RecordedRequest) -> Result<Vec<u32>, String> {
+    let body: Value = serde_json::from_str(&request.body)
+        .map_err(|error| format!("parse event request body: {error}"))?;
+    body.get("events")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "event request omitted events array".to_string())?
+        .iter()
+        .map(|event| {
+            event
+                .get("sequenceNumber")
+                .and_then(Value::as_u64)
+                .and_then(|sequence| u32::try_from(sequence).ok())
+                .ok_or_else(|| "event omitted a u32 sequenceNumber".to_string())
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RecordedHttpEvent {
     Request(RecordedRequest),
