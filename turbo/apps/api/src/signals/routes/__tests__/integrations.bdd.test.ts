@@ -1,7 +1,6 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +19,6 @@ import {
 } from "./helpers/api-bdd-integrations";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 helper gap:
@@ -1377,73 +1375,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run5 = await runs.readRun(actor, run5Id);
     expect(run5.result?.agentSessionId).not.toBe(session4);
-  });
-
-  it("starts a new Slack session when MiniMax switches framework", async () => {
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("MiniMax framework switch test requires an org");
-    }
-
-    runs.acceptStorageDownloads();
-    integrations.configureSlackAppMocks();
-    integrations.acceptSlackSessionHistoryDownloads();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    await integrations.configureSlackMiniMaxModelPolicy(actor);
-    const slackUserId = uniqueSlackUserId();
-    const { teamId } = await integrations.installSlackWorkspace(actor, {
-      installerSlackUserId: slackUserId,
-    });
-    integrations.clearSlackCallHistory();
-
-    const channelId = "C_BDD_MINIMAX_FRAMEWORK";
-    const threadTs = "3300.000100";
-    await integrations.postSlackEvent(teamId, {
-      type: "app_mention",
-      user: slackUserId,
-      text: "start on minimax claude",
-      ts: threadTs,
-      channel: channelId,
-    });
-    const run1Id = await pollSlackRun(runnerGroup);
-    const claim1 = await runs.claimRunnerJob(run1Id);
-    expect(claim1.cliAgentType).toBe("claude-code");
-    expect(claim1.resumeSession).toBeNull();
-    await completeSlackTriggeredRun({
-      runId: run1Id,
-      sandboxToken: claim1.sandboxToken,
-      cliAgentType: "claude-code",
-    });
-    const run1 = await runs.readRun(actor, run1Id);
-    expect(run1.result?.agentSessionId).toStrictEqual(expect.any(String));
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      },
-    );
-
-    await integrations.postSlackEvent(teamId, {
-      type: "app_mention",
-      user: slackUserId,
-      text: "continue after minimax codex switch",
-      ts: "3300.000200",
-      thread_ts: threadTs,
-      channel: channelId,
-    });
-    const run2Id = await pollSlackRun(runnerGroup);
-    const claim2 = await runs.claimRunnerJob(run2Id);
-    expect(claim2.cliAgentType).toBe("codex");
-    expect(claim2.resumeSession).toBeNull();
-    expect(claim2.codexRuntimeConfig).toMatchObject({
-      providerId: "minimax",
-      supportsWebsockets: false,
-    });
-
-    await runs.requestCancelRun(actor, run2Id, [200]);
   });
 
   it("prompts disconnected Slack users and filters non-actionable messages", async () => {

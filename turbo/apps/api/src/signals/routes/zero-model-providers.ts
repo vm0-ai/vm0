@@ -35,7 +35,7 @@ const adminRequired = Object.freeze({
 
 const listModelProvidersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const result = await get(zeroModelProviders(auth.orgId, auth.userId));
+  const result = await get(zeroModelProviders(auth.orgId));
   return { status: 200 as const, body: result };
 });
 
@@ -161,7 +161,7 @@ const upsertModelProviderInner$ = command(
     }
     const result = await set(
       upsertOrgModelProvider$,
-      { orgId: auth.orgId, viewerUserId: auth.userId, type, secret },
+      { orgId: auth.orgId, type, secret },
       signal,
     );
     signal.throwIfAborted();
