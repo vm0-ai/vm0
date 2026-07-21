@@ -138,7 +138,7 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
     ),
     creditsCharged: usageCreditsSum("credits_sum"),
     model:
-      sql`MAX(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} THEN ${usageEvent.provider} ELSE NULL END)`
+      sql`MAX(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} THEN ${usageEvent.provider} ELSE NULL END)`
         .mapWith(nullableTextDecoder)
         .as("model"),
     userId: max(usageEvent.userId).mapWith(pgTextDecoder).as("user_id"),
@@ -201,7 +201,7 @@ function usageEventTokenSum(categories: readonly string[], alias: string) {
     }),
     sql`, `,
   );
-  return sql`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+  return sql`COALESCE(SUM(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

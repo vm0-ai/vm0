@@ -88,8 +88,9 @@ applicable runtime boundary:
 
 ```typescript
 // Correct: LOWER(text) has the same driver representation as the text column.
-const normalizedEmail =
-  sql`LOWER(${users.email})`.mapWith(users.email).as("normalized_email");
+const normalizedEmail = sql`LOWER(${users.email})`
+  .mapWith(users.email)
+  .as("normalized_email");
 
 // Correct: the explicit decoder owns the runtime number contract.
 const total = sql`COUNT(*)::int`.mapWith(pgIntegerDecoder).as("total");
@@ -149,6 +150,15 @@ its bound value. Likewise, use `max(column)` or `min(column)` for the exact
 aggregate form when the helper preserves the required decoder and nullability
 contract. Keep an existing outer `.mapWith(...)` when it owns a stricter or more
 specific contract than the helper's inferred result.
+
+This preference also applies to a replaceable leaf inside otherwise irreducible
+SQL. Interpolate the typed operator in place of that leaf while retaining the
+outer tag for surrounding CTE, CASE, join, filter, cast, grouping, or statement
+syntax. Do not replace outer composition with `and(...)` or `or(...)` when their
+`SQL | undefined` result would weaken a required concrete `SQL` contract.
+Keep SQL syntax that belongs to an operand inside that operand. For example,
+write ``gte(events.createdAt, sql`${timestamp}::timestamp`)`` rather than
+placing the cast after the interpolated `gte(...)` fragment.
 
 Every remaining SQL-tag interpolation must have one unambiguous static role.
 Do not interpolate `any`, `unknown`, a value that can be `undefined`, an array or

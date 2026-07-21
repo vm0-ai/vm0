@@ -1,7 +1,15 @@
 import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  isNotNull,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
@@ -68,15 +76,15 @@ function runnerStateHas(args: {
   readonly resourceCondition: SQL;
 }): SQL {
   const runnerCondition = args.runnerId
-    ? sql`AND ${runnerState.runnerId} = ${args.runnerId}`
+    ? sql`AND ${eq(runnerState.runnerId, args.runnerId)}`
     : sql``;
   return sql`EXISTS (
     SELECT 1
     FROM ${runnerState}
-    WHERE ${runnerState.runnerGroup} = ${args.runnerGroup}
+    WHERE ${eq(runnerState.runnerGroup, args.runnerGroup)}
       ${runnerCondition}
       AND ${runnerState.mode} = 'running'
-      AND ${runnerState.lastSeenAt} > ${args.freshAfter}
+      AND ${gt(runnerState.lastSeenAt, args.freshAfter)}
       AND ${args.resourceCondition}
   )`;
 }
@@ -126,17 +134,17 @@ export function runnerSessionAffinityPollPriority(args: {
   const hasGlobalWorkspace = global(workspaceCondition);
   const hasLocalWorkspace = local(workspaceCondition);
   return sql`CASE
-    WHEN ${runnerJobQueue.createdAt} > ${generationProtectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
-    AND ${targetGenerationRunId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, generationProtectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
+    AND ${isNotNull(targetGenerationRunId)}
     AND ${hasGlobalExact}
     THEN CASE WHEN ${hasLocalExact} THEN 5 ELSE 0 END
-    WHEN ${runnerJobQueue.createdAt} > ${protectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
     AND ${hasGlobalReusable}
     THEN CASE WHEN ${hasLocalReusable} THEN 4 ELSE 0 END
-    WHEN ${runnerJobQueue.createdAt} > ${protectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
     AND ${hasGlobalWorkspace}
     THEN CASE
       WHEN ${hasLocalReusable} THEN 4

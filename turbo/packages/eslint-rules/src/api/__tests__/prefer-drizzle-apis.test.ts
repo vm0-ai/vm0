@@ -48,12 +48,18 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
   valid: [
     {
       code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
+        import { gte, sql } from "drizzle-orm";
         const value = 1;
         const fragment = sql\`\${users.id} + \${value}\`;
         sql\`SELECT \${users.id} FROM \${users} WHERE \${fragment}\`;
-        sql\`(\${users.id} = \${value})\`;
         sql\`\${users.id}::text = \${"1"}\`;
+        sql\`LOWER(\${users.name}) = \${"name"}\`;
+        sql\`LOWER(\${users.name}) IS NULL\`;
+        sql\`\${users.id} IS DISTINCT FROM \${value}\`;
+        sql\`UPDATE users SET \${users.id} = \${value}\`;
+        sql\`1 + \${users.id} = \${value}\`;
+        sql\`\${users.id} = \${value} + 1\`;
+        sql\`\${gte(users.deletedAt, sql\`\${"2026-01-01"}::timestamp\`)}\`;
         sql\`MAX(\${users.id}) FILTER (WHERE \${users.id} > 0)\`;
         sql\`MAX(\${fragment})\`;
         sql\`\${users.id}\`;
@@ -139,12 +145,44 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const value = 1;
+        sql\`(\${users.id} = \${value})\`;
+        sql\`\${users.deletedAt} >= \${"2026-01-01"}::timestamp\`;
+        sql\`\${users.deletedAt} < \${"2026-01-02"}::timestamptz AT TIME ZONE 'UTC' ORDER BY 1\`;
+        sql\`
+          SELECT \${users.id}
+          FROM \${users}
+          WHERE \${users.id} >= \${value}
+            AND \${users.deletedAt} IS NOT NULL
+        \`;
+        sql\`CASE
+          WHEN \${users.id} > \${value} AND \${users.id} <> \${value}
+          THEN \${users.name}
+          ELSE NULL
+        END\`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "gte" } },
+        { messageId: "typedApi", data: { helper: "lt" } },
+        { messageId: "typedApi", data: { helper: "gte" } },
+        { messageId: "typedApi", data: { helper: "isNotNull" } },
+        { messageId: "typedApi", data: { helper: "gt" } },
+        { messageId: "typedApi", data: { helper: "ne" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
         db.query.users.findMany({
           where: (fields, operators) =>
-            operators.sql\`\${fields.id} > \${0}\`,
+            operators.sql\`(\${fields.id} > \${0}) OR \${fields.deletedAt} IS NULL\`,
         });
       `,
-      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+      errors: [
+        { messageId: "typedApi", data: { helper: "gt" } },
+        { messageId: "typedApi", data: { helper: "isNull" } },
+      ],
     },
   ],
 });

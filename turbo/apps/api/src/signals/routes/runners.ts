@@ -32,6 +32,7 @@ import {
   eq,
   gt,
   inArray,
+  isNull,
   lt,
   notInArray,
   sql,
@@ -446,11 +447,11 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         ? {}
         : {
             setWhere: sql`
-              ${runnerState.heartbeatGeneration} IS NULL
-              OR ${runnerState.heartbeatGeneration} < ${snapshotOrder.generation}
+              ${isNull(runnerState.heartbeatGeneration)}
+              OR ${lt(runnerState.heartbeatGeneration, snapshotOrder.generation)}
               OR (
-                ${runnerState.heartbeatGeneration} = ${snapshotOrder.generation}
-                AND ${runnerState.heartbeatSequence} < ${snapshotOrder.sequence}
+                ${eq(runnerState.heartbeatGeneration, snapshotOrder.generation)}
+                AND ${lt(runnerState.heartbeatSequence, snapshotOrder.sequence)}
               )
             `,
           }),
@@ -883,7 +884,7 @@ async function lockRunnerJob(
         ${runnerJobQueue.runId} AS "runId",
         ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
       FROM ${runnerJobQueue}
-      WHERE ${runnerJobQueue.runId} = ${runId}
+      WHERE ${eq(runnerJobQueue.runId, runId)}
       FOR UPDATE
     `,
     lockedRunnerJobRowSchema,
@@ -911,7 +912,7 @@ async function transitionClaimedJobToRunning(
               ${agentRuns.id} AS "id",
               ${agentRuns.status} AS "status"
             FROM ${agentRuns}
-            WHERE ${agentRuns.id} = ${runId}
+            WHERE ${eq(agentRuns.id, runId)}
             FOR UPDATE
           ),
           locked_job AS MATERIALIZED (

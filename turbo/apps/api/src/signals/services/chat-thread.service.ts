@@ -144,7 +144,7 @@ export function chatThreadMessagesV1(
     ) > (
       SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
       FROM ${chatMessages}
-      WHERE ${chatMessages.id} = ${cursorId}
+      WHERE ${eq(chatMessages.id, cursorId)}
     )`;
     const cursorBefore = sql`(
       ${chatMessages.createdAt},
@@ -152,7 +152,7 @@ export function chatThreadMessagesV1(
     ) < (
       SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
       FROM ${chatMessages}
-      WHERE ${chatMessages.id} = ${cursorId}
+      WHERE ${eq(chatMessages.id, cursorId)}
     )`;
 
     if (args.sinceId !== undefined) {

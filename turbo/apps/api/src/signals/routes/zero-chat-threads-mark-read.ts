@@ -17,8 +17,8 @@ function latestRunFinishCreatedAtSql() {
   return sql`(
     SELECT ${chatMessages.createdAt}
     FROM ${chatMessages}
-    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
-      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
+    WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
+      AND ${isNotNull(chatMessages.runLifecycleEvent)}
     ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
     LIMIT 1
   )`;
