@@ -36,6 +36,7 @@ const ALLOWED_GENERATOR_CONNECTOR_IMPORTS = new Set([
   "@vm0/connectors/firewall-expander",
   "@vm0/connectors/firewall-metadata",
   "@vm0/connectors/firewall-metadata/routing",
+  "@vm0/connectors/firewall-metadata/runner-runtime-catalog",
   "@vm0/connectors/firewall-metadata/server",
   "@vm0/connectors/firewall-types",
 ]);

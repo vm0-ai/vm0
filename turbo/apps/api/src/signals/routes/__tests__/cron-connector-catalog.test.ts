@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
 import {
@@ -22,6 +24,10 @@ import {
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+} from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
@@ -70,6 +76,8 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const PRIVATE_VALUE = "SECRET_TOKEN";
@@ -1191,6 +1199,10 @@ function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
 
 function cronClient() {
   return setupApp({ context })(cronConnectorCatalogContract);
+}
+
+function runnerFirewallClient() {
+  return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
 }
 
 interface VolumeStorageState {
@@ -2334,6 +2346,138 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRun);
     await runs.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
+
+  it("composes accepted connector and local model-provider runner firewalls", async () => {
+    const connectorRef = "external-runner-firewall";
+    configureSource();
+    const first = buildRelease({
+      version: "2026-07-15.external-runner-firewall-1",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([first], first));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
+    const providerName = "model-provider:openai-api-key";
+    const callsBeforeReads = context.mocks.s3.send.mock.calls.length;
+    const subset = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: [connectorRef, connectorRef, providerName] },
+      }),
+      [200],
+    );
+    expect(Object.keys(subset.body.firewalls).sort()).toStrictEqual([
+      connectorRef,
+      providerName,
+    ]);
+    expect(subset.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      "https://api.example.test/v1",
+    );
+    expect(subset.body.firewalls[providerName]?.apis[0]?.base).toBe(
+      "https://api.openai.com/v1/responses",
+    );
+
+    const full = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    const providerNames = Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS)
+      .map((firewall) => {
+        return firewall.name;
+      })
+      .sort();
+    expect(Object.keys(full.body.firewalls).sort()).toStrictEqual(
+      [connectorRef, ...providerNames].sort(),
+    );
+    expect(subset.body.catalogDigest).toBe(full.body.catalogDigest);
+    expect(subset.body.catalogVersion).toBe(full.body.catalogVersion);
+    const firstHex = createHash("sha256")
+      .update(JSON.stringify(full.body.firewalls, null, 2))
+      .digest("hex");
+    expect(full.body.catalogDigest).toBe(`sha256:${firstHex}`);
+    expect(full.body.catalogVersion).toBe(`sha256-${firstHex.slice(0, 12)}`);
+    for (const [name, firewall] of Object.entries(full.body.firewalls)) {
+      expect(firewall.name).toBe(name);
+    }
+    const serialized = JSON.stringify(full.body);
+    expect(serialized).not.toContain("sourceId");
+    expect(serialized).not.toContain("integrityDigest");
+    expect(serialized).not.toContain(first.integrityKey);
+
+    const missing = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: ["github"] },
+      }),
+      [400],
+    );
+    expect(missing.body.error.message).toBe("Unknown builtin firewall: github");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReads);
+
+    const changedBase = "https://api.example.test/v2";
+    const second = buildRelease({
+      version: "2026-07-15.external-runner-firewall-2",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        setPrivateFirewallBase(artifact, changedBase);
+      },
+      mutateRunnerFirewalls: (artifact) => {
+        setRunnerFirewallBase(artifact, changedBase);
+      },
+    });
+    serveObjects(catalogObjects([first, second], second));
+    await syncCatalog();
+    const callsBeforeSecondRead = context.mocks.s3.send.mock.calls.length;
+    const updated = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    expect(updated.body.catalogDigest).not.toBe(full.body.catalogDigest);
+    expect(updated.body.catalogVersion).not.toBe(full.body.catalogVersion);
+    expect(updated.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      changedBase,
+    );
+    expect(updated.body.firewalls[providerName]).toStrictEqual(
+      full.body.firewalls[providerName],
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSecondRead);
+  });
+
+  it("keeps runner firewall resolution static in shadow mode", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.shadow-runner-firewall",
+      connectorRef: "external-shadow-runner-firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
+
+    const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
+    const response = await accept(
+      runnerFirewallClient().resolve({
+        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+        body: { names: ["github"] },
+      }),
+      [200],
+    );
+    expect(response.body.catalogDigest).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+    );
+    expect(response.body.catalogVersion).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+    );
+    expect(response.body.firewalls.github?.name).toBe("github");
+    await flushWaitUntilForTest();
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
+  });
 
   it("mounts an external connector skill from its exact system version", async () => {
     const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;

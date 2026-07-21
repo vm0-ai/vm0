@@ -10,7 +10,7 @@ import {
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -838,7 +838,7 @@ export const executeDueMorningBriefs$ = command(
           lte(morningBriefSchedules.nextRunAt, currentTime),
         ),
       )
-      .orderBy(sql`${morningBriefSchedules.nextRunAt} asc`)
+      .orderBy(asc(morningBriefSchedules.nextRunAt))
       .limit(CLAIM_LIMIT);
     signal.throwIfAborted();
 

@@ -21,11 +21,15 @@ function withExpectedPreviewAppOrigin(
   appOrigin: string,
   onboardingOrigin: string,
 ): URL | null {
+  const appUrl = new URL(appOrigin);
+  if (url.origin === appUrl.origin) {
+    return null;
+  }
+
   if (url.origin !== previewAppFallbackOrigin(onboardingOrigin)) {
     return null;
   }
 
-  const appUrl = new URL(appOrigin);
   const rewrittenUrl = new URL(url.toString());
   rewrittenUrl.protocol = appUrl.protocol;
   rewrittenUrl.host = appUrl.host;

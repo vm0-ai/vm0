@@ -2,8 +2,8 @@
  * ESLint rule: no-raw-msw-http
  *
  * Disallows raw `http.(get|post|put|patch|delete)(url, ...)` MSW handlers in
- * platform test files when `url` points at an internal `/api/zero/*` or
- * `/api/v1/*` route. Those routes have typed contracts — tests should use
+ * platform test files when `url` points at an internal `/api/zero/*` route.
+ * Those routes have typed contracts — tests should use
  * `mockApi(contract.route, ...)` so handler shape, path, method, params, and
  * response body are validated against the same contract the real server uses.
  *
@@ -28,7 +28,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 const EXEMPTION_MARKER = "mockApi cannot be used here";
-const INTERNAL_API_RE = /\/api\/(zero|v1)\//;
+const INTERNAL_API_RE = /\/api\/zero\//;
 const MSW_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
 
 export default createRule({
@@ -38,12 +38,12 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow raw http.* MSW handlers for internal /api/zero/* or /api/v1/* routes — use mockApi(contract.route, ...) so handlers stay typed against contracts",
+        "Disallow raw http.* MSW handlers for internal /api/zero/* routes — use mockApi(contract.route, ...) so handlers stay typed against contracts",
     },
     schema: [],
     messages: {
       useMockApi:
-        "Use mockApi(contract.route, ...) instead of raw http.{{method}} for internal /api/{{bucket}}/ paths. If migration is genuinely impossible, add a '// mockApi cannot be used here: <reason>' comment above the call explaining why.",
+        "Use mockApi(contract.route, ...) instead of raw http.{{method}} for internal /api/zero/ paths. If migration is genuinely impossible, add a '// mockApi cannot be used here: <reason>' comment above the call explaining why.",
     },
   },
   create(context) {
@@ -118,7 +118,7 @@ export default createRule({
         context.report({
           node,
           messageId: "useMockApi",
-          data: { method, bucket: match[1] ?? "zero" },
+          data: { method },
         });
       },
     };

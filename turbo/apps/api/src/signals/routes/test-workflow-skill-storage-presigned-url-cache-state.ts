@@ -4,7 +4,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -42,7 +42,7 @@ function escapedLikePrefix(value: string): string {
 function objectKeyPrefixCondition(prefix: string) {
   return and(
     eq(systemStoragePresignedUrlCache.scope, "workflow_skill_storage"),
-    sql`${systemStoragePresignedUrlCache.objectKey} like ${escapedLikePrefix(prefix)} escape '\\'`,
+    sql`${like(systemStoragePresignedUrlCache.objectKey, escapedLikePrefix(prefix))} escape '\\'`,
   );
 }
 

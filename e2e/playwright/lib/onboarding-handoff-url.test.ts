@@ -70,3 +70,13 @@ test("rewrites the staging app handoff to the Cloudflare staging app", () => {
 
   assert.equal(rewrittenUrl, "https://staging-app.omby.ai/prompt");
 });
+
+test("does not rewrite the configured staging app to itself", () => {
+  const rewrittenUrl = rewritePreviewAppFallbackUrl(
+    new URL("https://staging-app.omby.ai/?vm0_source=onboarding"),
+    "https://staging-app.omby.ai",
+    "https://staging-www.omby.ai",
+  );
+
+  assert.equal(rewrittenUrl, null);
+});

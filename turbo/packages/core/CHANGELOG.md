@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.447.0](https://github.com/vm0-ai/vm0/compare/core-v8.446.0...core-v8.447.0) (2026-07-21)
+
+
+### Features
+
+* route canonical slack turns through chat message queue ([#22429](https://github.com/vm0-ai/vm0/issues/22429)) ([eddb41b](https://github.com/vm0-ai/vm0/commit/eddb41b47ef26e02468f6fac1926346624e75492))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+
+## [8.446.0](https://github.com/vm0-ai/vm0/compare/core-v8.445.1...core-v8.446.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* **platform:** render structured user messages ([#22400](https://github.com/vm0-ai/vm0/issues/22400)) ([3beae6e](https://github.com/vm0-ai/vm0/commit/3beae6e088745cdfdd63da13b0303d7820d67406))
+
+
+### Refactoring
+
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+
 ## [8.445.1](https://github.com/vm0-ai/vm0/compare/core-v8.445.0...core-v8.445.1) (2026-07-21)
 
 

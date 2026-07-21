@@ -86,11 +86,13 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -712,22 +714,13 @@ function toPagedMessage(
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
-function activeRunStatusSqlList() {
-  return sql.join(
-    ACTIVE_RUN_STATUSES.map((status) => {
-      return sql`${status}`;
-    }),
-    sql`, `,
-  );
-}
-
 function noActiveRunsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${zeroRuns}
     INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
     WHERE ${eq(zeroRuns.chatThreadId, chatThreads.id)}
-      AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
+      AND ${inArray(agentRuns.status, ACTIVE_RUN_STATUSES)}
   )`;
 }
 
@@ -785,24 +778,6 @@ export function zeroChatThreadDetail(args: {
   });
 }
 
-function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        isNotNull(chatMessages.runLifecycleEvent),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-}
-
 /**
  * The user's unread threads under an agent, each with the creation time of
  * the latest run-finish marker. A thread is unread only when it has at least
@@ -811,10 +786,11 @@ function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
   readonly agentComposeId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .select({
         threadId: chatThreads.id,
@@ -826,18 +802,22 @@ export function zeroChatThreadUnreads(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastRunFinish.id) filter guarantees a
-      // joined row, but the left-lateral type keeps the column nullable.
+      // Always present: the isNotNull(lastRunFinish.createdAt) filter
+      // guarantees a joined row, but the left-lateral type keeps the column
+      // nullable.
       if (row.unreadAt === null) {
         return [];
       }
@@ -853,10 +833,11 @@ export function zeroChatThreadUnreads(args: {
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
@@ -866,13 +847,16 @@ export function zeroChatThreadUnreadAgentIds(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -889,9 +873,11 @@ export function zeroChatThreadUnreadAgentIds(args: {
 export function zeroChatThreadActiveRunThreadIds(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
-    const rows = await get(db$)
+    const db = get(db$);
+    const rows = await db
       .selectDistinct({ threadId: zeroRuns.chatThreadId })
       .from(zeroRuns)
       .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -903,6 +889,9 @@ export function zeroChatThreadActiveRunThreadIds(args: {
           eq(zeroAgents.orgId, args.orgId),
           isNotNull(zeroRuns.chatThreadId),
           inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
 
@@ -916,9 +905,10 @@ export function zeroChatThreadActiveRunThreadIds(args: {
  * Thread ids owned by the user that currently hold an unsent composer draft
  * (non-empty `draftContent`, a structured prompt, or one+ `draftAttachments`).
  */
-export function zeroChatThreadDraftIds(
-  userId: string,
-): Computed<Promise<readonly string[]>> {
+export function zeroChatThreadDraftIds(args: {
+  readonly userId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
+}): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
     const db = get(db$);
     const rows = await db
@@ -926,7 +916,10 @@ export function zeroChatThreadDraftIds(
       .from(chatThreads)
       .where(
         and(
-          eq(chatThreads.userId, userId),
+          eq(chatThreads.userId, args.userId),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
             OR ${isNotNull(chatThreads.draftStructuredPrompt)}
@@ -1238,7 +1231,7 @@ async function listChangedArtifacts(args: {
               SELECT ${chatMessages.chatThreadId}
               FROM ${chatMessages}
               WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              ORDER BY ${chatMessages.createdAt} ASC
+              ORDER BY ${asc(chatMessages.createdAt)}
               LIMIT 1
             )
           )
@@ -1258,7 +1251,7 @@ async function listChangedArtifacts(args: {
         WHERE ${sql.join(fileConditions, sql` AND `)}
           AND ${lowerBoundClause}
           AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
-        ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
+        ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
         LIMIT ${args.limit + 1}
       )
       SELECT
@@ -1299,7 +1292,7 @@ async function listChangedArtifacts(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
@@ -1365,7 +1358,7 @@ async function listArtifactHistory(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
@@ -1375,7 +1368,7 @@ async function listArtifactHistory(args: {
         ON ${eq(zeroAgents.id, agentComposes.id)}
       WHERE ${sql.join(conditions, sql` AND `)}
       ${keysetClause}
-    ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
+    ORDER BY ${desc(runUploadedFiles.createdAt)}, ${desc(runUploadedFiles.id)}
       LIMIT ${args.limit + 1}
     `,
     artifactListSqlRowSchema,
@@ -1498,7 +1491,7 @@ async function artifactUrlIsVisible(
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
@@ -1719,6 +1712,7 @@ export function zeroChatSearch(args: {
   readonly limit: number;
   readonly before: number;
   readonly after: number;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<
   Promise<{
     readonly results: readonly ChatSearchResult[];
@@ -1737,6 +1731,9 @@ export function zeroChatSearch(args: {
       visibleChatMessageCondition(),
       excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
+      ...(args.includeCanonicalSlackThreads
+        ? []
+        : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));

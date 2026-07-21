@@ -267,21 +267,13 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
   "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
 ] as const;
-const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
-  "api_dispatch_prepare_context_load_stored_connector_rows",
-  "api_dispatch_prepare_context_filter_stored_connector_rows",
+const API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+  "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
   "api_dispatch_prepare_context_build_stored_connector_state",
 ] as const;
-const API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES = [
-  "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-] as const;
-const API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES = [
-  "api_dispatch_prepare_context_load_stored_connector_variable_rows",
-] as const;
 const API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES = [
-  ...API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
-  ...API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
-  ...API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+  ...API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
 ] as const;
 const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_custom_connector_rows",
@@ -5195,15 +5187,29 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
     );
-    expectApiDispatchActions(
+    const loadSnapshotEvent = singleApiDispatchEvent(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
     );
-    expectNoApiDispatchActions(
+    expect(loadSnapshotEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "zero_agent",
+        stored_connector_candidate_count_bucket: "1",
+      }),
+    );
+    const materializeSnapshotEvent = singleApiDispatchEvent(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+      "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
+    );
+    expect(materializeSnapshotEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "zero_agent",
+        stored_connector_candidate_count_bucket: "1",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "1",
+      }),
     );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
@@ -5314,11 +5320,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
     );
-    expectApiDispatchActions(timingEvents, [
-      "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-    ]);
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
     ]);
@@ -5489,7 +5492,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("omits a stored connector with an incompatible storage version", async () => {
+  it("omits a stored connector after its storage version becomes incompatible", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -5506,12 +5509,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       accessToken: "incompatible-access",
       refreshToken: "incompatible-refresh",
     });
-    await setConnectorCredentialStorageState(context, {
-      connectorRef: "test-oauth",
-      orgId: actor.orgId ?? "",
-      storageVersion: 2,
-      userId: actor.userId,
-    });
     const composeName = `bdd-incompatible-connector-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -5523,12 +5520,68 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    const run = await api.createDirectRun(actor, {
+    const compatibleRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "materialize compatible connector state",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const compatibleClaim = await api.claimRunnerJob(compatibleRun.runId);
+    expect(
+      findFirewallEntry(compatibleClaim.firewalls, "test-oauth"),
+    ).toStrictEqual({
+      kind: "builtin",
+      name: "test-oauth",
+      baseUrlVars: {
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantid",
+      },
+    });
+    expect(compatibleClaim.environment?.TEST_OAUTH_TOKEN).toBe(
+      connectorPlaceholder("test-oauth", "TEST_OAUTH_TOKEN"),
+    );
+    await api.requestCancelRun(actor, compatibleRun.runId, [200]);
+
+    await setConnectorCredentialStorageState(context, {
+      connectorRef: "test-oauth",
+      orgId: actor.orgId ?? "",
+      storageVersion: 2,
+      userId: actor.userId,
+    });
+    const incompatibleRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "do not materialize incompatible connector state",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(incompatibleRun.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+      "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
+    ]);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_build_stored_connector_state",
+    ]);
+    const loadSnapshotEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+    );
+    expect(loadSnapshotEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_candidate_count_bucket: "1",
+      }),
+    );
+    const materializeSnapshotEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
+    );
+    expect(materializeSnapshotEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_candidate_count_bucket: "1",
+        stored_connector_count_bucket: "0",
+        stored_connector_secret_count_bucket: "0",
+      }),
+    );
     await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
+    const claim = await api.claimRunnerJob(incompatibleRun.runId);
     expect(findFirewallEntry(claim.firewalls, "test-oauth")).toBeUndefined();
     expect(claim.environment ?? {}).not.toHaveProperty("TEST_OAUTH_TOKEN");
     expect(claim.environment ?? {}).not.toHaveProperty("TEST_OAUTH_TENANT_ID");
@@ -5536,7 +5589,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "TEST_OAUTH_TOKEN",
     );
 
-    await api.requestCancelRun(actor, run.runId, [200]);
+    await api.requestCancelRun(actor, incompatibleRun.runId, [200]);
   });
 
   it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
@@ -5568,11 +5621,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
@@ -5637,15 +5686,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const timingEvents = apiDispatchTimingEventsForRun(withHost.runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
     );
     const hostClaim = await api.claimRunnerJob(withHost.runId);
     expect(hostClaim.environment?.GITLAB_TOKEN).toBe(
@@ -7012,8 +7053,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
-    const actorRunnerKey = await api.createApiKey(actor);
-    const memberRunnerKey = await api.createApiKey(member);
+    const actorRunnerKey = await api.createCliToken(actor);
+    const memberRunnerKey = await api.createCliToken(member);
     const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
@@ -7425,11 +7466,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
     );
     expectApiDispatchActions(
       timingEvents,
@@ -8065,10 +8102,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
-  it("dispatches, scopes, and claims runs through user API keys", async () => {
+  it("dispatches, scopes, and claims runs through CLI PATs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const apiKey = await api.createApiKey(actor);
+    const apiKey = await api.createCliToken(actor);
     const bearer = `Bearer ${apiKey.token}`;
     const firstPrompt = "user runner job one";
 
@@ -8308,7 +8345,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
 
     const outsider = createBddApi(context).user();
-    const outsiderKey = await api.createApiKey(outsider);
+    const outsiderKey = await api.createCliToken(outsider);
     const outsiderBearer = `Bearer ${outsiderKey.token}`;
     const outsiderPoll = await api.requestPollRunnerAs(
       outsiderBearer,
@@ -8389,10 +8426,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(settled.body.concurrency.active).toBe(0);
   });
 
-  it("rejects runner calls with malformed, revoked, or wrong runner credentials", async () => {
+  it("rejects runner calls with malformed or wrong runner credentials", async () => {
     const api = createRunsApi(context);
-    const bdd = createBddApi(context);
-    const actor = bdd.user();
     const pollBody = {
       group: "vm0/bdd-auth",
       supportedProfiles: ["vm0/default"],
@@ -8415,26 +8450,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(poll.body.error.message).toBe("Authentication required");
     }
 
-    const apiKey = await api.createApiKey(actor);
-    const bearer = `Bearer ${apiKey.token}`;
-    await api.requestPollRunnerAs(bearer, pollBody, [200]);
-
-    await api.revokeApiKey(actor, apiKey.id);
-    const revokedPoll = await api.requestPollRunnerAs(bearer, pollBody, [401]);
-    expectApiError(revokedPoll.body);
-    const revokedClaim = await api.requestClaimRunnerJobAs(
-      bearer,
-      randomUUID(),
-      [401],
-    );
-    expectApiError(revokedClaim.body);
-    expect(revokedClaim.body.error.message).toBe("Not authenticated");
-    const revokedRealtime = await api.requestRunnerRealtimeTokenAs(
-      bearer,
-      { group: "vm0/bdd-auth" },
-      [401],
-    );
-    expectApiError(revokedRealtime.body);
     expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
   });
 

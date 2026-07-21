@@ -182,6 +182,10 @@ async fn repeated_drain_while_draining_keeps_active_job_running() {
 
     env.drain();
     wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+    assert!(
+        !run_handle.is_finished(),
+        "soft drain must wait for the active job"
+    );
 
     env.drain();
     assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
@@ -199,6 +203,7 @@ async fn repeated_drain_while_draining_keeps_active_job_running() {
         .expect("job should complete after the gate is released");
     assert_eq!(completion.exit_code, 0, "job ran to normal completion");
     assert!(completion.error.is_none(), "no cancellation error");
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     assert_run_exits_within(
         run_handle,

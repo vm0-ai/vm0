@@ -36,8 +36,6 @@ import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
-import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
-import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -281,14 +279,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settings,
     setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
-  },
-  {
-    path: ROUTES.settingsApiKeys,
-    setup: setupAuthSidebarPageWrapper(setupApiKeysPage$),
-  },
-  {
-    path: ROUTES.deviceBb0,
-    setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
   },
   {
     path: ROUTES.lab,
