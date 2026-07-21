@@ -56,7 +56,7 @@ async fn codex_app_server_event_delivery_count_overload_terminates_promptly()
 
     let error = error.to_string();
     assert!(
-        error.contains("event delivery queue exceeded 128 pending events"),
+        error.contains("event delivery queue exceeded 512 pending events"),
         "unexpected overload error: {error}"
     );
     assert!(
