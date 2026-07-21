@@ -31,8 +31,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 Test volume for timezone E2E tests.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd "$TEST_DIR"
 
     # Create agent config

@@ -6,8 +6,6 @@ import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { authCommand } from "./commands/auth";
 import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
-import { volumeCommand } from "./commands/volume";
-import { artifactCommand } from "./commands/artifact";
 import { logsCommand } from "./commands/logs";
 import { whoamiCommand } from "./commands/whoami";
 
@@ -24,8 +22,6 @@ program
 program.addCommand(authCommand);
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
-program.addCommand(volumeCommand);
-program.addCommand(artifactCommand);
 program.addCommand(logsCommand);
 program.addCommand(whoamiCommand);
 

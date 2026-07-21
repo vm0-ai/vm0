@@ -6,6 +6,7 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Load BATS libraries
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
+load "${TEST_ROOT}/helpers/storage-fixtures"
 
 # Path to CLI binaries (trace wrappers log each invocation for timeout debugging)
 export VM0_CLI="${TEST_ROOT}/helpers/trace-vm0.sh"
@@ -35,8 +36,7 @@ create_test_volume() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" "$TEST_VOLUME_DIR/$VOLUME_NAME" >/dev/null
     cd - >/dev/null
 }
 

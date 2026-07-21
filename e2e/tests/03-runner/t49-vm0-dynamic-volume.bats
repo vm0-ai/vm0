@@ -22,8 +22,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$CLAUDE_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create dynamic volume A with known content
@@ -31,8 +30,7 @@ VOLEOF
     mkdir -p "$TEST_DIR/$DYNAMIC_VOL_A"
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "dynamic-content-a" > data.txt
-    $VM0_CLI volume init --name "$DYNAMIC_VOL_A" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$DYNAMIC_VOL_A" . >/dev/null
     cd - >/dev/null
 
     # Create dynamic volume B with different content
@@ -40,8 +38,7 @@ VOLEOF
     mkdir -p "$TEST_DIR/$DYNAMIC_VOL_B"
     cd "$TEST_DIR/$DYNAMIC_VOL_B"
     echo "dynamic-content-b" > data.txt
-    $VM0_CLI volume init --name "$DYNAMIC_VOL_B" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$DYNAMIC_VOL_B" . >/dev/null
     cd - >/dev/null
 
     # Create inline config — agent has NO volumes except claude-files
@@ -84,9 +81,8 @@ teardown_file() {
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run agent with --volume pointing to a volume NOT in compose config
@@ -104,22 +100,21 @@ teardown_file() {
     # Push version 1 with v1-specific content
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "v1-content" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+    VERSION1="$output"
     [ -n "$VERSION1" ]
 
     # Push version 2 (HEAD) with different content
     echo "v2-head-content" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run with specific version — should see v1 content, not HEAD
@@ -138,15 +133,14 @@ teardown_file() {
     # Push fresh content to vol-a (t49-3 changed its HEAD)
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "multi-test-a" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run with two dynamic volumes at different mount paths
