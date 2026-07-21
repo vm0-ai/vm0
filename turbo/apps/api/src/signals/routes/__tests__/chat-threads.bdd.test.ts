@@ -1050,7 +1050,20 @@ describe("CHAT-01 chat thread read state", () => {
       });
     });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentA]);
-    await chat.markThreadRead(owner, activeRun.threadId);
+    context.mocks.ably.publish.mockClear();
+    const firstRead = await chat.markThreadRead(owner, activeRun.threadId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "chatThreadReadCursorUpdated",
+      {
+        threadId: activeRun.threadId,
+        agentId: agentA,
+        lastReadAt: firstRead.lastReadAt,
+      },
+    );
+    context.mocks.ably.publish.mockClear();
+    const repeatedRead = await chat.markThreadRead(owner, activeRun.threadId);
+    expect(repeatedRead.lastReadAt).toBe(firstRead.lastReadAt);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
     // An active goal suppresses the unread flag; a complete goal does not.
@@ -1277,6 +1290,9 @@ describe("CHAT-01 chat thread read state", () => {
         ]),
       },
     );
+    context.mocks.ably.publish.mockClear();
+    await chat.markAgentThreadsRead(owner, agentA);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
 
     await expect(chat.listThreadUnreads(owner, agentA)).resolves.toStrictEqual(
       [],
