@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -19,6 +20,7 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -131,6 +133,20 @@ async function artifactActor(
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, objectStore };
+}
+
+async function setVideoArtifactPosters(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected video preview test actor to have an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    { [FeatureSwitchKey.VideoArtifactPosters]: enabled },
+  );
 }
 
 async function sendChatRun(
@@ -295,11 +311,38 @@ async function createRunUploadedFile(args: {
 }
 
 describe("video Artifact previews", () => {
+  it("leaves video preview empty when immediate posters are disabled", async () => {
+    const owner = await artifactActor(
+      "Artifacts API disabled video preview agent",
+    );
+    await setVideoArtifactPosters(owner.actor, false);
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+
+    const videoArtifact = await createRunUploadedFile({
+      owner,
+      prompt: "upload video without poster generation",
+      filename: "poster-disabled.mp4",
+      contentType: "video/mp4",
+    });
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toHaveLength(0);
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return put.key.endsWith("/poster.jpg");
+      }),
+    ).toBeFalsy();
+    const response = await chat.listArtifacts(owner.actor);
+    const artifact = response.artifacts.find((item) => {
+      return item.fileId === videoArtifact.fileId;
+    });
+    expect(artifact).toBeDefined();
+    expect(artifact).not.toHaveProperty("previewImageUrl");
+  }, 180_000);
+
   it("generates a poster immediately for an ordinary video upload", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected video preview test actor to have an org");
-    }
+    await setVideoArtifactPosters(owner.actor, true);
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
@@ -332,11 +375,7 @@ describe("video Artifact previews", () => {
 
   it("leaves video preview empty when media frame extraction fails", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
-    if (!owner.actor.orgId) {
-      throw new Error(
-        "Expected video preview failure test actor to have an org",
-      );
-    }
+    await setVideoArtifactPosters(owner.actor, true);
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId, 415);
 
     const videoArtifact = await createRunUploadedFile({

@@ -11,8 +11,8 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { type Db, writeDb$ } from "../external/db";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
-  scheduleArtifactPreviewRender$,
-  type RenderArtifactPreviewArgs,
+  scheduleVideoArtifactPreviewRender$,
+  type VideoArtifactPreviewRenderArgs,
 } from "./artifact-preview.service";
 
 interface RecordWebUploadedFileArgs {
@@ -80,14 +80,16 @@ function videoArtifactPreviewArgs(
   args: {
     readonly runId: string;
     readonly userId: string;
+    readonly orgId: string | null | undefined;
     readonly url: string | null;
     readonly contentType: string | null;
   },
   row: RecordedUploadedFile | undefined,
-): RenderArtifactPreviewArgs | null {
+): VideoArtifactPreviewRenderArgs | null {
   if (
     !row ||
     row.previewImageUrl ||
+    !args.orgId ||
     !args.url ||
     !args.contentType?.startsWith("video/")
   ) {
@@ -97,6 +99,7 @@ function videoArtifactPreviewArgs(
     id: row.id,
     runId: args.runId,
     userId: args.userId,
+    orgId: args.orgId,
     url: args.url,
     contentType: args.contentType,
   };
@@ -245,11 +248,12 @@ export const recordWebUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -332,11 +336,12 @@ export const recordTelegramUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -445,11 +450,12 @@ export const recordGithubUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -510,11 +516,12 @@ export const recordTeamsUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -586,11 +593,12 @@ export const recordAgentPhoneUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -662,11 +670,12 @@ export const recordSlackUploadedFile$ = command(
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleArtifactPreviewRender$,
+      scheduleVideoArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
           userId: args.userId,
+          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
