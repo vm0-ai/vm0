@@ -14,9 +14,10 @@
 //!
 //! Feature-enabled fresh sandbox attempts can assign bounded cold identities
 //! to a runner owner before sandbox creation. That owner performs one full
-//! request, keeps the cache writer and runner-wide permit through atomic
-//! publication, and stages only complete content. A terminal owner is drained
-//! before the unchanged remote URL is allowed to fall back to guest download.
+//! request, keeps the cache writer through atomic publication and the
+//! runner-wide permit through guest application, and stages only complete
+//! content. A terminal owner is drained before the unchanged remote URL is
+//! allowed to fall back to guest download.
 //! Reused live sandboxes continue through the ordinary guest-owned path.
 //! Keying on both name and version gives same-version entries with different
 //! storage names separate collision-resistant staged filenames in normal
