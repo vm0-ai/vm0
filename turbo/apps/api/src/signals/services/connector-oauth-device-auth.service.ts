@@ -8,6 +8,7 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
+  connectorRefSchema,
   type ConnectorAuthMethodId,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
@@ -108,7 +109,7 @@ function deviceAuthStartResponse(args: {
 const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
 
 const encryptedProviderStateSchema = z.object({
-  connectorType: z.string(),
+  connectorType: connectorRefSchema,
   deviceCode: z.string(),
   pollState: z.string().optional(),
 });

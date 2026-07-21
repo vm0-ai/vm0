@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import { connectorAuthMethodIdSchema } from "./connector-identity";
+import {
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+} from "./connector-identity";
 
 const c = initContract();
 
@@ -48,7 +51,7 @@ export const cliAuthTestConnectorContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
-        connectorType: z.string(),
+        connectorType: connectorRefSchema,
         orgId: z.string(),
       }),
       400: stringErrorResponseSchema,

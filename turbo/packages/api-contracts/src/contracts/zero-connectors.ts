@@ -265,10 +265,6 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
   },
 });
 
-export type ConnectorSearchAuthMethod = z.infer<
-  typeof connectorAuthMethodIdSchema
->;
-
 const connectorSearchItemSchema = z.object({
   id: connectorRefSchema,
   label: z.string(),

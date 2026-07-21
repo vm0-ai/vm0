@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import {
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+} from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -127,8 +131,8 @@ export const connectorCatalogCompatibilityReasonSchema = z.enum([
 ]);
 
 export const connectorCatalogFilteredAuthMethodSchema = z.object({
-  connectorRef: z.string().min(1),
-  authMethodId: z.string().min(1),
+  connectorRef: connectorRefSchema,
+  authMethodId: connectorAuthMethodIdSchema,
   reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
 });
 

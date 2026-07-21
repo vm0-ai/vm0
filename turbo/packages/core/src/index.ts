@@ -621,7 +621,6 @@ export {
   type ZeroWorkflowVisibilityContract,
   type UserConnectorEnabledTypes,
   type ZeroUserConnectorsContract,
-  type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
