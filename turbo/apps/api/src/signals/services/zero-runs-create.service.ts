@@ -58,7 +58,6 @@ type ZeroRunOrigin =
   | "zero_integration";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
-  | "chat_thread_v1_send"
   | "workflow_slash_command";
 
 const DISALLOWED_TOOLS = [

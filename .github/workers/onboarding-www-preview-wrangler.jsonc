@@ -1,0 +1,7 @@
+{
+  "name": "vm0-www-preview-runtime",
+  "main": "onboarding-www-preview-proxy.ts",
+  "compatibility_date": "2026-07-21",
+  "workers_dev": false,
+  "keep_vars": true,
+}

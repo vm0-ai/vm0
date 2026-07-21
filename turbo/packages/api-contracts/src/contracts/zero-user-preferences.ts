@@ -16,6 +16,7 @@ export const userPreferencesResponseSchema = z.object({
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  morningBriefEnabled: z.boolean(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 
@@ -29,6 +30,7 @@ export const updateUserPreferencesRequestSchema = z
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    morningBriefEnabled: z.boolean().optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })
   .refine(
@@ -37,6 +39,7 @@ export const updateUserPreferencesRequestSchema = z
         data.timezone !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
+        data.morningBriefEnabled !== undefined ||
         data.captureNetworkBodiesRemaining !== undefined
       );
     },

@@ -5,6 +5,7 @@ import {
   chatThreadMessagesContract,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -24,7 +25,8 @@ const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
 const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
 const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
-const STRUCTURED_MESSAGE = "Use the source thread for context";
+const STRUCTURED_MESSAGE = "Legacy structured content should stay hidden";
+const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
 function structuredPromptFixture(): UserMessageDocument {
   return {
     version: 1,
@@ -33,7 +35,7 @@ function structuredPromptFixture(): UserMessageDocument {
       {
         type: "chat_thread",
         threadId: FIRST_THREAD_ID,
-        titleSnapshot: "IndexedDB source thread",
+        titleSnapshot: STRUCTURED_REFERENCE_TITLE,
       },
       { type: "text", text: " for context" },
     ],
@@ -95,6 +97,7 @@ describe("chat message persistence", () => {
                 id: STRUCTURED_MESSAGE_ID,
                 role: "user",
                 content: STRUCTURED_MESSAGE,
+                runId: "d0000000-0000-4000-a000-000000000731",
                 structuredPrompt,
                 createdAt: "2026-06-09T10:00:00Z",
               },
@@ -102,6 +105,7 @@ describe("chat message persistence", () => {
                 id: FIRST_MESSAGE_ID,
                 role: "assistant",
                 content: FIRST_MESSAGE,
+                runId: "d0000000-0000-4000-a000-000000000731",
                 createdAt: "2026-06-09T10:01:00Z",
               },
             ],
@@ -129,6 +133,7 @@ describe("chat message persistence", () => {
       detachedSetupPage({
         context,
         path: `/chats/${FIRST_THREAD_ID}`,
+        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
         user: { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
         org: {
           activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
@@ -140,9 +145,13 @@ describe("chat message persistence", () => {
       await expect(
         screen.findByText(FIRST_MESSAGE),
       ).resolves.toBeInTheDocument();
-      await expect(
-        screen.findByText(STRUCTURED_MESSAGE),
-      ).resolves.toBeInTheDocument();
+      await waitFor(() => {
+        const reference = document.querySelector(
+          `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
+        );
+        expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+      });
+      expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
       await waitFor(async () => {
         const structuredMessage: unknown = await testDb.get(
           CHAT_MESSAGES_STORE,
@@ -176,7 +185,11 @@ describe("chat message persistence", () => {
       await waitFor(() => {
         expect(document.title).toBe("IndexedDB source thread | VM0");
         expect(screen.getByText(FIRST_MESSAGE)).toBeInTheDocument();
-        expect(screen.getByText(STRUCTURED_MESSAGE)).toBeInTheDocument();
+        const reference = document.querySelector(
+          `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
+        );
+        expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+        expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
       });
     } finally {
       blockedRemote.resolve();

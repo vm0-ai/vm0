@@ -54,7 +54,7 @@ describe("zero onboarding", () => {
     });
   });
 
-  it("forwards the omby preview bypass through the Clerk onboarding handoff", async () => {
+  it("opens the matching omby WWW preview without a Vercel bypass", async () => {
     mockOnboardingNeeded();
     mockedClerk.buildUrlWithAuth.mockImplementation((to) => {
       const url = new URL(to);
@@ -70,11 +70,9 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://pr-22085-www.vm6.ai");
+      expect(url.origin).toBe("https://pr-22085-www.omby.ai");
       expect(url.pathname).toBe("/onboarding/491858");
-      expect(url.searchParams.get("x-vercel-protection-bypass")).toBe(
-        "preview-secret",
-      );
+      expect(url.searchParams.has("x-vercel-protection-bypass")).toBeFalsy();
       expect(url.searchParams.get("__clerk_db_jwt")).toBe("dvb_test_handoff");
     });
   });

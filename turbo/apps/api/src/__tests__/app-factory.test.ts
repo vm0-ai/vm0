@@ -533,15 +533,15 @@ describe("createApp", () => {
 
   describe("not found", () => {
     it("redirects root auth pages to the configured web origin", async () => {
-      mockEnv("VM0_WEB_URL", "https://pr-123-www.vm6.ai");
+      mockEnv("VM0_WEB_URL", "https://pr-123-www.omby.ai");
       const app = createApp({ signal: context.signal });
       const response = await app.request(
-        "https://pr-123-api.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.vm6.ai%2Fonboarding%2F491858%3Fdomain%3Dpr-123-api.vm6.ai",
+        "https://pr-123-api.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fonboarding%2F491858%3Fdomain%3Dpr-123-api.vm6.ai",
       );
 
       expect(response.status).toBe(302);
       expect(response.headers.get("location")).toBe(
-        "https://pr-123-www.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.vm6.ai%2Fonboarding%2F491858%3Fdomain%3Dpr-123-api.vm6.ai",
+        "https://pr-123-www.omby.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fonboarding%2F491858%3Fdomain%3Dpr-123-api.vm6.ai",
       );
     });
 
@@ -556,6 +556,30 @@ describe("createApp", () => {
       await expect(response.json()).resolves.toStrictEqual({
         error: "Not found",
       });
+    });
+
+    it("returns 404 for retired BB0, API key, and public v1 routes", async () => {
+      const app = createApp({ signal: context.signal });
+      const retiredRoutes = [
+        ["POST", "/api/device-token"],
+        ["POST", "/api/device-token/poll"],
+        ["POST", "/api/zero/devices/bb0/confirm"],
+        ["GET", "/api/zero/api-keys"],
+        ["POST", "/api/zero/api-keys"],
+        ["DELETE", `/api/zero/api-keys/${crypto.randomUUID()}`],
+        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}`],
+        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}/messages`],
+        ["POST", "/api/v1/chat-threads/messages"],
+        ["POST", "/api/v1/audio/transcriptions"],
+      ] as const;
+
+      for (const [method, path] of retiredRoutes) {
+        const response = await app.request(path, { method });
+        expect(response.status, `${method} ${path}`).toBe(404);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Not found",
+        });
+      }
     });
 
     it("keeps registered routes matched normally", async () => {
