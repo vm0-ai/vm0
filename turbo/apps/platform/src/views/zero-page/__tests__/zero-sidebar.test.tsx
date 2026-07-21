@@ -219,12 +219,9 @@ function pinnedAgentLink(
   container: HTMLElement,
   name: string,
 ): HTMLAnchorElement {
-  const card = within(container)
-    .getAllByTestId("pinned-agent-card")
-    .find((candidate) => {
-      return candidate.textContent?.trim() === name;
-    });
-  const link = card?.querySelector("a");
+  const link = queryAllByRoleFast("link", container).find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error(`${name} pinned agent link not found`);
   }
