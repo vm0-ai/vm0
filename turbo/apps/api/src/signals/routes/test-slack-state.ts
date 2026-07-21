@@ -23,7 +23,6 @@ import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { storageVersions, storages } from "@vm0/db/schema/storage";
 import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -596,45 +595,6 @@ async function orgMetaFor(db: ReadonlyDb, orgId: string | null | undefined) {
   );
 }
 
-async function artifactStorageFor(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string | null | undefined;
-    readonly userId: string | null | undefined;
-  },
-) {
-  if (!args.orgId || !args.userId) {
-    return null;
-  }
-
-  return (
-    (
-      await db
-        .select({
-          id: storages.id,
-          headVersionId: storages.headVersionId,
-          s3Prefix: storages.s3Prefix,
-          versionId: storageVersions.id,
-          versionS3Key: storageVersions.s3Key,
-        })
-        .from(storages)
-        .leftJoin(
-          storageVersions,
-          eq(storages.headVersionId, storageVersions.id),
-        )
-        .where(
-          and(
-            eq(storages.orgId, args.orgId),
-            eq(storages.userId, args.userId),
-            eq(storages.name, "artifact"),
-            eq(storages.type, "artifact"),
-          ),
-        )
-        .limit(1)
-    )[0] ?? null
-  );
-}
-
 async function defaultAgentFor(
   db: ReadonlyDb,
   defaultAgentId: string | null | undefined,
@@ -831,10 +791,6 @@ const getSlackState$ = computed(async (get) => {
     : [];
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentSlackRuns(db, stateOrgId);
-  const artifactStorage = await artifactStorageFor(db, {
-    orgId: stateOrgId,
-    userId: query.user_id,
-  });
   const orgMeta = await orgMetaFor(db, stateOrgId);
   const defaultAgent = await defaultAgentFor(db, orgMeta?.defaultAgentId);
   const compose = await defaultComposeFor(db, orgMeta?.defaultAgentId);
@@ -875,7 +831,6 @@ const getSlackState$ = computed(async (get) => {
           createdAt: isoString(run.createdAt),
         };
       }),
-      artifact_storage: artifactStorage,
       org_metadata: orgMeta,
       default_agent: defaultAgent,
       default_compose: compose,
@@ -1258,35 +1213,6 @@ async function deleteSlackComposesForOrg(
   signal.throwIfAborted();
 }
 
-async function deleteSlackStoragesForOrg(
-  db: Db,
-  orgId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const storageRows = await db
-    .select({ id: storages.id })
-    .from(storages)
-    .where(eq(storages.orgId, orgId));
-  signal.throwIfAborted();
-  const storageIds = storageRows.map((storage) => {
-    return storage.id;
-  });
-  if (storageIds.length === 0) {
-    return;
-  }
-  await db
-    .update(storages)
-    .set({ headVersionId: null })
-    .where(inArray(storages.id, storageIds));
-  signal.throwIfAborted();
-  await db
-    .delete(storageVersions)
-    .where(inArray(storageVersions.storageId, storageIds));
-  signal.throwIfAborted();
-  await db.delete(storages).where(inArray(storages.id, storageIds));
-  signal.throwIfAborted();
-}
-
 async function deleteSlackOrgState(
   db: Db,
   orgId: string,
@@ -1299,7 +1225,6 @@ async function deleteSlackOrgState(
   await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
   signal.throwIfAborted();
   await deleteSlackComposesForOrg(db, orgId, signal);
-  await deleteSlackStoragesForOrg(db, orgId, signal);
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
 }

@@ -1,22 +1,15 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { gzipSync } from "node:zlib";
-
 import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 
-import { env } from "../../lib/env";
 import { now, nowDate } from "../external/time";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { putS3Object } from "../external/s3";
 import { bestEffort } from "../utils";
-import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
-import { newStorageS3Location } from "./storage-s3-prefix.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const PENDING_TELEGRAM_USER_ID = "pending";
@@ -229,111 +222,6 @@ export function telegramInstallationForLink(args: {
     };
   });
 }
-
-function createEmptyTarGz(): Buffer {
-  return gzipSync(Buffer.alloc(1024, 0));
-}
-
-export const ensureTelegramArtifactStorage$ = command(
-  async (
-    { get, set },
-    args: { readonly orgId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    const location = newStorageS3Location(args.orgId);
-    const [storage] = await writeDb
-      .insert(storages)
-      .values({
-        id: location.storageId,
-        name: "artifact",
-        type: "artifact",
-        userId: args.userId,
-        s3Prefix: location.s3Prefix,
-        size: 0,
-        fileCount: 0,
-        orgId: args.orgId,
-      })
-      .onConflictDoNothing()
-      .returning();
-    signal.throwIfAborted();
-
-    const [currentStorage] = storage
-      ? [storage]
-      : await writeDb
-          .select()
-          .from(storages)
-          .where(
-            and(
-              eq(storages.orgId, args.orgId),
-              eq(storages.userId, args.userId),
-              eq(storages.name, "artifact"),
-              eq(storages.type, "artifact"),
-            ),
-          )
-          .limit(1);
-    signal.throwIfAborted();
-
-    if (!currentStorage || currentStorage.headVersionId) {
-      return;
-    }
-
-    const versionId = computeContentHashFromHashes(currentStorage.id, []);
-    const s3Key = `${currentStorage.s3Prefix}/${versionId}`;
-    const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-    const archiveBuffer = createEmptyTarGz();
-
-    await Promise.all([
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/manifest.json`,
-          JSON.stringify({ files: [] }),
-          "application/json",
-        ),
-      ),
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/archive.tar.gz`,
-          archiveBuffer,
-          "application/gzip",
-        ),
-      ),
-    ]);
-    signal.throwIfAborted();
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: versionId,
-          storageId: currentStorage.id,
-          s3Key,
-          size: 0,
-          archiveSize: archiveBuffer.length,
-          fileCount: 0,
-          message: "Initial empty artifact (auto-created)",
-          createdBy: "user",
-        })
-        .onConflictDoUpdate({
-          target: storageVersions.id,
-          set: { archiveSize: archiveBuffer.length },
-        });
-
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: versionId,
-          size: 0,
-          fileCount: 0,
-          updatedAt: nowDate(),
-        })
-        .where(eq(storages.id, currentStorage.id));
-    });
-    signal.throwIfAborted();
-  },
-);
 
 export const linkTelegramUserToVm0User$ = command(
   async (

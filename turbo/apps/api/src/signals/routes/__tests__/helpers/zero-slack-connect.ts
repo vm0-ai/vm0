@@ -50,14 +50,6 @@ interface SlackInstallation {
   readonly createdAt: string;
 }
 
-interface ArtifactStorage {
-  readonly id: string;
-  readonly headVersionId: string | null;
-  readonly s3Prefix: string;
-  readonly versionId: string | null;
-  readonly versionS3Key: string | null;
-}
-
 function requestSlackState(
   signal: AbortSignal | undefined,
   path: string,
@@ -104,7 +96,6 @@ async function getSlackState(
   query: {
     readonly teamId?: string;
     readonly orgId?: string;
-    readonly userId?: string;
   },
 ): Promise<TestSlackStateResponse> {
   const params = new URLSearchParams();
@@ -115,9 +106,6 @@ async function getSlackState(
   }
   if (query.orgId) {
     params.set("org_id", query.orgId);
-  }
-  if (query.userId) {
-    params.set("user_id", query.userId);
   }
   const response = await requestSlackState(
     signal,
@@ -223,23 +211,6 @@ export const findSlackOrgInstallation$ = command(
   ): Promise<SlackInstallation | undefined> => {
     const state = await getSlackState(signal, { teamId: slackWorkspaceId });
     return state.installation ?? undefined;
-  },
-);
-
-export const findArtifactStorage$ = command(
-  async (
-    _,
-    values: {
-      readonly orgId: string;
-      readonly userId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<ArtifactStorage | undefined> => {
-    const state = await getSlackState(signal, {
-      orgId: values.orgId,
-      userId: values.userId,
-    });
-    return state.artifact_storage ?? undefined;
   },
 );
 
