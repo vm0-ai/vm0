@@ -174,6 +174,8 @@ describe("POST /api/presentation/images/resolve", () => {
           sourceName: "Unsplash",
           sourceUrl:
             "https://unsplash.com/photos/office-photo?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
+          sourceAttributionUrl:
+            "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           unsplashUrl:
             "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           photographerName: "Office Photographer",
@@ -197,6 +199,8 @@ describe("POST /api/presentation/images/resolve", () => {
           sourceName: "Unsplash",
           sourceUrl:
             "https://unsplash.com/photos/office-photo?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
+          sourceAttributionUrl:
+            "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           unsplashUrl:
             "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           photographerName: "Office Photographer",
@@ -220,6 +224,8 @@ describe("POST /api/presentation/images/resolve", () => {
           sourceName: "Unsplash",
           sourceUrl:
             "https://unsplash.com/photos/forest-photo?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
+          sourceAttributionUrl:
+            "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           unsplashUrl:
             "https://unsplash.com/?utm_source=vm0_presentation_image_resolver&utm_medium=referral",
           photographerName: "Forest Photographer",
@@ -377,6 +383,8 @@ describe("POST /api/presentation/images/resolve", () => {
           source: "pexels",
           sourceName: "Pexels",
           sourceUrl: "https://www.pexels.com/photo/city-skyline-123/",
+          sourceAttributionUrl:
+            "https://www.pexels.com/photo/city-skyline-123/",
           unsplashUrl: "https://www.pexels.com/photo/city-skyline-123/",
           photographerName: "City Shooter",
           photographerUrl: "https://www.pexels.com/@cityshooter",
@@ -441,6 +449,7 @@ describe("POST /api/presentation/images/resolve", () => {
           source: "pexels",
           sourceName: "Pexels",
           sourceUrl: "https://www.pexels.com/photo/forest-999/",
+          sourceAttributionUrl: "https://www.pexels.com/photo/forest-999/",
           unsplashUrl: "https://www.pexels.com/photo/forest-999/",
           photographerName: "Forest Fan",
           photographerUrl: "https://www.pexels.com/@forestfan",

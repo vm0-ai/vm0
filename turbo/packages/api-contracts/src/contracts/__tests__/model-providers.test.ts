@@ -6,8 +6,6 @@ import {
   getModels,
   getDefaultModel,
   getModelProviderEnvBindings,
-  getModelProviderCodexRuntimeConfig,
-  getModelProviderFirewall,
   getFrameworkForType,
   getVm0VisibleModels,
   normalizeVm0ModelId,
@@ -45,10 +43,8 @@ import {
   getVm0ModelCodexRuntimeConfig,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
-  shouldInlineModelProviderFirewall,
   type ModelProviderType,
 } from "../model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
@@ -351,11 +347,6 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "minimax-api-key",
     ]);
-    expect(
-      getProvidersForModel("MiniMax-M3", {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).toEqual(["vm0", "minimax-api-key"]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -583,14 +574,6 @@ describe("getProviderBaseUrl", () => {
       expect(getProviderBaseUrl(type)).toBe(expectedUrl);
     },
   );
-
-  it("returns MiniMax Codex runtime base URL when the framework switch is enabled", () => {
-    expect(
-      getProviderBaseUrl("minimax-api-key", {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).toBe("https://api.minimax.io/v1");
-  });
 });
 
 describe("areProvidersCompatible", () => {
@@ -844,7 +827,7 @@ describe("minimax-api-key provider", () => {
     expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
   });
 
-  it("keeps the original provider type and switches framework with the feature flag", () => {
+  it("uses the original provider type with Claude Code", () => {
     expect(modelProviderTypeSchema.safeParse("minimax-api-key").success).toBe(
       true,
     );
@@ -852,77 +835,7 @@ describe("minimax-api-key provider", () => {
       false,
     );
     expect(getFrameworkForType("minimax-api-key")).toBe("claude-code");
-    expect(
-      getFrameworkForType("minimax-api-key", {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).toBe("codex");
     expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
-  });
-
-  it("maps MiniMax Codex env bindings without provider base URL", () => {
-    const envBindings = getModelProviderEnvBindings("minimax-api-key", {
-      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-    });
-    expect(envBindings).toStrictEqual({
-      OPENAI_API_KEY: "$secret",
-      OPENAI_MODEL: "$model",
-    });
-  });
-
-  it("declares MiniMax Codex runtime config when the feature flag is enabled", () => {
-    const config = getModelProviderCodexRuntimeConfig("minimax-api-key", {
-      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-    });
-
-    expect(config).toMatchObject({
-      providerId: "minimax",
-      name: "MiniMax",
-      baseUrl: "https://api.minimax.io/v1",
-      envKey: "OPENAI_API_KEY",
-      wireApi: "responses",
-      supportsWebsockets: false,
-    });
-    expect(config?.modelCatalog).toMatchObject({
-      models: [expect.objectContaining({ slug: "MiniMax-M3" })],
-    });
-  });
-
-  it("omits MiniMax Codex runtime config when the feature flag is disabled", () => {
-    expect(
-      getModelProviderCodexRuntimeConfig("minimax-api-key"),
-    ).toBeUndefined();
-  });
-
-  it("does not add a second selectable provider when the feature switch is enabled", () => {
-    expect(getSelectableProviderTypes()).toContain("minimax-api-key");
-    expect(
-      getSelectableProviderTypes({
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).toContain("minimax-api-key");
-    expect(
-      getSelectableProviderTypes({
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).not.toContain("minimax-codex" as ModelProviderType);
-  });
-
-  it("uses OpenAI-style firewall runtime config when the feature flag is enabled", () => {
-    const config = getModelProviderFirewall("minimax-api-key", {
-      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-    });
-    expect(config).toBeDefined();
-    expect(config!.apis).toHaveLength(1);
-    expect(config!.apis[0]!.base).toBe("https://api.minimax.io/v1");
-    expect(config!.apis[0]!.auth.headers).toEqual({
-      Authorization: "Bearer ${{ secrets.MINIMAX_API_KEY }}",
-    });
-    expect(
-      shouldInlineModelProviderFirewall("minimax-api-key", {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      }),
-    ).toBe(true);
   });
 });
 

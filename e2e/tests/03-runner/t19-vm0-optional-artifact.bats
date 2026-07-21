@@ -7,7 +7,7 @@
 # 3. Checkpoints are created even without artifact
 # 4. Continue works from session without artifact
 #
-# Test count: 4 tests
+# Test count: 3 tests
 
 load '../../helpers/setup'
 
@@ -34,7 +34,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -44,12 +44,6 @@ teardown_file() {
     if [ -n "$SHARED_VOLUME_DIR" ] && [ -d "$SHARED_VOLUME_DIR" ]; then
         rm -rf "$SHARED_VOLUME_DIR"
     fi
-}
-
-@test "Build VM0 optional artifact test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 run without artifact: basic run succeeds" {

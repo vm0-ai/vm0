@@ -40,7 +40,7 @@ agents:
 EOF
 
     echo "# Step 1: Compose agent..."
-    run $VM0_CLI compose vm0.yaml
+    run seed_compose_fixture vm0.yaml
     assert_success
 
     echo "# Step 2: Run with @orphan-pipe prompt..."
