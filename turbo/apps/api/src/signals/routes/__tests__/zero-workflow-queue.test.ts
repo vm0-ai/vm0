@@ -371,6 +371,37 @@ describe("workflow queue", () => {
     ).resolves.toHaveLength(2);
   });
 
+  it("propagates queue encryption failure while persistence remains necessary", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+    );
+
+    const encryptionError = new Error("queue payload encryption failed");
+    const kms = useSecretKmsProbe((_command, callNumber) => {
+      return callNumber === 1 ? Promise.reject(encryptionError) : undefined;
+    });
+
+    const failed = await postWorkflowWebhook(automation, "second");
+    expect(failed).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    expect(kms.generateDataKeyCalls).toBe(1);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      encryptionError,
+    );
+
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      firstRunId,
+    ]);
+    await completeRunThroughSandbox(scenario, firstRunId);
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      firstRunId,
+    ]);
+  });
+
   it("starts directly when failed queue encryption becomes unnecessary", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
