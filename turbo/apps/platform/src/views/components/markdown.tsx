@@ -6,7 +6,6 @@ import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { openImageLightboxOrArtifact$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import rehypeKatex from "rehype-katex";
-import rehypeSanitize from "rehype-sanitize";
 import remarkMath from "remark-math";
 import { theme$ } from "../../signals/theme.ts";
 import {
@@ -375,7 +374,6 @@ export function Markdown({
   mediaPreview = false,
   mathEnabled = false,
   escapeHtml = false,
-  sanitizeHtml = false,
   source,
   remarkPlugins,
   rehypePlugins,
@@ -384,7 +382,6 @@ export function Markdown({
   mediaPreview?: boolean;
   mathEnabled?: boolean;
   escapeHtml?: boolean;
-  sanitizeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
   const components = mediaPreview
@@ -413,15 +410,7 @@ export function Markdown({
           : remarkPlugins
       }
       rehypePlugins={
-        sanitizeHtml
-          ? [
-              rehypeSanitize,
-              ...(mathEnabled ? [rehypeKatex] : []),
-              ...(rehypePlugins ?? []),
-            ]
-          : mathEnabled
-            ? [rehypeKatex, ...(rehypePlugins ?? [])]
-            : rehypePlugins
+        mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
       }
       components={components}
       source={renderedSource}

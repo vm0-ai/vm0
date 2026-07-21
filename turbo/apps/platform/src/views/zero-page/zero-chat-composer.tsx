@@ -95,8 +95,6 @@ import type {
   ComposerTemplateAttachment,
   WorkflowComposerSignals,
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
-import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
-import { hasSubmittableInlinePromptContent } from "../../signals/zero-page/composer-inline-prompt-items.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -416,20 +414,6 @@ function resolveComposerModelForSelection(
     return selection;
   }
   return null;
-}
-
-function createAttachmentReferenceClientIds<T extends { clientId: string }>(
-  inlineAttachmentReferences: boolean,
-  visibleAttachments: readonly T[],
-): ReadonlySet<string> | null {
-  if (!inlineAttachmentReferences) {
-    return null;
-  }
-  return new Set(
-    visibleAttachments.map((attachment) => {
-      return attachment.clientId;
-    }),
-  );
 }
 
 interface VisualAttachmentUnsupportedState {
@@ -6299,8 +6283,6 @@ function useResolvedComposerSignals(
     draft.attachmentUploadsReady$,
   );
   const readInput = useSet(draft.readInput$);
-  const startAttachmentUpload = useSet(draft.startAttachmentUpload$);
-  const readAttachmentFileInfo = useSet(draft.readAttachmentFileInfo$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
   const restoreAttachments = useSet(draft.restoreAttachments$);
   const removeAttachment = useSet(draft.removeAttachment$);
@@ -6315,8 +6297,6 @@ function useResolvedComposerSignals(
 
   return {
     readInput,
-    startAttachmentUpload,
-    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6444,7 +6424,6 @@ function ComposerSendButton({
 
 function ComposerSendControl({
   draft,
-  attachmentReferenceClientIds,
   visibleAttachmentCount,
   uploadsReady,
   submitBlocked,
@@ -6457,7 +6436,6 @@ function ComposerSendControl({
   onSend,
 }: {
   draft: DraftSignals;
-  attachmentReferenceClientIds: ReadonlySet<string> | null;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
   submitBlocked: boolean;
@@ -6469,11 +6447,7 @@ function ComposerSendControl({
   submissionLoading: boolean;
   onSend: () => void;
 }) {
-  const input = useGet(draft.input$);
-  const hasInput = hasSubmittableInlinePromptContent(
-    input,
-    attachmentReferenceClientIds,
-  );
+  const hasInput = useGet(draft.hasInput$);
   const canSend = resolveComposerCanSend({
     hasInput,
     visibleAttachmentCount,
@@ -6653,8 +6627,6 @@ export function useZeroChatComposer({
   );
   const {
     readInput,
-    startAttachmentUpload,
-    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6665,12 +6637,7 @@ export function useZeroChatComposer({
     dragOver,
     setDragOver,
   } = resolved;
-  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const insertTemplate = useSet(composer.insertTemplate$);
-  const insertFile = useSet(composer.insertFile$);
-  const insertReferencedFile = useSet(composer.insertReferencedFile$);
-  const resolveFile = useSet(composer.resolveFile$);
-  const removeFile = useSet(composer.removeFile$);
+  const insertComposerText = useSet(composer.insertText$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6678,146 +6645,49 @@ export function useZeroChatComposer({
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
-  const features = useGet(featureSwitch$);
-  const inlineAttachmentReferences =
-    features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false;
-  const inlinePromptItems = composerInlinePromptItemsEnabled(features);
   const visualAttachmentUnsupported =
     getVisualAttachmentUnsupportedState(modelPicker);
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
   );
-  const attachmentReferenceClientIds = createAttachmentReferenceClientIds(
-    inlineAttachmentReferences,
-    visibleAttachments,
-  );
   const uploadsReady = attachmentUploadsState === "hasData";
-
-  const uploadInlineFile = (file: File, usePromptReference: boolean) => {
-    const started = startAttachmentUpload(file, rootSignal);
-    const { clientId } = started.attachment;
-    const insert = usePromptReference ? insertReferencedFile : insertFile;
-    insert({
-      clientId,
-      filename: started.attachment.filename,
-      contentType: started.attachment.contentType,
-      size: started.attachment.size,
-    });
-    const settleUpload = async () => {
-      const info = await tapError(
-        (async () => {
-          await started.result;
-          return await readAttachmentFileInfo(started.attachment, rootSignal);
-        })(),
-        () => {
-          removeFile(clientId);
-        },
-      );
-      if (!info) {
-        removeFile(clientId);
-        return;
-      }
-      resolveFile(clientId, info.id, info.url);
-      if (!usePromptReference) {
-        removeAttachment(started.attachment);
-      }
-    };
-    detach(settleUpload(), Reason.DomCallback);
-  };
-
-  const shouldInsertInlineAttachment = (): boolean => {
-    return inlineAttachmentReferences || inlinePromptItems;
-  };
-
-  const uploadComposerFile = (file: File, insertInline: boolean) => {
-    if (insertInline) {
-      uploadInlineFile(file, inlineAttachmentReferences);
-      return;
-    }
-    detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-  };
-
-  const insertClipboardAttachments = (
-    clipboardAttachments: PersistedAttachment[],
-  ) => {
-    const insertInline = shouldInsertInlineAttachment();
-    if (!insertInline) {
-      restoreAttachments(clipboardAttachments);
-      return;
-    }
-    if (inlineAttachmentReferences) {
-      const restoredAttachments = restoreAttachments(clipboardAttachments);
-      for (const [index, attachment] of clipboardAttachments.entries()) {
-        const restoredAttachment = restoredAttachments[index];
-        if (!restoredAttachment) {
-          continue;
-        }
-        insertReferencedFile({
-          clientId: restoredAttachment.clientId,
-          filename: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-          fileId: attachment.id,
-          url: attachment.url,
-        });
-      }
-      return;
-    }
-    for (const attachment of clipboardAttachments) {
-      insertFile({
-        clientId: crypto.randomUUID(),
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        size: attachment.size,
-        fileId: attachment.id,
-        url: attachment.url,
-      });
-    }
-  };
-
-  const pasteChatClipboard = (e: ComposerPasteEvent): boolean => {
-    const chatPayload = e.clipboardData
-      ? readChatMessageFromClipboard(e.clipboardData)
-      : null;
-    if (!chatPayload || chatPayload.attachments.length === 0) {
-      return false;
-    }
-    const persistedAttachments = toPersistedAttachments(
-      chatPayload.attachments,
-    );
-    if (persistedAttachments.length === 0) {
-      return false;
-    }
-    const allowedAttachments = visualAttachmentUnsupported
-      ? persistedAttachments.filter((attachment) => {
-          return !isVisualAttachment({
-            contentType: attachment.contentType,
-            filename: attachment.filename,
-          });
-        })
-      : persistedAttachments;
-    if (
-      visualAttachmentUnsupported &&
-      allowedAttachments.length < persistedAttachments.length
-    ) {
-      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-    }
-    e.preventDefault();
-    if (chatPayload.text) {
-      insertPromptMarkdown(chatPayload.text);
-    }
-    insertClipboardAttachments(allowedAttachments);
-    onDraftChange?.();
-    return true;
-  };
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
-    if (!e.clipboardData || pasteChatClipboard(e)) {
+    if (!e.clipboardData) {
       return;
     }
-    const items = e.clipboardData.items;
+    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
+    if (chatPayload && chatPayload.attachments.length > 0) {
+      const persistedAttachments = toPersistedAttachments(
+        chatPayload.attachments,
+      );
+      if (persistedAttachments.length > 0) {
+        const allowedAttachments = visualAttachmentUnsupported
+          ? persistedAttachments.filter((attachment) => {
+              return !isVisualAttachment({
+                contentType: attachment.contentType,
+                filename: attachment.filename,
+              });
+            })
+          : persistedAttachments;
+        if (allowedAttachments.length < persistedAttachments.length) {
+          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
+        }
+        e.preventDefault();
+        if (chatPayload.text) {
+          insertComposerText(chatPayload.text);
+        }
+        if (allowedAttachments.length > 0) {
+          restoreAttachments(allowedAttachments);
+        }
+        onDraftChange?.();
+        return;
+      }
+    }
+
+    const items = e.clipboardData?.items;
     if (!items) {
       return;
     }
@@ -6827,7 +6697,7 @@ export function useZeroChatComposer({
       if (pastedPlainText || !plainText) {
         return;
       }
-      insertPromptMarkdown(plainText);
+      insertComposerText(plainText);
       pastedPlainText = true;
     };
     for (const item of items) {
@@ -6851,7 +6721,7 @@ export function useZeroChatComposer({
       }
       e.preventDefault();
       applyPlainText();
-      uploadComposerFile(file, shouldInsertInlineAttachment());
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       onDraftChange?.();
     }
   };
@@ -6864,7 +6734,6 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
-    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -6875,7 +6744,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file, insertInline);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       uploaded = true;
     }
     if (uploaded) {
@@ -6997,17 +6866,13 @@ export function useZeroChatComposer({
 
   const handleSend = () => {
     const input = readInput();
-    const hasInput = hasSubmittableInlinePromptContent(
-      input,
-      attachmentReferenceClientIds,
-    );
     const sendAction = resolveKeyboardSendAction({
       canSend:
         !actionsLoading &&
         !submissionLoading &&
         inputForSubmissionLoadable.state !== "loading" &&
         uploadsReady &&
-        (hasInput || visibleAttachments.length > 0) &&
+        (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
       sending,
       queueWhileSending,
@@ -7021,21 +6886,15 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const currentInput = await readInputForSubmission(
-        attachmentReferenceClientIds,
-        pageSignal,
-      );
+      const currentInput = await readInputForSubmission(pageSignal);
       const prompt = currentInput.trim();
       if (prompt.length === 0 && visibleAttachments.length === 0) {
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, inlinePromptItems ? undefined : templatePicker?.value);
+        onSend(prompt, templatePicker?.value);
       } else {
-        onQueue?.(
-          prompt,
-          inlinePromptItems ? undefined : templatePicker?.value,
-        );
+        onQueue?.(prompt, templatePicker?.value);
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
@@ -7084,7 +6943,6 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
-    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -7095,7 +6953,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file, insertInline);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       uploaded = true;
     }
     if (uploaded) {
@@ -7121,22 +6979,6 @@ export function useZeroChatComposer({
     }
     modelPicker?.onChange(selection);
   };
-
-  const composerTemplatePicker: ComposerTemplatePicker | undefined =
-    templatePicker && inlinePromptItems
-      ? {
-          value: undefined,
-          onChange: (value) => {
-            if (!value) {
-              return;
-            }
-            const attachment = selectedComposerTemplateAttachment(value);
-            if (attachment) {
-              insertTemplate(value, attachment);
-            }
-          },
-        }
-      : templatePicker;
 
   return (
     <>
@@ -7175,15 +7017,14 @@ export function useZeroChatComposer({
             <div className="flex flex-col">
               <ComposerTemplateAttachmentSync
                 composer={composer}
-                picker={composerTemplatePicker}
+                picker={templatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
               />
-              {!inlinePromptItems && visibleAttachments.length > 0 && (
+              {visibleAttachments.length > 0 && (
                 <AttachmentChips
                   attachments={visibleAttachments}
                   onRemove={(attachment) => {
-                    removeFile(attachment.clientId);
                     removeAttachment(attachment);
                     onDraftChange?.();
                   }}
@@ -7207,7 +7048,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerTemplatePickerSlot
                     composer={composer}
-                    picker={composerTemplatePicker}
+                    picker={templatePicker}
                   />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7242,7 +7083,6 @@ export function useZeroChatComposer({
                   />
                   <ComposerSendControl
                     draft={draft}
-                    attachmentReferenceClientIds={attachmentReferenceClientIds}
                     visibleAttachmentCount={visibleAttachments.length}
                     uploadsReady={uploadsReady}
                     submitBlocked={submitBlocker !== undefined}

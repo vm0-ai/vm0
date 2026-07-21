@@ -3346,40 +3346,19 @@ describe("chat composer models", () => {
 
   it("hides an accepted visual attachment after switching to a text-only model", async () => {
     const user = userEvent.setup({ delay: null });
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: readonly { id?: string }[];
-        }
-      | undefined;
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
     context.mocks.upload.success({
       id: "visual-model-switch",
       filename: "storyboard.png",
       contentType: "image/png",
       size: 128,
-      url: "https://cdn.vm0.io/artifacts/user_1/visual-model-switch/storyboard.png",
+      url: "https://example.com/storyboard.png",
     });
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await expectComposerModel("Claude Sonnet 4.6");
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Describe ");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(
@@ -3390,7 +3369,6 @@ describe("chat composer models", () => {
     await expect(
       screen.findByLabelText("Open image preview for storyboard.png"),
     ).resolves.toBeInTheDocument();
-    expect(editor).toHaveTextContent("Describe image1");
 
     await user.click(
       screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
@@ -3406,72 +3384,6 @@ describe("chat composer models", () => {
         screen.queryByLabelText("Open image preview for storyboard.png"),
       ).not.toBeInTheDocument();
     });
-
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toBe("Describe");
-    expect(submitted?.attachFiles).toBeUndefined();
-  });
-
-  it("disables send when only a hidden visual attachment reference remains", async () => {
-    const user = userEvent.setup({ delay: null });
-    let submitted = false;
-    mockOrgModelRoutes("claude-sonnet-4-6");
-    mockAgent();
-    mockChatLifecycle(context, {
-      onRunCreate: () => {
-        submitted = true;
-      },
-    });
-    context.mocks.upload.success({
-      id: "visual-only-model-switch",
-      filename: "visual-only.png",
-      contentType: "image/png",
-      size: 128,
-      url: "https://cdn.vm0.io/artifacts/user_1/visual-only-model-switch/visual-only.png",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    await expectComposerModel("Claude Sonnet 4.6");
-    const editor = await findComposerEditor();
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File(["image"], "visual-only.png", { type: "image/png" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Open image preview for visual-only.png"),
-    ).resolves.toBeInTheDocument();
-    expect(editor).toHaveTextContent("image1");
-    expect(screen.getByLabelText("Send")).toBeEnabled();
-
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Open image preview for visual-only.png"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Send")).toBeDisabled();
-    });
-    await user.click(editor);
-    await user.keyboard("{Enter}");
-    expect(submitted).toBeFalsy();
   });
 
   it("shows agent connector access from the composer", async () => {
@@ -3892,254 +3804,6 @@ describe("chat composer templates", () => {
       expect(
         screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps templates structured when attachment references override inline prompt items", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    let submitted:
-      | {
-          prompt?: string;
-          generationTemplate?: GenerationTemplateRequest;
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    await selectTemplate(user, template);
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Create a launch deck{Enter}");
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toBe("Create a launch deck");
-    expect(submitted?.prompt).not.toContain("zero-template:v1");
-    expect(submitted?.generationTemplate).toMatchObject({
-      type: "presentation",
-      selection: { templateId: template.templateId },
-    });
-  });
-
-  it("serializes multiple inline templates into the user prompt", async () => {
-    const user = userEvent.setup({ delay: null });
-    const presentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const illustration = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: unknown;
-          generationTemplate?: GenerationTemplateRequest;
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Build ");
-
-    click(screen.getByLabelText("Template"));
-    await user.click(
-      await screen.findByLabelText(`Select template ${presentation.title}`),
-    );
-    await waitFor(() => {
-      expect(
-        editor.querySelectorAll("[data-composer-inline-template]"),
-      ).toHaveLength(1);
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-    });
-
-    click(screen.getByLabelText("Template"));
-    await user.click(tabByText("Illustration"));
-    await user.click(
-      screen.getByLabelText(`Select template ${illustration.title}`),
-    );
-    await waitFor(() => {
-      expect(
-        editor.querySelectorAll("[data-composer-inline-template]"),
-      ).toHaveLength(2);
-    });
-
-    await user.keyboard("a launch image{Enter}");
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.attachFiles).toBeUndefined();
-    expect(submitted?.generationTemplate).toBeUndefined();
-    expect(submitted?.prompt).toContain(
-      `${presentation.title}<!-- zero-template:v1 type="presentation"`,
-    );
-    expect(submitted?.prompt).toContain(
-      `${illustration.title}<!-- zero-template:v1 type="illustration"`,
-    );
-    expect(submitted?.prompt?.match(/<!-- zero-template:v1/g)).toHaveLength(2);
-    expect(submitted?.prompt?.indexOf(presentation.title)).toBeLessThan(
-      submitted?.prompt?.indexOf(illustration.title) ?? -1,
-    );
-
-    await waitFor(() => {
-      expect(editor).not.toHaveTextContent(presentation.title);
-      expect(document.body).not.toHaveTextContent("zero-template:v1");
-    });
-  });
-
-  it("serializes uploaded inline files into the user prompt", async () => {
-    const user = userEvent.setup({ delay: null });
-    const fileUrl =
-      "https://cdn.vm0.io/artifacts/user_1/upload_1/launch-notes.txt";
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: unknown;
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload_1",
-      filename: "launch-notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: fileUrl,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    const fileInput = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-    ).find((candidate) => {
-      return candidate.parentElement?.contains(editor) ?? false;
-    });
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["launch notes"], "launch-notes.txt", {
-        type: "text/plain",
-      }),
-    );
-
-    await waitFor(() => {
-      const item = editor.querySelector("[data-composer-inline-file]");
-      expect(item).toHaveTextContent("launch-notes.txt");
-      expect(item?.querySelector("svg")).not.toHaveClass("animate-pulse");
-      expect(screen.queryByLabelText("Remove launch-notes.txt")).toBeNull();
-    });
-
-    await user.click(editor);
-    await user.keyboard("Summarize this file{Enter}");
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.attachFiles).toBeUndefined();
-    expect(submitted?.prompt).toContain(`[launch-notes.txt](${fileUrl})`);
-    expect(submitted?.prompt).toContain("Summarize this file");
-  });
-
-  it("cancels a pending inline file when its atom is removed", async () => {
-    const user = userEvent.setup({ delay: null });
-    let submittedPrompt: string | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        submittedPrompt = body.prompt;
-      },
-    });
-    context.mocks.upload.pending({
-      id: "upload-inline-pending",
-      filename: "pending-notes.txt",
-      contentType: "text/plain",
-      size: 13,
-      url: "https://cdn.vm0.io/artifacts/user_1/upload_1/pending-notes.txt",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    const fileInput = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-    ).find((candidate) => {
-      return candidate.parentElement?.contains(editor) ?? false;
-    });
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["pending notes"], "pending-notes.txt", {
-        type: "text/plain",
-      }),
-    );
-
-    await user.click(
-      await screen.findByLabelText("Remove file pending-notes.txt"),
-    );
-    await waitFor(() => {
-      expect(
-        editor.querySelector("[data-composer-inline-file]"),
-      ).not.toBeInTheDocument();
-    });
-
-    await user.click(editor);
-    await user.keyboard("Continue without the file");
-    await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeEnabled();
-    });
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(submittedPrompt).toBe("Continue without the file");
     });
   });
 
