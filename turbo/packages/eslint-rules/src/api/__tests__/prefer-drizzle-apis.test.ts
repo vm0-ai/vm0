@@ -184,5 +184,24 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "isNull" } },
       ],
     },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQLWrapper } from "drizzle-orm";
+        function predicates<T extends SQLWrapper>(left: T, right: string) {
+          sql\`\${left} = \${right}\`;
+          sql\`\${left} IS NOT NULL\`;
+        }
+        function aggregate<T extends typeof users.id>(column: T) {
+          return sql\`MAX(\${column})\`;
+        }
+        void predicates;
+        void aggregate;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "isNotNull" } },
+        { messageId: "typedApi", data: { helper: "max" } },
+      ],
+    },
   ],
 });

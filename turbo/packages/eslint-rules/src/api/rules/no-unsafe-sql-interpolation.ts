@@ -11,21 +11,66 @@ type MessageId =
   | "undefinedInterpolation"
   | "unknownInterpolation";
 
+function constrainedTypeMembers(
+  checker: TypeChecker,
+  type: Type,
+  visited: Set<Type>,
+): Type[] | null {
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    if (visited.has(type)) {
+      return null;
+    }
+    visited.add(type);
+    const constraint = checker.getBaseConstraintOfType(type);
+    const members =
+      constraint === undefined
+        ? null
+        : constrainedTypeMembers(checker, constraint, visited);
+    visited.delete(type);
+    return members;
+  }
+
+  if (!type.isUnion()) {
+    return [type];
+  }
+
+  const members: Type[] = [];
+  for (const member of type.types) {
+    const constrainedMembers = constrainedTypeMembers(checker, member, visited);
+    if (constrainedMembers === null) {
+      return null;
+    }
+    members.push(...constrainedMembers);
+  }
+  return members;
+}
+
 function interpolationProblem(
   checker: TypeChecker,
   type: Type,
 ): MessageId | null {
-  if ((type.flags & TypeFlags.Any) !== 0) {
+  const members = constrainedTypeMembers(checker, type, new Set<Type>());
+  if (members === null) {
+    return "unknownInterpolation";
+  }
+  if (
+    members.some((member) => {
+      return (member.flags & TypeFlags.Any) !== 0;
+    })
+  ) {
     return "anyInterpolation";
   }
-  if ((type.flags & TypeFlags.Unknown) !== 0) {
+  if (
+    members.some((member) => {
+      return (member.flags & TypeFlags.Unknown) !== 0;
+    })
+  ) {
     return "unknownInterpolation";
   }
 
-  const members = type.isUnion() ? type.types : [type];
   if (
     members.some((member) => {
-      return (member.flags & TypeFlags.Undefined) !== 0;
+      return (member.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0;
     })
   ) {
     return "undefinedInterpolation";
@@ -38,7 +83,6 @@ function interpolationProblem(
     return "arrayInterpolation";
   }
   if (
-    type.isUnion() &&
     members.some((member) => {
       return isDrizzleWrapperType(checker, member);
     }) &&

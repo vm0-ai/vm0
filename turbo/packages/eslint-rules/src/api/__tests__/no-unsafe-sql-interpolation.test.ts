@@ -77,6 +77,19 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
       `,
     },
     {
+      code: `${drizzlePreamble}
+        import { sql, type SQLWrapper } from "drizzle-orm";
+        function interpolateBound<T extends string | number>(value: T) {
+          return sql\`\${value}\`;
+        }
+        function interpolateWrapper<T extends SQLWrapper>(value: T) {
+          return sql\`\${value}\`;
+        }
+        void interpolateBound;
+        void interpolateWrapper;
+      `,
+    },
+    {
       code: `
         function sql(strings: TemplateStringsArray, ...values: unknown[]) {
           return { strings, values };
@@ -147,6 +160,31 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         sql\`\${mixed}\`;
       `,
       errors: [{ messageId: "mixedInterpolation" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare function returnsVoid(): void;
+        function interpolateUnconstrained<T>(value: T) {
+          return sql\`\${value}\`;
+        }
+        function interpolateArray<T extends readonly string[]>(value: T) {
+          return sql\`\${value}\`;
+        }
+        function interpolateMixed<T extends string | SQL>(value: T) {
+          return sql\`\${value}\`;
+        }
+        sql\`\${returnsVoid()}\`;
+        void interpolateUnconstrained;
+        void interpolateArray;
+        void interpolateMixed;
+      `,
+      errors: [
+        { messageId: "unknownInterpolation" },
+        { messageId: "arrayInterpolation" },
+        { messageId: "mixedInterpolation" },
+        { messageId: "undefinedInterpolation" },
+      ],
     },
   ],
 });
