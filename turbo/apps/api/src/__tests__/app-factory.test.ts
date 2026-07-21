@@ -558,6 +558,30 @@ describe("createApp", () => {
       });
     });
 
+    it("returns 404 for retired BB0, API key, and public v1 routes", async () => {
+      const app = createApp({ signal: context.signal });
+      const retiredRoutes = [
+        ["POST", "/api/device-token"],
+        ["POST", "/api/device-token/poll"],
+        ["POST", "/api/zero/devices/bb0/confirm"],
+        ["GET", "/api/zero/api-keys"],
+        ["POST", "/api/zero/api-keys"],
+        ["DELETE", `/api/zero/api-keys/${crypto.randomUUID()}`],
+        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}`],
+        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}/messages`],
+        ["POST", "/api/v1/chat-threads/messages"],
+        ["POST", "/api/v1/audio/transcriptions"],
+      ] as const;
+
+      for (const [method, path] of retiredRoutes) {
+        const response = await app.request(path, { method });
+        expect(response.status, `${method} ${path}`).toBe(404);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Not found",
+        });
+      }
+    });
+
     it("keeps registered routes matched normally", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", { method: "GET" });

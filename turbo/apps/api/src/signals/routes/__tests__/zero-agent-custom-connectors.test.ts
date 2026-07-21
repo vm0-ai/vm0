@@ -39,7 +39,7 @@ async function createAgent(
 async function apiKeyHeaders(
   actor: ApiTestUser,
 ): Promise<{ readonly authorization: string }> {
-  const key = await api.createApiKey(actor);
+  const key = await api.createCliToken(actor);
   mockClerkMembership(context, actor, actor.orgRole ?? "org:admin");
   return bearerHeaders(key.token);
 }

@@ -83,7 +83,7 @@ async function apiKeyHeaders(
   actor: ApiTestUser,
   role: "org:admin" | "org:member",
 ): Promise<{ readonly authorization: string }> {
-  const key = await api.createApiKey(actor);
+  const key = await api.createCliToken(actor);
   mockClerkMembership(context, actor, role);
   return bearerHeaders(key.token);
 }

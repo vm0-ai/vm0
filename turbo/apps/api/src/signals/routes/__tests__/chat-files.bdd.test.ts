@@ -852,10 +852,7 @@ describe("CHAT-03 artifacts and memory", () => {
     expect(peerMemory.exists).toBeFalsy();
 
     authOrg.mockClerkOrg(owner);
-    const key = await authOrg.createApiKey(owner, {
-      name: "BDD memory token",
-      expiresInDays: 7,
-    });
+    const key = await authOrg.createCliToken(owner);
     const bearerMemory = await api.readMemoryWithBearer(key.token, [200]);
     if (bearerMemory.status !== 200) {
       throw new Error("Expected the CLI bearer token to read memory");

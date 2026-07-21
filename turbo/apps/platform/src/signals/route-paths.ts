@@ -31,8 +31,6 @@ export const ROUTES = {
   githubConnect: "/github/connect",
   telegramConnect: "/telegram/connect",
   agentphoneConnect: "/agentphone/connect",
-  settingsApiKeys: "/settings/api-keys",
-  deviceBb0: "/device/bb0",
   onboarding: "/onboarding/491858",
   signIn: "/sign-in",
   signInCatchAll: "/sign-in{/*path}",

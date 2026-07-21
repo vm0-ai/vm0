@@ -7012,8 +7012,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
-    const actorRunnerKey = await api.createApiKey(actor);
-    const memberRunnerKey = await api.createApiKey(member);
+    const actorRunnerKey = await api.createCliToken(actor);
+    const memberRunnerKey = await api.createCliToken(member);
     const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
@@ -8065,10 +8065,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
-  it("dispatches, scopes, and claims runs through user API keys", async () => {
+  it("dispatches, scopes, and claims runs through CLI PATs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const apiKey = await api.createApiKey(actor);
+    const apiKey = await api.createCliToken(actor);
     const bearer = `Bearer ${apiKey.token}`;
     const firstPrompt = "user runner job one";
 
@@ -8308,7 +8308,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
 
     const outsider = createBddApi(context).user();
-    const outsiderKey = await api.createApiKey(outsider);
+    const outsiderKey = await api.createCliToken(outsider);
     const outsiderBearer = `Bearer ${outsiderKey.token}`;
     const outsiderPoll = await api.requestPollRunnerAs(
       outsiderBearer,
@@ -8389,10 +8389,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(settled.body.concurrency.active).toBe(0);
   });
 
-  it("rejects runner calls with malformed, revoked, or wrong runner credentials", async () => {
+  it("rejects runner calls with malformed or wrong runner credentials", async () => {
     const api = createRunsApi(context);
-    const bdd = createBddApi(context);
-    const actor = bdd.user();
     const pollBody = {
       group: "vm0/bdd-auth",
       supportedProfiles: ["vm0/default"],
@@ -8415,26 +8413,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(poll.body.error.message).toBe("Authentication required");
     }
 
-    const apiKey = await api.createApiKey(actor);
-    const bearer = `Bearer ${apiKey.token}`;
-    await api.requestPollRunnerAs(bearer, pollBody, [200]);
-
-    await api.revokeApiKey(actor, apiKey.id);
-    const revokedPoll = await api.requestPollRunnerAs(bearer, pollBody, [401]);
-    expectApiError(revokedPoll.body);
-    const revokedClaim = await api.requestClaimRunnerJobAs(
-      bearer,
-      randomUUID(),
-      [401],
-    );
-    expectApiError(revokedClaim.body);
-    expect(revokedClaim.body.error.message).toBe("Not authenticated");
-    const revokedRealtime = await api.requestRunnerRealtimeTokenAs(
-      bearer,
-      { group: "vm0/bdd-auth" },
-      [401],
-    );
-    expectApiError(revokedRealtime.body);
     expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
   });
 

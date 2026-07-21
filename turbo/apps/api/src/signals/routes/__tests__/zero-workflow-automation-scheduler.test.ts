@@ -415,7 +415,7 @@ describe("zero workflow automation scheduler", () => {
       context.signal,
     );
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
-    const apiKey = await runsApi.createApiKey(member);
+    const apiKey = await runsApi.createCliToken(member);
     await accept(
       setupApp({ context })(zeroAgentsMainContract).list({
         headers: { authorization: `Bearer ${apiKey.token}` },

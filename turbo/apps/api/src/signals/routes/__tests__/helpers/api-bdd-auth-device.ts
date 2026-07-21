@@ -25,12 +25,6 @@ import {
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,
 } from "@vm0/api-contracts/contracts/desktop-auth";
-import {
-  bb0DeviceConfirmContract,
-  type CreateDeviceTokenRequest,
-  deviceTokenContract,
-  type PollDeviceTokenRequest,
-} from "@vm0/api-contracts/contracts/device-token";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import {
   type ClaudeCodeDeviceAuthScope,
@@ -54,7 +48,6 @@ import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cliAuthTestRoutes } from "../../cli-auth-test";
 import { desktopAuthRoutes } from "../../desktop-auth";
-import { deviceTokenRoutes } from "../../device-token";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroClaudeCodeDeviceAuthRoutes } from "../../zero-claude-code-device-auth";
@@ -94,7 +87,6 @@ const authDeviceRoutes: readonly RouteEntry[] = [
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
-  ...deviceTokenRoutes,
   ...zeroAgentsRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroClaudeCodeDeviceAuthRoutes,
@@ -673,43 +665,6 @@ export function createAuthDeviceApiActions(context: TestContext) {
           params: { handoffId },
           body: {},
           headers: authenticate(actor),
-        }),
-        statuses,
-      );
-    },
-
-    async createDeviceToken(body: CreateDeviceTokenRequest) {
-      const client = authDeviceApp(context)(deviceTokenContract);
-      const response = await accept(client.create({ body }), [200]);
-      return response.body;
-    },
-
-    async requestDeviceTokenCreate(
-      body: CreateDeviceTokenRequest,
-      statuses: readonly (200 | 400)[],
-    ) {
-      const client = authDeviceApp(context)(deviceTokenContract);
-      return await accept(client.create({ body }), statuses);
-    },
-
-    async requestDeviceTokenPoll(
-      body: PollDeviceTokenRequest,
-      statuses: readonly (200 | 202 | 400 | 404 | 410)[],
-    ) {
-      const client = authDeviceApp(context)(deviceTokenContract);
-      return await accept(client.poll({ body }), statuses);
-    },
-
-    async requestBb0Confirm(
-      actor: ApiTestUser | null,
-      deviceCode: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      const client = authDeviceApp(context)(bb0DeviceConfirmContract);
-      return await accept(
-        client.confirm({
-          headers: authenticate(actor),
-          body: { device_code: deviceCode },
         }),
         statuses,
       );
