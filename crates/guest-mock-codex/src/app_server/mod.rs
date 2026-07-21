@@ -20,9 +20,10 @@ const METHOD_NOT_FOUND: i64 = -32601;
 /// `listen` must be exactly `stdio://`. The function locks process stdin and
 /// stdout, then synchronously processes newline-delimited JSON-RPC messages on
 /// the calling thread. The loop normally returns when stdin reaches EOF or the
-/// configured scenario requests a stop. Depending on the selected scenario,
-/// EOF can instead park the thread indefinitely or start a helper process that
-/// continues holding stderr after this function returns.
+/// configured scenario requests a stop. Selected scenarios can instead park
+/// the thread indefinitely, either while handling a message or after EOF, or
+/// start a helper process that continues holding stderr after this function
+/// returns.
 ///
 /// Mock behavior is selected by `MOCK_CODEX_APP_SERVER_SCENARIO`.
 ///
