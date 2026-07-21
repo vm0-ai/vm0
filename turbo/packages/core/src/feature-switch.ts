@@ -496,8 +496,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Resume a web chat with a callback prompt after a connector or permission action succeeds.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroMail]: {
     maintainer: "yuma@vm0.ai",
