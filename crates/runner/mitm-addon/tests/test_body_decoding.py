@@ -146,6 +146,7 @@ class TestStreamDecodeFeed:
     def test_zlib_expansion_budget_allows_exact_grace(self, headers, encoding):
         plaintext = b"A" * STREAM_DECODE_EXPANSION_GRACE
         compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < len(plaintext)
         chunks: list[bytes] = []
         session = create_stream_decode_session(
             headers(("Content-Encoding", encoding)), chunks.append
@@ -161,6 +162,7 @@ class TestStreamDecodeFeed:
     def test_zlib_high_ratio_output_stops_at_expansion_budget(self, headers, encoding):
         plaintext = b"A" * (64 * 1024 * 1024)
         compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) < STREAM_DECODE_CHUNK_LIMIT
         expected_decoded_bytes = max(
             STREAM_DECODE_EXPANSION_GRACE,
             len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO,
@@ -191,6 +193,7 @@ class TestStreamDecodeFeed:
     def test_zlib_expansion_budget_is_shared_across_callbacks(self, headers, encoding):
         plaintext = b"A" * (8 * 1024 * 1024)
         compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < STREAM_DECODE_EXPANSION_GRACE
         split_at = len(compressed) // 3
         chunks: list[bytes] = []
         session = create_stream_decode_session(
@@ -199,6 +202,8 @@ class TestStreamDecodeFeed:
         assert session is not None
 
         session.feed(compressed[:split_at])
+        decoded_after_first_callback = sum(len(chunk) for chunk in chunks)
+        assert 0 < decoded_after_first_callback < STREAM_DECODE_EXPANSION_GRACE
         session.feed(compressed[split_at:])
 
         assert b"".join(chunks) == plaintext[:STREAM_DECODE_EXPANSION_GRACE]
@@ -210,6 +215,10 @@ class TestStreamDecodeFeed:
         second_plaintext = b"B" * (3 * 1024 * 1024)
         first_member = _compress_one_shot_body(encoding, first_plaintext)
         second_member = _compress_one_shot_body(encoding, second_plaintext)
+        assert (
+            len(first_member + second_member) * STREAM_DECODE_MAX_EXPANSION_RATIO
+            < STREAM_DECODE_EXPANSION_GRACE
+        )
         chunks: list[bytes] = []
         session = create_stream_decode_session(
             headers(("Content-Encoding", encoding)), chunks.append
