@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.292.0](https://github.com/vm0-ai/vm0/compare/api-v1.291.1...api-v1.292.0) (2026-07-21)
+
+
+### Features
+
+* **api:** alert on orphaned queued chat messages ([#22312](https://github.com/vm0-ai/vm0/issues/22312)) ([b7615ae](https://github.com/vm0-ai/vm0/commit/b7615ae6b31f938f8bab8696c9b05b70498f32be))
+
+
+### Refactoring
+
+* **chat:** make chat_message_queue authoritative for queued messages ([#22311](https://github.com/vm0-ai/vm0/issues/22311)) ([5128f65](https://github.com/vm0-ai/vm0/commit/5128f65071d738fd9d2f3790cb04c625e7835153))
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+    * @vm0/db bumped to 1.123.0
+
 ## [1.291.1](https://github.com/vm0-ai/vm0/compare/api-v1.291.0...api-v1.291.1) (2026-07-21)
 
 
