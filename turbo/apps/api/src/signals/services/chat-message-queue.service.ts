@@ -420,7 +420,10 @@ export async function pendingChatThreadQueueThreadIds(
     .where(
       and(
         or(
-          eq(chatMessageQueue.itemType, "user_message"),
+          inArray(chatMessageQueue.itemType, [
+            "user_message",
+            "slack_user_message",
+          ]),
           and(
             eq(chatMessageQueue.itemType, "workflow_event"),
             isNull(chatThreads.queuePausedAt),

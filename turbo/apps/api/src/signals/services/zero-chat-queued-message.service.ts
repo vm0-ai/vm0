@@ -7,7 +7,7 @@ import {
   type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -44,6 +44,11 @@ const queuedUserMessageRunParamsSchema = z.object({
 type QueuedUserMessageRunParams = z.infer<
   typeof queuedUserMessageRunParamsSchema
 >;
+
+const queuedUserMessageItemTypes = [
+  "user_message",
+  "slack_user_message",
+] as const;
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -94,7 +99,7 @@ function unclaimedQueuedUserMessageCondition(
 ): SQL | undefined {
   return and(
     eq(chatMessageQueue.chatThreadId, threadId),
-    eq(chatMessageQueue.itemType, "user_message"),
+    inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
   );
 }
 
@@ -106,7 +111,7 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
       .from(chatMessageQueue)
       .where(
         and(
-          eq(chatMessageQueue.itemType, "user_message"),
+          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
           eq(chatMessageQueue.chatMessageId, chatMessages.id),
         ),
       ),
@@ -179,7 +184,8 @@ export async function enqueueUserMessageQueueItem(
       orgId: args.orgId,
       userId: args.userId,
       chatThreadId: args.chatThreadId,
-      itemType: "user_message",
+      itemType:
+        args.triggerSource === "slack" ? "slack_user_message" : "user_message",
       chatMessageId: args.chatMessageId,
       triggerSource: args.triggerSource,
       encryptedParams: args.encryptedParams,
@@ -198,7 +204,7 @@ export async function deleteUserMessageQueueItem(
     .delete(chatMessageQueue)
     .where(
       and(
-        eq(chatMessageQueue.itemType, "user_message"),
+        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessageQueue.chatMessageId, args.messageId),
       ),
@@ -239,7 +245,7 @@ export async function appendClaimedUserMessage(
     )
     .where(
       and(
-        eq(chatMessageQueue.itemType, "user_message"),
+        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
         eq(chatMessageQueue.chatMessageId, args.messageId),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessages.chatThreadId, args.threadId),

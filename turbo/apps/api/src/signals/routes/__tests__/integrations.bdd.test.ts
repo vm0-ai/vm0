@@ -1132,7 +1132,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 describe("INT-01: Slack app deep webhook flows", () => {
   it("keeps canonical ingress sticky and deduplicates Slack retries per event", async () => {
     const actor = bdd.user();
-    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
     integrations.configureSlackAppMocks();
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
@@ -1246,6 +1248,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).not.toHaveBeenCalled();
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
 
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
@@ -1278,6 +1282,24 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
+    const defaultAgentId = state.default_agent?.id;
+    if (!defaultAgentId) {
+      throw new Error("Expected canonical Slack thread to use a default agent");
+    }
+    const queuedWebMessage = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: defaultAgentId,
+        prompt: "keep the web session separate",
+        threadId: canonicalChatThreadId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    expect(queuedWebMessage.body).toMatchObject({
+      runId: null,
+      threadId: canonicalChatThreadId,
+    });
 
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackIngress]: false,
@@ -1338,6 +1360,76 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return ingress.eventId;
       }),
     ).toStrictEqual(expect.arrayContaining([eventId, stickyEventId]));
+    // The previous deployed reader matches only `user_message`. Keeping Slack
+    // work on its own enum value prevents that reader from claiming a new
+    // Slack row during a rolling deploy, while the new reader handles both.
+    expect(state.chat_message_queue).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemType: "user_message",
+          triggerSource: null,
+        }),
+        expect.objectContaining({
+          itemType: "slack_user_message",
+          triggerSource: "slack",
+        }),
+      ]),
+    );
+
+    await completeSlackTriggeredRun({
+      runId: run1Id,
+      sandboxToken: claim1.sandboxToken,
+      cliAgentType: claim1.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+    const run1 = await runs.readRun(actor, run1Id);
+    const slackSessionId = run1.result?.agentSessionId;
+    if (!slackSessionId) {
+      throw new Error(
+        "Expected the first canonical Slack run to save a session",
+      );
+    }
+
+    const webRunId = await pollRunnerRun(
+      runnerGroup,
+      "Expected the queued Web run in the shared thread queue",
+    );
+    const webClaim = await runs.claimRunnerJob(webRunId);
+    expect(webClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: webRunId,
+      sandboxToken: webClaim.sandboxToken,
+      cliAgentType: webClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+    const webRun = await runs.readRun(actor, webRunId);
+    const webSessionId = webRun.result?.agentSessionId;
+    if (!webSessionId) {
+      throw new Error("Expected the Web run to save its independent session");
+    }
+
+    const run2Id = await pollSlackRun(runnerGroup);
+    const claim2 = await runs.claimRunnerJob(run2Id);
+    expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
+    expect(claim2.resumeSession?.sessionId).not.toBe(
+      `bdd-slack-cli-${webRunId}`,
+    );
+    state = await integrations.readSlackTestState(teamId);
+    expect(state.recent_runs).toContainEqual(
+      expect.objectContaining({
+        id: run2Id,
+        triggerSource: "slack",
+        promptPreview: "stay canonical after the switch changes",
+      }),
+    );
+    await completeSlackTriggeredRun({
+      runId: run2Id,
+      sandboxToken: claim2.sandboxToken,
+      cliAgentType: claim2.cliAgentType,
+    });
+    const run2 = await runs.readRun(actor, run2Id);
+    expect(run2.result?.agentSessionId).toBe(slackSessionId);
+    expect(run2.result?.agentSessionId).not.toBe(webSessionId);
   });
 
   it("keeps Slack retries on sticky legacy routes out of canonical ingress", async () => {
