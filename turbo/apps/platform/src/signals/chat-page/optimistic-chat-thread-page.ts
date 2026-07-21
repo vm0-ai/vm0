@@ -8,6 +8,7 @@ import {
   type ChatThreadEvent,
   type GenerationTemplateRequest,
   type PagedChatMessage,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -50,6 +51,7 @@ import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 
 export type NewChatThreadPane = "main" | "sidebar";
 
@@ -65,6 +67,7 @@ interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
   generationTemplate: GenerationTemplateRequest | undefined;
+  editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
   routeSearchParams?: URLSearchParams;
 }
@@ -86,11 +89,13 @@ function createNewThreadOptimisticMessageEntry({
   clientMessageId,
   prepared,
   generationTemplate,
+  structuredPrompt,
 }: {
   threadId: string;
   clientMessageId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
+  structuredPrompt: UserMessageDocument | undefined;
 }): OptimisticChatMessageInput {
   return {
     threadId,
@@ -101,6 +106,7 @@ function createNewThreadOptimisticMessageEntry({
       content: prepared.prompt,
       attachFiles: prepared.attachments,
       generationTemplate,
+      ...(structuredPrompt ? { structuredPrompt } : {}),
       createdAt: nowDate().toISOString(),
     },
   };
@@ -115,6 +121,7 @@ function newThreadSendBody({
   codexFastModeEnabled,
   realAgentInPreviewEnabled,
   generationTemplate,
+  structuredPrompt,
   computerUseHostId,
 }: {
   agentId: string;
@@ -125,6 +132,7 @@ function newThreadSendBody({
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
+  structuredPrompt: UserMessageDocument | undefined;
   computerUseHostId?: string | null;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
@@ -140,6 +148,7 @@ function newThreadSendBody({
     ...(runOptions ? { runOptions } : {}),
     ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate,
+    ...(structuredPrompt ? { structuredPrompt } : {}),
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     attachFiles: prepared.attachFiles,
   };
@@ -453,6 +462,15 @@ const sendNewThreadMessage$ = command(
     if (!prepared) {
       return null;
     }
+    const features = get(featureSwitch$);
+    const structuredPrompt =
+      (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
+      request.editorDocument
+        ? (request.editorDocument.toMessageDocument({
+            generationTemplate,
+            attachments: prepared.attachments,
+          }) ?? undefined)
+        : undefined;
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -464,6 +482,7 @@ const sendNewThreadMessage$ = command(
           clientMessageId,
           prepared,
           generationTemplate,
+          structuredPrompt,
         }),
       ),
     );
@@ -500,10 +519,11 @@ const sendNewThreadMessage$ = command(
       clientMessageId,
       prepared,
       modelSelection: resolvedModelSelection,
-      codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+      codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       realAgentInPreviewEnabled:
-        get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview] ?? false,
+        features[FeatureSwitchKey.RealAgentInPreview] ?? false,
       generationTemplate,
+      structuredPrompt,
       computerUseHostId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {

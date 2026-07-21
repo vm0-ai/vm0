@@ -83,6 +83,7 @@ import { updateUserModelPreference$ } from "../../signals/external/user-model-pr
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
+import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
 
 function getTagline(
   agentName: string,
@@ -502,6 +503,7 @@ function useAgentChatSendMessage({
   onSend: (
     message: string,
     selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: EditorDocumentSnapshot,
   ) => void;
   submissionLoading: boolean;
 } {
@@ -509,7 +511,7 @@ function useAgentChatSendMessage({
   const rootSignal = useGet(rootSignal$);
 
   return {
-    onSend: (message, selectedGenerationTemplate) => {
+    onSend: (message, selectedGenerationTemplate, editorDocument) => {
       if (!currentChatAgentId) {
         return;
       }
@@ -521,6 +523,7 @@ function useAgentChatSendMessage({
               agentId: currentChatAgentId,
               prompt: message,
               generationTemplate: selectedGenerationTemplate,
+              editorDocument,
               ...(selectedComputerUseHostId
                 ? { computerUseHostId: selectedComputerUseHostId }
                 : {}),

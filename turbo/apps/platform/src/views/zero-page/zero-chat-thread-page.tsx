@@ -91,6 +91,7 @@ import type {
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -3997,14 +3998,22 @@ function useChatThreadComposerSendState({
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
 
-  const handleSend = (text: string) => {
+  const handleSend = (
+    text: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: EditorDocumentSnapshot,
+  ) => {
     detach(
       (async () => {
         const computerUsePatch =
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
-        const sent = await send(text, { ...computerUsePatch }, rootSignal);
+        const sent = await send(
+          text,
+          { ...computerUsePatch, generationTemplate, editorDocument },
+          rootSignal,
+        );
         if (sent) {
           clearComputerUseHostOverride();
         }
@@ -4013,11 +4022,19 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleQueue = (text: string) => {
+  const handleQueue = (
+    text: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: EditorDocumentSnapshot,
+  ) => {
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        const queued = await queueMessage(text, computerUseHostId, rootSignal);
+        const queued = await queueMessage(
+          text,
+          { computerUseHostId, generationTemplate, editorDocument },
+          rootSignal,
+        );
         if (queued) {
           clearComputerUseHostOverride();
         }

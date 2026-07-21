@@ -100,6 +100,7 @@ import {
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type {
   ComposerTemplateAttachment,
+  WorkflowComposerSubmissionSnapshot,
   WorkflowComposerSignals,
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
@@ -256,10 +257,12 @@ export interface ZeroChatComposerProps {
   onSend: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
   ) => void;
   onQueue?: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
   ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
@@ -7042,15 +7045,15 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const currentInput = await readInputForSubmission(pageSignal);
-      const prompt = currentInput.trim();
+      const submission = await readInputForSubmission(pageSignal);
+      const prompt = submission.prompt.trim();
       if (prompt.length === 0 && visibleAttachments.length === 0) {
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, templatePicker?.value);
+        onSend(prompt, templatePicker?.value, submission.editorDocument);
       } else {
-        onQueue?.(prompt, templatePicker?.value);
+        onQueue?.(prompt, templatePicker?.value, submission.editorDocument);
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
