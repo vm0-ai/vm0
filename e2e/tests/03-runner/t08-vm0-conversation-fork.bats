@@ -169,7 +169,7 @@ teardown_file() {
 
     # Extract conversation ID from fork run
     local fork_conversation_id
-    fork_conversation_id=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    fork_conversation_id=$(run_fixture_field "$output" '.conversationId')
     echo "# Fork conversation ID: $fork_conversation_id"
     [ -n "$fork_conversation_id" ]
 
