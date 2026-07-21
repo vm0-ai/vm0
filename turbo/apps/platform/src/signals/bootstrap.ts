@@ -47,6 +47,7 @@ import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-conn
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
+import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
@@ -160,6 +161,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.computerUseAuthorize,
     setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
+  },
+  {
+    path: ROUTES.connectorRedirecting,
+    setup: setupConnectorRedirectingPage$,
   },
   {
     path: ROUTES.directedAuthorize,
