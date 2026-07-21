@@ -26,9 +26,6 @@ import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
 const ARTIFACT_SYNC_STATE_ID = "artifacts";
-const cachedArtifactItemSchema = artifactItemSchema.omit({
-  isFavorited: true,
-});
 
 function storedLastSyncedAt(raw: unknown): string {
   if (
@@ -106,7 +103,7 @@ interface ValidatedStoredArtifactItem {
 }
 
 function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
-  const cachedItem: ArtifactItem = cachedArtifactItemSchema.parse(item);
+  const cachedItem: ArtifactItem = artifactItemSchema.parse(item);
   return {
     ...cachedItem,
     searchText: artifactSearchText(cachedItem),
@@ -126,7 +123,7 @@ function storedSearchText(raw: unknown, item: ArtifactItem): string {
 }
 
 function validateStoredArtifactItem(raw: unknown): ValidatedStoredArtifactItem {
-  const item: ArtifactItem = cachedArtifactItemSchema.parse(raw);
+  const item: ArtifactItem = artifactItemSchema.parse(raw);
   return {
     item,
     searchText: storedSearchText(raw, item),

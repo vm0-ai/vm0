@@ -23,6 +23,10 @@ ruleTester.run("no-raw-msw-http", rule, {
       code: `server.use(http.get("http://localhost:3000/test", () => HttpResponse.json({})));`,
     },
     {
+      // Allowed: vm0 does not own an internal /api/v1 contract namespace.
+      code: `server.use(http.get("*/api/v1/widgets", () => HttpResponse.json({})));`,
+    },
+    {
       // Allowed: method not in the MSW set (e.g. http.options — not enforced)
       code: `server.use(http.options("*/api/zero/org", () => HttpResponse.json({})));`,
     },
@@ -75,10 +79,6 @@ ruleTester.run("no-raw-msw-http", rule, {
     },
     {
       code: `server.use(http.delete("*/api/zero/secrets/:id", () => HttpResponse.json({})));`,
-      errors: [{ messageId: "useMockApi" }],
-    },
-    {
-      code: `server.use(http.get("*/api/v1/widgets", () => HttpResponse.json({})));`,
       errors: [{ messageId: "useMockApi" }],
     },
     {

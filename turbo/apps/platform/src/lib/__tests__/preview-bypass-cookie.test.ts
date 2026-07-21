@@ -59,7 +59,7 @@ describe("preview bypass cookie", () => {
     );
   });
 
-  it("forwards an omby host cookie only to the vm6 preview domain", () => {
+  it("forwards an omby host cookie only to the matching vm6 API", () => {
     const location = {
       hostname: "pr-22085-app.omby.ai",
       protocol: "https:",
@@ -73,10 +73,14 @@ describe("preview bypass cookie", () => {
     const otherPreviewUrl = new URL(
       "https://pr-22086-api.vm6.ai/api/zero/status",
     );
+    const retiredWwwUrl = new URL(
+      "https://pr-22085-www.vm6.ai/onboarding/491858?x-vercel-protection-bypass=stale",
+    );
 
     appendPreviewBypassToUrl(apiUrl, location, cookie);
     appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
     appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);
+    appendPreviewBypassToUrl(retiredWwwUrl, location, cookie);
 
     expect(apiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
       "preview secret",
@@ -86,6 +90,9 @@ describe("preview bypass cookie", () => {
     ).toBeFalsy();
     expect(
       otherPreviewUrl.searchParams.has("x-vercel-protection-bypass"),
+    ).toBeFalsy();
+    expect(
+      retiredWwwUrl.searchParams.has("x-vercel-protection-bypass"),
     ).toBeFalsy();
   });
 });

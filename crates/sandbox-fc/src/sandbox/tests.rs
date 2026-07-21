@@ -1,6 +1,8 @@
 use super::*;
+use crate::api::test_support::{MockFirecrackerApi, MockResponse};
 use crate::config::{RateLimiterConfig, TokenBucketConfig};
 use sandbox::ExecTermination;
+use std::os::unix::fs::PermissionsExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::Instant;
@@ -3049,6 +3051,96 @@ async fn process_monitor_reports_startup_exit_as_stopped() {
     );
 
     handle.wait().await;
+}
+
+#[tokio::test]
+async fn spawn_and_wait_for_api_adopts_process_and_secures_socket() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut sandbox = test_sandbox_with_state(SandboxState::Created);
+    sandbox.sandbox_paths = SandboxPaths::new(workspace.path().to_path_buf());
+
+    let mut api = MockFirecrackerApi::repeating(MockResponse::ok());
+    std::fs::set_permissions(api.socket_path(), std::fs::Permissions::from_mode(0o666)).unwrap();
+
+    let mut command = tokio::process::Command::new("bash");
+    command.args(["-c", "sleep 60"]);
+
+    let _client = sandbox
+        .spawn_and_wait_for_api(
+            command,
+            api.socket_path(),
+            CancellationToken::new(),
+            "fresh boot",
+        )
+        .await
+        .unwrap();
+
+    let request = api.next_request().await;
+    assert_eq!(request.method, "GET", "raw request: {}", request.raw);
+    assert_eq!(request.path, "/", "raw request: {}", request.raw);
+    assert_eq!(
+        std::fs::metadata(api.socket_path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+
+    let pid = i32::try_from(sandbox.host_process_pid().unwrap()).unwrap();
+    let pid = nix::unistd::Pid::from_raw(pid);
+    assert!(nix::sys::signal::kill(pid, None).is_ok());
+
+    sandbox.runtime.kill_process().await;
+
+    assert!(nix::sys::signal::kill(pid, None).is_err());
+}
+
+#[tokio::test]
+async fn spawn_and_wait_for_api_reports_process_exit_before_readiness() {
+    let workspace = tempfile::tempdir().unwrap();
+    let api_dir = tempfile::tempdir().unwrap();
+    let api_sock = api_dir.path().join("missing.sock");
+    let mut sandbox = test_sandbox_with_state(SandboxState::Created);
+    sandbox.sandbox_paths = SandboxPaths::new(workspace.path().to_path_buf());
+
+    let mut command = tokio::process::Command::new("bash");
+    command.args(["-c", "exit 23"]);
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(1),
+        sandbox.spawn_and_wait_for_api(
+            command,
+            &api_sock,
+            CancellationToken::new(),
+            "snapshot restore",
+        ),
+    )
+    .await
+    .expect("process exit should win before API readiness timeout");
+    let error = match result {
+        Ok(_) => panic!("startup should fail when the child exits"),
+        Err(error) => error,
+    };
+    let SandboxError::Start { message } = error else {
+        panic!("expected startup error");
+    };
+    assert!(
+        message.contains("firecracker process exited before API became ready"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("boot_mode=snapshot restore"),
+        "got: {message}"
+    );
+    assert!(message.contains("state=stopped"), "got: {message}");
+    assert!(
+        message.contains(&format!("api_sock={}", api_sock.display())),
+        "got: {message}"
+    );
+    assert!(sandbox.host_process_pid().is_some());
+
+    sandbox.runtime.kill_process().await;
 }
 
 #[tokio::test]

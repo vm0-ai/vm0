@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
-import { apiKeysByIdContract } from "@vm0/api-contracts/contracts/api-keys";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -32,7 +31,6 @@ import {
 } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
 import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
 import { zeroSecretsRoutes } from "../../zero-secrets";
 import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
@@ -56,7 +54,7 @@ interface BearerCredential {
 
 /**
  * Session actor (Clerk mocks set on use) or a raw bearer token minted through
- * the API (PAT) or the test token signers (sandbox/zero). Precedent:
+ * the CLI device flow (PAT) or the test token signers (sandbox/zero). Precedent:
  * api-bdd-runs' raw-bearer run creation.
  */
 type Credential = ApiTestUser | BearerCredential;
@@ -118,7 +116,6 @@ const userConfigRoutes = [
   ...zeroPushSubscriptionsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroSecretsRoutes,
-  ...zeroApiKeysDeleteRoutes,
 ] as const;
 
 function isBearerCredential(
@@ -476,23 +473,6 @@ export function createUserConfigBddApi(context: TestContext) {
       );
       return await accept(
         client.delete({ headers: authenticate(actor), params: { name } }),
-        statuses,
-      );
-    },
-
-    async requestDeleteApiKey(
-      actor: ApiTestUser | null,
-      apiKeyId: string,
-      statuses: readonly (204 | 401 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        apiKeysByIdContract,
-      );
-      return await accept(
-        client.delete({
-          headers: authenticate(actor),
-          params: { id: apiKeyId },
-        }),
         statuses,
       );
     },

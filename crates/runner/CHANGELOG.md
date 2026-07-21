@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.25...runner-rs-v0.146.26) (2026-07-21)
+
+
+### Performance Improvements
+
+* align session-history sidecar capacity with resume limit ([#22392](https://github.com/vm0-ai/vm0/issues/22392)) ([6eee854](https://github.com/vm0-ai/vm0/commit/6eee8548718c69c4d46afe9b1ddcd8c7babcca59))
+
 ## [0.146.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.24...runner-rs-v0.146.25) (2026-07-21)
 
 ## [0.146.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.23...runner-rs-v0.146.24) (2026-07-21)
