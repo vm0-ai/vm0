@@ -6,19 +6,19 @@ const c = initContract();
 
 const connectorStateSchema = z.object({
   id: z.uuid(),
-  storage_version: z.number().int().positive().nullable(),
+  storage_version: z.number().int().positive(),
 });
 
 const secretStateSchema = z.object({
   name: z.string(),
-  connector_id: z.uuid().nullable(),
+  connector_id: z.uuid(),
   encrypted_value: z.string(),
   description: z.string().nullable(),
 });
 
 const variableStateSchema = z.object({
   name: z.string(),
-  connector_id: z.uuid().nullable(),
+  connector_id: z.uuid(),
 });
 
 export const testConnectorCredentialStorageStateActionBodySchema =
@@ -30,21 +30,6 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       connector_ref: z.string(),
       secret_names: z.array(z.string()),
       variable_names: z.array(z.string()),
-    }),
-    z.object({
-      action: z.literal("seed-legacy-secret"),
-      org_id: z.string(),
-      user_id: z.string(),
-      name: z.string(),
-      encrypted_value: z.string(),
-      description: z.string().nullable(),
-    }),
-    z.object({
-      action: z.literal("seed-legacy-variable"),
-      org_id: z.string(),
-      user_id: z.string(),
-      name: z.string(),
-      value: z.string(),
     }),
     z.object({
       action: z.literal("seed-owned-secret"),
@@ -70,7 +55,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       connector_ref: z.string(),
-      storage_version: z.number().int().positive().nullable(),
+      storage_version: z.number().int().positive(),
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),
     z.object({
@@ -78,14 +63,14 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       name: z.string(),
-      connector_id: z.uuid().nullable(),
+      connector_id: z.uuid(),
     }),
     z.object({
       action: z.literal("set-variable-owner"),
       org_id: z.string(),
       user_id: z.string(),
       name: z.string(),
-      connector_id: z.uuid().nullable(),
+      connector_id: z.uuid(),
     }),
   ]);
 

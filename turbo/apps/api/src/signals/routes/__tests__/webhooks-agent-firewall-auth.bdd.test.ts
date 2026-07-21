@@ -40,10 +40,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  readConnectorCredentialStorageState,
-  setConnectorCredentialStorageState,
-} from "./helpers/connector-credential-storage-state";
+import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -625,57 +622,6 @@ describe("FW-3: billable firewall lease", () => {
 });
 
 describe("FW-4: connector refresh and replacement snapshots", () => {
-  it("fails closed before the provider for a null storage version", async () => {
-    const fw = createFirewallApi(context);
-    const { actor, headers } = await firewallRun();
-    await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
-      authMethod: "oauth",
-      accessToken: "stale-access",
-      refreshToken: "refresh-1",
-      expiresIn: -60,
-    });
-    await setConnectorCredentialStorageState(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-      connectorRef: "test-oauth",
-      storageVersion: null,
-    });
-    let providerCalls = 0;
-    fw.mockTestOauthTokenRefresh(() => {
-      providerCalls += 1;
-      return fw.oauthTokenResponse({
-        accessToken: "must-not-be-written",
-        expiresIn: 3600,
-      });
-    });
-
-    const body = {
-      encryptedSecrets: fw.encryptedSecretsBody({
-        TEST_OAUTH_TOKEN: "stale-access",
-      }),
-      authHeaders: {
-        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
-      },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
-    };
-
-    const response = await fw.requestFirewallAuth(headers, body, [424]);
-    if (response.status !== 424) {
-      throw new Error("Expected null storage version to be unavailable");
-    }
-    expect(response.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-    expect(providerCalls).toBe(0);
-
-    const storageState = await readConnectorCredentialStorageState(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-      connectorRef: "test-oauth",
-      secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
-    });
-    expect(storageState.connector?.storage_version).toBeNull();
-  });
-
   it("does not call the provider for a known storage version mismatch", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();

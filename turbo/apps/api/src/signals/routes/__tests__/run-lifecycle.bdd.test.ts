@@ -61,11 +61,7 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import {
-  setConnectorCredentialStorageState,
-  setConnectorSecretOwner,
-  setConnectorVariableOwner,
-} from "./helpers/connector-credential-storage-state";
+import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
@@ -5604,18 +5600,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       authMethod: "oauth",
       accessToken: "test-oauth-bdd-access",
       refreshToken: "test-oauth-bdd-refresh",
-    });
-    await setConnectorSecretOwner(context, {
-      connectorId: null,
-      name: "TEST_OAUTH_ACCESS_TOKEN",
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
-    await setConnectorVariableOwner(context, {
-      connectorId: null,
-      name: "TEST_OAUTH_API_TENANT_ID",
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
     });
     const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
