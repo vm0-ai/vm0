@@ -25,7 +25,7 @@ let pendingUpgrade: UpgradeHandle | null = null;
  * by checking the executable path for known package manager patterns.
  * Returns "unknown" if no known pattern is matched.
  */
-export function detectPackageManager(): PackageManager {
+function detectPackageManager(): PackageManager {
   const execPath = process.argv[1] ?? "";
 
   // Check for pnpm (supported for auto-upgrade)
@@ -67,16 +67,14 @@ export function detectPackageManager(): PackageManager {
 /**
  * Check if the package manager supports auto-upgrade
  */
-export function isAutoUpgradeSupported(
-  pm: PackageManager,
-): pm is "npm" | "pnpm" {
+function isAutoUpgradeSupported(pm: PackageManager): pm is "npm" | "pnpm" {
   return pm === "npm" || pm === "pnpm";
 }
 
 /**
  * Get the manual upgrade command for a package manager
  */
-export function getManualUpgradeCommand(pm: PackageManager): string {
+function getManualUpgradeCommand(pm: PackageManager): string {
   switch (pm) {
     case "bun":
       return `bun add -g ${PACKAGE_NAME}@latest`;
@@ -95,7 +93,7 @@ export function getManualUpgradeCommand(pm: PackageManager): string {
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
-export async function getLatestVersion(): Promise<string | null> {
+async function getLatestVersion(): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -117,35 +115,6 @@ export async function getLatestVersion(): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * Execute package manager upgrade command
- * - npm: npm install -g @vm0/cli@latest
- * - pnpm: pnpm add -g @vm0/cli@latest
- * Returns true on success, false on failure
- */
-export function performUpgrade(
-  packageManager: "npm" | "pnpm",
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    const args =
-      packageManager === "pnpm"
-        ? ["add", "-g", `${PACKAGE_NAME}@latest`]
-        : ["install", "-g", `${PACKAGE_NAME}@latest`];
-
-    const child = safeSpawn(packageManager, args, {
-      stdio: "inherit",
-    });
-
-    child.on("close", (code) => {
-      resolve(code === 0);
-    });
-
-    child.on("error", () => {
-      resolve(false);
-    });
-  });
 }
 
 /**
