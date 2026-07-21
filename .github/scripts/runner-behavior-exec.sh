@@ -21,7 +21,13 @@ ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
 BIN_DIR=$1; JOB_REF=$2
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
 SVC="${JOB_REF}-exec"
+UNIT="vm0-runner-${SVC}.service"
 GROUP="vm0/exec-${JOB_REF}"
+STARTUP_TIMEOUT_SECS=120
+STARTUP_LOG_LINES=300
+STARTUP_CURSOR=""
+STARTUP_ACTIVE_STATE=""
+STARTUP_DIAGNOSTIC_LOGS=""
 SUBMIT_PID=""
 DNS_ISOLATION_NS=""
 DNS_ISOLATION_HOST_IF=""
@@ -30,6 +36,54 @@ SPOOF_NS=""
 SPOOF_IP=""
 
 fail() { echo "FAIL: $1"; exit 1; }
+
+report_startup_diagnostics() {
+  local readiness_status=$1 readiness_output=$2
+  local unit_state invocation_id invocation_logs unit_logs
+
+  echo "--- Runner readiness command ---"
+  echo "Exit status: $readiness_status"
+  printf '%s\n' "$readiness_output"
+
+  if unit_state=$(sudo "$BIN_DIR/runner" service unit-state \
+    --name "$SVC" 2>&1); then
+    STARTUP_ACTIVE_STATE=$(printf '%s\n' "$unit_state" \
+      | jq -r '.services[0].activeState // empty' 2>/dev/null) || true
+  else
+    unit_state="unit-state query failed: $unit_state"
+  fi
+  echo "--- Runner unit state ---"
+  printf '%s\n' "$unit_state"
+
+  if invocation_id=$(sudo systemctl show "$UNIT" \
+    --property=InvocationID --value 2>&1); then
+    if [ -n "$invocation_id" ]; then
+      if ! invocation_logs=$(sudo journalctl --no-pager \
+        --lines "$STARTUP_LOG_LINES" \
+        "_SYSTEMD_INVOCATION_ID=$invocation_id" 2>&1); then
+        invocation_logs="current invocation journal query failed: $invocation_logs"
+      fi
+    else
+      invocation_logs="current invocation ID is empty"
+    fi
+  else
+    invocation_logs="current invocation ID query failed: $invocation_id"
+    invocation_id="unknown"
+  fi
+  echo "--- Current runner invocation: $invocation_id ---"
+  printf '%s\n' "$invocation_logs"
+
+  if ! unit_logs=$(sudo journalctl --no-pager \
+    --lines "$STARTUP_LOG_LINES" --after-cursor="$STARTUP_CURSOR" \
+    --unit "$UNIT" 2>&1); then
+    unit_logs="post-start unit journal query failed: $unit_logs"
+  fi
+  echo "--- Runner unit journal after service start ---"
+  printf '%s\n' "$unit_logs"
+
+  STARTUP_DIAGNOSTIC_LOGS="${invocation_logs}
+${unit_logs}"
+}
 
 cleanup_submit_pid() {
   local pid=$1
@@ -120,43 +174,76 @@ sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 
 # Start transient runner service
 echo "--- Starting runner ---"
+STARTUP_CURSOR=$(sudo journalctl --no-pager --lines=1 --show-cursor \
+  | sed -n 's/^-- cursor: //p') \
+  || fail "failed to capture journal cursor before runner start"
+[ -n "$STARTUP_CURSOR" ] \
+  || fail "journal cursor missing before runner start"
 sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
-DNS_READINESS_LOGGED=false
-for _ in $(seq 1 30); do
-  INVOCATION_ID=$(sudo systemctl show "vm0-runner-${SVC}.service" \
-    --property=InvocationID --value 2>/dev/null) || true
-  if [ -n "$INVOCATION_ID" ]; then
-    STARTUP_LOGS=$(sudo journalctl --no-pager --lines 300 \
-      "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
-      || fail "failed to read runner startup logs"
-    if printf '%s\n' "$STARTUP_LOGS" \
-      | grep -F "namespace DNS readiness probe succeeded" >/dev/null; then
-      DNS_READINESS_LOGGED=true
-      break
-    fi
+# The runner publishes fresh mode=running only after namespace DNS activation.
+# Keep the journal assertion below as independent functional-probe coverage.
+if READINESS_OUTPUT=$(sudo "$BIN_DIR/runner" service wait-running \
+  --name "$SVC" --timeout-secs "$STARTUP_TIMEOUT_SECS" 2>&1); then
+  :
+else
+  READINESS_STATUS=$?
+  report_startup_diagnostics "$READINESS_STATUS" "$READINESS_OUTPUT"
+  if printf '%s\n' "$STARTUP_DIAGNOSTIC_LOGS" \
+    | grep -E 'namespace DNS readiness probe failed|sandbox runtime DNS readiness' \
+      >/dev/null; then
+    fail "runner namespace DNS readiness failed during startup"
   fi
-  sleep 1
-done
-[ "$DNS_READINESS_LOGGED" = true ] \
-  || fail "runner did not activate namespace DNS readiness"
+  case "$STARTUP_ACTIVE_STATE" in
+    active | activating | reloading | refreshing)
+      SERVICE_RUNNABLE=true
+      ;;
+    "")
+      SERVICE_RUNNABLE=unknown
+      ;;
+    *)
+      SERVICE_RUNNABLE=false
+      ;;
+  esac
+  if [ "$SERVICE_RUNNABLE" = false ] \
+    || printf '%s\n' "$READINESS_OUTPUT" \
+      | grep -F "is not active while waiting for running" >/dev/null; then
+    fail "runner service became non-runnable before reaching running (activeState=$STARTUP_ACTIVE_STATE)"
+  fi
+  if [ "$SERVICE_RUNNABLE" = true ] \
+    && printf '%s\n' "$READINESS_OUTPUT" \
+      | grep -F "timed out waiting ${STARTUP_TIMEOUT_SECS}s" >/dev/null; then
+    fail "runner remained active past the ${STARTUP_TIMEOUT_SECS}s readiness deadline"
+  fi
+  fail "runner readiness check failed before reaching running"
+fi
+
+INVOCATION_ID=$(sudo systemctl show "$UNIT" \
+  --property=InvocationID --value 2>/dev/null) \
+  || fail "failed to read current runner invocation ID"
+[ -n "$INVOCATION_ID" ] || fail "current runner invocation ID is empty"
+STARTUP_LOGS=$(sudo journalctl --no-pager --lines "$STARTUP_LOG_LINES" \
+  "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
+  || fail "failed to read current runner startup logs"
+if ! printf '%s\n' "$STARTUP_LOGS" \
+  | grep -F "namespace DNS readiness probe succeeded" >/dev/null; then
+  report_startup_diagnostics 0 \
+    "runner reached running but the current invocation lacks the DNS readiness success marker"
+  fail "current runner invocation did not log namespace DNS readiness success"
+fi
 
 # Inspect the rules while the prewarmed namespace pool is fully idle. Matching
 # by this runner's unique proxy and DNS ports avoids parallel CI runners on the
 # host, and running before local submit avoids holding a Firecracker VM during
 # the source-identity probe.
-PROXY_PORT=""
-DNS_PORT=""
-for _ in $(seq 1 30); do
-  if sudo jq -e '.proxy_port != null and .dns_port != null' \
-    "$RUNNER_DIR/status.json" >/dev/null 2>&1; then
-    PROXY_PORT=$(sudo jq -r '.proxy_port' "$RUNNER_DIR/status.json")
-    DNS_PORT=$(sudo jq -r '.dns_port' "$RUNNER_DIR/status.json")
-    break
-  fi
-  sleep 1
-done
+STATUS_PORTS=$(sudo jq -er '
+  [.proxy_port, .dns_port]
+  | select(all(.[]; type == "number"))
+  | @tsv
+' "$RUNNER_DIR/status.json") \
+  || fail "proxy or DNS port missing from runner status"
+read -r PROXY_PORT DNS_PORT <<< "$STATUS_PORTS"
 [ -n "$PROXY_PORT" ] || fail "proxy port missing from runner status"
 [ -n "$DNS_PORT" ] || fail "DNS port missing from runner status"
 
