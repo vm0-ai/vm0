@@ -3844,6 +3844,8 @@ function useChatComposerQueue(
 
 function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
   const queue = useLastResolved(thread.workflowQueue.queue$);
+  const workflowAutomations =
+    useLastResolved(thread.headerAutomations.automations$) ?? [];
   const skipEvent = useSet(thread.workflowQueue.skipEvent$);
   const clearEvents = useSet(thread.workflowQueue.clear$);
   const setEventsPaused = useSet(thread.workflowQueue.setPaused$);
@@ -3853,11 +3855,22 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
       return event.id;
     }) ?? [],
   );
+  const workflowLabelsByAutomationId = new Map(
+    workflowAutomations.map((automation) => {
+      return [
+        automation.id,
+        automation.workflowDisplayName?.trim() || automation.workflowName,
+      ] as const;
+    }),
+  );
   const workflowEventItems: WorkflowEventComposerItem[] =
     queue?.pending.map((event) => {
       return {
         id: event.id,
-        text: event.triggerBrief ?? event.triggerSource,
+        text:
+          event.triggerBrief?.trim() ||
+          workflowLabelsByAutomationId.get(event.automationId) ||
+          "Automation event",
       };
     }) ?? [];
 

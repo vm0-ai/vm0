@@ -38,7 +38,7 @@ function queueResponse(
         id: EVENT_ID_1,
         automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: "Webhook event second",
+        triggerBrief: null,
         createdAt: "2026-07-10T01:01:00Z",
       },
       {
@@ -146,7 +146,7 @@ describe("workflow queue panel", () => {
     await waitFor(() => {
       expect(screen.getByText("4 items waiting")).toBeInTheDocument();
       expect(screen.getByText("Messages run first")).toBeInTheDocument();
-      expect(screen.getByText("Webhook event second")).toBeInTheDocument();
+      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
 
@@ -197,7 +197,7 @@ describe("workflow queue panel", () => {
 
     await setupWorkflowQueuePage();
     await waitFor(() => {
-      expect(screen.getByText("Webhook event second")).toBeInTheDocument();
+      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
     });
 
     const skipButtons = queryAllByRoleFast("button").filter((candidate) => {
@@ -208,9 +208,7 @@ describe("workflow queue panel", () => {
 
     await waitFor(() => {
       expect(skippedEventId).toBe(EVENT_ID_1);
-      expect(
-        screen.queryByText("Webhook event second"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Nightly sync")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
   });
