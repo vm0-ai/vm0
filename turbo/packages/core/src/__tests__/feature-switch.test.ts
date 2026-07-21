@@ -12,6 +12,9 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ComposerChatThreadSuggestions, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -156,7 +159,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
-      false,
+      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
