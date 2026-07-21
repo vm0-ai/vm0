@@ -5,7 +5,6 @@ import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { authCommand } from "./commands/auth";
 import { runCommand } from "./commands/run";
-import { logsCommand } from "./commands/logs";
 import { whoamiCommand } from "./commands/whoami";
 
 const program = new Command();
@@ -20,7 +19,6 @@ program
 // Register all commands
 program.addCommand(authCommand);
 program.addCommand(runCommand);
-program.addCommand(logsCommand);
 program.addCommand(whoamiCommand);
 
 export { program };

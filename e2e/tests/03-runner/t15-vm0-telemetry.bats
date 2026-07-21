@@ -4,7 +4,7 @@
 # This test verifies that:
 # 1. Agent runs display Run ID at start
 # 2. Agent runs collect telemetry data (system log and metrics)
-# 3. The vm0 logs command can retrieve telemetry data
+# 3. Telemetry data is retrievable (agent/system/metrics log views)
 #
 # Test count: 1 test with 1 vm0 run call
 
@@ -81,9 +81,9 @@ teardown() {
     assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
 
-    # Verify "vm0 logs" command hint is shown in next steps
+    # Verify "zero logs" command hint is shown in next steps
     assert_output --partial "View agent logs:"
-    assert_output --partial "vm0 logs"
+    assert_output --partial "zero logs"
 
     # Step 3: Extract Run ID from output
     # Format: "  Run ID:   abc12345-6789-..."
@@ -95,7 +95,7 @@ teardown() {
         return 1
     }
 
-    # Step 4: Verify vm0 logs command (default: agent events)
+    # Step 4: Verify agent events (default log view)
     echo "# Step 4: Fetching agent events (default)..."
     # Mock-claude produces: Claude Code Started, text, tool calls, Completed
     wait_for_log "$RUN_ID" -- "▷ Claude Code Started" "◆ Claude Code Completed"
@@ -120,17 +120,12 @@ teardown() {
     wait_for_log "$RUN_ID" --metrics -- "CPU:" "Mem:" "Disk:"
     echo "# Metrics contain expected resource data"
 
-    # Step 8: Verify --tail option limits output
+    # Step 8: Verify `zero logs --tail` limits output
     echo "# Step 8: Testing --tail option..."
-    run $VM0_CLI logs "$RUN_ID" --tail 2
+    run $ZERO_CLI logs "$RUN_ID" --tail 2
 
     assert_success
     # With tail=2, should see at most 2 events
     # If more exist, should see "Use --tail to see more"
     echo "# Tail option works correctly"
-
-    # Note: Mutually exclusive options validation (--agent, --system, etc.)
-    # is tested in CLI integration tests:
-    # turbo/apps/cli/src/commands/logs/__tests__/index.test.ts
-    #   - "should exit with error when multiple log types specified"
 }
