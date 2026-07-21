@@ -184,7 +184,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     # Optional fields — only include when present with the network-log schema type.
     for log_key, value in (
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
-        ("firewall_error", flow_metadata.firewall_error(meta)),
         (
             "connector_diagnostic_type",
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),
@@ -200,14 +199,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
         (
             "connector_diagnostic_base",
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_BASE),
-        ),
-        (
-            "connector_route_reason",
-            _metadata_optional_str(meta, metadata_keys.CONNECTOR_ROUTE_REASON),
-        ),
-        (
-            "connector_route_candidates",
-            _metadata_str_list(meta, metadata_keys.CONNECTOR_ROUTE_CANDIDATES),
         ),
         (
             "auth_resolved_secrets",

@@ -9,6 +9,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/monitor-chat-message-queue",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/execute-workflow-automations",
       "schedule": "* * * * *"
     },

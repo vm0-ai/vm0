@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.610.5](https://github.com/vm0-ai/vm0/compare/app-v0.610.4...app-v0.610.5) (2026-07-21)
+
+
+### Refactoring
+
+* **mail:** use one source for draft card state ([#22327](https://github.com/vm0-ai/vm0/issues/22327)) ([65964d3](https://github.com/vm0-ai/vm0/commit/65964d385ebb132115aef960b145ebe3d47783ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.4
+    * @vm0/connectors bumped to 1.173.3
+    * @vm0/core bumped to 8.444.3
+
 ## [0.610.4](https://github.com/vm0-ai/vm0/compare/app-v0.610.3...app-v0.610.4) (2026-07-21)
 
 

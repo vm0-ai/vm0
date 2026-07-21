@@ -1644,6 +1644,120 @@ function compareSchemas(
   };
 }
 
+async function validateSlackChatThreadRouteBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.75: Validate Slack chat thread route backfill ===\n",
+  );
+  const testDb = "migration_slack_chat_thread_route_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectionId = "50000000-0000-4000-8000-000000000001";
+  const composeId = "50000000-0000-4000-8000-000000000002";
+  const sessionId = "50000000-0000-4000-8000-000000000003";
+  const resolvedSlotId = "50000000-0000-4000-8000-000000000004";
+  const unresolvedSlotId = "50000000-0000-4000-8000-000000000005";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 631);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "slack_org_installations" (
+          "slack_workspace_id",
+          "encrypted_bot_token",
+          "bot_user_id"
+        )
+        VALUES ('route-backfill-workspace', 'encrypted-token', 'route-backfill-bot')
+      `);
+      await client.query(
+        `
+          INSERT INTO "slack_org_connections" (
+            "id",
+            "slack_user_id",
+            "slack_workspace_id",
+            "vm0_user_id"
+          )
+          VALUES ($1, 'route-backfill-slack-user', 'route-backfill-workspace', 'connection-owner')
+        `,
+        [connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'slot-owner', 'route-backfill-agent', 'route-backfill-org')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id",
+            "user_id",
+            "org_id",
+            "agent_compose_id"
+          )
+          VALUES ($1, 'slot-owner', 'route-backfill-org', $2)
+        `,
+        [sessionId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_org_thread_sessions" (
+            "id",
+            "connection_id",
+            "slack_channel_id",
+            "slack_thread_ts",
+            "agent_session_id"
+          )
+          VALUES
+            ($1, $3, 'resolved-channel', '1000.000001', $4),
+            ($2, $3, 'unresolved-channel', '1000.000002', NULL)
+        `,
+        [resolvedSlotId, unresolvedSlotId, connectionId, sessionId],
+      );
+
+      await applyMigrationsUpTo(client, 633);
+
+      const routes = await client.query<{
+        backend: string;
+        channel_id: string;
+        chat_thread_id: string | null;
+        connection_id: string;
+        thread_ts: string;
+        user_id: string;
+      }>(`
+        SELECT
+          "backend",
+          "channel_id",
+          "chat_thread_id",
+          "connection_id",
+          "thread_ts",
+          "user_id"
+        FROM "slack_chat_thread_routes"
+        ORDER BY "channel_id"
+      `);
+      assert.deepEqual(routes.rows, [
+        {
+          backend: "legacy",
+          channel_id: "resolved-channel",
+          chat_thread_id: null,
+          connection_id: connectionId,
+          thread_ts: "1000.000001",
+          user_id: "slot-owner",
+        },
+      ]);
+      console.log(
+        "   ✅ Backfill writes only the resolvable slot owner and skips the unresolved slot\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -1817,6 +1931,7 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
 
     await validateStorageArchiveSizeFinalization();
+    await validateSlackChatThreadRouteBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
