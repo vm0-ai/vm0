@@ -136,6 +136,72 @@ def test_response_log_includes_firewall_auth_metadata(tmp_path, real_flow, mitm_
 
 
 @pytest.mark.parametrize(
+    "with_firewall_context",
+    [False, True],
+    ids=["without-firewall", "with-firewall"],
+)
+@pytest.mark.parametrize(
+    ("route_candidates", "expected_candidates"),
+    [
+        pytest.param(None, None, id="absent"),
+        pytest.param([], None, id="empty"),
+        pytest.param(["primary", None], None, id="malformed"),
+        pytest.param(["auditor", "primary"], ["auditor", "primary"], id="populated"),
+    ],
+)
+def test_response_log_serializes_common_metadata_independent_of_firewall_context(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    with_firewall_context,
+    route_candidates,
+    expected_candidates,
+):
+    flow = real_flow(with_response=False, host="api.example.com", path="/items")
+    log_path = str(tmp_path / "network.jsonl")
+    flow.metadata.update(
+        {
+            metadata_keys.VM_RUN_ID: "run-abc-123",
+            metadata_keys.VM_NETWORK_LOG_PATH: log_path,
+            metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
+            metadata_keys.FIREWALL_ACTION: "DENY",
+            metadata_keys.FIREWALL_ERROR: "ambiguous_connector_route",
+            metadata_keys.CONNECTOR_ROUTE_REASON: "connector_intent_required",
+        }
+    )
+    if route_candidates is not None:
+        flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = route_candidates
+    if with_firewall_context:
+        flow.metadata.update(
+            {
+                metadata_keys.FIREWALL_BASE: "https://api.example.com",
+                metadata_keys.FIREWALL_NAME: "example",
+                metadata_keys.FIREWALL_PERMISSION: "read",
+                metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
+                metadata_keys.FIREWALL_BILLABLE: False,
+            }
+        )
+    flow.response = tutils.tresp(status_code=409, headers=header_map({"content-length": "0"}))
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(Path(log_path))
+    assert entry["firewall_error"] == "ambiguous_connector_route"
+    assert entry["connector_route_reason"] == "connector_intent_required"
+    if expected_candidates is None:
+        assert "connector_route_candidates" not in entry
+    else:
+        assert entry["connector_route_candidates"] == expected_candidates
+    if with_firewall_context:
+        assert entry["firewall_base"] == "https://api.example.com"
+        assert entry["firewall_name"] == "example"
+    else:
+        assert "firewall_base" not in entry
+        assert "firewall_name" not in entry
+
+
+@pytest.mark.parametrize(
     ("raw_url", "expected_url"),
     [
         (
