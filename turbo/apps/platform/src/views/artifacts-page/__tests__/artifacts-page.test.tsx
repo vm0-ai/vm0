@@ -1503,7 +1503,6 @@ describe("artifacts page", () => {
       artifactItemId: "remote-run:file-1",
       runId: "remote-run",
       filename: "remote-summary.html",
-      isFavorited: true,
     });
     mockArtifacts([artifact]);
 
@@ -1519,7 +1518,7 @@ describe("artifacts page", () => {
     const cached = await createArtifactItemCacheStores(
       resolvedChatIdb(db),
     ).readStore.readRecent({ limit: 10_000 });
-    expect(cached[0]).not.toHaveProperty("isFavorited");
+    expect(cached).toStrictEqual([artifact]);
   });
 
   it("normalizes older remote artifacts without a size", async () => {

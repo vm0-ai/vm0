@@ -79,6 +79,7 @@ import {
   startArtifactChat$,
   syncArtifactsScrollMetrics$,
   toggleArtifactFavorite$,
+  type ArtifactPageItem,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
 import {
@@ -701,13 +702,13 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
 
 interface ArtifactCardActionsProps {
   readonly favorited: boolean;
-  readonly item: ArtifactItem;
+  readonly item: ArtifactPageItem;
   readonly previewUrl: string;
   readonly favoriteActionEnabled: boolean;
   readonly showFavoriteAction: boolean;
   readonly onOpenChat: (threadId: string) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
 }
 
 function ArtifactCardActions({
@@ -846,11 +847,11 @@ function ArtifactCard({
 }: {
   readonly cardRef: (element: HTMLElement | null) => void;
   readonly index: number;
-  readonly item: ArtifactItem;
+  readonly item: ArtifactPageItem;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
   readonly favoriteActionEnabled: boolean;
   readonly showFavoriteAction: boolean;
 }) {
@@ -858,7 +859,7 @@ function ArtifactCard({
   const contextLabel = artifactContextLabel({ item, kindLabel });
   const previewUrl = publicAttachmentUrl(item.url);
   const previewable = artifactLightboxKind(item) !== "file";
-  const favorited = item.isFavorited === true;
+  const favorited = item.isFavorited;
   return (
     <article
       ref={cardRef}
@@ -1180,7 +1181,7 @@ function ArtifactsList({
   favoriteActionEnabled,
   showFavoriteAction,
 }: {
-  readonly artifacts: readonly ArtifactItem[];
+  readonly artifacts: readonly ArtifactPageItem[];
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
@@ -1188,7 +1189,7 @@ function ArtifactsList({
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
   readonly favoriteActionEnabled: boolean;
   readonly showFavoriteAction: boolean;
 }) {
@@ -1334,13 +1335,11 @@ export function ArtifactsPage() {
   // authoritative set. Cached fallback is only used before remote data loads or
   // when the refresh errors.
   const sourceData = remoteData ?? cachedData;
-  const sourceArtifacts = favoriteUrls
-    ? applyArtifactFavorites(
-        sourceData?.artifacts ?? [],
-        favoriteUrls,
-        favoriteOverrides,
-      )
-    : (sourceData?.artifacts ?? []);
+  const sourceArtifacts = applyArtifactFavorites(
+    sourceData?.artifacts ?? [],
+    favoriteUrls,
+    favoriteOverrides,
+  );
   const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,

@@ -326,23 +326,6 @@ describe("artifacts contract", () => {
     expect(parsed.success && parsed.data.size).toBe(0);
   });
 
-  it("accepts favorite state on generated artifact items", () => {
-    const parsed = artifactItemSchema.safeParse({
-      artifactItemId: "run-1:file-1",
-      threadId: "thread-1",
-      runId: "run-1",
-      fileId: "file-1",
-      agentId: "agent-1",
-      filename: "launch-plan.html",
-      contentType: "text/html",
-      url: "https://static.vm0.io/artifacts/launch-plan.html",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      isFavorited: true,
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
   it("accepts artifact metadata used by filters and Drive sync UI", () => {
     const parsed = artifactItemSchema.safeParse({
       artifactItemId: "run-1:file-1",
