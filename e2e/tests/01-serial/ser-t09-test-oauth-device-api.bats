@@ -8,55 +8,24 @@ load '../../helpers/setup'
 export BATS_TEST_TIMEOUT=30
 
 setup_file() {
-    local token base
-    if ! token=$(zero_auth_token 2>/dev/null) || [[ -z "$token" ]]; then
-        skip "Zero auth token not configured"
-    fi
-    if ! base=$(zero_api_url 2>/dev/null) || [[ -z "$base" ]]; then
-        skip "Zero API URL not configured"
-    fi
+    e2e_api_token >/dev/null
+    e2e_api_url >/dev/null
 }
 
 zero_api_request() {
     local method="$1"
     local path="$2"
     local body="${3:-}"
-    local token base curl_status
-
-    token=$(zero_auth_token)
-    base=$(zero_api_url)
+    local response
     LAST_RESPONSE_BODY="$BATS_TEST_TMPDIR/zero-api-${BATS_TEST_NUMBER}-${RANDOM}.json"
 
-    local -a headers=(
-        -H "Authorization: Bearer $token"
-        -H "Accept: application/json"
-        -H "Content-Type: application/json"
-    )
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        headers+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
-
-    local -a args=(
-        -sS
-        --max-time 30
-        -o "$LAST_RESPONSE_BODY"
-        -w "%{http_code}"
-        -X "$method"
-        "${headers[@]}"
-    )
     if [[ -n "$body" ]]; then
-        args+=(-d "$body")
+        response=$(e2e_api_curl "$path" --max-time 30 -X "$method" -d "$body") || return 1
+    else
+        response=$(e2e_api_curl "$path" --max-time 30 -X "$method") || return 1
     fi
-
-    LAST_HTTP_STATUS=$(curl "${args[@]}" "${base%/}${path}")
-    curl_status=$?
-    if [[ "$curl_status" -ne 0 ]]; then
-        echo "# $method $path curl failed with exit $curl_status" >&2
-        if [[ -s "$LAST_RESPONSE_BODY" ]]; then
-            echo "# response body: $(cat "$LAST_RESPONSE_BODY")" >&2
-        fi
-        return 1
-    fi
+    printf '%s' "$response" > "$LAST_RESPONSE_BODY"
+    LAST_HTTP_STATUS=200
 }
 
 assert_api_status() {

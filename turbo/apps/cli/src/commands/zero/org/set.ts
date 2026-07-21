@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getZeroOrg, updateZeroOrg, switchZeroOrg } from "../../../lib/api";
-import { saveConfig } from "../../../lib/api/config";
+import { getZeroOrg, updateZeroOrg } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const setCommand = new Command()
@@ -27,11 +26,6 @@ export const setCommand = new Command()
         }
 
         const org = await updateZeroOrg({ slug, force: true });
-
-        const result = await switchZeroOrg(org.slug);
-        await saveConfig({
-          token: result.access_token,
-        });
 
         console.log(chalk.green(`✓ Organization updated to ${org.slug}`));
         console.log();

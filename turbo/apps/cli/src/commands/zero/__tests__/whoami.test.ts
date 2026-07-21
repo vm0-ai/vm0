@@ -1,8 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync } from "fs";
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as os from "os";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
@@ -11,18 +7,6 @@ import {
   stubConnectorCatalogPermissions,
 } from "./helpers/connector-catalog";
 import { zeroWhoamiCommand } from "../whoami";
-
-// Mock os.homedir to use temp directory for config isolation
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-zero-whoami-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
 
 function buildJwt(payload: Record<string, unknown>, prefix: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -39,10 +23,6 @@ function buildJwt(payload: Record<string, unknown>, prefix: string): string {
  */
 function buildZeroToken(payload: Record<string, unknown>): string {
   return buildJwt(payload, "vm0_sandbox_");
-}
-
-function buildCliToken(payload: Record<string, unknown>): string {
-  return buildJwt(payload, "vm0_pat_");
 }
 
 function mockUserPermissionGrantsHandler(
@@ -95,22 +75,14 @@ const defaultPermissionDetails = [
 describe("zero whoami command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
-  beforeEach(async () => {
+  beforeEach(() => {
     chalk.level = 0;
     server.use(stubConnectorCatalogPermissions(defaultPermissionDetails));
-
-    // Ensure clean config state
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await fs.rm(configDir, { recursive: true, force: true });
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockConsoleLog.mockClear();
     vi.unstubAllEnvs();
-
-    // Clean up config
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await fs.rm(configDir, { recursive: true, force: true });
   });
 
   function getAllOutput(): string[] {
@@ -1020,31 +992,22 @@ describe("zero whoami command", () => {
   });
 
   describe("local mode (no ZERO_AGENT_ID)", () => {
-    it("should show authenticated via config file when token exists in config", async () => {
-      const configDir = path.join(TEST_HOME, ".vm0");
-      await fs.mkdir(configDir, { recursive: true });
-      await fs.writeFile(
-        path.join(configDir, "config.json"),
-        JSON.stringify({ token: "test-token-config" }),
-      );
-
-      await runWhoami();
-
-      const output = getAllOutput();
-      expect(
-        output.some((line) => {
-          return line.includes("Authenticated");
-        }),
-      ).toBe(true);
-      expect(
-        output.some((line) => {
-          return line.includes("config file");
-        }),
-      ).toBe(true);
+    beforeEach(() => {
+      vi.stubEnv("ZERO_AGENT_ID", "");
     });
 
     it("should show authenticated via ZERO_TOKEN env var", async () => {
-      vi.stubEnv("ZERO_TOKEN", "env-token-test");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          scope: "zero",
+          orgId: "test-org",
+          userId: "user-1",
+          runId: "run-1",
+          capabilities: [],
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      );
 
       await runWhoami();
 
@@ -1072,14 +1035,42 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should display active org from CLI JWT token", async () => {
-      const cliJwt = buildCliToken({
-        scope: "cli",
+    it("should identify an invalid ZERO_TOKEN", async () => {
+      vi.stubEnv("ZERO_TOKEN", "not-a-zero-token");
+
+      await runWhoami();
+
+      expect(getAllOutput()).toContain("  Status:     Invalid ZERO_TOKEN");
+    });
+
+    it("should identify an expired ZERO_TOKEN", async () => {
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          scope: "zero",
+          orgId: "test-org",
+          userId: "user-1",
+          runId: "run-1",
+          capabilities: [],
+          exp: Math.floor(Date.now() / 1000) - 1,
+        }),
+      );
+
+      await runWhoami();
+
+      expect(getAllOutput()).toContain("  Status:     Expired ZERO_TOKEN");
+    });
+
+    it("should display active org from ZERO_TOKEN", async () => {
+      const zeroToken = buildZeroToken({
+        scope: "zero",
         orgId: "test-org-slug",
         userId: "user-1",
-        tokenId: "tok-1",
+        runId: "run-1",
+        capabilities: [],
+        exp: Math.floor(Date.now() / 1000) + 3600,
       });
-      vi.stubEnv("VM0_TOKEN", cliJwt);
+      vi.stubEnv("ZERO_TOKEN", zeroToken);
 
       await runWhoami();
 

@@ -238,7 +238,6 @@ describe("zero connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_TOKEN", buildZeroToken());
     vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");

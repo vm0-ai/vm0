@@ -15,7 +15,7 @@ _validate_run_fixture_json() {
 _compose_fixture_id() {
     local name="$1" encoded_name response
     encoded_name="$(jq -rn --arg value "$name" '$value | @uri')"
-    response="$(zero_curl "/api/agent/composes?name=$encoded_name")" || return 1
+    response="$(e2e_api_curl "/api/agent/composes?name=$encoded_name")" || return 1
     jq -er '.id | select(type == "string" and length > 0)' <<< "$response"
 }
 
@@ -43,7 +43,7 @@ create_run_fixture() {
 
     local request_json="$1" response
     _validate_run_fixture_json "run fixture request" "$request_json" || return 1
-    response="$(zero_curl "/api/agent/runs" -X POST --data-binary "$request_json")" || return 1
+    response="$(e2e_api_curl "/api/agent/runs" -X POST --data-binary "$request_json")" || return 1
     jq -e '
         (.runId | type == "string" and length > 0)
         and (.sessionId | type == "string" and length > 0)
@@ -63,7 +63,7 @@ wait_for_run_fixture() {
     local start=$SECONDS response="" run_status=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(zero_curl "/api/zero/runs/$run_id" 2>&1)"; then
+        if response="$(e2e_api_curl "/api/zero/runs/$run_id" 2>&1)"; then
             run_status="$(jq -r '.status // empty' <<< "$response")"
             case "$run_status" in
                 completed)
@@ -88,7 +88,7 @@ wait_for_run_fixture() {
 # Usage: cancel_run_fixture <run-id>
 cancel_run_fixture() {
     local run_id="$1" response
-    response="$(zero_curl "/api/zero/runs/$run_id/cancel" -X POST)" || return 1
+    response="$(e2e_api_curl "/api/zero/runs/$run_id/cancel" -X POST)" || return 1
     jq -e --arg runId "$run_id" '
         .id == $runId and .status == "cancelled"
     ' <<< "$response" >/dev/null || {
@@ -100,7 +100,7 @@ cancel_run_fixture() {
 
 # Execute a complete structured request, wait for its terminal state, and emit:
 #   1. one compact metadata JSON line
-#   2. rendered agent events from zero logs
+#   2. structured agent event payloads from the API
 # The first line is intentionally machine-readable and replaces vm0's human
 # Run/Session/Checkpoint summary without emulating it.
 # Usage: run_fixture <request-json>

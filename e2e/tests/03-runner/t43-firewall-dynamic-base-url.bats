@@ -23,11 +23,15 @@ setup_file() {
     export ARTIFACT_NAME="e2e-zendesk-fw-artifact-${UNIQUE_ID}"
     export TEST_SUBDOMAIN="e2etest${RANDOM}"
 
-    # Set up zendesk connector via real CLI — same as user doing it in web UI.
-    $ZERO_CLI connector connect zendesk \
-        --value ZENDESK_API_TOKEN=fake-zendesk-token-for-e2e \
-        --value ZENDESK_SUBDOMAIN="$TEST_SUBDOMAIN" \
-        --value ZENDESK_EMAIL=e2e@test.vm0.ai
+    connect_e2e_connector \
+        "zendesk" \
+        "$(jq -nc \
+            --arg subdomain "$TEST_SUBDOMAIN" \
+            '{
+                ZENDESK_API_TOKEN: "fake-zendesk-token-for-e2e",
+                ZENDESK_SUBDOMAIN: $subdomain,
+                ZENDESK_EMAIL: "e2e@test.vm0.ai"
+            }')"
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
@@ -38,7 +42,7 @@ setup_file() {
 }
 
 teardown_file() {
-    zero_curl "/api/zero/connectors/zendesk" -X DELETE >/dev/null 2>&1 || true
+    e2e_api_curl "/api/zero/connectors/zendesk" -X DELETE >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"

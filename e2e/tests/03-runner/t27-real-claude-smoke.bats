@@ -37,7 +37,7 @@ VOLEOF
     seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
-    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null
+    configure_e2e_model_provider "anthropic-api-key" "$ANTHROPIC_API_KEY"
 
     # Compose agents separately (only one agent per compose is supported)
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
@@ -100,7 +100,7 @@ teardown_file() {
 }
 
 ensure_anthropic_model_provider() {
-    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null
+    configure_e2e_model_provider "anthropic-api-key" "$ANTHROPIC_API_KEY"
 }
 
 # Test 0: Print sandbox Claude Code version for debugging
@@ -135,7 +135,7 @@ ensure_anthropic_model_provider() {
         '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     assert_success
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     assert_output --partial "RESULT=579"
 }
 
@@ -161,7 +161,7 @@ ensure_anthropic_model_provider() {
         }'
 
     assert_success
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     assert_output --partial "RESULT=890"
     # Verify appendSystemPrompt reached Claude (agent follows the instruction).
     assert_output --partial "SIGNATURE=smoke-test"
@@ -193,7 +193,7 @@ ensure_anthropic_model_provider() {
             }')"
 
     assert_success
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     # Sentinel file was created by PreToolUse hook and read by Claude
     assert_output --partial "SETTINGS_HOOK_OK"
 }

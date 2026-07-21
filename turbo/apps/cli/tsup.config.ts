@@ -10,7 +10,7 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
 const isWatchMode = process.argv.includes("--watch");
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/zero.ts"],
+  entry: ["src/zero.ts"],
   format: ["esm"],
   // Skip DTS generation in watch mode to avoid memory issues
   // DTS files are still generated during production builds
@@ -49,9 +49,9 @@ export default defineConfig({
   },
   onSuccess: isWatchMode
     ? async () => {
-        console.log("Installing vm0 CLI globally...");
+        console.log("Installing Zero CLI globally...");
         execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
-        console.log("vm0 CLI installed globally");
+        console.log("Zero CLI installed globally");
       }
     : undefined,
 });

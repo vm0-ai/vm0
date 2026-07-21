@@ -42,7 +42,7 @@ describe("zero search --source chat", () => {
     // see calls made by the current case.
     vi.clearAllMocks();
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     // Commander retains collector state across parseAsync calls on the
     // same command instance. Reset before each case.
     zeroSearchCommand.setOptionValue("source", []);
