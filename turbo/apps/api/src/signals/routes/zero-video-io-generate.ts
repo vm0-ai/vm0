@@ -147,9 +147,22 @@ const submitVideoProviderWebhookJob$ = command(
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
     const provider = videoProviderForModel(args.options.model);
     if (provider === "fal") {
+      const apiKey = env("FAL_KEY");
+      if (!apiKey) {
+        const response = videoServiceUnavailable(
+          "Fal video generation is not configured",
+          "NOT_CONFIGURED",
+        );
+        await set(
+          failBuiltInGenerationJob$,
+          { generationId: args.generationId, error: response.body.error },
+          signal,
+        );
+        return response;
+      }
       const handle = await submitFalVideoGeneration(
         args.options,
-        env("FAL_KEY") ?? "",
+        apiKey,
         signal,
         falBuiltInGenerationWebhookUrl({
           generationId: args.generationId,
@@ -181,9 +194,22 @@ const submitVideoProviderWebhookJob$ = command(
       return null;
     }
 
+    const apiKey = env("BYTEPLUS_API_KEY");
+    if (!apiKey) {
+      const response = videoServiceUnavailable(
+        "BytePlus video generation is not configured",
+        "NOT_CONFIGURED",
+      );
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: response.body.error },
+        signal,
+      );
+      return response;
+    }
     const handle = await submitBytePlusVideoGeneration(
       args.options,
-      env("BYTEPLUS_API_KEY") ?? "",
+      apiKey,
       signal,
       bytePlusBuiltInGenerationWebhookUrl({
         generationId: args.generationId,
