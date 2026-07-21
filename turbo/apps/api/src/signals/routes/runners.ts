@@ -13,13 +13,6 @@ import {
   type SessionHistoryDownloadSource,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
-import {
-  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-  hasRunnerRuntimeFirewall,
-  loadAllRunnerRuntimeFirewalls,
-  loadRunnerRuntimeFirewalls,
-} from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -44,7 +37,7 @@ import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import {
   generatePresignedGetUrl,
   publicS3DownloadSource,
@@ -69,6 +62,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
+import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -2264,28 +2258,28 @@ const builtinFirewallsResolveInner$ = command(
       return body.response;
     }
 
-    let firewalls: Awaited<ReturnType<typeof loadRunnerRuntimeFirewalls>>;
-    if (body.data.names === undefined) {
-      firewalls = await loadAllRunnerRuntimeFirewalls();
-    } else {
-      const names = [...new Set(body.data.names)];
-      const missingNames = names.filter((name) => {
-        return !hasRunnerRuntimeFirewall(name);
-      });
-      if (missingNames.length > 0) {
-        return badRequestMessage(
-          `Unknown builtin firewall: ${missingNames.join(", ")}`,
-        );
-      }
-      firewalls = await loadRunnerRuntimeFirewalls(names);
+    const catalog = await loadConnectorRunnerFirewallCatalog(() => {
+      return get(db$);
+    });
+    signal.throwIfAborted();
+    const names =
+      body.data.names === undefined ? undefined : [...new Set(body.data.names)];
+    const missingNames = (names ?? []).filter((name) => {
+      return !catalog.has(name);
+    });
+    if (missingNames.length > 0) {
+      return badRequestMessage(
+        `Unknown builtin firewall: ${missingNames.join(", ")}`,
+      );
     }
+    const firewalls = await catalog.load(names);
     signal.throwIfAborted();
 
     return {
       status: 200 as const,
       body: {
-        catalogDigest: RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
-        catalogVersion: RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+        catalogDigest: catalog.catalogDigest,
+        catalogVersion: catalog.catalogVersion,
         firewalls,
       },
     };
