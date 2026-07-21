@@ -6,7 +6,7 @@ import {
   type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
 
 import { pgNullDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
@@ -33,6 +33,21 @@ function unclaimedQueuedUserMessageCondition(
   return and(
     eq(chatMessageQueue.chatThreadId, threadId),
     eq(chatMessageQueue.itemType, "user_message"),
+  );
+}
+
+/** Whether the outer chat_messages row is waiting in the user-message queue. */
+export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
+  return exists(
+    db
+      .select({ id: chatMessageQueue.id })
+      .from(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.itemType, "user_message"),
+          eq(chatMessageQueue.chatMessageId, chatMessages.id),
+        ),
+      ),
   );
 }
 
@@ -142,6 +157,7 @@ export async function appendClaimedUserMessage(
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
+      createdAt: chatMessages.createdAt,
     })
     .from(chatMessageQueue)
     .innerJoin(
@@ -155,7 +171,6 @@ export async function appendClaimedUserMessage(
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessages.chatThreadId, args.threadId),
         eq(chatMessages.role, "user"),
-        isNull(chatMessages.runId),
       ),
     )
     .for("update")
@@ -174,6 +189,7 @@ export async function appendClaimedUserMessage(
       ? [...queued.attachFileMetadata]
       : null,
     generationTemplate: queued.generationTemplate,
+    createdAt: queued.createdAt,
   });
   if (!claimed) {
     return null;
