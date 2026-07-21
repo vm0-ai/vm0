@@ -215,9 +215,7 @@ export class EventRenderer {
       console.error(`  Error: ${chalk.red(errorText)}`);
     }
 
-    console.error(
-      chalk.dim(`  (use "zero logs ${runId}" to view system logs)`),
-    );
+    console.error(chalk.dim(`  (use "zero logs ${runId}" to view agent logs)`));
   }
 
   /**

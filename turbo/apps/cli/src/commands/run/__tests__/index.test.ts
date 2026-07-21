@@ -3320,7 +3320,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should show system logs hint for debugging", async () => {
+    it("should show agent logs hint for debugging", async () => {
       server.use(
         http.post("http://localhost:3000/api/agent/runs", () => {
           return HttpResponse.json(errorTestRunResponse, { status: 201 });
@@ -3346,7 +3346,9 @@ describe("run command", () => {
 
       expect(
         allErrors.some((log) => {
-          return log.includes(`zero logs ${errorTestRunId}`);
+          return log.includes(
+            `use "zero logs ${errorTestRunId}" to view agent logs`,
+          );
         }),
       ).toBe(true);
     });
