@@ -712,22 +712,13 @@ function toPagedMessage(
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
-function activeRunStatusSqlList() {
-  return sql.join(
-    ACTIVE_RUN_STATUSES.map((status) => {
-      return sql`${status}`;
-    }),
-    sql`, `,
-  );
-}
-
 function noActiveRunsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${zeroRuns}
     INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
     WHERE ${eq(zeroRuns.chatThreadId, chatThreads.id)}
-      AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
+      AND ${inArray(agentRuns.status, ACTIVE_RUN_STATUSES)}
   )`;
 }
 
@@ -1238,7 +1229,7 @@ async function listChangedArtifacts(args: {
               SELECT ${chatMessages.chatThreadId}
               FROM ${chatMessages}
               WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              ORDER BY ${chatMessages.createdAt} ASC
+              ORDER BY ${asc(chatMessages.createdAt)}
               LIMIT 1
             )
           )
@@ -1258,7 +1249,7 @@ async function listChangedArtifacts(args: {
         WHERE ${sql.join(fileConditions, sql` AND `)}
           AND ${lowerBoundClause}
           AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
-        ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
+        ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
         LIMIT ${args.limit + 1}
       )
       SELECT
@@ -1299,7 +1290,7 @@ async function listChangedArtifacts(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
@@ -1365,7 +1356,7 @@ async function listArtifactHistory(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
@@ -1375,7 +1366,7 @@ async function listArtifactHistory(args: {
         ON ${eq(zeroAgents.id, agentComposes.id)}
       WHERE ${sql.join(conditions, sql` AND `)}
       ${keysetClause}
-    ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
+    ORDER BY ${desc(runUploadedFiles.createdAt)}, ${desc(runUploadedFiles.id)}
       LIMIT ${args.limit + 1}
     `,
     artifactListSqlRowSchema,
@@ -1498,7 +1489,7 @@ async function artifactUrlIsVisible(
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${chatMessages.createdAt} ASC
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )

@@ -50,7 +50,7 @@ function latestRunFinishCreatedAtSql() {
     FROM ${chatMessages}
     WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
       AND ${isNotNull(chatMessages.runLifecycleEvent)}
-    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
+    ORDER BY ${desc(chatMessages.createdAt)}, ${desc(chatMessages.id)}
     LIMIT 1
   )`;
 }

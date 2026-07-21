@@ -3,6 +3,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import {
   and,
+  arrayContains,
   eq,
   gt,
   isNotNull,
@@ -39,33 +40,36 @@ function reusableSandboxCondition(args: {
         'historyGenerationRunId', cast(${args.historyGenerationRunId} as text)
       )`
       : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
-  return sql`${runnerState.heldSessionStates} @> jsonb_build_array(
+  const heldSessionStates = sql`jsonb_build_array(
     jsonb_build_object(
       'sessionId', cast(${args.sessionId} as text),
       'reusableSandbox', ${reusableSandbox}
     )
   )`;
+  return arrayContains(runnerState.heldSessionStates, heldSessionStates);
 }
 
 function capableWorkspaceCondition(args: {
   readonly sessionId: SQLWrapper;
   readonly profile: SQLWrapper;
 }): SQL {
-  return sql`(
-    ${runnerState.heldSessionStates} @> jsonb_build_array(
-      jsonb_build_object(
-        'sessionId', cast(${args.sessionId} as text),
-        'workspaceCaches', jsonb_build_array(
-          jsonb_build_object(
-            'profile', cast(${args.profile} as text),
-            'workspaceAffinityVersion', 1
-          )
+  const heldSessionStates = sql`jsonb_build_array(
+    jsonb_build_object(
+      'sessionId', cast(${args.sessionId} as text),
+      'workspaceCaches', jsonb_build_array(
+        jsonb_build_object(
+          'profile', cast(${args.profile} as text),
+          'workspaceAffinityVersion', 1
         )
       )
     )
-    AND ${runnerState.admittableProfiles} @> jsonb_build_array(
-      cast(${args.profile} as text)
-    )
+  )`;
+  const admittableProfiles = sql`jsonb_build_array(
+    cast(${args.profile} as text)
+  )`;
+  return sql`(
+    ${arrayContains(runnerState.heldSessionStates, heldSessionStates)}
+    AND ${arrayContains(runnerState.admittableProfiles, admittableProfiles)}
   )`;
 }
 

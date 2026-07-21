@@ -144,18 +144,29 @@ returned fields independently of `.set({...})`. Likewise, raw SQL passed to
 `insert(...).select(...)` is the write source rather than a returned field; only
 a subsequent `returning(...)` introduces a result-mapping boundary.
 
-Use typed operators such as `eq`, `gt`, `isNull`, and `isNotNull` instead of an
-equivalent SQL tag. They preserve the schema relationship between a column and
-its bound value. Likewise, use `max(column)` or `min(column)` for the exact
-aggregate form when the helper preserves the required decoder and nullability
-contract. Keep an existing outer `.mapWith(...)` when it owns a stricter or more
-specific contract than the helper's inferred result.
+Use typed operators such as `eq`, `gt`, `isNull`, `isNotNull`, and `like`
+instead of an equivalent SQL tag. They make the operation explicit and, when
+the helper supports it, preserve the schema relationship between a column and
+its bound value. Pass value arrays directly to `inArray(column, values)`; do not
+rebuild parameter lists with `sql.join(...)`. Use `asc(...)` and `desc(...)` for
+ordering leaves, and use `arrayContains(...)` when the left operand is an
+array-valued schema column and an SQL wrapper intentionally constructs the
+right JSON value.
+
+Likewise, use `sum(...)`, `count(...)`, `countDistinct(...)`, `max(...)`, or
+`min(...)` for an exact aggregate leaf. Keep an existing outer SQL cast,
+`FILTER`, `COALESCE`, alias, and `.mapWith(...)` when that outer expression owns
+a stricter result decoder or nullability contract. Keep literal predicates as
+literals when changing them into helper arguments would introduce a parameter
+and alter planner-visible query shape; a `LIKE ... ESCAPE` suffix also remains
+outside the `like(...)` leaf.
 
 This preference also applies to a replaceable leaf inside otherwise irreducible
 SQL. Interpolate the typed operator in place of that leaf while retaining the
 outer tag for surrounding CTE, CASE, join, filter, cast, grouping, or statement
-syntax. Do not replace outer composition with `and(...)` or `or(...)` when their
-`SQL | undefined` result would weaken a required concrete `SQL` contract.
+syntax. Use `and(...)` and `or(...)` for a fixed boolean tree only when its
+direct consumer accepts their `SQL | undefined` result; do not use them when
+that result would weaken a required concrete `SQL` contract.
 Keep SQL syntax that belongs to an operand inside that operand. For example,
 write ``gte(events.createdAt, sql`${timestamp}::timestamp`)`` rather than
 placing the cast after the interpolated `gte(...)` fragment.
