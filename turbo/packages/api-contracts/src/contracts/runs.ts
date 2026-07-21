@@ -674,10 +674,6 @@ export function createLogPaginationQuerySchema(
     });
 }
 
-const sequenceLogPaginationQuerySchema = createLogPaginationQuerySchema({
-  cursorKind: "sequence",
-});
-
 const timeLogPaginationQuerySchema = createLogPaginationQuerySchema({
   cursorKind: "time",
 });
