@@ -14,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
@@ -318,6 +319,7 @@ interface ExistingClientMessageIdRow {
   readonly messageCreatedAt: Date;
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
+  readonly queueItemId: string | null;
 }
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
@@ -359,20 +361,19 @@ function resolveExistingClientMessageIdRow(
   }
   if (
     row.revokesMessageId !== null &&
-    row.runId === null &&
     row.content === null &&
     row.error === null
   ) {
     return { kind: "conflict" };
   }
-  if (row.runId === null) {
+  if (row.queueItemId !== null) {
     return {
       kind: "queued",
       createdAt: row.messageCreatedAt,
       inserted: false,
     };
   }
-  if (!row.runCreatedAt || !row.runStatus) {
+  if (row.runId === null || !row.runCreatedAt || !row.runStatus) {
     return { kind: "conflict" };
   }
   return {
@@ -404,10 +405,19 @@ async function resolveClientMessageId(
       messageCreatedAt: chatMessages.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
+      queueItemId: chatMessageQueue.id,
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
     .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .leftJoin(
+      chatMessageQueue,
+      and(
+        eq(chatMessageQueue.itemType, "user_message"),
+        eq(chatMessageQueue.chatThreadId, chatMessages.chatThreadId),
+        eq(chatMessageQueue.chatMessageId, chatMessages.id),
+      ),
+    )
     .where(eq(chatMessages.id, params.clientMessageId))
     .limit(1);
   return resolveExistingClientMessageIdRow(message, params);
@@ -1624,10 +1634,19 @@ function appendUnassociatedUserMessage(params: {
         messageCreatedAt: chatMessages.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
+        queueItemId: chatMessageQueue.id,
       })
       .from(chatMessages)
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
       .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .leftJoin(
+        chatMessageQueue,
+        and(
+          eq(chatMessageQueue.itemType, "user_message"),
+          eq(chatMessageQueue.chatThreadId, chatMessages.chatThreadId),
+          eq(chatMessageQueue.chatMessageId, chatMessages.id),
+        ),
+      )
       .where(eq(chatMessages.id, explicitId))
       .limit(1);
     const resolution = resolveExistingClientMessageIdRow(existing, {
@@ -1723,7 +1742,6 @@ function appendRecallUserMessage(params: {
     const [existingRevoker] = await tx
       .select({
         role: chatMessages.role,
-        runId: chatMessages.runId,
         content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })
@@ -1736,11 +1754,7 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (existingRevoker) {
-      if (
-        existingRevoker.role === "user" &&
-        existingRevoker.runId === null &&
-        existingRevoker.content === null
-      ) {
+      if (existingRevoker.role === "user" && existingRevoker.content === null) {
         return { ok: true, createdAt: existingRevoker.createdAt };
       }
       return {
@@ -1760,12 +1774,12 @@ function appendRecallUserMessage(params: {
           eq(chatMessages.id, params.revokesMessageId),
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
         ),
       )
       .limit(1);
     if (
       !target ||
+      (!queueItemDeleted && target.error !== INSUFFICIENT_CREDITS_MARKER) ||
       (target.revokesMessageId !== null &&
         target.error !== INSUFFICIENT_CREDITS_MARKER)
     ) {
@@ -1810,7 +1824,8 @@ function appendRecallUserMessage(params: {
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatMessages.revokesMessageId, params.revokesMessageId),
           eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
+          isNull(chatMessages.content),
+          isNull(chatMessages.error),
         ),
       )
       .limit(1);
@@ -1877,7 +1892,7 @@ function appendInterruptUserMessage(params: {
     const [existingInterrupter] = await tx
       .select({
         role: chatMessages.role,
-        runId: chatMessages.runId,
+        content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -1891,7 +1906,7 @@ function appendInterruptUserMessage(params: {
     if (existingInterrupter) {
       if (
         existingInterrupter.role === "user" &&
-        existingInterrupter.runId === null
+        existingInterrupter.content === null
       ) {
         return { ok: true, createdAt: existingInterrupter.createdAt };
       }
@@ -1944,7 +1959,7 @@ function appendInterruptUserMessage(params: {
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatMessages.interruptsRunId, params.interruptsRunId),
           eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
+          isNull(chatMessages.content),
         ),
       )
       .limit(1);
@@ -2653,15 +2668,22 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
         generationTemplate: chatMessages.generationTemplate,
         createdAt: chatMessages.createdAt,
       })
-      .from(chatMessages)
+      .from(chatMessageQueue)
+      .innerJoin(
+        chatMessages,
+        eq(chatMessages.id, chatMessageQueue.chatMessageId),
+      )
       .where(
         and(
+          eq(chatMessageQueue.itemType, "user_message"),
+          eq(chatMessageQueue.chatMessageId, params.messageId),
+          eq(chatMessageQueue.chatThreadId, params.prepared.thread.threadId),
           eq(chatMessages.id, params.messageId),
           eq(chatMessages.chatThreadId, params.prepared.thread.threadId),
           eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
         ),
       )
+      .for("update")
       .limit(1);
     if (!queuedMessage) {
       throw new Error("Queue-first message is no longer available");

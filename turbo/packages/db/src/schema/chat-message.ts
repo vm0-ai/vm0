@@ -77,7 +77,8 @@ export const chatMessages = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    // Historical run references remain after the corresponding run is deleted.
+    // Attribution only: identifies the run that consumed or produced this row.
+    // Queued state is represented exclusively by chat_message_queue.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(

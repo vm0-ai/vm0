@@ -3782,6 +3782,19 @@ describe("CHAT-02: shared user message queue", () => {
       content: "queue-first direct dispatch",
     });
     expect(queued.runId).toBeUndefined();
+
+    const replay = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: sent.body.threadId,
+        prompt: "queue-first direct dispatch",
+        clientMessageId: messageId,
+      },
+      [409],
+    );
+    expectApiError(replay.body);
+    expect(replay.body.error.message).toBe("clientMessageId is already in use");
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
@@ -3791,6 +3804,97 @@ describe("CHAT-02: shared user message queue", () => {
       .toBe(true);
 
     await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("keeps multiple queued messages in transcript order when the head is claimed", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "multiple queue order anchor",
+    });
+
+    const firstId = randomUUID();
+    const firstPrompt = "first queued transcript message";
+    const first = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: firstPrompt,
+        clientMessageId: firstId,
+      },
+      [201],
+    );
+    expect(first.body).toMatchObject({ runId: null });
+
+    const secondId = randomUUID();
+    const secondPrompt = "second queued transcript message";
+    const second = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: secondPrompt,
+        clientMessageId: secondId,
+      },
+      [201],
+    );
+    expect(second.body).toMatchObject({ runId: null });
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === firstId && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const users = userMessages(messages.messages);
+    const firstOriginal = users.find((message) => {
+      return message.id === firstId;
+    });
+    const firstClaimed = users.find((message) => {
+      return message.revokesMessageId === firstId;
+    });
+    if (!firstOriginal || !firstClaimed?.runId) {
+      throw new Error("Expected the first queued message to be claimed");
+    }
+    expect(firstClaimed.createdAt).toBe(firstOriginal.createdAt);
+
+    const replacedIds = new Set(
+      users.flatMap((message) => {
+        return message.revokesMessageId ? [message.revokesMessageId] : [];
+      }),
+    );
+    const visibleQueuedPrompts = users
+      .filter((message) => {
+        return (
+          !replacedIds.has(message.id) &&
+          (message.content === firstPrompt || message.content === secondPrompt)
+        );
+      })
+      .map((message) => {
+        return message.content;
+      });
+    expect(visibleQueuedPrompts).toStrictEqual([firstPrompt, secondPrompt]);
+
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: secondId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    await cancelChatRun(actor, firstClaimed.runId);
   }, 90_000);
 
   it("dispatches an idle send while thread-list publication is pending", async () => {
