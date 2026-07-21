@@ -8,13 +8,42 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 
-import { pgNullDecoder } from "../../lib/db-structured-result";
+import {
+  pgNullDecoder,
+  zodDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
   deleteChatMessage,
   updateChatMessage,
 } from "./zero-chat-message.service";
+import {
+  decryptPersistentSecretsMap,
+  encryptPersistentSecretsMap,
+} from "./crypto.utils";
+
+const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
+const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
+  z.enum(["web", "slack"]),
+);
+
+const queuedUserMessageRunParamsSchema = z.object({
+  version: z.literal(1),
+  prompt: z.string(),
+  appendSystemPrompt: z.string(),
+  userInfoExtras: z
+    .object({
+      slackDisplayName: z.string().optional(),
+      slackUserId: z.string().optional(),
+    })
+    .optional(),
+});
+
+type QueuedUserMessageRunParams = z.infer<
+  typeof queuedUserMessageRunParamsSchema
+>;
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -27,6 +56,37 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
+  readonly triggerSource: "web" | "slack";
+  readonly encryptedParams: string | null;
+}
+
+export async function encryptQueuedUserMessageRunParams(
+  params: QueuedUserMessageRunParams,
+  ctx: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  const encrypted = await encryptPersistentSecretsMap(
+    { [USER_MESSAGE_QUEUE_RUN_PARAMS_KEY]: JSON.stringify(params) },
+    ctx,
+  );
+  if (!encrypted) {
+    throw new Error("Failed to encrypt queued user message run params");
+  }
+  return encrypted;
+}
+
+export async function decryptQueuedUserMessageRunParams(
+  encryptedParams: string | null,
+  ctx: { readonly orgId: string; readonly userId: string },
+): Promise<QueuedUserMessageRunParams | null> {
+  if (!encryptedParams) {
+    return null;
+  }
+  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
+  const raw = decrypted?.[USER_MESSAGE_QUEUE_RUN_PARAMS_KEY];
+  if (!raw) {
+    return null;
+  }
+  return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
 function unclaimedQueuedUserMessageCondition(
@@ -69,6 +129,11 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
+      triggerSource: sql`CASE
+        WHEN ${chatMessageQueue.triggerSource} = 'slack' THEN 'slack'
+        ELSE 'web'
+      END`.mapWith(queuedUserMessageTriggerSourceDecoder),
+      encryptedParams: chatMessageQueue.encryptedParams,
     })
     .from(chatMessageQueue)
     .innerJoin(
@@ -104,6 +169,8 @@ export async function enqueueUserMessageQueueItem(
     readonly userId: string;
     readonly chatThreadId: string;
     readonly chatMessageId: string;
+    readonly triggerSource?: "web" | "slack";
+    readonly encryptedParams?: string;
   },
 ): Promise<void> {
   await db
@@ -114,6 +181,8 @@ export async function enqueueUserMessageQueueItem(
       chatThreadId: args.chatThreadId,
       itemType: "user_message",
       chatMessageId: args.chatMessageId,
+      triggerSource: args.triggerSource,
+      encryptedParams: args.encryptedParams,
     })
     .onConflictDoNothing();
 }

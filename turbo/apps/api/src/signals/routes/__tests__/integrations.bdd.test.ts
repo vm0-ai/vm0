@@ -13,6 +13,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   agentPhoneBddWebhookSecret,
   createBddIntegrationApi,
@@ -36,6 +37,7 @@ helper gap:
 
 const context = testContext();
 const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
 const integrations = createBddIntegrationApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -1129,13 +1131,11 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 
 describe("INT-01: Slack app deep webhook flows", () => {
   it("keeps canonical ingress sticky and deduplicates Slack retries per event", async () => {
-    // #22291 owns downstream chat-message processing, so the diagnostic API is
-    // the only external boundary that can observe pending ingress in this PR.
     const actor = bdd.user();
+    runs.configureRunnerGroup();
     integrations.configureSlackAppMocks();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD Canonical Slack Agent",
-    });
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
     if (!actor.orgId) {
       throw new Error("Expected canonical Slack actor to belong to an org");
     }
@@ -1145,9 +1145,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
       orgRole: "org:admin",
     } satisfies Parameters<typeof updateFeatureSwitchesForUser>[1];
     const slackUserId = uniqueSlackUserId();
-    const { teamId } = await integrations.installSlackWorkspace(actor, {
-      installerSlackUserId: slackUserId,
-    });
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackIngress]: true,
     });
@@ -1158,7 +1161,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const event = {
       type: "app_mention",
       user: slackUserId,
-      text: "admit this event once",
+      text: `<@${botUserId}> admit this event once`,
       ts: threadTs,
       channel: channelId,
       channel_type: "channel",
@@ -1184,6 +1187,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         [200],
       );
     }
+    await flushWaitUntilForTest();
 
     let state = await integrations.readSlackTestState(teamId);
     expect(state.chat_thread_routes).toHaveLength(1);
@@ -1199,16 +1203,100 @@ describe("INT-01: Slack app deep webhook flows", () => {
       eventId,
       payload: eventBody,
       routeId: state.chat_thread_routes[0]?.id,
-      status: "pending",
+      status: "processed",
       retryCount: 3,
     });
+    const canonicalChatThreadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!canonicalChatThreadId) {
+      throw new Error("Expected canonical Slack route to own a chat thread");
+    }
+    const hiddenThreadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(hiddenThreadEvents.status).toBe(200);
+    if (hiddenThreadEvents.status !== 200) {
+      throw new Error("Expected hidden thread events to load");
+    }
+    expect(
+      hiddenThreadEvents.body.events.map((threadEvent) => {
+        return threadEvent.chatThreadId;
+      }),
+    ).not.toContain(canonicalChatThreadId);
+    expect(
+      (await chat.requestReadThread(actor, canonicalChatThreadId, [404]))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await chat.requestListThreadMessages(
+          actor,
+          canonicalChatThreadId,
+          {},
+          [404],
+        )
+      ).status,
+    ).toBe(404);
+    expect(state.recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "slack",
+          userId: actor.userId,
+          promptPreview: "admit this event once",
+        }),
+      ]),
+    );
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).not.toHaveBeenCalled();
 
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.CanonicalSlackIngress]: false,
+      [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
     });
+    const visibleThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
+    expect(visibleThreadEvents.status).toBe(200);
+    if (visibleThreadEvents.status !== 200) {
+      throw new Error("Expected visible thread events to load");
+    }
+    expect(
+      visibleThreadEvents.body.events.map((threadEvent) => {
+        return threadEvent.chatThreadId;
+      }),
+    ).toContain(canonicalChatThreadId);
+    expect(
+      (await chat.requestReadThread(actor, canonicalChatThreadId, [200]))
+        .status,
+    ).toBe(200);
+    expect(
+      (await chat.listThreadMessages(actor, canonicalChatThreadId)).messages,
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: "admit this event once",
+        }),
+      ]),
+    );
+
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackIngress]: false,
+      [FeatureSwitchKey.CanonicalSlackWebVisibility]: false,
+    });
+    const rehiddenThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
+    expect(rehiddenThreadEvents.status).toBe(200);
+    if (rehiddenThreadEvents.status !== 200) {
+      throw new Error("Expected rehidden thread events to load");
+    }
+    expect(
+      rehiddenThreadEvents.body.events.map((threadEvent) => {
+        return threadEvent.chatThreadId;
+      }),
+    ).not.toContain(canonicalChatThreadId);
     const stickyEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
     const stickyBody = JSON.stringify({
       type: "event_callback",
@@ -1226,6 +1314,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       integrations.signedSlackIngressHeaders(stickyBody),
       [200],
     );
+    await flushWaitUntilForTest();
 
     state = await integrations.readSlackTestState(teamId);
     expect(state.chat_thread_routes).toHaveLength(1);
@@ -1235,6 +1324,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       backend: "canonical",
     });
     expect(state.chat_ingress).toHaveLength(2);
+    expect(state.chat_ingress).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventId, status: "processed" }),
+        expect.objectContaining({
+          eventId: stickyEventId,
+          status: "processed",
+        }),
+      ]),
+    );
     expect(
       state.chat_ingress.map((ingress) => {
         return ingress.eventId;
