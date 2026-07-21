@@ -2095,6 +2095,7 @@ describe("CHAT-01 chat search", () => {
       before: 1,
       after: 0,
     });
+    expect(beforeOnly.results).toHaveLength(3);
     for (const match of beforeOnly.results) {
       expect(match.contextBefore).toHaveLength(1);
       expect(match.contextAfter).toStrictEqual([]);
@@ -2105,6 +2106,7 @@ describe("CHAT-01 chat search", () => {
       before: 0,
       after: 1,
     });
+    expect(afterOnly.results).toHaveLength(3);
     for (const match of afterOnly.results) {
       expect(match.contextBefore).toStrictEqual([]);
       expect(match.contextAfter).toHaveLength(1);
