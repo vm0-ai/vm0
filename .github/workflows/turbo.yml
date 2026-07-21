@@ -1135,8 +1135,10 @@ jobs:
           retention-days: 1
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch.
+  # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
+  # the provider preview but do not receive a custom preview domain.
   build-app-cf:
+    needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -1358,10 +1360,17 @@ jobs:
           {
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
-            : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-            echo "custom-domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
-            echo "custom-url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Cloudflare Pages custom preview domain
+        id: pages-custom-domain
+        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
+        env:
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
         env:
@@ -1380,11 +1389,11 @@ jobs:
             --commit-dirty=false
 
       - name: Configure Cloudflare Pages custom preview domain
-        if: steps.pages-preview.outputs.custom-domain != ''
+        if: steps.pages-custom-domain.outputs.domain != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-preview.outputs.custom-domain }}
+          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
         run: |
           : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
           bash .github/scripts/manage-okou-pages-domain.sh \
@@ -1397,7 +1406,7 @@ jobs:
 
       - name: Record Cloudflare Pages preview
         env:
-          PAGES_CUSTOM_URL: ${{ steps.pages-preview.outputs.custom-url }}
+          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
