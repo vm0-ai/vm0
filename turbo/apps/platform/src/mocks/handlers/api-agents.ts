@@ -207,6 +207,11 @@ export const apiAgentsHandlers = [
     return respond(200, { artifacts: [], truncated: false, nextCursor: null });
   }),
 
+  // GET /api/zero/artifacts/favorites
+  mockApi(artifactsContract.listFavorites, ({ respond }) => {
+    return respond(200, { artifactUrls: [] });
+  }),
+
   // POST /api/zero/artifacts/favorite
   mockApi(artifactsContract.favorite, ({ respond }) => {
     return respond(204);
