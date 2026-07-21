@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   type UsageRecordKind,
   type UsageRecordRow,
@@ -105,37 +105,48 @@ type UsageRecordBreakdownSqlRow = z.output<
   typeof usageRecordBreakdownSqlRowSchema
 >;
 
-function pgLit(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+function tokenExpr() {
+  const list = sql.join(
+    MODEL_TOKEN_CATEGORIES.map((category) => {
+      return sql`${category}`;
+    }),
+    sql`, `,
+  );
+  return sql`CASE WHEN ue.kind = ${MODEL_USAGE_KIND} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
 }
 
-function tokenExpr(): string {
-  const list = MODEL_TOKEN_CATEGORIES.map(pgLit).join(", ");
-  return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
-}
-
-function sourceExpr(triggerSource: string): string {
-  const passthroughList = PASSTHROUGH_TRIGGER_SOURCES.map(pgLit).join(", ");
-  return `
+function sourceExpr() {
+  const passthroughList = sql.join(
+    PASSTHROUGH_TRIGGER_SOURCES.map((source) => {
+      return sql`${source}`;
+    }),
+    sql`, `,
+  );
+  return sql`
     CASE
-      WHEN ${triggerSource} = 'web' THEN 'chat'
-      WHEN ${triggerSource} IN ('workflow-schedule', 'workflow-event') THEN 'automation'
-      WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
+      WHEN zr.trigger_source = 'web' THEN 'chat'
+      WHEN zr.trigger_source IN ('workflow-schedule', 'workflow-event') THEN 'automation'
+      WHEN zr.trigger_source IN (${passthroughList}) THEN zr.trigger_source
       ELSE 'other'
     END`;
 }
 
-function usageKindExpr(kind: string): string {
-  const usageKindList = USAGE_RECORD_KINDS.map(pgLit).join(", ");
-  return `
+function usageKindExpr() {
+  const usageKindList = sql.join(
+    USAGE_RECORD_KINDS.map((kind) => {
+      return sql`${kind}`;
+    }),
+    sql`, `,
+  );
+  return sql`
     CASE
-      WHEN ${kind} IN (${usageKindList}) THEN ${kind}
+      WHEN ue.kind IN (${usageKindList}) THEN ue.kind
       ELSE 'other'
     END`;
 }
 
-function usageCreditsExpr(usageAlias: string, allowanceAlias: string): string {
-  return `COALESCE(${usageAlias}.credits_charged, 0) + COALESCE(${allowanceAlias}.units_applied, 0)`;
+function usageCreditsExpr() {
+  return sql`COALESCE(ue.credits_charged, 0) + COALESCE(uaa.units_applied, 0)`;
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -144,27 +155,33 @@ function usageCreditsExpr(usageAlias: string, allowanceAlias: string): string {
 // NULL, collapse to one synthetic row per source/user. Everything else is one
 // row per run.
 function recordWith(
-  userIdLit: string,
-  orgIdLit: string,
+  userId: string | null,
+  orgId: string,
   period: UsagePeriod | null,
-): string {
-  const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
-  const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
+): SQL {
+  const threadedSourceList = sql.join(
+    THREADED_SOURCES.map((source) => {
+      return sql`${source}`;
+    }),
+    sql`, `,
+  );
+  const userPredicate =
+    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
   const periodPredicate = period
-    ? `
-        AND ue.created_at AT TIME ZONE 'UTC' >= ${pgLit(period.start.toISOString())}::timestamptz
-        AND ue.created_at AT TIME ZONE 'UTC' < ${pgLit(period.end.toISOString())}::timestamptz`
-    : "";
-  return `
+    ? sql`
+        AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
+        AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
+    : sql.empty();
+  return sql`
     WITH usage_rows AS (
       SELECT
         ue.run_id,
         ue.user_id,
-        ${usageCreditsExpr("ue", "uaa")}::bigint AS credits,
+        ${usageCreditsExpr()}::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
       FROM usage_event ue
       LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-      WHERE ue.org_id = ${orgIdLit}
+      WHERE ue.org_id = ${orgId}
         ${userPredicate}
         AND ue.status = 'processed'
         ${periodPredicate}
@@ -175,7 +192,7 @@ function recordWith(
         ur.user_id,
         ur.credits,
         ur.tokens,
-        ${sourceExpr("zr.trigger_source")} AS source,
+        ${sourceExpr()} AS source,
         zr.chat_thread_id,
         zr.summary,
         ar.prompt,
@@ -243,39 +260,45 @@ function recordWith(
 
 async function queryUsageRecordRows(
   db: Db,
-  recordCte: string,
-  sourceFilterLit: string | null,
+  recordCte: SQL,
+  sourceFilter: UsageRecordSource | undefined,
   pageSize: number,
   offset: number,
 ): Promise<UsageRecordIntermediateRow[]> {
-  const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
+  const where =
+    sourceFilter === undefined
+      ? sql.empty()
+      : sql`WHERE source = ${sourceFilter}`;
   return await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${recordCte}
       SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
       FROM record
       ${where}
       ORDER BY last_activity DESC
       LIMIT ${pageSize} OFFSET ${offset}
-    `),
+    `,
     usageRecordSqlRowSchema,
   );
 }
 
 async function queryUsageRecordTotals(
   db: Db,
-  recordCte: string,
-  sourceFilterLit: string | null,
+  recordCte: SQL,
+  sourceFilter: UsageRecordSource | undefined,
 ): Promise<{ total: number; totalCredits: number }> {
-  const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
+  const where =
+    sourceFilter === undefined
+      ? sql.empty()
+      : sql`WHERE source = ${sourceFilter}`;
   const rows = await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${recordCte}
       SELECT COUNT(*)::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
       FROM record ${where}
-    `),
+    `,
     usageRecordTotalsSqlRowSchema,
   );
   return {
@@ -284,27 +307,27 @@ async function queryUsageRecordTotals(
   };
 }
 
-function rowKeyExpr(
-  source: string,
-  chatThreadId: string,
-  runId: string,
-  userId: string,
-): string {
-  const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
-  return `
+function rowKeyExpr() {
+  const threadedSourceList = sql.join(
+    THREADED_SOURCES.map((source) => {
+      return sql`${source}`;
+    }),
+    sql`, `,
+  );
+  return sql`
     CASE
-      WHEN ${chatThreadId} IS NOT NULL AND ${source} IN (${threadedSourceList})
-        THEN CONCAT(${source}, ':thread:', ${chatThreadId}::text, ':user:', ${userId})
-      WHEN ${chatThreadId} IS NULL AND ${source} IN (${threadedSourceList})
-        THEN CONCAT(${source}, ':deleted-thread:user:', ${userId})
-      ELSE CONCAT(${source}, ':run:', ${runId}::text, ':user:', ${userId})
+      WHEN chat_thread_id IS NOT NULL AND source IN (${threadedSourceList})
+        THEN CONCAT(source, ':thread:', chat_thread_id::text, ':user:', user_id)
+      WHEN chat_thread_id IS NULL AND source IN (${threadedSourceList})
+        THEN CONCAT(source, ':deleted-thread:user:', user_id)
+      ELSE CONCAT(source, ':run:', run_id::text, ':user:', user_id)
     END`;
 }
 
 async function queryUsageRecordBreakdown(
   db: Db,
-  userIdLit: string,
-  orgIdLit: string,
+  userId: string | null,
+  orgId: string,
   period: UsagePeriod | null,
   rowKeys: readonly string[],
 ): Promise<Map<string, UsageRecordRow["breakdown"]>> {
@@ -312,19 +335,25 @@ async function queryUsageRecordBreakdown(
     return new Map();
   }
 
-  const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
+  const userPredicate =
+    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
   const periodPredicate = period
-    ? `
-          AND ue.created_at AT TIME ZONE 'UTC' >= ${pgLit(period.start.toISOString())}::timestamptz
-          AND ue.created_at AT TIME ZONE 'UTC' < ${pgLit(period.end.toISOString())}::timestamptz`
-    : "";
-  const rowKeyList = rowKeys.map(pgLit).join(", ");
-  const sourceSql = sourceExpr("zr.trigger_source");
-  const kindSql = usageKindExpr("ue.kind");
+    ? sql`
+          AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
+          AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
+    : sql.empty();
+  const rowKeyList = sql.join(
+    rowKeys.map((rowKey) => {
+      return sql`${rowKey}`;
+    }),
+    sql`, `,
+  );
+  const sourceSql = sourceExpr();
+  const kindSql = usageKindExpr();
 
   const rows = await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       WITH usage_rows AS (
         SELECT
           ${sourceSql} AS source,
@@ -333,18 +362,18 @@ async function queryUsageRecordBreakdown(
           ue.user_id,
           ${kindSql} AS kind,
           COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
-          ${usageCreditsExpr("ue", "uaa")}::bigint AS credits
+          ${usageCreditsExpr()}::bigint AS credits
         FROM usage_event ue
         LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
         INNER JOIN zero_runs zr ON zr.id = ue.run_id
-        WHERE ue.org_id = ${orgIdLit}
+        WHERE ue.org_id = ${orgId}
           ${userPredicate}
           AND ue.status = 'processed'
           ${periodPredicate}
       ),
       keyed AS (
         SELECT
-          ${rowKeyExpr("source", "chat_thread_id", "run_id", "user_id")} AS row_key,
+          ${rowKeyExpr()} AS row_key,
           kind,
           provider,
           credits
@@ -356,7 +385,7 @@ async function queryUsageRecordBreakdown(
       GROUP BY row_key, kind, provider
       HAVING SUM(credits) > 0
       ORDER BY row_key, kind, provider
-    `),
+    `,
     usageRecordBreakdownSqlRowSchema,
   );
 
@@ -443,25 +472,23 @@ export const zeroUsageRecord$ = command(
     }
 
     const db = set(writeDb$);
-    const userIdLit = args.scope === "mine" ? pgLit(args.userId) : "";
-    const orgIdLit = pgLit(args.orgId);
-    const sourceFilterLit = args.source ? pgLit(args.source) : null;
+    const userId = args.scope === "mine" ? args.userId : null;
     const offset = (args.page - 1) * args.pageSize;
-    const recordCte = recordWith(userIdLit, orgIdLit, period);
+    const recordCte = recordWith(userId, args.orgId, period);
 
     signal.throwIfAborted();
     const rows = await queryUsageRecordRows(
       db,
       recordCte,
-      sourceFilterLit,
+      args.source,
       args.pageSize,
       offset,
     );
     signal.throwIfAborted();
     const breakdownByRow = await queryUsageRecordBreakdown(
       db,
-      userIdLit,
-      orgIdLit,
+      userId,
+      args.orgId,
       period,
       rows.map((row) => {
         return row.rowKey;
@@ -471,7 +498,7 @@ export const zeroUsageRecord$ = command(
     const { total, totalCredits } = await queryUsageRecordTotals(
       db,
       recordCte,
-      sourceFilterLit,
+      args.source,
     );
     signal.throwIfAborted();
 

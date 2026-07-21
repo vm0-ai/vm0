@@ -148,7 +148,7 @@ export const triggerAutoRecharge$ = command(
             AND ${orgMetadata.autoRechargeAmount} IS NOT NULL
             AND ${orgMetadata.credits} <= ${orgMetadata.autoRechargeThreshold}
             AND (${orgMetadata.autoRechargePendingAt} IS NULL
-                 OR ${orgMetadata.autoRechargePendingAt} < now() - interval '${sql.raw(String(STALE_THRESHOLD_MINUTES))} minutes')`,
+                 OR ${orgMetadata.autoRechargePendingAt} < now() - make_interval(mins => ${STALE_THRESHOLD_MINUTES}))`,
       )
       .returning({
         credits: orgMetadata.credits,

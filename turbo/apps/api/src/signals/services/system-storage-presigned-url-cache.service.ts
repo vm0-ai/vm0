@@ -301,7 +301,7 @@ async function touchRecentlyUsedCacheRows(
     orderedCacheKeys.map((cacheKey) => {
       return sql`${cacheKey}`;
     }),
-    sql.raw(", "),
+    sql`, `,
   );
   const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
   const touchCutoffTimestamp = timestampWithoutTimeZone(touchCutoff(issuedAt));
