@@ -14,6 +14,7 @@ import { chatThreads } from "./chat-thread";
 import type {
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
+  ChatMessageFeedbackPayload,
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
@@ -24,6 +25,7 @@ export type {
   ChatMessageAttachFileMetadata,
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
+  ChatMessageFeedbackPayload,
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
@@ -92,6 +94,8 @@ export const chatMessages = pgTable(
     runGroupId: uuid("run_group_id"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
+    feedbackPayload:
+      jsonb("feedback_payload").$type<ChatMessageFeedbackPayload>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */

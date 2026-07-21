@@ -4411,6 +4411,13 @@
       "when": 1784600262183,
       "tag": "0629_contract_chat_message_queue_automation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 630,
+      "version": "7",
+      "when": 1784606077129,
+      "tag": "0630_fresh_maddog",
+      "breakpoints": true
     }
   ]
 }

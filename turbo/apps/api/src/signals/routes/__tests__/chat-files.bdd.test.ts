@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -11,6 +12,7 @@ import {
   persistedAttachment,
   storageTextFile,
 } from "./helpers/api-bdd-chat-files";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { mockMemoryContent } from "./helpers/zero-memory";
 
 /*
@@ -37,6 +39,10 @@ const authOrg = createAuthOrgAgentsBddApi(context);
 describe("CHAT-01 chat thread lifecycle", () => {
   it("creates, mutates, searches, and deletes a thread through visible APIs", async () => {
     const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected chat thread actor to belong to an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
     const compose = await api.createComposeForChatThread(actor);
     const created = await api.createThread(actor, {
       agentId: compose.composeId,
@@ -54,12 +60,41 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
         draftContent: null,
+        draftFeedbackPayload: null,
         draftAttachments: null,
       },
     );
 
+    const draftFeedbackPayload = {
+      version: 1 as const,
+      items: [
+        {
+          id: 1,
+          quote: "The launch date is unclear.",
+          note: "Use an exact date.",
+        },
+      ],
+    };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: false,
+    });
+    const disabledFeedbackPatch = await api.requestPatchThread(
+      actor,
+      created.id,
+      { draftFeedbackPayload },
+      [400],
+    );
+    expectApiError(disabledFeedbackPatch.body);
+    expect(disabledFeedbackPatch.body.error.message).toBe(
+      "Feedback message cards are not enabled",
+    );
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: true,
+    });
     await api.patchThread(actor, created.id, {
       draftContent: "follow up on the launch",
+      draftFeedbackPayload,
       draftAttachments: [
         persistedAttachment(
           randomUUID(),
@@ -71,7 +106,22 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
     const draft = await api.readThreadDraft(actor, created.id);
     expect(draft.draftContent).toBe("follow up on the launch");
+    expect(draft.draftFeedbackPayload).toStrictEqual(draftFeedbackPayload);
     expect(draft.draftAttachments).toHaveLength(1);
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: false,
+    });
+    await api.patchThread(actor, created.id, {
+      draftContent: "updated without touching hidden feedback",
+    });
+    const updatedDraft = await api.readThreadDraft(actor, created.id);
+    expect(updatedDraft.draftContent).toBe(
+      "updated without touching hidden feedback",
+    );
+    expect(updatedDraft.draftFeedbackPayload).toStrictEqual(
+      draftFeedbackPayload,
+    );
     await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
     await api.renameThread(actor, created.id, "Renamed launch notes");
@@ -299,6 +349,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
+      draftFeedbackPayload: null,
       draftAttachments: null,
     });
 

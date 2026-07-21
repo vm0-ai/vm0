@@ -17,6 +17,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageFeedbackPayload,
   type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -110,6 +111,7 @@ import {
   loadNextUnclaimedQueuedUserMessage,
 } from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import { formatChatMessageForAgent } from "../services/zero-chat-feedback-message.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
 import { bestEffort, tapError } from "../utils";
@@ -126,6 +128,8 @@ type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 interface NormalSendBody {
   readonly agentId: string;
   readonly prompt: string;
+  readonly textContent?: string;
+  readonly feedbackPayload?: ChatMessageFeedbackPayload;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
@@ -183,6 +187,7 @@ interface ResolvedThread {
 interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  readonly feedbackPayload: ChatMessageFeedbackPayload | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -239,6 +244,7 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplateV2Enabled: boolean;
+  readonly feedbackMessageCardsEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -484,16 +490,41 @@ function normalizeNormalSendBody(body: NormalSendBody):
       readonly ok: false;
       readonly response: ReturnType<typeof badRequestMessage>;
     } {
-  if (body.model === undefined) {
-    return { ok: true, data: body };
+  if (!body.feedbackPayload) {
+    if (body.model === undefined) {
+      return { ok: true, data: body };
+    }
+    return {
+      ok: true,
+      data: {
+        ...body,
+        modelSelection: modelFirstSelection(body.model),
+      },
+    };
   }
+  if (body.textContent === undefined) {
+    return {
+      ok: false,
+      response: badRequestMessage(
+        "Text content is required for structured feedback",
+      ),
+    };
+  }
+
   return {
     ok: true,
     data: {
       ...body,
-      modelSelection: modelFirstSelection(body.model),
+      prompt: formatChatMessageForAgent(body.textContent, body.feedbackPayload),
+      ...(body.model === undefined
+        ? {}
+        : { modelSelection: modelFirstSelection(body.model) }),
     },
   };
+}
+
+function storedUserMessageContent(body: NormalSendBody): string {
+  return body.textContent ?? body.prompt;
 }
 
 function hasAgentSessionId(
@@ -622,7 +653,11 @@ function formatAttachFileIds(
 function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
   const attach = formatAttachFileIds(message.attachFiles);
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const content = formatChatMessageForAgent(
+    message.content,
+    message.feedbackPayload,
+  );
+  const body = `${roleLabel}: ${truncatePrior(content) || "[empty message]"}`;
   return attach ? `${body}\n${attach}` : body;
 }
 
@@ -777,6 +812,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
+      feedbackPayload: chatMessages.feedbackPayload,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -807,6 +843,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: row.role,
       content: row.content,
+      feedbackPayload: row.feedbackPayload,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -1132,7 +1169,24 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.WebsiteTemplateV2,
       context,
     ),
+    feedbackMessageCardsEnabled: isFeatureEnabled(
+      FeatureSwitchKey.FeedbackMessageCards,
+      context,
+    ),
   };
+}
+
+function validateFeedbackMessageCardsFeatureSwitch(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  if (
+    params.body.feedbackPayload &&
+    !params.featureSwitches.feedbackMessageCardsEnabled
+  ) {
+    return badRequestMessage("Feedback message cards are not enabled");
+  }
+  return undefined;
 }
 
 function validateGenerationTemplatePrompt(
@@ -1550,7 +1604,8 @@ function appendUnassociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
-  readonly prompt: string;
+  readonly content: string;
+  readonly feedbackPayload: ChatMessageFeedbackPayload | undefined;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
@@ -1561,7 +1616,11 @@ function appendUnassociatedUserMessage(params: {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftFeedbackPayload: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.threadId),
@@ -1578,7 +1637,8 @@ function appendUnassociatedUserMessage(params: {
         ...(explicitId ? { id: explicitId } : {}),
         chatThreadId: params.threadId,
         role: "user",
-        content: params.prompt,
+        content: params.content,
+        feedbackPayload: params.feedbackPayload,
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1645,7 +1705,11 @@ async function clearThreadDraft(
 ): Promise<void> {
   await tx
     .update(chatThreads)
-    .set({ draftContent: null, draftAttachments: null })
+    .set({
+      draftContent: null,
+      draftFeedbackPayload: null,
+      draftAttachments: null,
+    })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 }
 
@@ -1653,7 +1717,8 @@ async function appendAssociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
-  readonly prompt: string;
+  readonly content: string;
+  readonly feedbackPayload: ChatMessageFeedbackPayload | undefined;
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
@@ -1677,7 +1742,8 @@ async function appendAssociatedUserMessage(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
       role: "user",
-      content: params.prompt,
+      content: params.content,
+      feedbackPayload: params.feedbackPayload,
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2322,6 +2388,15 @@ const prepareNormalSend$ = command(
     if (codexServiceTierError) {
       return codexServiceTierError;
     }
+    const feedbackMessageCardsError = validateFeedbackMessageCardsFeatureSwitch(
+      {
+        body: args.body,
+        featureSwitches,
+      },
+    );
+    if (feedbackMessageCardsError) {
+      return feedbackMessageCardsError;
+    }
     const generationTemplateError = validateGenerationTemplatePrompt(args.body);
     if (generationTemplateError) {
       return generationTemplateError;
@@ -2391,7 +2466,8 @@ async function queueUnassociatedNormalMessage(params: {
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
-    prompt: params.body.prompt,
+    content: storedUserMessageContent(params.body),
+    feedbackPayload: params.body.feedbackPayload,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
@@ -2469,7 +2545,8 @@ function scheduleAssociatedUserMessage(params: {
         db: params.db,
         threadId: params.threadId,
         userId: params.userId,
-        prompt: params.body.prompt,
+        content: storedUserMessageContent(params.body),
+        feedbackPayload: params.body.feedbackPayload,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
@@ -2648,6 +2725,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
+        feedbackPayload: chatMessages.feedbackPayload,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2675,6 +2753,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: queuedMessage.content,
+      feedbackPayload: queuedMessage.feedbackPayload,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2741,7 +2820,11 @@ async function appendInsufficientCreditsMessages(params: {
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftFeedbackPayload: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.prepared.thread.threadId),
@@ -2759,7 +2842,8 @@ async function appendInsufficientCreditsMessages(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
-      content: params.body.prompt,
+      content: storedUserMessageContent(params.body),
+      feedbackPayload: params.body.feedbackPayload,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,

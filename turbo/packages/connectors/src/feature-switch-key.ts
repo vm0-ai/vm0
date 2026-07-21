@@ -85,4 +85,5 @@ export enum FeatureSwitchKey {
   ZeroMail = "zeroMail",
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
+  FeedbackMessageCards = "feedbackMessageCards",
 }

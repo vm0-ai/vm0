@@ -10,6 +10,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
+  type ChatMessageFeedbackPayload,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
@@ -66,6 +67,7 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { insertChatMessage } from "./zero-chat-message.service";
+import { formatChatMessageForAgent } from "./zero-chat-feedback-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
@@ -315,6 +317,7 @@ interface CompletedChatOutputLoad {
 interface PriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  readonly feedbackPayload: ChatMessageFeedbackPayload | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -1293,7 +1296,11 @@ function truncatePrior(value: string): string {
 
 function formatPriorRunMessage(message: PriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const content = formatChatMessageForAgent(
+    message.content,
+    message.feedbackPayload,
+  );
+  const body = `${roleLabel}: ${truncatePrior(content) || "[empty message]"}`;
   const attach = formatAttachFileIds(message.attachFiles);
   return attach ? `${body}\n${attach}` : body;
 }
@@ -1366,6 +1373,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
+      feedbackPayload: chatMessages.feedbackPayload,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -1396,6 +1404,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: row.role,
       content: row.content,
+      feedbackPayload: row.feedbackPayload,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -1696,7 +1705,10 @@ async function buildQueuedFullPrompt(args: {
     resolvedAttachFiles.length > 0
       ? resolvedAttachFiles
       : fallbackAttachFiles(args.queuedMessage.attachFiles);
-  const content = args.queuedMessage.content ?? "";
+  const content = formatChatMessageForAgent(
+    args.queuedMessage.content ?? "",
+    args.queuedMessage.feedbackPayload,
+  );
   if (attachFiles.length === 0) {
     return content;
   }

@@ -39,6 +39,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
+import { formatChatMessageForAgent } from "./zero-chat-feedback-message.service";
 import {
   createDeferredPromise,
   onRejection,
@@ -777,6 +778,7 @@ async function collectConversationMessages(
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
+        feedbackPayload: chatMessages.feedbackPayload,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -797,7 +799,10 @@ async function collectConversationMessages(
       return [
         {
           role,
-          content: message.content,
+          content: formatChatMessageForAgent(
+            message.content,
+            message.feedbackPayload,
+          ),
           createdAt: message.createdAt.toISOString(),
         },
       ];

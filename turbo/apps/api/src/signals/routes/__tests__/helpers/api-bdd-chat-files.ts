@@ -24,6 +24,7 @@ import {
   type ChatThreadDraft,
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
+  type ChatMessageFeedbackPayload,
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type PagedChatMessage,
@@ -163,6 +164,8 @@ type BddSendMessageBody =
   | {
       readonly agentId: string;
       readonly prompt: string;
+      readonly textContent?: string;
+      readonly feedbackPayload?: ChatMessageFeedbackPayload;
       readonly threadId?: string;
       readonly clientThreadId?: string;
       readonly model?: string;
@@ -671,6 +674,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftFeedbackPayload?: ChatMessageFeedbackPayload | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -678,6 +682,9 @@ export function createChatFilesBddApi(context: TestContext) {
         ...(body.draftContent === undefined
           ? {}
           : { draftContent: body.draftContent }),
+        ...(body.draftFeedbackPayload === undefined
+          ? {}
+          : { draftFeedbackPayload: body.draftFeedbackPayload }),
         ...(body.draftAttachments === undefined
           ? {}
           : {
@@ -702,6 +709,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftFeedbackPayload?: ChatMessageFeedbackPayload | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -714,6 +722,9 @@ export function createChatFilesBddApi(context: TestContext) {
             ...(body.draftContent === undefined
               ? {}
               : { draftContent: body.draftContent }),
+            ...(body.draftFeedbackPayload === undefined
+              ? {}
+              : { draftFeedbackPayload: body.draftFeedbackPayload }),
             ...(body.draftAttachments === undefined
               ? {}
               : {
@@ -1266,6 +1277,12 @@ export function createChatFilesBddApi(context: TestContext) {
               return {
                 agentId: body.agentId,
                 prompt: body.prompt,
+                ...(body.textContent === undefined
+                  ? {}
+                  : { textContent: body.textContent }),
+                ...(body.feedbackPayload === undefined
+                  ? {}
+                  : { feedbackPayload: body.feedbackPayload }),
                 ...(body.threadId === undefined
                   ? {}
                   : { threadId: body.threadId }),

@@ -30,6 +30,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
+  type ChatMessageFeedbackPayload,
   type ChatMessageUsagePayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
@@ -123,6 +124,7 @@ type ChatMessageRow = {
   readonly id: string;
   readonly role: string;
   readonly content: string | null;
+  readonly feedbackPayload: ChatMessageFeedbackPayload | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
@@ -198,6 +200,7 @@ type ChatThreadRow = {
   readonly title: string | null;
   readonly agentComposeId: string;
   readonly draftContent: string | null;
+  readonly draftFeedbackPayload: ChatMessageFeedbackPayload | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -227,6 +230,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
+  feedbackPayload: chatMessages.feedbackPayload,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -451,6 +455,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
+        draftFeedbackPayload: chatThreads.draftFeedbackPayload,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         modelProviderId: chatThreads.modelProviderId,
@@ -479,6 +484,7 @@ function ownedChatThread(
       title: thread.title,
       agentComposeId: thread.agentComposeId,
       draftContent: thread.draftContent ?? null,
+      draftFeedbackPayload: thread.draftFeedbackPayload ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
@@ -515,6 +521,7 @@ export function zeroChatThreadDraft(args: {
 
     return {
       draftContent: thread.draftContent,
+      draftFeedbackPayload: thread.draftFeedbackPayload,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -668,6 +675,11 @@ function toPagedMessage(
       id: row.id,
       role,
       content: row.content,
+      ...(row.feedbackPayload === null
+        ? {}
+        : {
+            feedbackPayload: row.feedbackPayload,
+          }),
       runId: row.runId ?? undefined,
       runGroupId: row.runGroupId ?? undefined,
       triggerSource: row.triggerSource ?? undefined,
@@ -2073,6 +2085,7 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftContent: string | null;
+      readonly draftFeedbackPayload?: ChatMessageFeedbackPayload | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
@@ -2083,6 +2096,9 @@ export const updateChatThreadDraft$ = command(
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
+        ...(args.draftFeedbackPayload === undefined
+          ? {}
+          : { draftFeedbackPayload: args.draftFeedbackPayload }),
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

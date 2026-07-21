@@ -13,6 +13,7 @@ import {
   chatMessagesContract,
   type AttachFile,
   type ChatRunOptionsRequest,
+  type ChatMessageFeedbackPayload,
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -193,6 +194,8 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
+  readonly textContent?: string;
+  readonly feedbackPayload?: ChatMessageFeedbackPayload;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
@@ -837,6 +840,89 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(emptyThreadSend.body.error.message).toBe(
       "Client thread id is already in use",
     );
+  }, 90_000);
+
+  it("stores structured feedback once and formats it for the agent", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+
+    const textContent = "Please revise both passages.";
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [
+        { id: 1, quote: "The first claim", note: "Add a source." },
+        { id: 2, quote: "The second claim", note: "Use exact dates." },
+      ],
+    };
+    const clientPrompt =
+      "client-formatted prompt that the API must not send to the agent";
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: false,
+    });
+    const disabledSend = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: clientPrompt,
+        textContent,
+        feedbackPayload,
+      },
+      [400],
+    );
+    expectApiError(disabledSend.body);
+    expect(disabledSend.body.error.message).toBe(
+      "Feedback message cards are not enabled",
+    );
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: true,
+    });
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: clientPrompt,
+        textContent,
+        feedbackPayload,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected structured feedback to create a run");
+    }
+
+    const expectedAgentPrompt = [
+      textContent,
+      "Feedback on 2 parts of your reply:",
+      "> The first claim\nAdd a source.",
+      "---",
+      "> The second claim\nUse exact dates.",
+    ].join("\n\n");
+    const run = await api.readRun(actor, sent.body.runId);
+    expect(run.prompt).toBe(expectedAgentPrompt);
+    expect(run.prompt).not.toContain(clientPrompt);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.body.runId;
+        });
+      },
+    );
+    const stored = userMessages(messages.messages).find((message) => {
+      return message.runId === sent.body.runId;
+    });
+    expect(stored).toMatchObject({
+      content: textContent,
+      feedbackPayload,
+    });
+    await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
 
   it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {
@@ -4294,6 +4380,13 @@ describe("CHAT-02: shared user message queue", () => {
   it("auto-fires queued messages when the active run is cancelled", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.FeedbackMessageCards]: true,
+    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -4302,12 +4395,25 @@ describe("CHAT-02: shared user message queue", () => {
     await claimChatRun(runnerGroup, anchor.runId);
 
     const queuedId = randomUUID();
+    const textContent = "Revise the queued passage.";
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [
+        {
+          id: 1,
+          quote: "The rollout starts soon.",
+          note: "Replace soon with a date.",
+        },
+      ],
+    };
     const queued = await chat.requestSendMessage(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        prompt: "queue-first fires after cancel",
+        prompt: "client-formatted queued prompt",
+        textContent,
+        feedbackPayload,
         clientMessageId: queuedId,
       },
       [201],
@@ -4337,16 +4443,21 @@ describe("CHAT-02: shared user message queue", () => {
     if (!fired?.runId) {
       throw new Error("Expected the queued message to fire after cancel");
     }
-    expect(fired.content).toBe("queue-first fires after cancel");
+    expect(fired).toMatchObject({ feedbackPayload });
+    expect(fired.content).toBe(textContent);
     const original = await chat.getThreadMessage(
       actor,
       anchor.threadId,
       queuedId,
     );
     expect(original.runId).toBeUndefined();
+    expect(original).toMatchObject({ feedbackPayload });
 
     const followUp = await api.readRun(actor, fired.runId);
-    expect(followUp.prompt).toContain("queue-first fires after cancel");
+    expect(followUp.prompt).toContain(textContent);
+    expect(followUp.prompt).toContain("> The rollout starts soon.");
+    expect(followUp.prompt).toContain("Replace soon with a date.");
+    expect(followUp.prompt).not.toContain("client-formatted queued prompt");
     await cancelChatRun(actor, fired.runId);
   }, 90_000);
 });

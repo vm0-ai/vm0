@@ -516,6 +516,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.FeedbackMessageCards]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the quote-based inline feedback composer and render its follow-up messages as structured quote-and-comment cards instead of raw markdown.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

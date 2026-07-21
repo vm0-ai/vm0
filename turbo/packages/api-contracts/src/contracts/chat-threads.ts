@@ -309,9 +309,23 @@ const workflowSnapshotSchema = z.object({
   triggerBrief: z.string().nullable().optional(),
 });
 
+const chatMessageFeedbackPayloadSchema = z.object({
+  version: z.literal(1),
+  items: z
+    .array(
+      z.object({
+        id: z.number().int().positive(),
+        quote: z.string(),
+        note: z.string(),
+      }),
+    )
+    .min(1),
+});
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
+  feedbackPayload: chatMessageFeedbackPayloadSchema.optional(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
@@ -384,6 +398,7 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.object({
   draftContent: z.string().nullable(),
+  draftFeedbackPayload: chatMessageFeedbackPayloadSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
@@ -473,6 +488,10 @@ const chatMessageNormalSendBodySchema = z.preprocess(
   z.object({
     agentId: z.string().min(1),
     prompt: z.string().min(1),
+    // Structured feedback is persisted separately from the readable prompt.
+    // The backend derives the agent prompt from these authoritative fields.
+    textContent: z.string().optional(),
+    feedbackPayload: chatMessageFeedbackPayloadSchema.optional(),
     threadId: z.string().optional(),
     clientThreadId: z.string().uuid().optional(),
     chatThreadEventId: chatThreadEventIdSchema.optional(),
@@ -651,6 +670,9 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
+      draftFeedbackPayload: chatMessageFeedbackPayloadSchema
+        .nullable()
+        .optional(),
       draftAttachments: z
         .array(persistedAttachmentSchema)
         .nullable()
@@ -662,7 +684,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update chat thread draft content and attachments",
+    summary: "Update chat thread draft content, feedback, and attachments",
   },
   delete: {
     method: "DELETE",
@@ -1372,6 +1394,9 @@ export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type ChatMessageFeedbackPayload = z.infer<
+  typeof chatMessageFeedbackPayloadSchema
+>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
 >;
