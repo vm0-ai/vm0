@@ -285,6 +285,16 @@ describe("artifact item IndexedDB cache reads", () => {
     ]);
   });
 
+  it("removes favorite state from legacy cached artifact items", async () => {
+    const { db, stores } = setupStores();
+    const legacy = artifact(1, { isFavorited: true });
+    db.seedLegacyItem(legacy);
+
+    const cached = await stores.readStore.readRecent();
+    expect(cached).toStrictEqual([artifact(1)]);
+    expect(cached[0]).not.toHaveProperty("isFavorited");
+  });
+
   it("upserts idempotently and replaces stale metadata", async () => {
     const { stores } = setupStores();
     const original = artifact(1, { filename: "old.html" });
