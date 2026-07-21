@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.294.0](https://github.com/vm0-ai/vm0/compare/api-v1.293.0...api-v1.294.0) (2026-07-21)
+
+
+### Features
+
+* **artifacts:** load favorites independently ([#22371](https://github.com/vm0-ai/vm0/issues/22371)) ([c4d23d9](https://github.com/vm0-ai/vm0/commit/c4d23d9a5e4c92b323df57d50fb732ec5ccacde1))
+
+
+### Performance Improvements
+
+* **api:** avoid eager workflow queue encryption ([#22372](https://github.com/vm0-ai/vm0/issues/22372)) ([a7e1846](https://github.com/vm0-ai/vm0/commit/a7e18461a8a3b77181260e4e329eb3425c772521))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+    * @vm0/db bumped to 1.123.2
+
 ## [1.293.0](https://github.com/vm0-ai/vm0/compare/api-v1.292.0...api-v1.293.0) (2026-07-21)
 
 
