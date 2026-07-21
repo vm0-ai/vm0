@@ -52,6 +52,7 @@ const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const TEAMS_AAD_GROUP_ID = "22222222-2222-2222-2222-222222222222";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
@@ -336,10 +337,11 @@ function teamsGraphHistoryHandlers(args: {
     }),
     http.get(
       "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
-      ({ request }) => {
+      ({ params, request }) => {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         requests.push("channel-messages");
         return HttpResponse.json({
           value: args.channelMessages.map(teamsGraphMessage),
@@ -352,6 +354,7 @@ function teamsGraphHistoryHandlers(args: {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         const messageId =
           typeof params.messageId === "string" ? params.messageId : "";
         requests.push(`thread-replies:${messageId}`);
@@ -366,6 +369,7 @@ function teamsGraphHistoryHandlers(args: {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         const messageId =
           typeof params.messageId === "string" ? params.messageId : "";
         requests.push(`thread-root:${messageId}`);
@@ -470,7 +474,11 @@ function teamsMessageActivity(
     },
     channelData: {
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
+      team: {
+        id: fixture.teamsTeamId,
+        aadGroupId: TEAMS_AAD_GROUP_ID,
+        name: fixture.teamsTeamName,
+      },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
       teamsAppId: "teams-app-test",
     },
@@ -545,6 +553,36 @@ function teamsBotInstalledActivity(
     },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersAdded: [{ id: "28:bot-1", name: "Zero" }],
+  };
+}
+
+function teamsBotInstallationAddedActivity(
+  fixture: TeamsConnectFixture = botFixture(),
+): Record<string, unknown> {
+  return {
+    type: "installationUpdate",
+    action: "add",
+    id: "activity-installation-add-1",
+    timestamp: "2026-06-30T09:15:00.000Z",
+    serviceUrl: fixture.serviceUrl,
+    channelId: "msteams",
+    conversation: {
+      id: "19:thread@thread.tacv2",
+      conversationType: "channel",
+    },
+    channelData: {
+      tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
+      channel: { id: "19:channel@thread.tacv2", name: "General" },
+      teamsAppId: "teams-app-test",
+    },
+    from: {
+      id: fixture.teamsUserId,
+      name: "Ada Lovelace",
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: "ada@example.com",
+    },
+    recipient: { id: "28:bot-1", name: "Zero" },
   };
 }
 
@@ -833,6 +871,7 @@ describe("POST /api/zero/teams/bot", () => {
         conversationId: "19:thread@thread.tacv2",
         conversationType: "channel",
         teamId: "team-1",
+        teamAadGroupId: TEAMS_AAD_GROUP_ID,
         teamName: "Team One",
         channelId: "19:channel@thread.tacv2",
         threadId: "root-activity",
@@ -972,17 +1011,23 @@ describe("POST /api/zero/teams/bot", () => {
     await flushWaitUntilForTest();
   });
 
-  it("sends a welcome message when Teams adds the bot in team scope", async () => {
+  it("sends one team welcome across installation and members-added events", async () => {
     botFrameworkHandlers();
     const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
-    const response = await postTeamsActivity({
+    const installationResponse = await postTeamsActivity({
+      activity: teamsBotInstallationAddedActivity(),
+      token: teamsToken(),
+    });
+    const membersAddedResponse = await postTeamsActivity({
       activity: teamsBotInstalledActivity(),
       token: teamsToken(),
     });
 
-    expect(response.status).toBe(200);
-    await response.json();
+    expect(installationResponse.status).toBe(200);
+    expect(membersAddedResponse.status).toBe(200);
+    await installationResponse.json();
+    await membersAddedResponse.json();
     await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
@@ -1018,7 +1063,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const response = await postTeamsActivity({
       activity: {
-        ...teamsBotInstalledActivity(),
+        ...teamsBotInstallationAddedActivity(),
         id: "activity-install-personal",
         conversation: {
           id: "a:personal-29:user-1",
@@ -1262,7 +1307,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(outboundRequests[0]?.body).not.toHaveProperty("text");
   });
 
-  it("injects Teams file attachments into the run prompt and downloads them", async () => {
+  it("downloads Teams channel reference attachments through Graph", async () => {
     botFrameworkHandlers();
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
@@ -1289,31 +1334,25 @@ describe("POST /api/zero/teams/bot", () => {
     clearTeamsBotAuthCacheForTest();
     botFrameworkHandlers();
     teamsOutboundHandlers(fixture.serviceUrl);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
 
-    const downloadUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
+    const contentUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
-        id: "activity-file-dm",
-        conversation: {
-          id: "a:personal-conversation",
-          conversationType: "personal",
-        },
-        channelData: {
-          tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-          teamsAppId: "teams-app-test",
-        },
+        id: "activity-file-channel",
         text: "please inspect this",
-        entities: [],
         replyToId: null,
         attachments: [
           {
-            contentType: "application/vnd.microsoft.teams.file.download.info",
+            id: "channel-attachment-1",
+            contentType: "reference",
+            contentUrl,
             name: "spec.png",
-            content: {
-              downloadUrl,
-              uniqueId: "drive-item-1",
-              fileType: "png",
-            },
           },
         ],
       }),
@@ -1344,20 +1383,29 @@ describe("POST /api/zero/teams/bot", () => {
     const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
     const fileId = fileIdMatch?.[1];
     expect(fileId).toBeTruthy();
-    expect(fileId).not.toContain(downloadUrl);
+    expect(fileId).not.toContain(contentUrl);
 
     const fileBytes = Buffer.from("teams file bytes");
+    const expectedShareId = `u!${Buffer.from(contentUrl, "utf8").toString(
+      "base64url",
+    )}`;
     server.use(
-      http.get(downloadUrl, ({ request }) => {
-        expect(request.headers.get("authorization")).toBeNull();
-        return new HttpResponse(fileBytes, {
-          status: 200,
-          headers: {
-            "content-type": "image/png",
-            "content-length": String(fileBytes.length),
-          },
-        });
-      }),
+      http.get(
+        "https://graph.microsoft.com/v1.0/shares/:shareId/driveItem/content",
+        ({ params, request }) => {
+          expect(params.shareId).toBe(expectedShareId);
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer teams-graph-token",
+          );
+          return new HttpResponse(fileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "image/png",
+              "content-length": String(fileBytes.length),
+            },
+          });
+        },
+      ),
     );
 
     const app = createAppWithRoutes({

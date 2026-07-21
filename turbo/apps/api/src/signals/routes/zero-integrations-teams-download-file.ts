@@ -168,6 +168,9 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   const downloadResult = await fetchTeamsFile({
     tenantId: payload.tenantId,
     url: payload.url,
+    downloadMode:
+      payload.downloadMode ??
+      (payload.contentType === "reference" ? "graph" : undefined),
     signal,
   });
   signal.throwIfAborted();
@@ -219,8 +222,10 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const filename = resolveFilename({ payload, response: downloadResponse });
+  const payloadContentType =
+    payload.contentType === "reference" ? null : payload.contentType;
   const contentType =
-    payload.contentType ?? responseContentType ?? inferMimetype(filename);
+    payloadContentType ?? responseContentType ?? inferMimetype(filename);
 
   const headers = new Headers();
   headers.set("Content-Type", contentType);

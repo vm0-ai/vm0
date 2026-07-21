@@ -32,6 +32,7 @@ interface ActivityBase {
   readonly conversationId: string;
   readonly conversationType: string | null;
   readonly teamId: string | null;
+  readonly teamAadGroupId: string | null;
   readonly teamName: string | null;
   readonly channelId: string | null;
   readonly timestamp: string | null;
@@ -248,6 +249,7 @@ function activityBase(
       ? readString(conversation, "conversationType")
       : null,
     teamId: team ? readString(team, "id") : null,
+    teamAadGroupId: team ? readString(team, "aadGroupId") : null,
     teamName: team ? readString(team, "name") : null,
     channelId: channel ? readString(channel, "id") : null,
     timestamp,

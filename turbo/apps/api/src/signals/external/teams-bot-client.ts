@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -475,6 +477,11 @@ function teamsGraphUserUrl(userId: string): string {
   return url.toString();
 }
 
+function teamsGraphShareContentUrl(sharedUrl: string): string {
+  const shareId = `u!${Buffer.from(sharedUrl, "utf8").toString("base64url")}`;
+  return `${graphBaseUrl()}/shares/${encodeURIComponent(shareId)}/driveItem/content`;
+}
+
 function shouldAuthorizeTeamsFileDownload(url: string): boolean {
   const parsed = safeUrlParse(url);
   if (!parsed) {
@@ -535,13 +542,25 @@ async function fetchTeamsGraphJson<T>(args: {
 export async function fetchTeamsFile(args: {
   readonly tenantId: string;
   readonly url: string;
+  readonly downloadMode?: "graph";
   readonly signal: AbortSignal;
 }): Promise<FetchTeamsFileResult> {
   const headers: Record<string, string> = {
     accept: "application/octet-stream",
   };
+  let url = args.url;
 
-  if (shouldAuthorizeTeamsFileDownload(args.url)) {
+  if (args.downloadMode === "graph") {
+    const accessToken = await fetchTeamsGraphAccessToken({
+      tenantId: args.tenantId,
+      signal: args.signal,
+    });
+    if (accessToken.kind === "teams-error") {
+      return accessToken;
+    }
+    url = teamsGraphShareContentUrl(args.url);
+    headers.authorization = `Bearer ${accessToken.accessToken}`;
+  } else if (shouldAuthorizeTeamsFileDownload(args.url)) {
     const accessToken = await fetchTeamsBotAccessToken(args.signal);
     if (accessToken.kind === "teams-error") {
       return accessToken;
@@ -550,7 +569,7 @@ export async function fetchTeamsFile(args: {
   }
 
   const responseResult = await settle(
-    fetch(args.url, {
+    fetch(url, {
       method: "GET",
       headers,
       signal: args.signal,
