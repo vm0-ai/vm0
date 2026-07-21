@@ -215,6 +215,7 @@ export function PinnedAgentListSection({
   });
 
   const openAgentListDialog = useSet(openAgentListDialog$);
+  const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
@@ -372,6 +373,12 @@ export function PinnedAgentListSection({
                   <Link
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.id } }}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        return;
+                      }
+                      setExpanded(false);
+                    }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                       hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
