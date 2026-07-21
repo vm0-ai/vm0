@@ -1511,8 +1511,12 @@ function modelProviderEnvironment(args: {
 }): ResolvedModelProviderEnvironment {
   const firewall = getModelProviderFirewall(args.type);
   const hasFirewallAuth = firewall !== undefined;
-  if (!hasFirewallAuth && args.secretValue === undefined) {
-    throw new Error(`Missing eager secret for model provider ${args.type}`);
+  let secrets: Record<string, string> = {};
+  if (!hasFirewallAuth) {
+    if (args.secretValue === undefined) {
+      throw new Error(`Missing eager secret for model provider ${args.type}`);
+    }
+    secrets = { [args.config.secretName]: args.secretValue };
   }
   const envBindings =
     getModelProviderEnvBindings(args.type) ?? args.config.envBindings;
@@ -1539,9 +1543,7 @@ function modelProviderEnvironment(args: {
     id: args.id,
     type: args.type,
     environment,
-    secrets: hasFirewallAuth
-      ? {}
-      : { [args.config.secretName]: args.secretValue ?? "" },
+    secrets,
     selectedModel: model,
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
       args.config.secretName,
