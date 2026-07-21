@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
   artifactKeySchema,
+  connectorCatalogRefSchema,
   connectorCatalogVersionSchema,
-  connectorRefSchema,
   digestSchema,
   privateNameSchema,
 } from "./common";
@@ -203,7 +203,7 @@ const publicFirewallMetadataSchema = z.discriminatedUnion("kind", [
 
 const publicConnectorCatalogArtifactConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    connectorRef: connectorCatalogRefSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: z.string().min(1),
@@ -310,7 +310,7 @@ const privateConnectorSkillSchema = z.discriminatedUnion("kind", [
 
 const privateConnectorCatalogArtifactConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    connectorRef: connectorCatalogRefSchema,
     skill: privateConnectorSkillSchema,
     authMethods: z.array(privateAuthMethodSchema).min(1),
   })
@@ -395,7 +395,7 @@ const firewallDiagnosticsSchema = z
 
 const privateFirewallArtifactConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    connectorRef: connectorCatalogRefSchema,
     label: z.string().min(1),
     billable: z.boolean(),
     firewall: firewallConfigSchema,
@@ -429,7 +429,7 @@ const runnerFirewallApiSchema = z
 
 const runnerFirewallArtifactConnectorSchema = z
   .object({
-    name: connectorRefSchema,
+    name: connectorCatalogRefSchema,
     apis: z.array(runnerFirewallApiSchema).min(1),
   })
   .strict();

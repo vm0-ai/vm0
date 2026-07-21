@@ -1,8 +1,8 @@
 import { connectorCatalogAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 import {
+  connectorCatalogRefSchema,
   connectorCatalogVersionSchema,
-  connectorRefSchema,
   privateNameSchema,
 } from "./common";
 
@@ -53,7 +53,7 @@ const categorySourceSchema = z
 export const catalogSourceSchema = z
   .object({
     catalogVersion: connectorCatalogVersionSchema,
-    connectorRefs: z.array(connectorRefSchema).min(1),
+    connectorRefs: z.array(connectorCatalogRefSchema).min(1),
     categoryMetadata: z
       .object({
         categories: z.array(categorySourceSchema).min(1),
@@ -251,7 +251,7 @@ export const connectorAuthMethodSourceSchema = z
 
 export const connectorSourceSchema = z
   .object({
-    ref: connectorRefSchema,
+    ref: connectorCatalogRefSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: connectorCategoryIdSchema,

@@ -8,7 +8,7 @@ import {
 import { z } from "zod";
 
 import { safeUrlParse } from "../../utils";
-import { connectorRefSchema, privateNameSchema } from "./common";
+import { connectorCatalogRefSchema, privateNameSchema } from "./common";
 
 const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
 const DIRECT_TEMPLATE_PATTERN =
@@ -169,7 +169,7 @@ const firewallApiSchema = z
 
 export const firewallConfigSchema = z
   .object({
-    name: connectorRefSchema,
+    name: connectorCatalogRefSchema,
     description: z.string().min(1).optional(),
     placeholders: z.record(privateNameSchema, z.string()).optional(),
     apis: z.array(firewallApiSchema).min(1),
@@ -185,7 +185,7 @@ export const firewallCategoriesSchema = z
 
 const firewallGeneratorResultSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    connectorRef: connectorCatalogRefSchema,
     firewall: firewallConfigSchema,
     categories: firewallCategoriesSchema.nullable(),
     defaultAllowed: z.array(z.string().min(1)).nullable(),
