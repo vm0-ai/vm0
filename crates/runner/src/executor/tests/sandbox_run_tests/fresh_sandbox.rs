@@ -81,10 +81,6 @@ async fn fresh_archive_download_overlaps_blocked_sandbox_create() {
         })
         .await;
     let mut ctx = minimal_context();
-    ctx.feature_flags = Some(HashMap::from([(
-        "runnerColdArchiveDelivery".to_string(),
-        true,
-    )]));
     let mut storage = api_storage(
         "fresh-overlap",
         "/data",
@@ -145,12 +141,6 @@ async fn fresh_archive_download_overlaps_blocked_sandbox_create() {
     full_get.assert_calls_async(1).await;
     assert_telemetry_action(
         &telemetry,
-        "runner_fresh_archive_delivery_enabled",
-        true,
-        None,
-    );
-    assert_telemetry_action(
-        &telemetry,
         "storage_cache_fresh_delivery_staged",
         true,
         None,
@@ -164,10 +154,6 @@ async fn fresh_archive_planning_failure_records_apply_and_prepare_failures() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.feature_flags = Some(HashMap::from([(
-        "runnerColdArchiveDelivery".to_string(),
-        true,
-    )]));
     let mut artifact = api_artifact(
         "memory",
         "/home/user/.claude/projects/project",
@@ -337,10 +323,6 @@ async fn dns_readiness_retry_keeps_one_fresh_archive_owner() {
         })
         .await;
     let mut ctx = minimal_context();
-    ctx.feature_flags = Some(HashMap::from([(
-        "runnerColdArchiveDelivery".to_string(),
-        true,
-    )]));
     let mut storage = api_storage(
         "fresh-dns-retry",
         "/data",

@@ -130,11 +130,6 @@ const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
 const DNS_READINESS_RETRY_PREPARE_FAILED: &str = "replacement_prepare_failed";
 const SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN: &str = "cleanup_uncertain";
-const RUNNER_COLD_ARCHIVE_DELIVERY_FEATURE: &str = "runnerColdArchiveDelivery";
-const RUNNER_FRESH_ARCHIVE_DELIVERY_ENABLED: &str = "runner_fresh_archive_delivery_enabled";
-const RUNNER_FRESH_ARCHIVE_DELIVERY_DISABLED: &str = "runner_fresh_archive_delivery_disabled";
-const RUNNER_REUSED_ARCHIVE_DELIVERY_GUEST_OWNED: &str =
-    "runner_reused_archive_delivery_guest_owned";
 
 struct FreshSandboxFactoryCreateObserver<'a> {
     telemetry: &'a mut JobTelemetry,
@@ -314,15 +309,6 @@ pub(super) async fn execute_new_sandbox(
     .await
 }
 
-fn fresh_archive_delivery_enabled(context: &ExecutionContext) -> bool {
-    context
-        .feature_flags
-        .as_ref()
-        .and_then(|flags| flags.get(RUNNER_COLD_ARCHIVE_DELIVERY_FEATURE))
-        .copied()
-        .unwrap_or(false)
-}
-
 async fn prepare_fresh_storage(
     context: &ExecutionContext,
     workspace_image: Option<&WorkspaceImageLease>,
@@ -330,21 +316,6 @@ async fn prepare_fresh_storage(
     cancel: &CancellationToken,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<Option<PreparedFreshStorage>> {
-    if !fresh_archive_delivery_enabled(context) {
-        telemetry.record(
-            RUNNER_FRESH_ARCHIVE_DELIVERY_DISABLED,
-            Duration::ZERO,
-            true,
-            None,
-        );
-        return Ok(None);
-    }
-    telemetry.record(
-        RUNNER_FRESH_ARCHIVE_DELIVERY_ENABLED,
-        Duration::ZERO,
-        true,
-        None,
-    );
     let Some(manifest) = &context.storage_manifest else {
         return Ok(None);
     };
@@ -1120,14 +1091,6 @@ pub(super) async fn execute_reused_sandbox(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> ExecuteOutcome {
-    if fresh_archive_delivery_enabled(context) {
-        telemetry.record(
-            RUNNER_REUSED_ARCHIVE_DELIVERY_GUEST_OWNED,
-            Duration::ZERO,
-            true,
-            None,
-        );
-    }
     info!(
         run_id = %context.run_id,
         sandbox_id = %sandbox.id(),

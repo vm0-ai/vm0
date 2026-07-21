@@ -21,10 +21,6 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         })
         .await;
     let mut ctx = minimal_context();
-    ctx.feature_flags = Some(HashMap::from([(
-        "runnerColdArchiveDelivery".to_string(),
-        true,
-    )]));
     let mut storage = api_storage(
         "workspace-retry",
         "/data",
