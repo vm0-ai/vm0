@@ -95,11 +95,7 @@ fn walk_entry(
                 return Ok(());
             }
             Err(error) if !try_file => {
-                log_warn!(
-                    LOG_TAG,
-                    "Could not open artifact directory {}: {error}; skipping subtree",
-                    artifact_entry_log_path(relative, &name)
-                );
+                log_directory_open_failure(relative, &name, &error);
                 return Ok(());
             }
             Err(error) => directory_open_error = Some(error),
@@ -210,6 +206,23 @@ fn artifact_entry_log_path(parent: &str, name: &std::ffi::OsStr) -> String {
             artifact_directory_path(parent)
         ),
     }
+}
+
+#[cfg(target_os = "linux")]
+fn log_directory_open_failure(relative: &str, name: &std::ffi::OsStr, error: &io::Error) {
+    // ext filesystems reserve a root-owned `lost+found` at the volume root.
+    // Keep readable or nested directories with that name on the normal path.
+    if relative.is_empty()
+        && name == std::ffi::OsStr::new("lost+found")
+        && error.kind() == io::ErrorKind::PermissionDenied
+    {
+        return;
+    }
+    log_warn!(
+        LOG_TAG,
+        "Could not open artifact directory {}: {error}; skipping subtree",
+        artifact_entry_log_path(relative, name)
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -827,6 +840,43 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "real.txt");
         assert!(read_system_log(&system_log_path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn directory_open_warnings_only_suppress_root_lost_found_permission_denied() {
+        let temp = tempfile::tempdir().unwrap();
+        let system_log_path = temp.path().join("system.log");
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let permission_denied = io::Error::from(io::ErrorKind::PermissionDenied);
+
+        log_directory_open_failure("", OsStr::new("lost+found"), &permission_denied);
+        assert!(read_system_log(&system_log_path).unwrap().is_empty());
+
+        log_directory_open_failure("nested", OsStr::new("lost+found"), &permission_denied);
+        let not_found = io::Error::from(io::ErrorKind::NotFound);
+        log_directory_open_failure("", OsStr::new("lost+found"), &not_found);
+
+        let log = read_system_log(&system_log_path).unwrap();
+        assert_eq!(log.matches("[WARN] [sandbox:guest-agent]").count(), 2);
+        assert!(log.contains("\"nested/lost+found\""), "got: {log}");
+        assert!(
+            log.contains("Could not open artifact directory \"lost+found\""),
+            "got: {log}"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_includes_readable_root_lost_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        std::fs::create_dir_all(root.join("lost+found")).unwrap();
+        std::fs::write(root.join("lost+found/recovered.txt"), "recovered").unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "lost+found/recovered.txt");
     }
 
     #[test]
