@@ -71,6 +71,16 @@ fresh_out=$(FRESH_METADATA_PATH="$fresh" \
 assert_contains "$fresh_out" "runner-sha=${runner_sha}"
 assert_contains "$fresh_out" "runner-size-bytes=${runner_size}"
 
+artifact_out=$(EXPECTED_TARGET="$target" \
+  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  "$CACHE" artifact-name)
+assert_contains "$artifact_out" \
+  "artifact-name=runner-binary-asset-${target}-${input_digest}"
+assert_fails "artifact name rejects an invalid input digest" \
+  env EXPECTED_TARGET="$target" \
+  EXPECTED_BINARY_INPUT_DIGEST=invalid \
+  "$CACHE" artifact-name
+
 jq '.unexpected = true' "$fresh" > "${TMPDIR}/fresh-extra.json"
 assert_fails "fresh metadata rejects unknown fields" \
   env FRESH_METADATA_PATH="${TMPDIR}/fresh-extra.json" \
