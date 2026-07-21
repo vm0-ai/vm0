@@ -104,6 +104,10 @@ const artifactsListResponseSchema = z.object({
   syncUntil: z.string().datetime().optional(),
 });
 
+const artifactFavoritesResponseSchema = z.object({
+  artifactUrls: z.array(z.string()),
+});
+
 const artifactFavoriteBodySchema = z.object({
   artifactUrl: z.string().min(1),
 });
@@ -1243,6 +1247,17 @@ export const artifactsContract = c.router({
     summary:
       "List artifacts for the caller's current organization (keyset-paginated)",
   },
+  listFavorites: {
+    method: "GET",
+    path: "/api/zero/artifacts/favorites",
+    headers: authHeadersSchema,
+    responses: {
+      200: artifactFavoritesResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List artifact favorite URLs for the caller",
+  },
   favorite: {
     method: "POST",
     path: "/api/zero/artifacts/favorite",
@@ -1361,6 +1376,7 @@ export {
   resolvedAttachFileSchema,
   artifactItemSchema,
   artifactFavoriteBodySchema,
+  artifactFavoritesResponseSchema,
   artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
@@ -1435,6 +1451,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
+export type ArtifactFavoritesResponse = z.infer<
+  typeof artifactFavoritesResponseSchema
+>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type ImageArtifactEditSnapshot = z.infer<
   typeof imageArtifactEditSnapshotSchema
