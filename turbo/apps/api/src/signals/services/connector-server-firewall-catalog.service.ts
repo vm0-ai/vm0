@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
@@ -383,6 +384,36 @@ function externalPlaceholderValues(args: {
   return sortedStringRecord(Object.entries(placeholderValues));
 }
 
+function externalBaseUrlTemplates(
+  firewall: AcceptedServerFirewall,
+): readonly ConnectorServerFirewallExecutionBaseUrlTemplate[] {
+  const templates = new Map<
+    string,
+    ConnectorServerFirewallExecutionBaseUrlTemplate
+  >();
+  for (const template of firewall.routing.baseUrlTemplates) {
+    const existing = templates.get(template.base);
+    if (
+      existing &&
+      !isDeepStrictEqual(existing.hostPolicy, template.hostPolicy)
+    ) {
+      throw new Error(
+        `Accepted connector server firewall base URL host policies conflict: ${firewall.connectorRef} (${template.base})`,
+      );
+    }
+    templates.set(template.base, {
+      base: template.base,
+      credentialed: (existing?.credentialed ?? false) || template.credentialed,
+      ...(template.hostPolicy === undefined
+        ? {}
+        : { hostPolicy: template.hostPolicy }),
+    });
+  }
+  return [...templates.values()].sort((left, right) => {
+    return compareStrings(left.base, right.base);
+  });
+}
+
 function externalExecutionMetadata(args: {
   readonly firewall: AcceptedServerFirewall;
   readonly methods: readonly ConnectorAuthMethodRuntimeConfig[];
@@ -395,7 +426,7 @@ function externalExecutionMetadata(args: {
     connectorRef: args.firewall.connectorRef,
     billable: args.firewall.billable,
     baseUrlVarNames: args.firewall.routing.baseUrlVarNames,
-    baseUrlTemplates: args.firewall.routing.baseUrlTemplates,
+    baseUrlTemplates: externalBaseUrlTemplates(args.firewall),
     secretPlaceholderNames: Object.keys(placeholderValues),
     placeholderValues,
   };

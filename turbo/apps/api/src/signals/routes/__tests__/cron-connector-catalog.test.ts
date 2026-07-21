@@ -815,6 +815,88 @@ function buildGeneratedFirewall(args: {
   };
 }
 
+const DUPLICATE_DYNAMIC_FIREWALL_BASE = `https://${catalogTemplate("vars.SERVICE_HOST")}.example.test/v1`;
+const DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY = {
+  kind: "providerOwned",
+  suffixes: [".example.test"],
+} as const;
+
+function addDynamicFirewallVariableBinding(artifact: JsonRecord): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const method = firstRecord(connector.authMethods, "authMethods");
+  recordValue(method.storage, "storage").variables = ["SERVICE_HOST"];
+  recordValue(
+    recordValue(method.access, "access").envBindings,
+    "envBindings",
+  ).SERVICE_HOST = "$vars.SERVICE_HOST";
+}
+
+function addDuplicateDynamicPrivateFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const firewall = recordValue(connector.firewall, "firewall");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
+
+  const routing = recordValue(connector.routing, "routing");
+  routing.fixedHosts = [];
+  routing.baseUrlVarNames = ["SERVICE_HOST"];
+  routing.baseUrlTemplates = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: true,
+      hostPolicy: DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY,
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: false,
+      hostPolicy: fallbackApi.hostPolicy,
+    },
+  ];
+  routing.apis = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST", "SERVICE_TOKEN"],
+      routes: [{ permissionName: "items.read", rule: "GET /items" }],
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST"],
+      routes: [],
+    },
+  ];
+  recordValue(connector.diagnostics, "diagnostics").apiCount = 2;
+}
+
+function addDuplicateDynamicRunnerFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const firewall = firstRecord(artifact.firewalls, "firewalls");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
+}
+
 function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const connectorRef = options.connectorRef ?? "external-test";
   const label = options.label ?? "External Test";
@@ -3372,6 +3454,52 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
+  it("merges duplicate dynamic firewall execution templates", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.duplicate-dynamic-firewall-base",
+      connectorRef: "dynamic-firewall",
+      label: "Dynamic Firewall",
+      generatedFirewall: true,
+      mutatePrivate: addDynamicFirewallVariableBinding,
+      mutatePrivateFirewalls: addDuplicateDynamicPrivateFirewallApi,
+      mutateRunnerFirewalls: addDuplicateDynamicRunnerFirewallApi,
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://tenant.example.test/v1/items",
+          connectorRef: "dynamic-firewall",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "dynamic-firewall",
+        label: "Dynamic Firewall",
+      },
+      permission: {
+        kind: "matched",
+        permissions: [{ name: "items.read" }],
+      },
+    });
+  });
+
   it("accepts canonical firewall bases with authority parameters", async () => {
     configureSource();
     const base = "https://{awsHost+}.amazonaws.com";
@@ -4458,6 +4586,27 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const auth = recordValue(api.auth, "firewall api auth");
             recordValue(auth.headers, "firewall auth headers")["X-Unknown"] =
               catalogTemplate("secrets.UNKNOWN_SECRET");
+          },
+        });
+      },
+    },
+    {
+      name: "conflicting duplicate dynamic firewall host policies",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-dynamic-base-host-policy-conflict",
+          generatedFirewall: true,
+          mutatePrivate: addDynamicFirewallVariableBinding,
+          mutatePrivateFirewalls: (artifact) => {
+            addDuplicateDynamicPrivateFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            addDuplicateDynamicRunnerFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
           },
         });
       },

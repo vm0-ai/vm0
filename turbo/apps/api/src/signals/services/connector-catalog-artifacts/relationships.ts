@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { normalizeConnectorFixedHost } from "@vm0/connectors/firewall-metadata/server";
 
 import {
@@ -380,6 +382,22 @@ function validateFirewallProjection(args: {
     throw new Error(
       `Firewall label mismatch: ${args.publicConnector.connectorRef}`,
     );
+  }
+  const baseUrlTemplates = new Map<
+    string,
+    (typeof args.privateFirewall.routing.baseUrlTemplates)[number]
+  >();
+  for (const template of args.privateFirewall.routing.baseUrlTemplates) {
+    const existing = baseUrlTemplates.get(template.base);
+    if (
+      existing &&
+      !isDeepStrictEqual(existing.hostPolicy, template.hostPolicy)
+    ) {
+      throw new Error(
+        `Firewall base URL host policies conflict: ${args.publicConnector.connectorRef} (${template.base})`,
+      );
+    }
+    baseUrlTemplates.set(template.base, template);
   }
   validateFirewallBindings(args);
   if (
