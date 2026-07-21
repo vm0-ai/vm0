@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::os::unix::fs::{MetadataExt, symlink};
 
-use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::constants::runners::{
+    RESUME_SESSION_HISTORY_MAX_BYTES, paths::CANONICAL_WORKING_DIR,
+};
 
 use super::fs::{
     allocated_bytes, has_copy_headroom, local_timestamp, sparse_copy_with_timeout,
@@ -1811,6 +1813,7 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
         SessionMismatch,
         InvalidHash,
         InvalidSize,
+        EncodedTooLarge,
     }
 
     for case in [
@@ -1823,6 +1826,7 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
         InvalidSidecarCase::SessionMismatch,
         InvalidSidecarCase::InvalidHash,
         InvalidSidecarCase::InvalidSize,
+        InvalidSidecarCase::EncodedTooLarge,
     ] {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -1857,7 +1861,8 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
             InvalidSidecarCase::UnsupportedRepresentation
             | InvalidSidecarCase::SessionMismatch
             | InvalidSidecarCase::InvalidHash
-            | InvalidSidecarCase::InvalidSize => {
+            | InvalidSidecarCase::InvalidSize
+            | InvalidSidecarCase::EncodedTooLarge => {
                 let mut metadata: serde_json::Value =
                     serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
                 match case {
@@ -1873,6 +1878,9 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
                     }
                     InvalidSidecarCase::InvalidSize => {
                         metadata["historySizeBytes"] = 0.into();
+                    }
+                    InvalidSidecarCase::EncodedTooLarge => {
+                        metadata["encodedSize"] = (RESUME_SESSION_HISTORY_MAX_BYTES + 1).into();
                     }
                     unexpected => {
                         panic!("unexpected grouped invalid sidecar case: {unexpected:?}")

@@ -33,12 +33,6 @@ pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ: i32 = 7;
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH: i32 = 8;
 /// Guest helper exit code for local history exceeding the guest verification budget.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE: i32 = 9;
-/// Guest helper exit code for verified sidecar export unavailability.
-pub const SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE: i32 = 10;
-
-/// Maximum native sidecar bytes runner can copy from guest to host.
-pub const SESSION_HISTORY_SIDECAR_MAX_BYTES: u64 = 64 * 1024 * 1024;
-
 /// Framework that owns a final session-history file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -388,9 +382,8 @@ mod tests {
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
-                SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
             ],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         );
     }
 

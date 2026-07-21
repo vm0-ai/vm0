@@ -126,21 +126,29 @@ async fn copy_file_streams_to_temp_then_renames() {
     std::fs::set_permissions(&fixture.host_path, std::fs::Permissions::from_mode(0o640)).unwrap();
     let mut old_file = std::fs::File::open(&fixture.host_path).unwrap();
     let old_metadata = old_file.metadata().unwrap();
-    let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
+    let copy_task = fixture.spawn_copy(
+        "/tmp/vm0-system-run.log",
+        copy_options(
+            file_impl::test_support::COPY_FILE_STREAM_MAX_BYTES,
+            5000,
+            false,
+        ),
+    );
 
     let start = fixture.expect_start().await;
     fixture.assert_readiness(NormalOperationReadiness::Busy);
     assert_eq!(start.label, "copy-file");
     assert_eq!(
-        start.command,
-        "if test -f '/tmp/vm0-system-run.log'; then cat 2>/dev/null < '/tmp/vm0-system-run.log' || { test -f '/tmp/vm0-system-run.log' || exit 66; printf '%s\\n' 'failed to read file' >&2; exit 1; }; else exit 66; fi"
-    );
-    assert_eq!(
         start.stdout,
         ExecOutputPolicy::Stream {
-            limit_bytes: 1024,
+            limit_bytes: u32::try_from(file_impl::test_support::COPY_FILE_STREAM_MAX_BYTES)
+                .unwrap(),
             chunk_limit_bytes: file_impl::test_support::COPY_FILE_STREAM_CHUNK_LIMIT,
         }
+    );
+    assert_eq!(
+        start.command,
+        "if test -f '/tmp/vm0-system-run.log'; then cat 2>/dev/null < '/tmp/vm0-system-run.log' || { test -f '/tmp/vm0-system-run.log' || exit 66; printf '%s\\n' 'failed to read file' >&2; exit 1; }; else exit 66; fi"
     );
     send_exec_output(
         &mut fixture.guest,

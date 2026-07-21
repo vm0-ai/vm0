@@ -23,7 +23,7 @@ use guest_contracts::diagnostics::{CliTerminationReason, FailureClass, FailureDi
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -88,18 +88,13 @@ fn helper_exit_code_from_args() -> Option<i32> {
                     metadata_path,
                     export_path,
                 ) {
-                    Ok(session_history_identity::SessionHistorySidecarExportOutcome::Exported(
-                        metadata,
-                    )) => match serde_json::to_string(&metadata) {
+                    Ok(metadata) => match serde_json::to_string(&metadata) {
                         Ok(json) => {
                             println!("{json}");
                             SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS
                         }
                         Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
                     },
-                    Ok(
-                        session_history_identity::SessionHistorySidecarExportOutcome::Unavailable,
-                    ) => SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
                     Err(error) => session_history_identity_helper_exit_code(&error),
                 },
             )
