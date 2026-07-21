@@ -49,6 +49,7 @@ import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-v
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
+import * as slackChatThreadRouteSchema from "./schema/slack-chat-thread-route";
 import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-preference";
 import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
@@ -132,6 +133,7 @@ export const schema = {
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,
+  ...slackChatThreadRouteSchema,
   ...slackUserAgentPreferenceSchema,
   ...teamsOrgInstallationSchema,
   ...teamsOrgConnectionSchema,
