@@ -586,6 +586,7 @@ describe("GET /api/zero/artifacts", () => {
           fileId: prepared.url,
           url: prepared.url,
           size: hostedFile.size,
+          updatedAt: expect.any(String),
           artifactKind: "hosted-site",
         }),
         expect.objectContaining({
@@ -595,6 +596,7 @@ describe("GET /api/zero/artifacts", () => {
           url: standaloneUpload.url,
           size: 256,
           contentType: "text/plain",
+          updatedAt: expect.any(String),
         }),
       ]),
     );
