@@ -841,14 +841,25 @@ async def _apply_url_rewrite(
 
     try:
         admission = take_forward_request_admission_from_flow(flow)
-        status, resp_body, resp_headers = await forward_request(
+        status, resp_raw_content, resp_headers = await forward_request(
             new_url,
             flow.request.method,
             req_headers,
             req_body,
             admission=admission,
         )
-        flow.response = http.Response.make(status, resp_body, resp_headers)
+        content_encodings = [
+            value
+            for name, value in header_pairs(resp_headers)
+            if name.lower() == "content-encoding"
+        ]
+        if content_encodings:
+            del resp_headers["Content-Encoding"]
+        # The forwarder returns representation bytes, but Response.make expects
+        # decoded content. Hide the codings while it normalizes response framing.
+        flow.response = http.Response.make(status, resp_raw_content, resp_headers)
+        if content_encodings:
+            flow.response.headers.set_all("Content-Encoding", content_encodings)
     except ForwardedRequestTooLargeError:
         _set_auth_base_request_too_large(
             flow,
