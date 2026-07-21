@@ -80,7 +80,7 @@ interface StoredConnectorRuntimeCandidate {
   readonly connectorId: string;
   readonly type: string;
   readonly authMethod: string;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
 }
 
 interface PendingStoredConnectorRuntime {

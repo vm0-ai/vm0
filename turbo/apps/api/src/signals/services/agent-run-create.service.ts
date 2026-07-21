@@ -2264,7 +2264,7 @@ interface StoredConnectorRuntimeRowCandidate {
   readonly connectorStateRevision: bigint;
   readonly needsReconnect: boolean;
   readonly orgId: string;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly userId: string;
 }

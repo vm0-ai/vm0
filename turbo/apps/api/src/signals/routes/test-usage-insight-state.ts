@@ -20,6 +20,7 @@ import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
@@ -182,6 +183,9 @@ async function deleteUsageInsightFixture(
   signal.throwIfAborted();
 
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
+  signal.throwIfAborted();
+
+  await db.delete(variables).where(eq(variables.orgId, orgId));
   signal.throwIfAborted();
 
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
