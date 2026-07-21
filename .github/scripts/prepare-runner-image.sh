@@ -70,7 +70,7 @@ TARGET_TRIPLE="$TARGET_TRIPLE" \
 CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
 RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE="${RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE:-}" \
 RUNNER_BINARY_METADATA_PATH="$FRESH_METADATA_PATH" \
-  "${REPO_ROOT}/.github/runner-binary-build/build.sh" build
+  "${REPO_ROOT}/.github/scripts/runner-binary-build/build.sh" build
 
 runner_sha=$(jq -r '.runnerSha256' "$FRESH_METADATA_PATH")
 guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")

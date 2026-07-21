@@ -22,7 +22,7 @@ esac
 
 revision="${RUNNER_BINARY_GIT_REVISION:-HEAD}"
 crates_tree=$(git -C "$REPO_ROOT" rev-parse "${revision}:crates")
-contract_tree=$(git -C "$REPO_ROOT" rev-parse "${revision}:.github/runner-binary-build")
+contract_tree=$(git -C "$REPO_ROOT" rev-parse "${revision}:.github/scripts/runner-binary-build")
 binary_input_digest=$(
   printf '%s\0%s\0%s\0%s\0' \
     "$RUNNER_BINARY_INPUT_SCHEMA_VERSION" \

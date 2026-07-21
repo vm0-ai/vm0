@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
 . "${SCRIPT_DIR}/runner-guest-binaries.sh"
-. "${REPO_ROOT}/.github/runner-binary-build/contract.env"
+. "${REPO_ROOT}/.github/scripts/runner-binary-build/contract.env"
 
 RUNNER_BINARY_MAX_SIZE_BYTES=$((128 * 1024 * 1024))
 RUNNER_BINARY_MAX_COMPRESSED_BYTES=$((64 * 1024 * 1024))

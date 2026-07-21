@@ -35,11 +35,11 @@ esac
 
 materialize() {
   rm -rf "$context_root"
-  mkdir -p "${context_root}/crates" "${context_root}/.github/runner-binary-build"
+  mkdir -p "${context_root}/crates" "${context_root}/.github/scripts/runner-binary-build"
   git -C "$REPO_ROOT" archive "${revision}:crates" \
     | tar -xf - -C "${context_root}/crates"
-  git -C "$REPO_ROOT" archive "${revision}:.github/runner-binary-build" \
-    | tar -xf - -C "${context_root}/.github/runner-binary-build"
+  git -C "$REPO_ROOT" archive "${revision}:.github/scripts/runner-binary-build" \
+    | tar -xf - -C "${context_root}/.github/scripts/runner-binary-build"
   emit "context-root" "$context_root"
 }
 
@@ -74,7 +74,7 @@ build() {
   RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE="$actual_toolchain_image" \
   RUNNER_BINARY_INPUT_DIGEST="$binary_input_digest" \
   RUNNER_BINARY_METADATA_PATH="$metadata_path" \
-    "${context_root}/.github/runner-binary-build/compile.sh"
+    "${context_root}/.github/scripts/runner-binary-build/compile.sh"
 
   emit "binary-input-digest" "$binary_input_digest"
   emit "runner-path" "${cargo_target_dir}/${target}/${RUNNER_BINARY_PROFILE}/runner"
