@@ -36,6 +36,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
     ).toBe(false);
@@ -136,6 +137,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
@@ -166,6 +168,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
     );

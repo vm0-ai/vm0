@@ -87,6 +87,9 @@ import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   GenerationTemplateRequest,
+  ResolvedAttachFile,
+  UserMessageDocument,
+  UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ChatThreadWorkflowAutomation,
@@ -107,8 +110,10 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -6293,6 +6298,148 @@ function UserMessageGenerationTemplate({
   );
 }
 
+const STRUCTURED_REFERENCE_CHIP_CLASS =
+  "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
+  "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
+  "text-xs font-medium";
+
+function StructuredTemplateIcon({
+  type,
+}: {
+  type: GenerationTemplateRequest["type"];
+}) {
+  if (type === "video") {
+    return <IconVideo size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "illustration") {
+    return <IconPhoto size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "workflow") {
+    return <IconRoute size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "website") {
+    return <IconWorld size={14} stroke={1.8} className="shrink-0" />;
+  }
+  return <IconPresentation size={14} stroke={1.8} className="shrink-0" />;
+}
+
+function StructuredTemplateReference({
+  part,
+}: {
+  part: Extract<UserMessagePart, { type: "template" }>;
+}) {
+  const typeLabel = generationTemplateTypeLabel(part.template);
+  return (
+    <span
+      aria-label={`Message template ${part.titleSnapshot}`}
+      className={STRUCTURED_REFERENCE_CHIP_CLASS}
+      title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
+    >
+      <StructuredTemplateIcon type={part.template.type} />
+      <span className="shrink-0 text-muted-foreground">
+        {typeLabel ?? part.template.type}
+      </span>
+      <span className="text-muted-foreground">·</span>
+      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+    </span>
+  );
+}
+
+function StructuredFileReference({
+  part,
+  attachment,
+}: {
+  part: Extract<UserMessagePart, { type: "file" }>;
+  attachment: ResolvedAttachFile | undefined;
+}) {
+  if (attachment) {
+    return (
+      <span className="inline-flex align-middle">
+        <FileAttachmentChip
+          contentType={part.contentType}
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-label={`File ${part.filenameSnapshot}`}
+      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
+      title={part.filenameSnapshot}
+    >
+      <FilePreviewIcon
+        filename={part.filenameSnapshot}
+        contentType={part.contentType}
+        size="sm"
+        className="shrink-0"
+        testId="structured-message-file-icon"
+      />
+      <span className="min-w-0 truncate">{part.filenameSnapshot}</span>
+    </span>
+  );
+}
+
+function StructuredUserMessagePart({
+  part,
+  attachments,
+}: {
+  part: UserMessagePart;
+  attachments: readonly ResolvedAttachFile[];
+}): ReactNode {
+  if (part.type === "text") {
+    return <span>{part.text}</span>;
+  }
+  if (part.type === "chat_thread") {
+    return (
+      <Link
+        pathname={ROUTES.chat}
+        options={{ pathParams: { threadId: part.threadId } }}
+        aria-label={`Open chat ${part.titleSnapshot}`}
+        className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+        title={part.titleSnapshot}
+      >
+        <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </Link>
+    );
+  }
+  if (part.type === "template") {
+    return <StructuredTemplateReference part={part} />;
+  }
+  const attachment = attachments.find((candidate) => {
+    return candidate.id === part.fileId;
+  });
+  return <StructuredFileReference part={part} attachment={attachment} />;
+}
+
+function StructuredUserMessage({
+  document,
+  attachments,
+}: {
+  document: UserMessageDocument;
+  attachments: readonly ResolvedAttachFile[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  return (
+    <div data-structured-user-message="" className="whitespace-pre-wrap">
+      {document.parts.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        return (
+          <StructuredUserMessagePart
+            key={`${identity}:${String(occurrence)}`}
+            part={part}
+            attachments={attachments}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function WorkflowUserMessage({
   message,
 }: {
@@ -6405,6 +6552,13 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
+  const featureSwitches = useGet(featureSwitch$);
+  const structuredPromptEnabled =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  const structuredPrompt =
+    structuredPromptEnabled && message.role === "user"
+      ? message.structuredPrompt
+      : undefined;
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
@@ -6463,25 +6617,38 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <UserMessageGenerationTemplate
-            generationTemplate={message.generationTemplate}
-          />
-          <UserMessageAttachments
-            attachments={allAttachments}
-            onImageClick={openLightbox}
-          />
-          {bodyBlocks.length > 0 && (
+          {structuredPrompt ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
               <div className="px-4 py-3">
-                <BodyContentBlocks
-                  blocks={bodyBlocks}
-                  openLightbox={openLightbox}
-                  hardBreaks
-                  escapeMarkdownHtml
-                  markdownMediaPreview={false}
+                <StructuredUserMessage
+                  document={structuredPrompt}
+                  attachments={message.attachFiles ?? []}
                 />
               </div>
             </div>
+          ) : (
+            <>
+              <UserMessageGenerationTemplate
+                generationTemplate={message.generationTemplate}
+              />
+              <UserMessageAttachments
+                attachments={allAttachments}
+                onImageClick={openLightbox}
+              />
+              {bodyBlocks.length > 0 && (
+                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+                  <div className="px-4 py-3">
+                    <BodyContentBlocks
+                      blocks={bodyBlocks}
+                      openLightbox={openLightbox}
+                      hardBreaks
+                      escapeMarkdownHtml
+                      markdownMediaPreview={false}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <UserMessageActions
             canCopy={canCopy}
