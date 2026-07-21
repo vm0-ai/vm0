@@ -4460,13 +4460,6 @@
       "when": 1784631568914,
       "tag": "0636_retire_bb0_public_api",
       "breakpoints": true
-    },
-    {
-      "idx": 637,
-      "version": "7",
-      "when": 1784631591458,
-      "tag": "0637_contract_bb0_device_codes",
-      "breakpoints": true
     }
   ]
 }

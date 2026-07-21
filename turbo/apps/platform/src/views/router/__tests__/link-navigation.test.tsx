@@ -37,6 +37,22 @@ describe("link navigation", () => {
     });
   });
 
+  it.each(["/device/bb0", "/settings/api-keys"])(
+    "renders the not found page for retired route %s",
+    async (path) => {
+      detachedSetupPage({ context, path });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Page not found" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText("The page you are looking for does not exist."),
+        ).toBeInTheDocument();
+      });
+    },
+  );
+
   it("navigates in-app normally and opens a new tab for modified clicks", async () => {
     mockAPIs();
     const openedTargets = context.mocks.browser.open();
