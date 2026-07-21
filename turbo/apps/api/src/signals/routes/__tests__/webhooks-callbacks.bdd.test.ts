@@ -30,6 +30,7 @@ import {
 } from "./helpers/api-bdd";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -4272,6 +4273,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up organization state after a verified organization.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4283,6 +4285,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
+    await connectors.connectManualGrant(actor, "openai", "api-token", {
+      OPENAI_TOKEN: "org-teardown-connector-token",
+    });
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
@@ -4391,6 +4396,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await waitForExpectation(async () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      const listed = await connectors.listConnectors(actor);
+      expect(listed.connectors).not.toContainEqual(
+        expect.objectContaining({
+          type: "openai",
+          connectionStatus: "connected",
+        }),
+      );
     });
     await waitForExpectation(async () => {});
 
@@ -4736,6 +4750,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4747,6 +4762,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const doomed = bdd.user();
     await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
+    await connectors.connectManualGrant(doomed, "openai", "api-token", {
+      OPENAI_TOKEN: "user-teardown-connector-token",
+    });
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
     const sharedAgent = await bdd.createAgent(peer, {
       displayName: "BDD Shared Grant Agent",
@@ -4821,6 +4839,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await waitForExpectation(() => {
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
         botToken,
+      );
+    });
+    await waitForExpectation(async () => {
+      const listed = await connectors.listConnectors(doomed);
+      expect(listed.connectors).not.toContainEqual(
+        expect.objectContaining({
+          type: "openai",
+          connectionStatus: "connected",
+        }),
       );
     });
     let revokedPoll:

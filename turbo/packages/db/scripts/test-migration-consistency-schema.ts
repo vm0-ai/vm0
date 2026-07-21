@@ -846,6 +846,383 @@ async function validateConnectorCredentialOwnershipBackfill(): Promise<void> {
   }
 }
 
+async function expectDatabaseError(
+  client: Client,
+  args: {
+    readonly code: string;
+    readonly messageIncludes?: string;
+    readonly query: string;
+    readonly values?: readonly (string | number | null)[];
+  },
+): Promise<void> {
+  try {
+    await client.query(args.query, args.values ? [...args.values] : undefined);
+  } catch (error) {
+    assert.equal(databaseErrorCode(error), args.code);
+    if (args.messageIncludes !== undefined) {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(args.messageIncludes));
+    }
+    return;
+  }
+  throw new Error(`Expected database error ${args.code}`);
+}
+
+async function validateConnectorCredentialOwnershipContraction(): Promise<void> {
+  console.log(
+    "=== Phase 1.5: Validate connector credential ownership contraction ===\n",
+  );
+  const successDb = "migration_connector_credential_contraction_success_test";
+  const failureDb = "migration_connector_credential_contraction_failure_test";
+  const successDbUrl = createTestDbUrl(successDb);
+  const failureDbUrl = createTestDbUrl(failureDb);
+  const successConnectorIds = {
+    github: "30000000-0000-4000-8000-000000000001",
+    steam: "30000000-0000-4000-8000-000000000002",
+  } as const;
+  const successCredentialIds = {
+    connectorSecret: "40000000-0000-4000-8000-000000000001",
+    connectorVariable: "40000000-0000-4000-8000-000000000002",
+    userSecret: "40000000-0000-4000-8000-000000000003",
+    userVariable: "40000000-0000-4000-8000-000000000004",
+  } as const;
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(successDbUrl, 628);
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "connectors"
+            ("id", "type", "auth_method", "storage_version", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'github', 'oauth', NULL, 'contract-org', 'contract-user', '2020-01-01'),
+            ($2, 'steam', 'openid', NULL, 'contract-org', 'contract-user', '2020-01-01')
+        `,
+        Object.values(successConnectorIds),
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets"
+            ("id", "name", "encrypted_value", "description", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'GITHUB_ACCESS_TOKEN', 'contract-secret-value', 'contract-secret-description', 'connector', NULL, 'contract-org', 'contract-user', '2020-01-01'),
+            ($2, 'CONTRACT_USER_SECRET', 'user-secret-value', 'user-secret-description', 'user', NULL, 'contract-org', 'contract-user', '2020-01-01')
+        `,
+        [successCredentialIds.connectorSecret, successCredentialIds.userSecret],
+      );
+      await client.query(
+        `
+          INSERT INTO "variables"
+            ("id", "name", "value", "description", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'STEAM_ID', 'contract-variable-value', 'contract-variable-description', 'connector', NULL, 'contract-org', 'contract-user', '2020-01-01'),
+            ($2, 'CONTRACT_USER_VARIABLE', 'user-variable-value', 'user-variable-description', 'user', NULL, 'contract-org', 'contract-user', '2020-01-01')
+        `,
+        [
+          successCredentialIds.connectorVariable,
+          successCredentialIds.userVariable,
+        ],
+      );
+
+      await client.query("BEGIN");
+      await applyMigrationsUpTo(client, 630);
+      await client.query("COMMIT");
+
+      const connectorRows = await client.query<{
+        id: string;
+        storage_version: string;
+        updated_at: string;
+      }>(
+        `
+          SELECT "id", "storage_version", "updated_at"::text AS "updated_at"
+          FROM "connectors"
+          WHERE "id" = ANY($1::uuid[])
+          ORDER BY "id"
+        `,
+        [Object.values(successConnectorIds)],
+      );
+      assert.deepEqual(connectorRows.rows, [
+        {
+          id: successConnectorIds.github,
+          storage_version: "1",
+          updated_at: "2020-01-01 00:00:00",
+        },
+        {
+          id: successConnectorIds.steam,
+          storage_version: "1",
+          updated_at: "2020-01-01 00:00:00",
+        },
+      ]);
+
+      const secretRow = await client.query<{
+        connector_id: string;
+        description: string;
+        encrypted_value: string;
+        updated_at: string;
+      }>(
+        `
+          SELECT "connector_id", "description", "encrypted_value", "updated_at"::text AS "updated_at"
+          FROM "secrets"
+          WHERE "id" = $1
+        `,
+        [successCredentialIds.connectorSecret],
+      );
+      assert.deepEqual(secretRow.rows[0], {
+        connector_id: successConnectorIds.github,
+        description: "contract-secret-description",
+        encrypted_value: "contract-secret-value",
+        updated_at: "2020-01-01 00:00:00",
+      });
+
+      const variableRow = await client.query<{
+        connector_id: string;
+        description: string;
+        updated_at: string;
+        value: string;
+      }>(
+        `
+          SELECT "connector_id", "description", "value", "updated_at"::text AS "updated_at"
+          FROM "variables"
+          WHERE "id" = $1
+        `,
+        [successCredentialIds.connectorVariable],
+      );
+      assert.deepEqual(variableRow.rows[0], {
+        connector_id: successConnectorIds.steam,
+        description: "contract-variable-description",
+        updated_at: "2020-01-01 00:00:00",
+        value: "contract-variable-value",
+      });
+
+      await expectDatabaseError(client, {
+        code: "23502",
+        query: `
+          INSERT INTO "connectors"
+            ("type", "auth_method", "storage_version", "org_id", "user_id")
+          VALUES ('github', 'oauth', NULL, 'invalid-org', 'invalid-null-version')
+        `,
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chk_connectors_storage_version_positive",
+        query: `
+          INSERT INTO "connectors"
+            ("type", "auth_method", "storage_version", "org_id", "user_id")
+          VALUES ('github', 'oauth', 0, 'invalid-org', 'invalid-zero-version')
+        `,
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chk_secrets_connector_owner_type",
+        query: `
+          INSERT INTO "secrets"
+            ("name", "encrypted_value", "type", "org_id", "user_id")
+          VALUES ('UNOWNED_CONNECTOR_SECRET', 'value', 'connector', 'invalid-org', 'invalid-user')
+        `,
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chk_variables_connector_owner_type",
+        query: `
+          INSERT INTO "variables"
+            ("name", "value", "type", "org_id", "user_id")
+          VALUES ('UNOWNED_CONNECTOR_VARIABLE', 'value', 'connector', 'invalid-org', 'invalid-user')
+        `,
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chk_secrets_connector_owner_type",
+        query: `
+          INSERT INTO "secrets"
+            ("name", "encrypted_value", "type", "connector_id", "org_id", "user_id")
+          VALUES ('OWNED_USER_SECRET', 'value', 'user', $1, 'contract-org', 'contract-user')
+        `,
+        values: [successConnectorIds.github],
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chk_variables_connector_owner_type",
+        query: `
+          INSERT INTO "variables"
+            ("name", "value", "type", "connector_id", "org_id", "user_id")
+          VALUES ('OWNED_USER_VARIABLE', 'value', 'user', $1, 'contract-org', 'contract-user')
+        `,
+        values: [successConnectorIds.github],
+      });
+      const deletedConnectors = await client.query(
+        `DELETE FROM "connectors" WHERE "id" = ANY($1::uuid[])`,
+        [Object.values(successConnectorIds)],
+      );
+      assert.equal(deletedConnectors.rowCount, 2);
+
+      const userRows = await client.query<{
+        connector_secret_count: string;
+        connector_variable_count: string;
+        secret_count: string;
+        variable_count: string;
+      }>(
+        `
+          SELECT
+            (SELECT count(*) FROM "secrets" WHERE "id" = $1)::text AS connector_secret_count,
+            (SELECT count(*) FROM "variables" WHERE "id" = $2)::text AS connector_variable_count,
+            (SELECT count(*) FROM "secrets" WHERE "id" = $3)::text AS secret_count,
+            (SELECT count(*) FROM "variables" WHERE "id" = $4)::text AS variable_count
+        `,
+        [
+          successCredentialIds.connectorSecret,
+          successCredentialIds.connectorVariable,
+          successCredentialIds.userSecret,
+          successCredentialIds.userVariable,
+        ],
+      );
+      assert.deepEqual(userRows.rows[0], {
+        connector_secret_count: "0",
+        connector_variable_count: "0",
+        secret_count: "1",
+        variable_count: "1",
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  await createDatabase(failureDb);
+  try {
+    await runMigrationsUpTo(failureDbUrl, 628);
+    const client = new Client({ connectionString: failureDbUrl });
+    await client.connect();
+    const knownConnectorId = "50000000-0000-4000-8000-000000000001";
+    const unknownConnectorId = "50000000-0000-4000-8000-000000000002";
+    const knownSecretId = "60000000-0000-4000-8000-000000000001";
+    const unknownSecretId = "60000000-0000-4000-8000-000000000002";
+    const unknownVariableId = "60000000-0000-4000-8000-000000000003";
+    try {
+      await client.query(
+        `
+          INSERT INTO "connectors"
+            ("id", "type", "auth_method", "storage_version", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'github', 'oauth', NULL, 'failure-org', 'failure-user', '2020-01-01'),
+            ($2, 'unknown-ref', 'api-token', NULL, 'failure-org', 'failure-user', '2020-01-01')
+        `,
+        [knownConnectorId, unknownConnectorId],
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets"
+            ("id", "name", "encrypted_value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'GITHUB_ACCESS_TOKEN', 'known-secret-value', 'connector', NULL, 'failure-org', 'failure-user', '2020-01-01'),
+            ($2, 'UNKNOWN_CONTRACT_SECRET', 'unknown-secret-value', 'connector', NULL, 'failure-org', 'failure-user', '2020-01-01')
+        `,
+        [knownSecretId, unknownSecretId],
+      );
+      await client.query(
+        `
+          INSERT INTO "variables"
+            ("id", "name", "value", "type", "connector_id", "org_id", "user_id", "updated_at")
+          VALUES
+            ($1, 'UNKNOWN_CONTRACT_VARIABLE', 'unknown-variable-value', 'connector', NULL, 'failure-org', 'failure-user', '2020-01-01')
+        `,
+        [unknownVariableId],
+      );
+
+      const migrationSql = await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          "0630_contract_connector_credential_ownership.sql",
+        ),
+        "utf-8",
+      );
+      await client.query("BEGIN");
+      try {
+        await client.query(migrationSql);
+        throw new Error("Expected connector credential contraction to fail");
+      } catch (error) {
+        assert.equal(databaseErrorCode(error), "23514");
+        assert.ok(error instanceof Error);
+        assert.ok(error.message.includes("missing_connector_versions=1"));
+        assert.ok(error.message.includes("unowned_connector_secrets=1"));
+        assert.ok(error.message.includes("unowned_connector_variables=1"));
+        assert.ok(!error.message.includes("UNKNOWN_CONTRACT_SECRET"));
+        assert.ok(!error.message.includes("unknown-secret-value"));
+        assert.ok(!error.message.includes("failure-user"));
+      }
+      await client.query("ROLLBACK");
+
+      const rolledBackConnector = await client.query<{
+        storage_version: string | null;
+        updated_at: string;
+      }>(
+        `
+          SELECT "storage_version", "updated_at"::text AS "updated_at"
+          FROM "connectors"
+          WHERE "id" = $1
+        `,
+        [knownConnectorId],
+      );
+      assert.deepEqual(rolledBackConnector.rows[0], {
+        storage_version: null,
+        updated_at: "2020-01-01 00:00:00",
+      });
+      const rolledBackSecret = await client.query<{
+        connector_id: string | null;
+        encrypted_value: string;
+        updated_at: string;
+      }>(
+        `
+          SELECT "connector_id", "encrypted_value", "updated_at"::text AS "updated_at"
+          FROM "secrets"
+          WHERE "id" = $1
+        `,
+        [knownSecretId],
+      );
+      assert.deepEqual(rolledBackSecret.rows[0], {
+        connector_id: null,
+        encrypted_value: "known-secret-value",
+        updated_at: "2020-01-01 00:00:00",
+      });
+
+      const schemaState = await client.query<{
+        delete_rule: string;
+        is_nullable: string;
+      }>(`
+        SELECT
+          (
+            SELECT is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'connectors'
+              AND column_name = 'storage_version'
+          ) AS is_nullable,
+          (
+            SELECT delete_rule
+            FROM information_schema.referential_constraints
+            WHERE constraint_schema = 'public'
+              AND constraint_name = 'secrets_connector_id_connectors_id_fk'
+          ) AS delete_rule
+      `);
+      assert.deepEqual(schemaState.rows[0], {
+        delete_rule: "CASCADE",
+        is_nullable: "YES",
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(failureDb);
+  }
+
+  console.log(
+    "   ✅ Contraction reconciles known rows, enforces final constraints, and rolls back unresolved state\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -1163,6 +1540,7 @@ async function main(): Promise<void> {
     await validateTimestampOrdering();
 
     await validateConnectorCredentialOwnershipBackfill();
+    await validateConnectorCredentialOwnershipContraction();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

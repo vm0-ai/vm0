@@ -28,18 +28,21 @@ export async function seedUnsupportedHistoricalConnectors(
       {
         type: "removed-connector",
         authMethod: "api-token",
+        storageVersion: 1,
         userId: fixture.userId,
         orgId: fixture.orgId,
       },
       {
         type: "github",
         authMethod: "removed-auth-method",
+        storageVersion: 1,
         userId: fixture.userId,
         orgId: fixture.orgId,
       },
       {
         type: "gitlab",
         authMethod: "oauth",
+        storageVersion: 1,
         userId: fixture.userId,
         orgId: fixture.orgId,
       },
