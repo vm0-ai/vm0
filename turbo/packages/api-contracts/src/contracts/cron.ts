@@ -67,6 +67,11 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
+const cronMonitorChatMessageQueueResponseSchema = z.object({
+  success: z.literal(true),
+  orphanedMessages: z.number().int().nonnegative(),
+});
+
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
   success: z.literal(true),
   downgraded: z.number(),
@@ -304,6 +309,20 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
   },
 });
 
+export const cronMonitorChatMessageQueueContract = c.router({
+  monitor: {
+    method: "GET",
+    path: "/api/cron/monitor-chat-message-queue",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronMonitorChatMessageQueueResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Monitor for orphaned queued chat messages",
+  },
+});
+
 export const cronReconcileBillingEntitlementsContract = c.router({
   reconcile: {
     method: "GET",
@@ -522,6 +541,8 @@ export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
+export type CronMonitorChatMessageQueueContract =
+  typeof cronMonitorChatMessageQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
