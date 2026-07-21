@@ -259,7 +259,7 @@ describe("zero preference command", () => {
       }).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-      expect(errorCalls).toContain("Not authenticated");
+      expect(errorCalls).toContain("Authentication failed");
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 

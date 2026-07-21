@@ -523,6 +523,6 @@ describe("zero logs search command", () => {
     ).rejects.toThrow();
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errorCalls).toContain("Not authenticated");
+    expect(errorCalls).toContain("Authentication failed");
   });
 });

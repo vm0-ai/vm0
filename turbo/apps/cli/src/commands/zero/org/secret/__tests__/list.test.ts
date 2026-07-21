@@ -94,7 +94,7 @@ describe("zero org secret list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
+        expect.stringContaining("Authentication failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
