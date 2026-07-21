@@ -29,6 +29,7 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
+import { drainStaleCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -538,6 +539,10 @@ export const cleanupSandboxes$ = command(
         L.error("Failed to drain stale chat thread queues", { error });
       },
     );
+    signal.throwIfAborted();
+    await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {
+      L.error("Failed to drain stale canonical Slack ingress", { error });
+    });
     signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,

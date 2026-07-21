@@ -92,6 +92,20 @@ export const testSlackStateResponseSchema = z.object({
       updatedAt: z.string(),
     }),
   ),
+  chat_message_queue: z.array(
+    z.object({
+      id: z.string(),
+      chatThreadId: z.string(),
+      chatMessageId: z.string().nullable(),
+      itemType: z.enum([
+        "user_message",
+        "slack_user_message",
+        "workflow_event",
+      ]),
+      triggerSource: z.string().nullable(),
+      createdAt: z.string(),
+    }),
+  ),
   recent_runs: z.array(
     z.object({
       id: z.string(),

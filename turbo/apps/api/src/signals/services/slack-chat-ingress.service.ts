@@ -112,6 +112,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
   args: SlackChatThreadRouteKey & {
     readonly orgId: string;
     readonly agentComposeId: string;
+    readonly selectedModel: string | null;
     readonly currentTime: Date;
   },
 ): Promise<SlackChatThreadRouteBinding> {
@@ -126,6 +127,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       .values({
         userId: args.userId,
         agentComposeId: args.agentComposeId,
+        selectedModel: args.selectedModel,
         title: null,
         lastReadAt: args.currentTime,
         lastMessageAt: args.currentTime,
@@ -178,7 +180,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       chatThreadId: thread.id,
       agentComposeId: args.agentComposeId,
       title: null,
-      selectedModel: null,
+      selectedModel: args.selectedModel,
       createdAt: thread.createdAt,
     });
     return route;

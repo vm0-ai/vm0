@@ -14,6 +14,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -550,6 +551,28 @@ function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
 }
 
+function slackChatQueueRows(db: ReadonlyDb, teamId: string) {
+  return db
+    .select({
+      id: chatMessageQueue.id,
+      chatThreadId: chatMessageQueue.chatThreadId,
+      chatMessageId: chatMessageQueue.chatMessageId,
+      itemType: chatMessageQueue.itemType,
+      triggerSource: chatMessageQueue.triggerSource,
+      createdAt: chatMessageQueue.createdAt,
+    })
+    .from(chatMessageQueue)
+    .innerJoin(
+      slackChatThreadRoutes,
+      eq(chatMessageQueue.chatThreadId, slackChatThreadRoutes.chatThreadId),
+    )
+    .innerJoin(
+      slackOrgConnections,
+      eq(slackChatThreadRoutes.connectionId, slackOrgConnections.id),
+    )
+    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+}
+
 function recentSlackRuns(db: ReadonlyDb, orgId: string | null | undefined) {
   if (!orgId) {
     return [];
@@ -789,6 +812,7 @@ const getSlackState$ = computed(async (get) => {
   const chatIngress = hasTeamIdLookup
     ? await slackChatIngressRows(db, teamId)
     : [];
+  const chatQueue = hasTeamIdLookup ? await slackChatQueueRows(db, teamId) : [];
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentSlackRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
@@ -824,6 +848,9 @@ const getSlackState$ = computed(async (get) => {
           createdAt: isoString(ingress.createdAt),
           updatedAt: isoString(ingress.updatedAt),
         };
+      }),
+      chat_message_queue: chatQueue.map((item) => {
+        return { ...item, createdAt: isoString(item.createdAt) };
       }),
       recent_runs: recentRuns.map((run) => {
         return {
