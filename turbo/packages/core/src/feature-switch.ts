@@ -490,10 +490,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
   },
   [FeatureSwitchKey.ZeroMail]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
