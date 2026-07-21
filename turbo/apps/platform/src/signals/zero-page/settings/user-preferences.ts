@@ -3,6 +3,7 @@ import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -56,5 +57,17 @@ export const updateUserPreference$ = command(
     await clerk.session?.getToken({ skipCache: true });
 
     set(reloadUserPreferences$);
+  },
+);
+
+export const triggerMorningBrief$ = command(
+  async ({ get }, _signal: AbortSignal): Promise<{ runId: string }> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroMorningBriefContract);
+    const result = await accept(
+      client.trigger({ body: {}, fetchOptions: { signal: _signal } }),
+      [200],
+    );
+    return { runId: result.body.runId };
   },
 );

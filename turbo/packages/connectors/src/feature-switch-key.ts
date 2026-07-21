@@ -46,6 +46,8 @@ export enum FeatureSwitchKey {
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
+  MorningBrief = "morningBrief",
+  ManualMorningBrief = "manualMorningBrief",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
