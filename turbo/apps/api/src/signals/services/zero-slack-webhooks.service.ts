@@ -99,6 +99,7 @@ import {
   findSlackChatThreadRoute,
 } from "./slack-chat-ingress.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { onRejection, safeJsonParse, tapError } from "../utils";
 import type { SlackOrgCallbackPayload } from "./slack-org-callback-payload";
 
@@ -737,7 +738,7 @@ async function resolveEffectiveCompose(
 
 const resolveSlackAgentRouteAdmission$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly db: Db;
       readonly workspaceId: string;
@@ -745,11 +746,13 @@ const resolveSlackAgentRouteAdmission$ = command(
       readonly slackUserId: string;
       readonly threadTs: string;
     },
+    signal: AbortSignal,
   ): Promise<SlackAgentRouteAdmission> => {
     const installation = await installationForWorkspace(
       args.db,
       args.workspaceId,
     );
+    signal.throwIfAborted();
     if (!installation?.orgId) {
       return { backend: "legacy" };
     }
@@ -758,6 +761,7 @@ const resolveSlackAgentRouteAdmission$ = command(
       args.workspaceId,
       args.slackUserId,
     );
+    signal.throwIfAborted();
     if (!connection) {
       return { backend: "legacy" };
     }
@@ -769,6 +773,7 @@ const resolveSlackAgentRouteAdmission$ = command(
       userId: connection.vm0UserId,
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
+    signal.throwIfAborted();
     if (existingRoute) {
       return { backend: existingRoute.backend, routeId: existingRoute.id };
     }
@@ -776,6 +781,7 @@ const resolveSlackAgentRouteAdmission$ = command(
     const overrides = await get(
       userFeatureSwitchOverrides(installation.orgId, connection.vm0UserId),
     );
+    signal.throwIfAborted();
     const canonicalEnabled = isFeatureEnabled(
       FeatureSwitchKey.CanonicalSlackIngress,
       {
@@ -790,6 +796,7 @@ const resolveSlackAgentRouteAdmission$ = command(
         ...routeKey,
         currentTime,
       });
+      signal.throwIfAborted();
       return { backend: route.backend, routeId: route.id };
     }
 
@@ -798,16 +805,28 @@ const resolveSlackAgentRouteAdmission$ = command(
       connection.vm0UserId,
       installation.orgId,
     );
+    signal.throwIfAborted();
     if (effectiveCompose.status !== "resolved") {
       return { backend: "legacy" };
     }
 
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: installation.orgId,
+        userId: connection.vm0UserId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     const route = await ensureCanonicalSlackChatThreadRoute(args.db, {
       ...routeKey,
       orgId: installation.orgId,
       agentComposeId: effectiveCompose.composeId,
+      selectedModel: modelRoute?.selectedModel ?? null,
       currentTime,
     });
+    signal.throwIfAborted();
     return { backend: route.backend, routeId: route.id };
   },
 );
@@ -2472,13 +2491,17 @@ export const handleZeroSlackEvents$ = command(
       const agentEvent = slackAgentMessageEvent(payload.event);
       if (agentEvent) {
         const db = set(writeDb$);
-        const route = await set(resolveSlackAgentRouteAdmission$, {
-          db,
-          workspaceId: payload.team_id,
-          channelId: agentEvent.channel,
-          slackUserId: agentEvent.user,
-          threadTs: agentEvent.thread_ts ?? agentEvent.ts,
-        });
+        const route = await set(
+          resolveSlackAgentRouteAdmission$,
+          {
+            db,
+            workspaceId: payload.team_id,
+            channelId: agentEvent.channel,
+            slackUserId: agentEvent.user,
+            threadTs: agentEvent.thread_ts ?? agentEvent.ts,
+          },
+          signal,
+        );
         signal.throwIfAborted();
         if (route.backend === "canonical") {
           if (!route.routeId || !payload.event_id) {
@@ -2522,6 +2545,29 @@ export const handleZeroSlackEvents$ = command(
             outcome: ingress.inserted ? "accepted" : "deduplicated",
             status: ingress.status,
           });
+          if (ingress.status !== "processed") {
+            // Admission is durable and already acknowledged to Slack. Keep the
+            // processor alive if the request signal is cancelled afterward.
+            const backgroundSignal = new AbortController().signal;
+            waitUntil(
+              tapError(
+                set(
+                  processCanonicalSlackIngress$,
+                  { ingressId: ingress.id },
+                  backgroundSignal,
+                ),
+                (error) => {
+                  L.error(
+                    "Canonical Slack ingress background processing failed",
+                    {
+                      ingressId: ingress.id,
+                      error,
+                    },
+                  );
+                },
+              ),
+            );
+          }
           return textResponse("OK");
         }
       }

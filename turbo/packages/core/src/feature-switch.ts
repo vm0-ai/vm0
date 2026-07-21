@@ -229,6 +229,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Route newly admitted per-user Slack threads through canonical chat ingress.",
     enabled: false,
   },
+  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
     description:
