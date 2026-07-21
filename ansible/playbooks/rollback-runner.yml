@@ -60,10 +60,9 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner build` for best-effort template cache download/upload
-#       and to `runner gc` for best-effort R2-side cleanup. Rollback does not
-#       run the newer `--warm-rootfs-cache` path because the target rollback
-#       binary may predate that flag.
+#       Passed to `runner build` for best-effort template cache download/upload.
+#       Rollback does not run the newer `--warm-rootfs-cache` path because the
+#       target rollback binary may predate that flag.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -507,11 +506,6 @@
     # gc respects `--protect-version` so the rollback target is never swept.
     - name: Garbage collect old artifacts
       command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
-      environment:
-        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
-        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
-        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
-        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
 
     - name: Verify runner health after cleanup
       command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"

@@ -441,4 +441,21 @@ mod tests {
             "old top-level gc-workspace-image-cache command should not be accepted"
         );
     }
+
+    #[test]
+    fn gc_r2_keep_days_option_is_removed() {
+        assert!(
+            Cli::try_parse_from(["runner", "gc", "--r2-keep-days", "7"]).is_err(),
+            "gc should reject the removed --r2-keep-days option"
+        );
+
+        let error = Cli::try_parse_from(["runner", "gc", "--help"])
+            .err()
+            .expect("gc --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(
+            !error.to_string().contains("--r2-keep-days"),
+            "gc help should omit the removed --r2-keep-days option"
+        );
+    }
 }
