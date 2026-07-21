@@ -77,9 +77,10 @@ teardown_file() {
     # --- Phase 2: Run agent to create checkpoint (~15s) ---
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
@@ -87,11 +88,11 @@ teardown_file() {
     assert_output --partial "● Bash("
     assert_output --partial "echo 'created by agent'"
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     # Extract checkpoint ID as a local variable
     local checkpoint_id
-    checkpoint_id=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    checkpoint_id=$(run_fixture_field "$output" '.checkpointId')
     echo "# Checkpoint ID: $checkpoint_id"
     [ -n "$checkpoint_id" ] || {
         echo "# Failed to extract checkpoint ID"
@@ -115,9 +116,7 @@ teardown_file() {
     # --- Phase 4: Resume from checkpoint and verify ---
     # Should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $checkpoint_id"
-    run $VM0_CLI run resume "$checkpoint_id" \
-        --verbose \
-        "ls && cat counter.txt"
+    run resume_run_fixture "$checkpoint_id" "ls && cat counter.txt"
 
     assert_success
 

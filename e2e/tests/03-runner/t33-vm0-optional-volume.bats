@@ -76,10 +76,10 @@ setup() {
 
     # Run agent - should succeed even though optional volume doesn't exist
     # The optional volume mount point should simply not exist
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     # The optional directory should not be mounted (volume doesn't exist)
@@ -133,10 +133,10 @@ EOF
     cd - >/dev/null
 
     # Run agent - should succeed with required volume mounted, optional skipped
-    run $VM0_CLI run "${AGENT_NAME}-mixed" \
-        --artifact "$ARTIFACT_NAME_MIXED:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')"
+    run run_compose_fixture "${AGENT_NAME}-mixed" \
+        "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME_MIXED" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     # Required volume should be mounted and readable

@@ -11,7 +11,7 @@ import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../../lib/utils/search-query";
-import { isUUID } from "../../run/shared";
+import { isUuid } from "../../../lib/utils/uuid";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -152,7 +152,7 @@ async function runChatSource(
   if (options.run !== undefined) {
     throw new Error("--run is not supported with --source chat");
   }
-  if (options.agent !== undefined && !isUUID(options.agent)) {
+  if (options.agent !== undefined && !isUuid(options.agent)) {
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
     );

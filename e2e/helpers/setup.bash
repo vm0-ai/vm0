@@ -8,6 +8,7 @@ load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 load "${TEST_ROOT}/helpers/storage-fixtures"
 load "${TEST_ROOT}/helpers/compose-fixtures"
+load "${TEST_ROOT}/helpers/run-fixtures"
 
 # Path to CLI binaries (trace wrappers log each invocation for timeout debugging)
 export VM0_CLI="${TEST_ROOT}/helpers/trace-vm0.sh"
@@ -17,7 +18,10 @@ export ZERO_CLI="${TEST_ROOT}/helpers/trace-zero.sh"
 # This hook is called by BATS before teardown() when a test fails
 bats::on_failure() {
     local run_id
-    run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
+    run_id=$(sed -n '1p' <<< "$output" | jq -r '.runId // empty' 2>/dev/null)
+    if [[ -z "$run_id" ]]; then
+        run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
+    fi
     if [[ -n "$run_id" ]]; then
         echo "# === System logs for failed run ($run_id) ==="
         fetch_run_log "$run_id" system

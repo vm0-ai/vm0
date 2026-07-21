@@ -9,7 +9,7 @@ import {
   parsePositiveLogCount,
 } from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
-import { isUUID } from "../../run/shared";
+import { isUuid } from "../../../lib/utils/uuid";
 import { listCommand } from "./list";
 import { searchCommand } from "./search";
 import { isSupportedFramework } from "@vm0/core/frameworks";
@@ -148,7 +148,7 @@ Examples:
           return;
         }
 
-        if (!isUUID(runId)) {
+        if (!isUuid(runId)) {
           console.error(
             chalk.red(`✗ Invalid run ID "${runId}" — expected a UUID`),
           );

@@ -61,10 +61,9 @@ ensure_openai_model_provider() {
 @test "t-codex-real-smoke-0: print sandbox codex version" {
     ensure_openai_model_provider
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "openai-api-key" \
-        --real-agent-in-preview \
-        "Run 'codex --version' with the shell tool and include the exact output"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run 'codex --version' with the shell tool and include the exact output" \
+        '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
     echo "# Sandbox codex version output:"
@@ -74,10 +73,9 @@ ensure_openai_model_provider() {
 @test "t-codex-real-smoke-1: basic run with real codex" {
     ensure_openai_model_provider
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "openai-api-key" \
-        --real-agent-in-preview \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
     assert_output --partial "◆ Codex Completed"

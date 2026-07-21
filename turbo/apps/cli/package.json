@@ -46,7 +46,6 @@
     "@vm0/typescript-config": "workspace:*",
     "chalk": "^5.6.2",
     "commander": "^14.0.0",
-    "dotenv": "^17.2.1",
     "eslint": "^9.34.0",
     "json": "^11.0.0",
     "msw": "^2.13.2",

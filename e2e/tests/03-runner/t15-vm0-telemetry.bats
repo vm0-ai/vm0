@@ -6,7 +6,7 @@
 # 2. Agent runs collect telemetry data (system log and metrics)
 # 3. Telemetry data is retrievable (agent/system/metrics log views)
 #
-# Test count: 1 test with 1 vm0 run call
+# Test count: 1 test with 1 direct run
 
 load '../../helpers/setup'
 
@@ -67,27 +67,18 @@ teardown() {
 
     # Step 2: Run agent with a simple command
     echo "# Step 2: Running agent to trigger telemetry collection..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo 'hello from agent'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'hello from agent'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
-    # Verify "Run started" message with Run ID is displayed
-    assert_output --partial "Run started"
-    assert_output --partial "Run ID:"
-
     # Verify run completed successfully
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Run completed successfully"
-
-    # Verify "zero logs" command hint is shown in next steps
-    assert_output --partial "View agent logs:"
-    assert_output --partial "zero logs"
 
     # Step 3: Extract Run ID from output
-    # Format: "  Run ID:   abc12345-6789-..."
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     echo "# Run ID: $RUN_ID"
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID from output"

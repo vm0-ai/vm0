@@ -4,7 +4,6 @@ import "./instrument.js";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { authCommand } from "./commands/auth";
-import { runCommand } from "./commands/run";
 import { whoamiCommand } from "./commands/whoami";
 
 const program = new Command();
@@ -13,12 +12,11 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("vm0")
-  .description("VM0 CLI - Build and run agents with natural language")
+  .description("VM0 CLI - Developer authentication utilities")
   .version(__CLI_VERSION__);
 
 // Register all commands
 program.addCommand(authCommand);
-program.addCommand(runCommand);
 program.addCommand(whoamiCommand);
 
 export { program };
