@@ -544,7 +544,7 @@ async fn write_private_file_chunked_serializes_equivalent_destinations() {
 }
 
 #[tokio::test]
-async fn write_private_file_chunked_excludes_ordinary_and_batch_writes() {
+async fn write_private_file_chunked_excludes_single_private_ordinary_and_batch_writes() {
     let (host, mut guest) = setup_host_and_guest().await;
     let target = "/tmp/private-exclusive.bin";
     let private_content = ChunkedWriteFixture::two_chunk_content();
@@ -559,18 +559,21 @@ async fn write_private_file_chunked_excludes_ordinary_and_batch_writes() {
     assert!(first_private.private);
 
     let mut ordinary_write = Box::pin(host.write_file(target, b"ordinary", false));
+    let mut single_private_write = Box::pin(host.write_private_file(target, b"single-private"));
     let batch_entries = [WriteFileEntry {
         path: target,
         content: b"batch",
     }];
     let mut batch_write = Box::pin(host.write_files(&batch_entries));
     poll_once_pending(ordinary_write.as_mut()).await;
+    poll_once_pending(single_private_write.as_mut()).await;
     poll_once_pending(batch_write.as_mut()).await;
 
     send_write_file_success(&mut guest, first_private.seq()).await;
     let second_private = tokio::select! {
         _ = private_write.as_mut() => panic!("private write completed before its append"),
         _ = ordinary_write.as_mut() => panic!("ordinary write completed while private write held the destination"),
+        _ = single_private_write.as_mut() => panic!("single-frame private write completed while chunked private write held the destination"),
         _ = batch_write.as_mut() => panic!("batch write completed while private write held the destination"),
         msg = read_guest_message(&mut guest) => msg,
     };
@@ -587,20 +590,26 @@ async fn write_private_file_chunked_excludes_ordinary_and_batch_writes() {
 
     let guest_drive = async {
         let mut saw_ordinary = false;
+        let mut saw_single_private = false;
         let mut saw_batch = false;
-        while !(saw_ordinary && saw_batch) {
+        while !(saw_ordinary && saw_single_private && saw_batch) {
             let msg = read_guest_message(&mut guest).await;
             match msg.msg_type {
                 MSG_WRITE_FILE => {
-                    assert!(!saw_ordinary);
                     let (path, content, sudo, append, private) =
                         vsock_proto::decode_write_file(&msg.payload).unwrap();
                     assert_eq!(path, target);
-                    assert_eq!(content, b"ordinary");
                     assert!(!sudo);
                     assert!(!append);
-                    assert!(!private);
-                    saw_ordinary = true;
+                    if private {
+                        assert!(!saw_single_private);
+                        assert_eq!(content, b"single-private");
+                        saw_single_private = true;
+                    } else {
+                        assert!(!saw_ordinary);
+                        assert_eq!(content, b"ordinary");
+                        saw_ordinary = true;
+                    }
                     send_write_file_success(&mut guest, msg.seq).await;
                 }
                 MSG_WRITE_FILES => {
@@ -616,9 +625,14 @@ async fn write_private_file_chunked_excludes_ordinary_and_batch_writes() {
             }
         }
     };
-    let ((), ordinary_result, batch_result) =
-        tokio::join!(guest_drive, ordinary_write.as_mut(), batch_write.as_mut());
+    let ((), ordinary_result, single_private_result, batch_result) = tokio::join!(
+        guest_drive,
+        ordinary_write.as_mut(),
+        single_private_write.as_mut(),
+        batch_write.as_mut()
+    );
     ordinary_result.unwrap();
+    single_private_result.unwrap();
     batch_result.unwrap();
 }
 

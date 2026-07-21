@@ -437,6 +437,9 @@ impl VsockHost {
 
     /// Write a private runtime file on the guest and report before each
     /// helper frame is written to the guest.
+    ///
+    /// This uses the destination-isolation semantics documented on
+    /// [`write_private_file`](Self::write_private_file).
     pub async fn write_private_file_with_write_observer(
         &self,
         path: &str,
