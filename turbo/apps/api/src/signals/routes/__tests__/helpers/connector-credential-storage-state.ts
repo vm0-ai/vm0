@@ -44,44 +44,6 @@ export async function readConnectorCredentialStorageState(
   });
 }
 
-export async function seedLegacyConnectorSecret(
-  context: TestContext,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly name: string;
-    readonly encryptedValue: string;
-    readonly description: string | null;
-  },
-): Promise<void> {
-  await postAction(context, {
-    action: "seed-legacy-secret",
-    org_id: args.orgId,
-    user_id: args.userId,
-    name: args.name,
-    encrypted_value: args.encryptedValue,
-    description: args.description,
-  });
-}
-
-export async function seedLegacyConnectorVariable(
-  context: TestContext,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly name: string;
-    readonly value: string;
-  },
-): Promise<void> {
-  await postAction(context, {
-    action: "seed-legacy-variable",
-    org_id: args.orgId,
-    user_id: args.userId,
-    name: args.name,
-    value: args.value,
-  });
-}
-
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {
@@ -142,7 +104,7 @@ export async function setConnectorCredentialStorageState(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorRef: string;
-    readonly storageVersion: number | null;
+    readonly storageVersion: number;
     readonly tokenExpiresAt?: string | null;
   },
 ): Promise<void> {
@@ -161,7 +123,7 @@ export async function setConnectorCredentialStorageState(
 export async function setConnectorSecretOwner(
   context: TestContext,
   args: {
-    readonly connectorId: string | null;
+    readonly connectorId: string;
     readonly name: string;
     readonly orgId: string;
     readonly userId: string;
@@ -179,7 +141,7 @@ export async function setConnectorSecretOwner(
 export async function setConnectorVariableOwner(
   context: TestContext,
   args: {
-    readonly connectorId: string | null;
+    readonly connectorId: string;
     readonly name: string;
     readonly orgId: string;
     readonly userId: string;

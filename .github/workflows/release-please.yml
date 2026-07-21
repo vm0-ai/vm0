@@ -1305,7 +1305,7 @@ jobs:
 
   # Publish the immutable app artifact to Cloudflare Pages. If the same release
   # run also promotes API, wait for API traffic to be live first.
-  deploy-app-cloudflare-production:
+  promote-app-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
@@ -1564,14 +1564,14 @@ jobs:
       [
         release-please,
         promote-api-production,
-        deploy-app-cloudflare-production,
+        promote-app-production,
         promote-runner-production,
       ]
     if: >-
       always() &&
       (
        needs.promote-api-production.result == 'success' ||
-       needs.deploy-app-cloudflare-production.result == 'success' ||
+       needs.promote-app-production.result == 'success' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
     permissions:
@@ -1589,10 +1589,10 @@ jobs:
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           API_RESULT: ${{ needs.promote-api-production.result }}
-          APP_RESULT: ${{ needs.deploy-app-cloudflare-production.result }}
+          APP_RESULT: ${{ needs.promote-app-production.result }}
           RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
           API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
-          APP_DASHBOARD_URL: ${{ needs.deploy-app-cloudflare-production.outputs.cloudflare_dashboard_url }}
+          APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.cloudflare_dashboard_url }}
           SAFETY: safe
           MIGRATION_FILES: ""
           RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml

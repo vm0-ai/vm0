@@ -58,8 +58,8 @@ struct StorageEvictionResult {
 /// `<version>.tmp/` staging directories are removed under the final
 /// version's flock so crashed writers do not leak disk indefinitely.
 ///
-/// Missing `storages_dir` is a no-op (cold host before the cache writer
-/// in #10808 lands).
+/// A missing `storages_dir` is a no-op: a host without a populated storage
+/// cache has nothing to collect.
 pub(super) async fn gc_storage_cache(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     gc_storage_cache_with_limits_report(
         home,

@@ -14,7 +14,6 @@ import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
   seedConnectorStorageRow,
-  seedLegacyConnectorSecret,
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -373,40 +372,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(storageState.connector).toBeNull();
     expect(storageState.secrets).toStrictEqual([]);
     expect(storageState.variables).toStrictEqual([]);
-  });
-
-  it("claims a legacy null-owner credential during manual connection", async () => {
-    const fixture = await seedFixture();
-    await seedLegacyConnectorSecret(context, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "OPENAI_TOKEN",
-      encryptedValue: "legacy-value",
-      description: "legacy description",
-    });
-
-    const response = await accept(
-      setupApp({ context })(zeroConnectorManualGrantContract).connect({
-        params: { type: "openai" },
-        body: {
-          authMethod: "api-token",
-          values: { OPENAI_TOKEN: "replacement" },
-        },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    const storageState = await readConnectorCredentialStorageState(context, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      connectorRef: "openai",
-      secretNames: ["OPENAI_TOKEN"],
-    });
-    expect(storageState.secrets?.[0]).toMatchObject({
-      connector_id: response.body.id,
-      description: null,
-    });
   });
 
   it("preserves a foreign-owned credential when reconnecting an existing connector", async () => {

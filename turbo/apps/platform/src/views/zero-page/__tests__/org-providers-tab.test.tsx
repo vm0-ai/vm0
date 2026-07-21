@@ -300,43 +300,58 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("only offers Auto when its feature switch is enabled", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-    await openProvidersTab({ vm0ModelEnabled: false });
-
-    click(buttonByText("Add model"));
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    click(within(dialog).getByRole("combobox"));
-
-    expect(
-      screen.queryByRole("option", { name: "Auto" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows the Auto description without provider routing choices", async () => {
+  it("only offers OpenAI and Anthropic models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
     await openProvidersTab({ vm0ModelEnabled: true });
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Auto");
-
     const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+
+    await expect(
+      screen.findByRole("option", { name: "GPT 5.5" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "Claude Opus 4.7" }),
+    ).resolves.toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        "VM0 automatically selects the right model for each task, balancing capability, speed, and cost.",
-      ),
-    ).toBeInTheDocument();
-    expect(within(dialog).queryByText("Provided by")).not.toBeInTheDocument();
+      screen.queryByRole("option", { name: "Auto" }),
+    ).not.toBeInTheDocument();
     expect(
-      within(dialog).queryByRole("radiogroup", { name: "Provided by" }),
+      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
   });
 
-  it("lets limited-free-1 workspaces add Auto without upgrading", async () => {
+  it("keeps existing non-target models while excluding them from additions", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000223",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openProvidersTab({ vm0ModelEnabled: true });
+
+    await expect(
+      screen.findByTestId("org-model-policy-row-kimi-k2.7-code"),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    expect(
+      screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets limited-free-1 workspaces add an allowed Anthropic model", async () => {
     mockAdminOrg();
     mockBillingCapabilities({
       supportByok: false,
@@ -354,17 +369,18 @@ describe("organization model providers settings", () => {
     await openProvidersTab({ vm0ModelEnabled: true });
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Auto");
+    await selectDialogModel("Claude Sonnet 5");
 
     const dialog = screen.getByRole("dialog", { name: "Add model" });
-    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
     expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
     click(buttonByText("Add model", dialog));
 
-    const vm0ModelRow = await screen.findByTestId(
-      "org-model-policy-row-vm0-model",
+    const claudeModelRow = await screen.findByTestId(
+      "org-model-policy-row-claude-sonnet-5",
     );
-    expect(within(vm0ModelRow).getByText("Auto")).toBeInTheDocument();
+    expect(
+      within(claudeModelRow).getByText("Claude Sonnet 5"),
+    ).toBeInTheDocument();
   });
 
   it("opens a workspace API key model route form", async () => {
@@ -584,7 +600,7 @@ describe("organization model providers settings", () => {
     await openModelSettings();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("GLM-5.2");
+    await selectDialogModel("Claude Opus 4.8");
 
     const apiKeyRoute = screen.getByRole("radio", {
       name: /API key\s+Pro/u,
@@ -618,7 +634,7 @@ describe("organization model providers settings", () => {
     click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
     expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
 
-    await selectDialogModel("GLM-5.2");
+    await selectDialogModel("Claude Sonnet 5");
     expect(buttonByText("Add model", dialog)).toBeInTheDocument();
     click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
 

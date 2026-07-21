@@ -197,7 +197,12 @@ def reset_usage_buffer_for_tests(
     flush_owner_lock: _FlushOwnerLock | None = None,
     max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES,
 ) -> None:
-    """Cancel pending timer work and replace singleton state for test isolation."""
+    """Destructively replace the singleton buffer for test isolation.
+
+    The existing timer is canceled, while live events, retained retries,
+    delivery bookkeeping, and source idempotency keys are discarded without
+    flushing or waiting for delivery.
+    """
     global _usage_event_buffer
     _usage_event_buffer.close()
     _usage_event_buffer = UsageEventBuffer(

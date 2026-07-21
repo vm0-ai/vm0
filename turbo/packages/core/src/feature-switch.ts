@@ -329,20 +329,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
-  [FeatureSwitchKey.ComposerInlinePromptItems]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Render composer context as movable inline items and serialize it into the user prompt instead of message attachment fields.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ComposerInlineAttachmentReferences]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep attachments in chips, insert numbered image or file text references, and override composerInlinePromptItems.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

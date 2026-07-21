@@ -2,9 +2,13 @@ mod copy;
 mod read;
 mod write;
 
+use std::collections::{BTreeSet, HashMap};
 use std::io;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use shell_quote::quote_shell_arg;
+use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
 use crate::exec_operation;
 
@@ -12,6 +16,140 @@ pub use copy::{CopyFileOptions, CopyFileResult};
 pub use write::WriteFileEntry;
 
 const MISSING_FILE_EXIT_CODE: i32 = 66;
+
+#[derive(Default)]
+pub(crate) struct FileWritePathLocks {
+    entries: Mutex<HashMap<PathBuf, FileWritePathLockEntry>>,
+}
+
+struct FileWritePathLockEntry {
+    lock: Arc<RwLock<()>>,
+    // Includes operations waiting to acquire the lock as well as guard holders.
+    reservations: usize,
+}
+
+struct FileWritePathLockReservation<'a> {
+    owner: &'a FileWritePathLocks,
+    path: PathBuf,
+    lock: Arc<RwLock<()>>,
+}
+
+enum FileWritePathGuardKind {
+    Shared(OwnedRwLockReadGuard<()>),
+    Exclusive(OwnedRwLockWriteGuard<()>),
+}
+
+struct FileWritePathGuard<'a> {
+    guard: Option<FileWritePathGuardKind>,
+    reservation: Option<FileWritePathLockReservation<'a>>,
+}
+
+impl FileWritePathLocks {
+    async fn acquire_shared(&self, path: &str) -> FileWritePathGuard<'_> {
+        let reservation = self.reserve(PathBuf::from(path));
+        let guard = Arc::clone(&reservation.lock).read_owned().await;
+        FileWritePathGuard::new(FileWritePathGuardKind::Shared(guard), reservation)
+    }
+
+    async fn acquire_shared_many<'a>(
+        &self,
+        paths: impl IntoIterator<Item = &'a str>,
+    ) -> Vec<FileWritePathGuard<'_>> {
+        let reservations = paths
+            .into_iter()
+            .map(PathBuf::from)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|path| self.reserve(path))
+            .collect::<Vec<_>>();
+        let mut guards = Vec::with_capacity(reservations.len());
+        for reservation in reservations {
+            let guard = Arc::clone(&reservation.lock).read_owned().await;
+            guards.push(FileWritePathGuard::new(
+                FileWritePathGuardKind::Shared(guard),
+                reservation,
+            ));
+        }
+        guards
+    }
+
+    async fn acquire_exclusive(&self, path: &str) -> FileWritePathGuard<'_> {
+        let reservation = self.reserve(PathBuf::from(path));
+        let guard = Arc::clone(&reservation.lock).write_owned().await;
+        FileWritePathGuard::new(FileWritePathGuardKind::Exclusive(guard), reservation)
+    }
+
+    fn reserve(&self, path: PathBuf) -> FileWritePathLockReservation<'_> {
+        let mut entries = self.entries.lock().unwrap_or_else(|err| err.into_inner());
+        let lock = if let Some(entry) = entries.get_mut(&path) {
+            assert_ne!(entry.reservations, usize::MAX);
+            entry.reservations += 1;
+            Arc::clone(&entry.lock)
+        } else {
+            let lock = Arc::new(RwLock::new(()));
+            entries.insert(
+                path.clone(),
+                FileWritePathLockEntry {
+                    lock: Arc::clone(&lock),
+                    reservations: 1,
+                },
+            );
+            lock
+        };
+        FileWritePathLockReservation {
+            owner: self,
+            path,
+            lock,
+        }
+    }
+}
+
+impl<'a> FileWritePathGuard<'a> {
+    fn new(
+        guard: FileWritePathGuardKind,
+        reservation: FileWritePathLockReservation<'a>,
+    ) -> FileWritePathGuard<'a> {
+        FileWritePathGuard {
+            guard: Some(guard),
+            reservation: Some(reservation),
+        }
+    }
+}
+
+impl Drop for FileWritePathGuard<'_> {
+    fn drop(&mut self) {
+        // Release destination ownership before the reservation can remove its
+        // registry entry and allow a new lock for the same path to be created.
+        match self.guard.take() {
+            Some(FileWritePathGuardKind::Shared(guard)) => drop(guard),
+            Some(FileWritePathGuardKind::Exclusive(guard)) => drop(guard),
+            None => {}
+        }
+        drop(self.reservation.take());
+    }
+}
+
+impl Drop for FileWritePathLockReservation<'_> {
+    fn drop(&mut self) {
+        let mut entries = self
+            .owner
+            .entries
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let remove = if let Some(entry) = entries.get_mut(&self.path)
+            && Arc::ptr_eq(&entry.lock, &self.lock)
+        {
+            assert!(entry.reservations > 0);
+            entry.reservations -= 1;
+            entry.reservations == 0
+        } else {
+            false
+        };
+        if remove {
+            entries.remove(&self.path);
+        }
+    }
+}
 
 fn validate_guest_file_path(path: &str) -> io::Result<()> {
     if path.is_empty() {

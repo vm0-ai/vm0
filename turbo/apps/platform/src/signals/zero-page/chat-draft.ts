@@ -1,11 +1,4 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import { resetSignal, tapError } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -16,7 +9,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { splitInlinePromptLine } from "./composer-inline-prompt-items.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -121,7 +113,6 @@ function inferUploadContentType(file: File): string {
 }
 
 export interface ZeroChatAttachment {
-  readonly clientId: string;
   filename: string;
   contentType: string;
   size: number;
@@ -133,13 +124,7 @@ export interface ZeroChatAttachment {
   upload$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export interface StartedAttachmentUpload {
-  readonly attachment: ZeroChatAttachment;
-  readonly result: Promise<void>;
-}
-
 function createChatAttachment(file: File): ZeroChatAttachment {
-  const clientId = crypto.randomUUID();
   const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
   const internalPromise$ = state<Promise<FileInfo> | null>(null);
@@ -201,7 +186,6 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   });
 
   return {
-    clientId,
     filename: file.name,
     contentType,
     size: file.size,
@@ -229,15 +213,9 @@ export interface DraftSignals {
   >;
   attachments$: Computed<ZeroChatAttachment[]>;
   attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
-  startAttachmentUpload$: Command<StartedAttachmentUpload, [File, AbortSignal]>;
-  readAttachmentFileInfo$: Command<
-    Promise<FileInfo | null>,
-    [ZeroChatAttachment, AbortSignal]
-  >;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
-  restoreAttachments$: Command<ZeroChatAttachment[], [PersistedAttachment[]]>;
+  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
-  removeAttachmentByClientId$: Command<void, [string]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
   /** Reset all draft state (input, template, attachments). Called after send. */
@@ -256,7 +234,6 @@ export interface DraftInputSyncTarget {
  */
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
-  clientId: string = crypto.randomUUID(),
 ): ZeroChatAttachment {
   const fileInfo$ = computed(
     (): Promise<{ id: string; url: string } | null> => {
@@ -275,7 +252,6 @@ export function createRestoredAttachment(
   });
 
   return {
-    clientId,
     filename: persisted.filename,
     contentType: persisted.contentType,
     size: persisted.size,
@@ -283,31 +259,6 @@ export function createRestoredAttachment(
     cancel$,
     upload$,
   };
-}
-
-export function createRestoredDraftAttachments(
-  content: string,
-  persisted: readonly PersistedAttachment[],
-): ZeroChatAttachment[] {
-  const referenceClientIdsByUrl = new Map<string, string[]>();
-  for (const line of content.split("\n")) {
-    for (const segment of splitInlinePromptLine(line)) {
-      if (
-        segment.type !== "file" ||
-        segment.promptReference === undefined ||
-        segment.clientId === undefined
-      ) {
-        continue;
-      }
-      const clientIds = referenceClientIdsByUrl.get(segment.url) ?? [];
-      clientIds.push(segment.clientId);
-      referenceClientIdsByUrl.set(segment.url, clientIds);
-    }
-  }
-  return persisted.map((attachment) => {
-    const clientId = referenceClientIdsByUrl.get(attachment.url)?.shift();
-    return createRestoredAttachment(attachment, clientId);
-  });
 }
 
 function createDraftInputSignals() {
@@ -353,12 +304,27 @@ function createDraftInputSignals() {
   };
 }
 
-function createDraftAttachmentSignals(
-  internalAttachments$: State<ZeroChatAttachment[]>,
-) {
+export function createDraftSignals(): DraftSignals {
+  const draftInput = createDraftInputSignals();
+  const internalGenerationTemplate$ = state<
+    GenerationTemplateRequest | undefined
+  >(undefined);
+  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+  const internalDragOver$ = state(false);
+
+  const generationTemplate$ = computed((get) => {
+    return get(internalGenerationTemplate$);
+  });
+  const setGenerationTemplate$ = command(
+    ({ set }, value: GenerationTemplateRequest | undefined) => {
+      set(internalGenerationTemplate$, value);
+    },
+  );
+
   const attachments$ = computed((get) => {
     return get(internalAttachments$);
   });
+
   const attachmentUploadsReady$ = computed(
     (get): boolean | Promise<boolean> => {
       const attachments = get(internalAttachments$);
@@ -381,53 +347,38 @@ function createDraftAttachmentSignals(
       })();
     },
   );
-  const startAttachmentUpload$ = command(
-    ({ set }, file: File, signal: AbortSignal): StartedAttachmentUpload => {
+
+  const uploadAttachment$ = command(
+    async ({ set }, file: File, signal: AbortSignal) => {
       const attachment = createChatAttachment(file);
       const upload = set(attachment.upload$, signal);
       set(internalAttachments$, (prev) => {
         return [...prev, attachment];
       });
-      return {
-        attachment,
-        result: tapError(upload, () => {
-          set(internalAttachments$, (prev) => {
-            return prev.filter((a) => {
-              return a !== attachment;
-            });
+
+      await tapError(upload, () => {
+        set(internalAttachments$, (prev) => {
+          return prev.filter((a) => {
+            return a !== attachment;
           });
-          toast.error(`Failed to upload ${file.name}`);
-        }),
-      };
+        });
+        toast.error(`Failed to upload ${file.name}`);
+      });
     },
   );
-  const uploadAttachment$ = command(
-    async ({ set }, file: File, signal: AbortSignal) => {
-      const started = set(startAttachmentUpload$, file, signal);
-      await started.result;
-    },
-  );
-  const readAttachmentFileInfo$ = command(
-    async ({ get }, attachment: ZeroChatAttachment, signal: AbortSignal) => {
-      const fileInfo = await get(attachment.fileInfo$);
-      signal.throwIfAborted();
-      return fileInfo;
-    },
-  );
+
   const restoreAttachments$ = command(
     ({ set }, persisted: PersistedAttachment[]) => {
       if (persisted.length === 0) {
-        return [];
+        return;
       }
-      const restored = persisted.map((attachment) => {
-        return createRestoredAttachment(attachment);
-      });
+      const restored = persisted.map(createRestoredAttachment);
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
-      return restored;
     },
   );
+
   const removeAttachment$ = command(
     ({ set }, attachment: ZeroChatAttachment) => {
       set(attachment.cancel$);
@@ -436,45 +387,6 @@ function createDraftAttachmentSignals(
           return a !== attachment;
         });
       });
-    },
-  );
-  const removeAttachmentByClientId$ = command(
-    ({ get, set }, clientId: string) => {
-      const attachment = get(internalAttachments$).find((candidate) => {
-        return candidate.clientId === clientId;
-      });
-      if (attachment) {
-        set(removeAttachment$, attachment);
-      }
-    },
-  );
-  return {
-    attachments$,
-    attachmentUploadsReady$,
-    startAttachmentUpload$,
-    readAttachmentFileInfo$,
-    uploadAttachment$,
-    restoreAttachments$,
-    removeAttachment$,
-    removeAttachmentByClientId$,
-  };
-}
-
-export function createDraftSignals(): DraftSignals {
-  const draftInput = createDraftInputSignals();
-  const internalGenerationTemplate$ = state<
-    GenerationTemplateRequest | undefined
-  >(undefined);
-  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-  const internalDragOver$ = state(false);
-  const draftAttachments = createDraftAttachmentSignals(internalAttachments$);
-
-  const generationTemplate$ = computed((get) => {
-    return get(internalGenerationTemplate$);
-  });
-  const setGenerationTemplate$ = command(
-    ({ set }, value: GenerationTemplateRequest | undefined) => {
-      set(internalGenerationTemplate$, value);
     },
   );
 
@@ -510,7 +422,11 @@ export function createDraftSignals(): DraftSignals {
     ...draftInput,
     generationTemplate$,
     setGenerationTemplate$,
-    ...draftAttachments,
+    attachments$,
+    attachmentUploadsReady$,
+    uploadAttachment$,
+    restoreAttachments$,
+    removeAttachment$,
     dragOver$,
     setDragOver$,
     clear$,

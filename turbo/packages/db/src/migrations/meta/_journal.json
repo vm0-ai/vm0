@@ -4411,6 +4411,20 @@
       "when": 1784600262183,
       "tag": "0629_contract_chat_message_queue_automation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 630,
+      "version": "7",
+      "when": 1784606984437,
+      "tag": "0630_contract_connector_credential_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 631,
+      "version": "7",
+      "when": 1784614634615,
+      "tag": "0631_finalize_storage_archive_sizes",
+      "breakpoints": true
     }
   ]
 }

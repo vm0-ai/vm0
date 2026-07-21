@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.610.4](https://github.com/vm0-ai/vm0/compare/app-v0.610.3...app-v0.610.4) (2026-07-21)
+
+
+### Bug Fixes
+
+* **platform:** restrict new workspace models to OpenAI and Anthropic ([#22318](https://github.com/vm0-ai/vm0/issues/22318)) ([3a3603d](https://github.com/vm0-ai/vm0/commit/3a3603d42f6f970a46f4855272a7b06c63553763))
+* **platform:** show feedback pill after mouseup ([#22286](https://github.com/vm0-ai/vm0/issues/22286)) ([705f7ab](https://github.com/vm0-ai/vm0/commit/705f7ab9af8f845a529d54607c469e4f24439fde))
+
+
+### Refactoring
+
+* **platform:** remove disabled composer inline experiments ([#22299](https://github.com/vm0-ai/vm0/issues/22299)) ([cf84abc](https://github.com/vm0-ai/vm0/commit/cf84abc999b388d627aee71addf49778dbae45e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+    * @vm0/core bumped to 8.444.2
+
 ## [0.610.3](https://github.com/vm0-ai/vm0/compare/app-v0.610.2...app-v0.610.3) (2026-07-21)
 
 

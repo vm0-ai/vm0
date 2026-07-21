@@ -1976,6 +1976,141 @@
       }
     },
     {
+      "name": "same-owner permissionless api handles unknown endpoint",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer route" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            },
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer default" } }
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/profile"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/profile",
+        "reason": "unknown_endpoint",
+        "permissions": []
+      }
+    },
+    {
+      "name": "permissionless fallback does not preempt connector intent",
+      "firewalls": [
+        {
+          "name": "alpha",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer alpha" } },
+              "permissions": []
+            }
+          ]
+        },
+        {
+          "name": "beta",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer beta" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "alpha": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        },
+        "beta": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/profile",
+        "connectorIntent": { "status": "present", "value": "beta" }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "beta",
+        "base": "https://api.example.com",
+        "relativePath": "/profile"
+      }
+    },
+    {
+      "name": "permissionless fallback cannot bypass denied concrete route",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer default" } },
+              "permissions": []
+            },
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer route" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["items-read"],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "permission_denied",
+        "permissions": ["items-read"]
+      }
+    },
+    {
       "name": "irrelevant intent cannot hide a unique route owner",
       "firewalls": [
         {

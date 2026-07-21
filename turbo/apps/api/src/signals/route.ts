@@ -35,7 +35,6 @@ import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-u
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
-import { cronStorageArchiveSizeBackfillRoutes } from "./routes/cron-backfill-storage-archive-sizes";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
@@ -256,7 +255,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronArtifactPreviewRoutes,
-  ...cronStorageArchiveSizeBackfillRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,

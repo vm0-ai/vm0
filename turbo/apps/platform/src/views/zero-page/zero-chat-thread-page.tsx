@@ -4701,13 +4701,13 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
-  sanitizeMarkdownHtml = false,
+  escapeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
-  sanitizeMarkdownHtml?: boolean;
+  escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
 }) {
   const cardOccurrences = new Map<string, number>();
@@ -4722,7 +4722,7 @@ function BodyContentBlocks({
             openLightbox={openLightbox}
             openVideoLightbox={openVideoLightbox}
             hardBreaks={hardBreaks}
-            sanitizeMarkdownHtml={sanitizeMarkdownHtml}
+            escapeMarkdownHtml={escapeMarkdownHtml}
             markdownMediaPreview={markdownMediaPreview}
           />
         );
@@ -4749,14 +4749,14 @@ function BodyRenderBlockView({
   openLightbox,
   openVideoLightbox,
   hardBreaks,
-  sanitizeMarkdownHtml,
+  escapeMarkdownHtml,
   markdownMediaPreview,
 }: {
   block: BodyRenderBlock;
   openLightbox: (url: string) => void;
   openVideoLightbox: (value: { url: string; filename: string }) => void;
   hardBreaks: boolean;
-  sanitizeMarkdownHtml: boolean;
+  escapeMarkdownHtml: boolean;
   markdownMediaPreview: boolean;
 }) {
   switch (block.type) {
@@ -4768,7 +4768,7 @@ function BodyRenderBlockView({
           }
           mediaPreview={markdownMediaPreview}
           mathEnabled
-          sanitizeHtml={sanitizeMarkdownHtml}
+          escapeHtml={escapeMarkdownHtml}
           style={{ fontSize: "inherit", lineHeight: "inherit" }}
         />
       );
@@ -6463,7 +6463,7 @@ function GoalUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  sanitizeMarkdownHtml
+                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
@@ -6488,15 +6488,12 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const hasStructuredAttachments =
-    message.attachFiles !== undefined && message.attachFiles.length > 0;
   const copyText =
-    !hasStructuredAttachments && parsed.length === 0
-      ? content
-      : hasStructuredAttachments &&
-          cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-        ? ""
-        : cleanContent;
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6557,7 +6554,7 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  sanitizeMarkdownHtml
+                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>

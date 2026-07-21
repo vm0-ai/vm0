@@ -417,6 +417,46 @@ def test_compiled_unknown_allow_fails_closed_for_conflicting_same_owner_auth():
     assert result.reason == "malformed_firewall_config"
 
 
+@pytest.mark.parametrize("default_first", [False, True])
+def test_compiled_unknown_allow_uses_permissionless_same_owner_api(
+    default_first: bool,
+):
+    default_api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer default"}},
+        "permissions": [],
+    }
+    route_api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer route"}},
+        "permissions": [{"name": "items-read", "rules": ["GET /items/{id}"]}],
+    }
+    api_entries = (
+        [default_api_entry, route_api_entry]
+        if default_first
+        else [route_api_entry, default_api_entry]
+    )
+    fws = wrap_firewalls(api_entries, name="example")
+    policies = {
+        "example": {
+            "allow": ["items-read"],
+            "deny": [],
+            "unknownPolicy": "allow",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/profile",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.api_entry is default_api_entry
+    assert result.permission is None
+
+
 def test_compiled_unknown_allow_combines_same_owner_routing_identity():
     auth = {"headers": {"Authorization": "Bearer shared"}}
     first_api_entry = {
