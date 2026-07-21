@@ -284,6 +284,10 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
+  zeroMorningBriefContract,
+  type ZeroMorningBriefContract,
+} from "./zero-morning-brief";
+export {
   emailMorningBriefUnsubscribeContract,
   type EmailMorningBriefUnsubscribeContract,
 } from "./email-morning-brief-unsubscribe";

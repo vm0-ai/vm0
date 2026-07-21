@@ -264,6 +264,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: true,
   },
+  [FeatureSwitchKey.ManualMorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
+  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:

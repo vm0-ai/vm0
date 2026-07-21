@@ -11,6 +11,7 @@ import {
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { Cron } from "croner";
 import { describe, expect, it } from "vitest";
@@ -89,6 +90,10 @@ function preferencesClient() {
   return setupApp({ context })(zeroUserPreferencesContract);
 }
 
+function morningBriefTriggerClient() {
+  return setupApp({ context })(zeroMorningBriefContract);
+}
+
 // Counts cover every due member in the shared test database, so assertions
 // stay scoped to the current actor's thread and emails instead.
 async function executeMorningBriefsCron(): Promise<void> {
@@ -112,7 +117,7 @@ async function connectOauthConnector(
   await connectors.completeOauthCallback(type, { code, state });
 }
 
-function mockMorningBriefDataSources(): void {
+function mockMorningBriefDataSources(gmailAfterSeconds: number[]): void {
   server.use(
     http.get("https://api.github.com/user", () => {
       return HttpResponse.json({ id: 42, login: "bdd-github-user" });
@@ -149,7 +154,10 @@ function mockMorningBriefDataSources(): void {
     http.get(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages",
       ({ request }) => {
-        expect(new URL(request.url).searchParams.get("q")).toContain("after:");
+        const query = new URL(request.url).searchParams.get("q") ?? "";
+        const afterMatch = query.match(/after:(\d+)/u);
+        expect(afterMatch).not.toBeNull();
+        gmailAfterSeconds.push(Number(afterMatch?.[1]));
         return HttpResponse.json({
           messages: [{ id: "gm-1", threadId: "gt-1" }],
         });
@@ -251,6 +259,7 @@ function mockMorningBriefDataSources(): void {
 interface Scenario {
   readonly actor: ApiTestUser & { readonly orgId: string };
   readonly runnerGroup: string;
+  readonly gmailAfterSeconds: number[];
 }
 
 async function setupMorningBriefActor(
@@ -261,6 +270,7 @@ async function setupMorningBriefActor(
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
   mockNow(BEFORE_SEVEN_LOCAL);
 
+  const gmailAfterSeconds: number[] = [];
   const actor = bdd.user();
   chatCallbacks.acceptChatObjectStorage();
   chatCallbacks.disableVapid();
@@ -285,7 +295,7 @@ async function setupMorningBriefActor(
     await connectOauthConnector(orgActor, "github", "gh-code");
     await connectOauthConnector(orgActor, "gmail", "gmail-code");
     await connectOauthConnector(orgActor, "google-calendar", "cal-code");
-    mockMorningBriefDataSources();
+    mockMorningBriefDataSources(gmailAfterSeconds);
   }
 
   routeMocks.clerk.session(actor.userId, actor.orgId);
@@ -307,7 +317,7 @@ async function setupMorningBriefActor(
     [200],
   );
 
-  return { actor: orgActor, runnerGroup };
+  return { actor: orgActor, runnerGroup, gmailAfterSeconds };
 }
 
 async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
@@ -556,6 +566,69 @@ describe("cron execute morning briefs", () => {
     mockNow(AFTER_SEVEN_LOCAL);
     await executeMorningBriefsCron();
     await expect(findMorningBriefThreadOrNull(scenario)).resolves.toBeNull();
+    clearMockNow();
+  });
+
+  it("triggers a brief immediately through the manual endpoint", async () => {
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-manual-brief" },
+      error: null,
+    });
+    const scenario = await setupMorningBriefActor();
+
+    // The manual endpoint is gated by its own feature switch.
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [403],
+    );
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ManualMorningBrief]: true,
+    });
+
+    mockNow(AFTER_SEVEN_LOCAL);
+    scenario.gmailAfterSeconds.length = 0;
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const triggered = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(triggered.body.runId).toBeTruthy();
+
+    // The collection window never shrinks below the last 24 hours.
+    const minWindowStartSeconds = Math.floor(
+      (AFTER_SEVEN_LOCAL - 24 * 60 * 60 * 1000) / 1000,
+    );
+    for (const afterSeconds of scenario.gmailAfterSeconds) {
+      expect(afterSeconds).toBeLessThanOrEqual(minWindowStartSeconds + 1);
+    }
+
+    mockUploadedBriefOutput(VALID_OUTPUT);
+    await completeMorningBriefRun(scenario, triggered.body.runId, 0);
+    await drainOutbox();
+    expect(sentMorningBriefEmails()).toHaveLength(1);
+
+    // Repeat triggers on the same local date reset the delivery and resend.
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const second = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    mockUploadedBriefOutput(VALID_OUTPUT);
+    await completeMorningBriefRun(scenario, second.body.runId, 0);
+    await drainOutbox();
+    expect(sentMorningBriefEmails()).toHaveLength(2);
     clearMockNow();
   });
 

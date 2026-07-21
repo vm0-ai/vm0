@@ -41,6 +41,7 @@ import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
+import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
@@ -265,6 +266,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronTelegramCleanupRoutes,
   ...deviceTokenRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
+  ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...zeroAgentDraftRoutes,
   ...zeroAgentInstructionsRoutes,

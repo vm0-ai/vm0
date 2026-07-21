@@ -15,6 +15,7 @@ import { and, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
+import { nowDate } from "../external/time";
 import {
   generatePresignedGetUrl,
   generatePresignedPutUrl,
@@ -50,7 +51,8 @@ const log = logger("api:morning-brief");
 
 const CLAIM_LIMIT = 50;
 const PROCESS_CONCURRENCY = 5;
-const LOOKBACK_CAP_MS = 72 * 60 * 60 * 1000;
+const MAX_LOOKBACK_MS = 72 * 60 * 60 * 1000;
+const MIN_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const SIGNED_URL_TTL_SECONDS = 30 * 60;
 const MORNING_BRIEF_THREAD_TITLE = "Morning Brief";
 
@@ -264,11 +266,14 @@ const stageMorningBriefInput$ = command(
     const { row, timezone, briefDate, currentTime } = claimed;
     const db = set(writeDb$);
 
-    const sinceFloor = new Date(currentTime.getTime() - LOOKBACK_CAP_MS);
-    const since =
-      row.lastSuccessAt && row.lastSuccessAt.getTime() > sinceFloor.getTime()
-        ? row.lastSuccessAt
-        : sinceFloor;
+    // Collection window: from the last successful brief, clamped to always
+    // cover at least the last 24h and at most the last 72h.
+    const sinceFloor = currentTime.getTime() - MAX_LOOKBACK_MS;
+    const sinceCeil = currentTime.getTime() - MIN_LOOKBACK_MS;
+    const lastSuccess = row.lastSuccessAt?.getTime() ?? sinceFloor;
+    const since = new Date(
+      Math.min(Math.max(lastSuccess, sinceFloor), sinceCeil),
+    );
     const { dayStart, dayEnd } = morningBriefDayBounds(timezone, currentTime);
 
     const input = await collectMorningBriefInput({
@@ -462,7 +467,7 @@ const startMorningBriefRun$ = command(
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
-  ): Promise<"executed" | "skipped"> => {
+  ): Promise<{ readonly runId: string } | "skipped"> => {
     const db = set(writeDb$);
     const { claimed, staged } = args;
     const { row, timezone, briefDate, deliveryId, currentTime } = claimed;
@@ -573,7 +578,7 @@ const startMorningBriefRun$ = command(
     });
     signal.throwIfAborted();
 
-    return "executed";
+    return { runId: result.body.runId };
   },
 );
 
@@ -603,11 +608,200 @@ const processDueMorningBrief$ = command(
       return "skipped";
     }
 
-    return await set(
+    const started = await set(
       startMorningBriefRun$,
       { claimed, staged, apiStartTime: args.apiStartTime },
       signal,
     );
+    return started === "skipped" ? "skipped" : "executed";
+  },
+);
+
+type ManualMorningBriefAdmission =
+  | { readonly kind: "ok"; readonly claimed: ClaimedMorningBrief }
+  | { readonly kind: "forbidden" }
+  | { readonly kind: "bad_request"; readonly message: string };
+
+async function admitManualMorningBrief(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+  currentTime: Date,
+  signal: AbortSignal,
+): Promise<ManualMorningBriefAdmission> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.ManualMorningBrief, featureSwitchContext)
+  ) {
+    return { kind: "forbidden" };
+  }
+
+  const [member] = await db
+    .select({ timezone: orgMembersMetadata.timezone })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, args.orgId),
+        eq(orgMembersMetadata.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  const timezone = member?.timezone;
+  if (!timezone) {
+    return {
+      kind: "bad_request",
+      message: "Set a time zone in Settings before triggering a brief",
+    };
+  }
+
+  const connected = await connectedMorningBriefConnectors(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+  if (connected.length === 0) {
+    return {
+      kind: "bad_request",
+      message: "Connect GitHub, Gmail, or Google Calendar first",
+    };
+  }
+
+  // Ensure a schedule row exists so the created chat thread binding
+  // persists across manual triggers (next_run_at stays untouched).
+  await db
+    .insert(morningBriefSchedules)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+
+  const [schedule] = await db
+    .select({
+      chatThreadId: morningBriefSchedules.chatThreadId,
+      lastSuccessAt: morningBriefSchedules.lastSuccessAt,
+    })
+    .from(morningBriefSchedules)
+    .where(
+      and(
+        eq(morningBriefSchedules.orgId, args.orgId),
+        eq(morningBriefSchedules.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  const briefDate = morningBriefLocalDate(timezone, currentTime);
+  const [delivery] = await db
+    .insert(morningBriefDeliveries)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      briefDate,
+      status: "collecting",
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .onConflictDoUpdate({
+      target: [
+        morningBriefDeliveries.orgId,
+        morningBriefDeliveries.userId,
+        morningBriefDeliveries.briefDate,
+      ],
+      set: {
+        status: "collecting",
+        runId: null,
+        error: null,
+        updatedAt: currentTime,
+      },
+    })
+    .returning({ id: morningBriefDeliveries.id });
+  signal.throwIfAborted();
+  if (!delivery) {
+    throw new Error("Expected the morning brief delivery upsert to return");
+  }
+
+  return {
+    kind: "ok",
+    claimed: {
+      row: {
+        orgId: args.orgId,
+        userId: args.userId,
+        chatThreadId: schedule?.chatThreadId ?? null,
+        nextRunAt: null,
+        lastSuccessAt: schedule?.lastSuccessAt ?? null,
+        timezone,
+        enabled: true,
+      },
+      timezone,
+      briefDate,
+      deliveryId: delivery.id,
+      currentTime,
+    },
+  };
+}
+
+type TriggerMorningBriefResult =
+  | { readonly kind: "ok"; readonly runId: string; readonly briefDate: string }
+  | { readonly kind: "forbidden" }
+  | { readonly kind: "bad_request"; readonly message: string };
+
+/**
+ * Testing entry point behind the manualMorningBrief feature switch: runs the
+ * full collect → run pipeline for the caller immediately, reusing (and
+ * resetting) today's delivery row so repeated manual triggers work.
+ */
+export const triggerMorningBriefNow$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerMorningBriefResult> => {
+    const db = set(writeDb$);
+    const currentTime = nowDate();
+
+    const admission = await admitManualMorningBrief(
+      db,
+      args,
+      currentTime,
+      signal,
+    );
+    if (admission.kind !== "ok") {
+      return admission;
+    }
+    const claimed = admission.claimed;
+
+    const staged = await set(stageMorningBriefInput$, claimed, signal);
+    if (!staged) {
+      return { kind: "bad_request", message: "All connector sources failed" };
+    }
+
+    const started = await set(
+      startMorningBriefRun$,
+      { claimed, staged, apiStartTime: args.apiStartTime },
+      signal,
+    );
+    if (started === "skipped") {
+      return {
+        kind: "bad_request",
+        message: "Morning brief run could not be started",
+      };
+    }
+
+    return { kind: "ok", runId: started.runId, briefDate: claimed.briefDate };
   },
 );
 
