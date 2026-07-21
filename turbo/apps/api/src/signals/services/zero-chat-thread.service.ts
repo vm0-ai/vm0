@@ -86,6 +86,7 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
@@ -777,24 +778,6 @@ export function zeroChatThreadDetail(args: {
   });
 }
 
-function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        isNotNull(chatMessages.runLifecycleEvent),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-}
-
 /**
  * The user's unread threads under an agent, each with the creation time of
  * the latest run-finish marker. A thread is unread only when it has at least
@@ -807,7 +790,7 @@ export function zeroChatThreadUnreads(args: {
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .select({
         threadId: chatThreads.id,
@@ -819,7 +802,7 @@ export function zeroChatThreadUnreads(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -832,8 +815,9 @@ export function zeroChatThreadUnreads(args: {
         ),
       );
     return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastRunFinish.id) filter guarantees a
-      // joined row, but the left-lateral type keeps the column nullable.
+      // Always present: the isNotNull(lastRunFinish.createdAt) filter
+      // guarantees a joined row, but the left-lateral type keeps the column
+      // nullable.
       if (row.unreadAt === null) {
         return [];
       }
@@ -853,7 +837,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
@@ -863,7 +847,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
