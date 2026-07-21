@@ -31,7 +31,7 @@ export const ROUTES = {
   githubConnect: "/github/connect",
   telegramConnect: "/telegram/connect",
   agentphoneConnect: "/agentphone/connect",
-  onboarding: "/onboarding/make",
+  onboarding: "/onboarding",
   onboardingWorkflowPicker: "/onboarding/workflow-picker",
   onboardingWorkflowRun: "/onboarding/workflow-run",
   onboardingPresentationTemplate: "/onboarding/presentation-template",

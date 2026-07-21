@@ -41,7 +41,7 @@ function mockOnboardingNeeded(): void {
 
 async function openMakePage(): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding/make" });
+  detachedSetupPage({ context, path: "/onboarding" });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -261,7 +261,7 @@ describe("onboarding flow", () => {
     mockOnboardingNeeded();
     detachedSetupPage({
       context,
-      path: "/onboarding/make?prompt=Track%20keyword%20rankings&connector=ahrefs",
+      path: "/onboarding?prompt=Track%20keyword%20rankings&connector=ahrefs",
     });
 
     click(

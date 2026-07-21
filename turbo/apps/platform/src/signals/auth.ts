@@ -17,7 +17,7 @@ const clerkVersion$ = state(0);
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
-const VM0_ONBOARDING_PATH = "/onboarding/make";
+const VM0_ONBOARDING_PATH = "/onboarding";
 const VM0_ONBOARDING_EXPERIMENT = "491858";
 const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =

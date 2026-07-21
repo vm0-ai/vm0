@@ -27,7 +27,7 @@ describe("zero onboarding routing", () => {
     await expect(
       screen.findByRole("heading", { name: "Try this prompt" }),
     ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/make");
+    expect(pathname()).toBe("/onboarding");
     expect(context.store.get(searchParams$).get("prompt")).toBe("hello world");
     expect(context.store.get(searchParams$).get("connector")).toBe("github");
     expect(context.store.get(searchParams$).get("vm0_source")).toBe(
@@ -51,7 +51,7 @@ describe("zero onboarding routing", () => {
         name: "What do you want to make first",
       }),
     ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/make");
+    expect(pathname()).toBe("/onboarding");
     expect(context.store.get(searchParams$).get("vm0_experiment")).toBe(
       "491858",
     );

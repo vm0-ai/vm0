@@ -377,10 +377,6 @@ const ROUTE_CONFIG = [
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
   {
-    path: "/onboarding",
-    setup: setupAuthPageWrapper(setupOnboardingRedirectPage$),
-  },
-  {
     path: "/onboarding/:legacyId",
     setup: setupAuthPageWrapper(setupOnboardingRedirectPage$),
   },
