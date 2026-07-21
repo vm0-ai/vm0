@@ -18,6 +18,7 @@ import type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageRecommendedFollowups,
+  ChatMessageStructuredPrompt,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
 export type {
@@ -33,6 +34,7 @@ export type {
   ChatMessageRecommendedFollowupGenerationType,
   ChatMessageRecommendedFollowupKind,
   ChatMessageRecommendedFollowups,
+  ChatMessageStructuredPrompt,
   ChatMessageUsageKindBreakdown,
   ChatMessageUsagePayload,
   ChatMessageUsageProviderBreakdown,
@@ -92,6 +94,9 @@ export const chatMessages = pgTable(
     runGroupId: uuid("run_group_id"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
+    /** Stable business representation of rich user-message content. */
+    structuredPrompt:
+      jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
