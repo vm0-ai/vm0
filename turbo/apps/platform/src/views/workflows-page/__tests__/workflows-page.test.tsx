@@ -1393,7 +1393,7 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
   });
 
-  it("keeps the gated agent workflows tab hidden by default", async () => {
+  it("redirects the legacy agent workflows tab", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -1409,7 +1409,7 @@ describe("workflows routes", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}`);
-      expect(search()).toBe("?tab=workflows");
+      expect(search()).toBe("");
     });
     expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
