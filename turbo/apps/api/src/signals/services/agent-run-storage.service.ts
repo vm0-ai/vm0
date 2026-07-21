@@ -1343,11 +1343,13 @@ async function resolveExactVersion(
   const [match] = await db
     .select({
       id: storageVersions.id,
+      s3Prefix: storages.s3Prefix,
       s3Key: storageVersions.s3Key,
       archiveSize: storageVersions.archiveSize,
       fileCount: storageVersions.fileCount,
     })
     .from(storageVersions)
+    .innerJoin(storages, eq(storageVersions.storageId, storages.id))
     .where(
       and(
         eq(storageVersions.storageId, storage.storageId),
@@ -1359,7 +1361,7 @@ async function resolveExactVersion(
     ? {
         storageId: storage.storageId,
         versionId: match.id,
-        s3Prefix: storage.s3Prefix,
+        s3Prefix: match.s3Prefix,
         s3Key: match.s3Key,
         archiveSize: match.archiveSize,
         fileCount: match.fileCount,
