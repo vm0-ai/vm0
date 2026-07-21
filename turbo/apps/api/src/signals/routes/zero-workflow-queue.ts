@@ -57,8 +57,6 @@ async function workflowQueueResponse(
         return {
           id: event.id,
           automationId: event.automationId,
-          // Rollback compatibility for clients that predate automationId.
-          triggerId: event.automationId,
           triggerSource: event.triggerSource,
           triggerBrief: event.triggerBrief,
           createdAt: event.createdAt.toISOString(),

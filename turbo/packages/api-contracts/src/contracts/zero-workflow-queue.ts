@@ -9,12 +9,7 @@ const eventIdParams = z.object({ id: z.string().uuid() });
 
 export const workflowQueueEventSchema = z.object({
   id: z.string(),
-  // Optional during the expand release so a newly loaded client can still
-  // parse a response from an API instance that predates automationId.
-  automationId: z.string().optional(),
-  // Rollback compatibility for clients that predate automationId. Remove
-  // after the canonical API has been live for a full rollback release.
-  triggerId: z.string(),
+  automationId: z.string(),
   triggerSource: z.string(),
   triggerBrief: z.string().nullable(),
   createdAt: z.string(),

@@ -37,7 +37,6 @@ function queueResponse(
       {
         id: EVENT_ID_1,
         automationId: "e0000001-0000-4000-a000-000000000001",
-        triggerId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
         triggerBrief: "Webhook event second",
         createdAt: "2026-07-10T01:01:00Z",
@@ -45,7 +44,6 @@ function queueResponse(
       {
         id: EVENT_ID_2,
         automationId: "e0000001-0000-4000-a000-000000000001",
-        triggerId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
         triggerBrief: "Webhook event third",
         createdAt: "2026-07-10T01:02:00Z",
