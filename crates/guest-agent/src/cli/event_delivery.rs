@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 
 use super::LOG_TAG;
 
-const EVENT_DELIVERY_QUEUE_CAPACITY: usize = 128;
+const EVENT_DELIVERY_QUEUE_CAPACITY: usize = 512;
 const EVENT_DELIVERY_MAX_BYTES: usize = 16 * 1024 * 1024;
 const EVENT_DELIVERY_DRAIN_TIMEOUT: Duration = Duration::from_secs(120);
 

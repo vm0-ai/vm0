@@ -16,7 +16,7 @@ async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
     let server = MockServer::start();
     let mut prompt_lines = vec!["@ECHO-HANG@".to_string()];
     prompt_lines
-        .extend((0..260).map(|index| json!({ "type": "assistant", "index": index }).to_string()));
+        .extend((0..640).map(|index| json!({ "type": "assistant", "index": index }).to_string()));
     let prompt = prompt_lines.join("\n");
 
     unsafe {
@@ -46,7 +46,7 @@ async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
         .expect("count overload should be exposed as a control error")
         .to_string();
     assert!(
-        error.contains("event delivery queue exceeded 128 pending events"),
+        error.contains("event delivery queue exceeded 512 pending events"),
         "unexpected overload error: {error}"
     );
     assert_eq!(result.last_event_sequence, None);
