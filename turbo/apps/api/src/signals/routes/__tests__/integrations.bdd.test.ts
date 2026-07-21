@@ -1128,6 +1128,165 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 });
 
 describe("INT-01: Slack app deep webhook flows", () => {
+  it("keeps canonical ingress sticky and deduplicates Slack retries per event", async () => {
+    // #22291 owns downstream chat-message processing, so the diagnostic API is
+    // the only external boundary that can observe pending ingress in this PR.
+    const actor = bdd.user();
+    integrations.configureSlackAppMocks();
+    await bdd.bootstrapOnboarding(actor, {
+      displayName: "BDD Canonical Slack Agent",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected canonical Slack actor to belong to an org");
+    }
+    const featureSwitchActor = {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: "org:admin",
+    } satisfies Parameters<typeof updateFeatureSwitchesForUser>[1];
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackIngress]: true,
+    });
+
+    const channelId = "C_BDD_CANONICAL_INGRESS";
+    const threadTs = "2900.000100";
+    const eventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const event = {
+      type: "app_mention",
+      user: slackUserId,
+      text: "admit this event once",
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+    };
+    const eventBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: eventId,
+      event,
+    });
+    await integrations.requestSlackEvent(
+      eventBody,
+      integrations.signedSlackIngressHeaders(eventBody),
+      [200],
+    );
+    for (const retryNum of ["1", "2", "3"]) {
+      await integrations.requestSlackEvent(
+        eventBody,
+        {
+          ...integrations.signedSlackIngressHeaders(eventBody),
+          "x-slack-retry-num": retryNum,
+        },
+        [200],
+      );
+    }
+
+    let state = await integrations.readSlackTestState(teamId);
+    expect(state.chat_thread_routes).toHaveLength(1);
+    expect(state.chat_thread_routes[0]).toMatchObject({
+      channelId,
+      threadTs,
+      userId: actor.userId,
+      backend: "canonical",
+      chatThreadId: expect.any(String),
+    });
+    expect(state.chat_ingress).toHaveLength(1);
+    expect(state.chat_ingress[0]).toMatchObject({
+      eventId,
+      payload: eventBody,
+      routeId: state.chat_thread_routes[0]?.id,
+      status: "pending",
+      retryCount: 3,
+    });
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
+
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackIngress]: false,
+    });
+    const stickyEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const stickyBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: stickyEventId,
+      event: {
+        ...event,
+        text: "stay canonical after the switch changes",
+        ts: "2900.000200",
+        thread_ts: threadTs,
+      },
+    });
+    await integrations.requestSlackEvent(
+      stickyBody,
+      integrations.signedSlackIngressHeaders(stickyBody),
+      [200],
+    );
+
+    state = await integrations.readSlackTestState(teamId);
+    expect(state.chat_thread_routes).toHaveLength(1);
+    expect(state.chat_thread_routes[0]).toMatchObject({
+      channelId,
+      threadTs,
+      backend: "canonical",
+    });
+    expect(state.chat_ingress).toHaveLength(2);
+    expect(
+      state.chat_ingress.map((ingress) => {
+        return ingress.eventId;
+      }),
+    ).toStrictEqual(expect.arrayContaining([eventId, stickyEventId]));
+  });
+
+  it("keeps Slack retries on sticky legacy routes out of canonical ingress", async () => {
+    const actor = bdd.user();
+    integrations.configureSlackAppMocks();
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    const legacyThreadTs = "2900.000300";
+    const channelId = "C_BDD_LEGACY_INGRESS";
+    const legacyRetryBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: "legacy retry stays ignored",
+        ts: legacyThreadTs,
+        channel: channelId,
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      legacyRetryBody,
+      {
+        ...integrations.signedSlackIngressHeaders(legacyRetryBody),
+        "x-slack-retry-num": "1",
+      },
+      [200],
+    );
+
+    const state = await integrations.readSlackTestState(teamId);
+    expect(state.chat_thread_routes).toHaveLength(1);
+    expect(state.chat_thread_routes[0]).toMatchObject({
+      channelId,
+      threadTs: legacyThreadTs,
+      backend: "legacy",
+      chatThreadId: null,
+    });
+    expect(state.chat_ingress).toHaveLength(0);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
+  });
+
   it("runs Slack mentions through sessions, agent overrides, and model routing", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
@@ -1377,73 +1536,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run5 = await runs.readRun(actor, run5Id);
     expect(run5.result?.agentSessionId).not.toBe(session4);
-  });
-
-  it("starts a new Slack session when MiniMax switches framework", async () => {
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("MiniMax framework switch test requires an org");
-    }
-
-    runs.acceptStorageDownloads();
-    integrations.configureSlackAppMocks();
-    integrations.acceptSlackSessionHistoryDownloads();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    await integrations.configureSlackMiniMaxModelPolicy(actor);
-    const slackUserId = uniqueSlackUserId();
-    const { teamId } = await integrations.installSlackWorkspace(actor, {
-      installerSlackUserId: slackUserId,
-    });
-    integrations.clearSlackCallHistory();
-
-    const channelId = "C_BDD_MINIMAX_FRAMEWORK";
-    const threadTs = "3300.000100";
-    await integrations.postSlackEvent(teamId, {
-      type: "app_mention",
-      user: slackUserId,
-      text: "start on minimax claude",
-      ts: threadTs,
-      channel: channelId,
-    });
-    const run1Id = await pollSlackRun(runnerGroup);
-    const claim1 = await runs.claimRunnerJob(run1Id);
-    expect(claim1.cliAgentType).toBe("claude-code");
-    expect(claim1.resumeSession).toBeNull();
-    await completeSlackTriggeredRun({
-      runId: run1Id,
-      sandboxToken: claim1.sandboxToken,
-      cliAgentType: "claude-code",
-    });
-    const run1 = await runs.readRun(actor, run1Id);
-    expect(run1.result?.agentSessionId).toStrictEqual(expect.any(String));
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      {
-        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
-      },
-    );
-
-    await integrations.postSlackEvent(teamId, {
-      type: "app_mention",
-      user: slackUserId,
-      text: "continue after minimax codex switch",
-      ts: "3300.000200",
-      thread_ts: threadTs,
-      channel: channelId,
-    });
-    const run2Id = await pollSlackRun(runnerGroup);
-    const claim2 = await runs.claimRunnerJob(run2Id);
-    expect(claim2.cliAgentType).toBe("codex");
-    expect(claim2.resumeSession).toBeNull();
-    expect(claim2.codexRuntimeConfig).toMatchObject({
-      providerId: "minimax",
-      supportsWebsockets: false,
-    });
-
-    await runs.requestCancelRun(actor, run2Id, [200]);
   });
 
   it("prompts disconnected Slack users and filters non-actionable messages", async () => {

@@ -56,7 +56,7 @@ export const setupAgentDetailPage$ = command(
     set(rememberLastUsedAgentId$, agentId);
     const params = get(searchParams$);
     const tab = params.get("tab");
-    if (tab === "automations") {
+    if (tab === "automations" || tab === "workflows") {
       const nextParams = new URLSearchParams(params);
       nextParams.delete("tab");
       set(detachedNavigateTo$, ROUTES.agentDetail, {

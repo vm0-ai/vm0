@@ -310,14 +310,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-refresh.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-refresh.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"
@@ -392,14 +392,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-stale.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-stale.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"

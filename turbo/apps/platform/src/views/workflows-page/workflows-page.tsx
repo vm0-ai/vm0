@@ -63,12 +63,12 @@ import {
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-export type WorkflowAutomationEntryMap = ReadonlyMap<
+type WorkflowAutomationEntryMap = ReadonlyMap<
   string,
   readonly WorkflowAutomationEntry[]
 >;
 
-export function workflowAutomationEntryMap(
+function workflowAutomationEntryMap(
   entries: readonly WorkflowAutomationEntry[],
 ): WorkflowAutomationEntryMap {
   const grouped = new Map<string, WorkflowAutomationEntry[]>();
@@ -292,10 +292,8 @@ function ConnectorCell({
 
 export function WorkflowHoverContent({
   workflow,
-  showAgent = true,
 }: {
   readonly workflow: ZeroWorkflowSummary;
-  readonly showAgent?: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -312,13 +310,11 @@ export function WorkflowHoverContent({
           <MemberAvatar workflow={workflow} />
           <span className="truncate">{ownerLabel(workflow)}</span>
         </div>
-        {showAgent ? (
-          <div className="flex items-center gap-2">
-            <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
-            <AgentAvatar workflow={workflow} />
-            <span className="truncate">{agentLabel(workflow)}</span>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
+          <AgentAvatar workflow={workflow} />
+          <span className="truncate">{agentLabel(workflow)}</span>
+        </div>
       </div>
     </div>
   );
@@ -344,12 +340,10 @@ function WorkflowRow({
   workflow,
   entries,
   displayTimezone,
-  showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
-  readonly showAgentColumn: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -380,16 +374,13 @@ function WorkflowRow({
                 "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
             }}
           >
-            <WorkflowHoverContent
-              workflow={workflow}
-              showAgent={showAgentColumn}
-            />
+            <WorkflowHoverContent workflow={workflow} />
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <ConnectorCell entries={entries} displayTimezone={displayTimezone} />
       <VisibilityIcon workflow={workflow} />
-      {showAgentColumn ? <AgentAvatar workflow={workflow} /> : null}
+      <AgentAvatar workflow={workflow} />
     </article>
   );
 }
@@ -557,13 +548,11 @@ function WorkflowRowList({
   entriesByWorkflowId,
   displayTimezone,
   framed = true,
-  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
   readonly framed?: boolean;
-  readonly showAgentColumn: boolean;
 }) {
   const rows = (
     <>
@@ -575,7 +564,6 @@ function WorkflowRowList({
               workflow={workflow}
               entries={entriesByWorkflowId.get(workflow.id) ?? []}
               displayTimezone={displayTimezone}
-              showAgentColumn={showAgentColumn}
             />
           </div>
         );
@@ -592,12 +580,10 @@ function WorkflowNextRunGroups({
   workflows,
   entriesByWorkflowId,
   displayTimezone,
-  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
-  readonly showAgentColumn: boolean;
 }) {
   const now = nowDate();
   const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
@@ -628,7 +614,6 @@ function WorkflowNextRunGroups({
               entriesByWorkflowId={entriesByWorkflowId}
               displayTimezone={displayTimezone}
               framed={false}
-              showAgentColumn={showAgentColumn}
             />
           </section>
         );
@@ -637,18 +622,16 @@ function WorkflowNextRunGroups({
   );
 }
 
-export function WorkflowListPanel({
+function WorkflowListPanel({
   workflows,
   loading,
   emptyDescription,
   sortMode = "next-run",
   automationEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
-  showAgentColumn = true,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
-  readonly showAgentColumn?: boolean;
   readonly emptyDescription: string;
   readonly sortMode?: WorkflowSortMode;
   readonly automationEntriesByWorkflowId?: WorkflowAutomationEntryMap;
@@ -661,21 +644,19 @@ export function WorkflowListPanel({
   return (
     <section className="min-h-[520px]">
       {loading ? (
-        <WorkflowIndexSkeleton showAgentColumn={showAgentColumn} />
+        <WorkflowIndexSkeleton />
       ) : workflows && workflows.length > 0 ? (
         sortMode === "next-run" ? (
           <WorkflowNextRunGroups
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
-            showAgentColumn={showAgentColumn}
           />
         ) : (
           <WorkflowRowList
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
-            showAgentColumn={showAgentColumn}
           />
         )
       ) : (
@@ -1021,11 +1002,7 @@ export function WorkflowsPage() {
   );
 }
 
-function WorkflowIndexSkeleton({
-  showAgentColumn,
-}: {
-  readonly showAgentColumn: boolean;
-}) {
+function WorkflowIndexSkeleton() {
   return (
     <div className="zero-card overflow-hidden" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((rowIndex) => {
@@ -1037,9 +1014,7 @@ function WorkflowIndexSkeleton({
               <div className="h-4 w-40 rounded bg-muted/50" />
               <div className="ml-auto h-8 w-32 rounded-full bg-muted/40" />
               <div className="h-5 w-5 rounded-full bg-muted/40" />
-              {showAgentColumn ? (
-                <div className="h-6 w-6 rounded-md bg-muted/40" />
-              ) : null}
+              <div className="h-6 w-6 rounded-md bg-muted/40" />
             </div>
           </div>
         );

@@ -16,16 +16,6 @@ export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
 
-// CLI-specific types (not in @vm0/core or have different structure)
-export interface CreateComposeResponse {
-  composeId: string;
-  name: string;
-  versionId: string;
-  action: "created" | "existing";
-  createdAt?: string;
-  updatedAt?: string;
-}
-
 // RunStatus is inlined here to avoid importing the full type
 type RunStatus =
   | "queued"

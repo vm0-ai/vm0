@@ -37,7 +37,7 @@ agents:
       ANTHROPIC_MODEL: "claude-sonnet-4-6"
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 
     # Create a private zero agent for this file so CI does not consume the
     # shared org's limited public-agent slots.

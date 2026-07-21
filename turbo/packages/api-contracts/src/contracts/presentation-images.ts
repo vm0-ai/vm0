@@ -33,10 +33,10 @@ export const presentationImageAssetSchema = z
     source: z.enum(["unsplash", "pexels"]),
     sourceName: z.enum(["Unsplash", "Pexels"]),
     sourceUrl: z.url(),
-    // Credit link for the source, rendered by the deck templates as the
-    // "/ <sourceName>" hyperlink. Named `unsplashUrl` for backward compatibility
-    // with the presentation runbook packages that whitelist this field; it now
-    // carries the source link for whichever provider resolved the image.
+    // Provider-neutral link rendered for the source in image attribution.
+    sourceAttributionUrl: z.url(),
+    // Deprecated compatibility field for published presentation and website
+    // packages. It carries the same value as `sourceAttributionUrl`.
     unsplashUrl: z.url(),
     photographerName: z.string().min(1),
     photographerUrl: z.url(),

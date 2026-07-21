@@ -256,10 +256,12 @@ fn assert_successful_action_with_session_history_metadata(
         ops.iter().any(|op| {
             op.action_type == action
                 && op.success
-                && op.encoding.as_deref() == Some(encoding)
-                && op.raw_size_bucket.as_deref() == Some(raw_size_bucket)
-                && op.encoded_size_bucket.as_deref() == Some(encoded_size_bucket)
-                && op.compression_ratio_bucket.as_deref() == Some(compression_ratio_bucket)
+                && op.session_history.is_some_and(|fields| {
+                    fields.encoding() == encoding
+                        && fields.raw_size_bucket() == raw_size_bucket
+                        && fields.encoded_size_bucket() == encoded_size_bucket
+                        && fields.compression_ratio_bucket() == compression_ratio_bucket
+                })
         }),
         "expected {action} telemetry with session history metadata, got: {ops:?}"
     );
@@ -275,8 +277,10 @@ fn assert_successful_action_with_session_history_probe(
         ops.iter().any(|op| {
             op.action_type == action
                 && op.success
-                && op.ref_seen_recently.as_deref() == Some(seen_recently)
-                && op.ref_download_inflight.as_deref() == Some(download_inflight)
+                && op.session_history.is_some_and(|fields| {
+                    fields.ref_seen_recently() == Some(seen_recently)
+                        && fields.ref_download_inflight() == Some(download_inflight)
+                })
         }),
         "expected {action} telemetry with session history probe metadata, got: {ops:?}"
     );
@@ -291,7 +295,9 @@ fn assert_successful_action_with_session_history_download_source(
         ops.iter().any(|op| {
             op.action_type == action
                 && op.success
-                && op.download_source.as_deref() == Some(download_source)
+                && op
+                    .session_history
+                    .is_some_and(|fields| fields.download_source() == Some(download_source))
         }),
         "expected {action} telemetry with session history download source, got: {ops:?}"
     );
@@ -311,10 +317,12 @@ fn assert_failed_action_with_session_history_metadata(
             op.action_type == action
                 && !op.success
                 && op.error.as_deref() == Some(error)
-                && op.encoding.as_deref() == Some(encoding)
-                && op.raw_size_bucket.as_deref() == Some(raw_size_bucket)
-                && op.encoded_size_bucket.as_deref() == Some(encoded_size_bucket)
-                && op.compression_ratio_bucket.as_deref() == Some(compression_ratio_bucket)
+                && op.session_history.is_some_and(|fields| {
+                    fields.encoding() == encoding
+                        && fields.raw_size_bucket() == raw_size_bucket
+                        && fields.encoded_size_bucket() == encoded_size_bucket
+                        && fields.compression_ratio_bucket() == compression_ratio_bucket
+                })
         }),
         "expected failed {action} telemetry with session history metadata, got: {ops:?}"
     );

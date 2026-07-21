@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -54,12 +55,24 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
         draftContent: null,
+        draftStructuredPrompt: null,
         draftAttachments: null,
       },
     );
 
     await api.patchThread(actor, created.id, {
       draftContent: "follow up on the launch",
+      draftStructuredPrompt: {
+        version: 1,
+        parts: [
+          { type: "text", text: "follow up on " },
+          {
+            type: "chat_thread",
+            threadId: created.id,
+            titleSnapshot: "Launch notes",
+          },
+        ],
+      },
       draftAttachments: [
         persistedAttachment(
           randomUUID(),
@@ -71,6 +84,17 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
     const draft = await api.readThreadDraft(actor, created.id);
     expect(draft.draftContent).toBe("follow up on the launch");
+    expect(draft.draftStructuredPrompt).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: "follow up on " },
+        {
+          type: "chat_thread",
+          threadId: created.id,
+          titleSnapshot: "Launch notes",
+        },
+      ],
+    });
     expect(draft.draftAttachments).toHaveLength(1);
     await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
@@ -264,12 +288,25 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     const uploadId = randomUUID();
     const clientMessageId = randomUUID();
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        { type: "text", text: "Build a launch-plan presentation" },
+        {
+          type: "file",
+          fileId: uploadId,
+          filenameSnapshot: "launch-plan.txt",
+          contentType: "text/plain",
+        },
+      ],
+    };
 
     const sent = await api.requestSendMessage(
       actor,
       {
         agentId: agent.agentId,
         prompt: "Build a launch-plan presentation",
+        structuredPrompt,
         attachFiles: [
           {
             id: uploadId,
@@ -299,6 +336,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
+      draftStructuredPrompt: null,
       draftAttachments: null,
     });
 
@@ -318,11 +356,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(queuedMessage).toMatchObject({
       role: "user",
       content: "Build a launch-plan presentation",
+      structuredPrompt,
     });
     expect(queuedMessage?.error).toBeUndefined();
     expect(userMessage).toMatchObject({
       role: "user",
       content: "Build a launch-plan presentation",
+      structuredPrompt,
       error: "insufficient_credits",
       revokesMessageId: clientMessageId,
       attachFiles: [

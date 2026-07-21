@@ -155,7 +155,7 @@ agents:
     description: "ChatGPT OAuth stale-rejection test"
     framework: codex
 EOF
-    $VM0_CLI compose "$test_dir/vm0.yaml" >/dev/null
+    seed_compose_fixture "$test_dir/vm0.yaml" >/dev/null
 
     run $VM0_CLI run "$agent_name" \
         --model-provider-type "codex-oauth-token" \

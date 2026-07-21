@@ -58,7 +58,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_EXPAND" >/dev/null
+    seed_compose_fixture "$CONFIG_EXPAND" >/dev/null
 
     export AGENT_OVERRIDE="e2e-var-override-${UNIQUE_ID}"
     export CONFIG_OVERRIDE="$TEST_DIR/override.yaml"
@@ -77,7 +77,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_OVERRIDE" >/dev/null
+    seed_compose_fixture "$CONFIG_OVERRIDE" >/dev/null
 }
 
 # Generate unique variable name for each test run to avoid conflicts

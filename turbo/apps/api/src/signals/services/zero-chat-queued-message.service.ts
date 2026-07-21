@@ -4,6 +4,7 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
+  type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
@@ -18,6 +19,7 @@ import {
 export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -59,6 +61,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .select({
       id: chatMessages.id,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -154,6 +157,7 @@ export async function appendClaimedUserMessage(
   const [queued] = await db
     .select({
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -183,6 +187,7 @@ export async function appendClaimedUserMessage(
     chatThreadId: args.threadId,
     role: "user",
     content: queued.content,
+    structuredPrompt: queued.structuredPrompt,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
     attachFileMetadata: queued.attachFileMetadata

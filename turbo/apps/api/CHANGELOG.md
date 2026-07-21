@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.294.0](https://github.com/vm0-ai/vm0/compare/api-v1.293.0...api-v1.294.0) (2026-07-21)
+
+
+### Features
+
+* **artifacts:** load favorites independently ([#22371](https://github.com/vm0-ai/vm0/issues/22371)) ([c4d23d9](https://github.com/vm0-ai/vm0/commit/c4d23d9a5e4c92b323df57d50fb732ec5ccacde1))
+
+
+### Performance Improvements
+
+* **api:** avoid eager workflow queue encryption ([#22372](https://github.com/vm0-ai/vm0/issues/22372)) ([a7e1846](https://github.com/vm0-ai/vm0/commit/a7e18461a8a3b77181260e4e329eb3425c772521))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+    * @vm0/db bumped to 1.123.2
+
+## [1.293.0](https://github.com/vm0-ai/vm0/compare/api-v1.292.0...api-v1.293.0) (2026-07-21)
+
+
+### Features
+
+* add provider-neutral image attribution url ([#22367](https://github.com/vm0-ai/vm0/issues/22367)) ([5da8a96](https://github.com/vm0-ai/vm0/commit/5da8a96caedd8f35dcd1d91764bf918493d15c17))
+* **chat:** persist structured prompts through api and indexeddb ([#22357](https://github.com/vm0-ai/vm0/issues/22357)) ([655136e](https://github.com/vm0-ai/vm0/commit/655136e2d01cbe57ac67af61711b21867eea2d2a))
+* **connectors:** use accepted server firewall metadata ([#22348](https://github.com/vm0-ai/vm0/issues/22348)) ([09ec460](https://github.com/vm0-ai/vm0/commit/09ec4607884b3d8b5d16847df1eed9e10cfae28b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+    * @vm0/db bumped to 1.123.1
+
 ## [1.292.0](https://github.com/vm0-ai/vm0/compare/api-v1.291.1...api-v1.292.0) (2026-07-21)
 
 

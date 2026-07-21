@@ -55,7 +55,7 @@ agents:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-placeholder.yaml"
     echo "$output"
     assert_success
 
@@ -83,7 +83,7 @@ agents:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-proxy.yaml"
     echo "$output"
     assert_success
 

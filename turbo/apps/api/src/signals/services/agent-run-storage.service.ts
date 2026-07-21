@@ -48,6 +48,7 @@ type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StorageManifestEntryKind = "compose" | "additional" | "artifact";
 export type StorageManifestSource =
   | "system_skill"
+  | "connector_skill"
   | "workflow_skill"
   | "request_additional_volume"
   | "compose_additional_volume"
@@ -129,6 +130,7 @@ interface ResolvedVolume {
 interface StorageResolution {
   readonly storageId: string;
   readonly versionId: string;
+  readonly s3Prefix: string;
   readonly s3Key: string;
   readonly archiveSize: number;
   readonly fileCount: number;
@@ -151,6 +153,7 @@ interface ArtifactStorageRow {
 interface StorageIndexEntry {
   readonly storageId: string;
   readonly headVersionId: string | null;
+  readonly s3Prefix: string;
   readonly headVersion: {
     readonly id: string;
     readonly s3Key: string;
@@ -247,6 +250,7 @@ const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
 ] as const;
 const STORAGE_MANIFEST_SOURCES = [
   "system_skill",
+  "connector_skill",
   "workflow_skill",
   "request_additional_volume",
   "compose_additional_volume",
@@ -292,6 +296,7 @@ function storageManifestCountBucket(count: number): StorageManifestCountBucket {
 function emptyStorageManifestSourceCounts(): StorageManifestSourceCounts {
   return {
     system_skill: 0,
+    connector_skill: 0,
     workflow_skill: 0,
     request_additional_volume: 0,
     compose_additional_volume: 0,
@@ -1085,6 +1090,7 @@ async function loadStorageIndex(
       type: storages.type,
       storageId: storages.id,
       headVersionId: storages.headVersionId,
+      s3Prefix: storages.s3Prefix,
       versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
       archiveSize: storageVersions.archiveSize,
@@ -1110,6 +1116,7 @@ async function loadStorageIndex(
     index.set(storageIndexKey(row.orgId, row.userId, row.name, row.type), {
       storageId: row.storageId,
       headVersionId: row.headVersionId,
+      s3Prefix: row.s3Prefix,
       headVersion:
         row.versionId &&
         row.s3Key &&
@@ -1319,11 +1326,52 @@ function resolveLatestVersion(
   return {
     storageId: entry.storageId,
     versionId: entry.headVersion.id,
+    s3Prefix: entry.s3Prefix,
     s3Key: entry.headVersion.s3Key,
     archiveSize: entry.headVersion.archiveSize,
     fileCount: entry.headVersion.fileCount,
     resolvedOrgId: lookup.orgId,
   };
+}
+
+async function resolveExactVersion(
+  db: Db,
+  storage: StorageIndexEntry,
+  lookup: StorageLookup,
+  version: string,
+): Promise<StorageResolution | null> {
+  const [match] = await db
+    .select({
+      id: storageVersions.id,
+      s3Prefix: storages.s3Prefix,
+      s3Key: storageVersions.s3Key,
+      archiveSize: storageVersions.archiveSize,
+      fileCount: storageVersions.fileCount,
+    })
+    .from(storageVersions)
+    .innerJoin(storages, eq(storageVersions.storageId, storages.id))
+    .where(
+      and(
+        eq(storageVersions.storageId, storage.storageId),
+        eq(storageVersions.id, version),
+        eq(storages.orgId, lookup.orgId),
+        eq(storages.userId, lookup.userId),
+        eq(storages.name, lookup.name),
+        eq(storages.type, lookup.type),
+      ),
+    )
+    .limit(1);
+  return match
+    ? {
+        storageId: storage.storageId,
+        versionId: match.id,
+        s3Prefix: match.s3Prefix,
+        s3Key: match.s3Key,
+        archiveSize: match.archiveSize,
+        fileCount: match.fileCount,
+        resolvedOrgId: lookup.orgId,
+      }
+    : null;
 }
 
 async function resolvePinnedVersion(
@@ -1339,30 +1387,9 @@ async function resolvePinnedVersion(
     throw new Error(`Storage "${lookup.name}" not found in database`);
   }
 
-  const [exactMatch] = await db
-    .select({
-      id: storageVersions.id,
-      s3Key: storageVersions.s3Key,
-      archiveSize: storageVersions.archiveSize,
-      fileCount: storageVersions.fileCount,
-    })
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, storage.storageId),
-        eq(storageVersions.id, version),
-      ),
-    )
-    .limit(1);
+  const exactMatch = await resolveExactVersion(db, storage, lookup, version);
   if (exactMatch) {
-    return {
-      storageId: storage.storageId,
-      versionId: exactMatch.id,
-      s3Key: exactMatch.s3Key,
-      archiveSize: exactMatch.archiveSize,
-      fileCount: exactMatch.fileCount,
-      resolvedOrgId: lookup.orgId,
-    };
+    return exactMatch;
   }
 
   if (
@@ -1405,6 +1432,7 @@ async function resolvePinnedVersion(
   return {
     storageId: storage.storageId,
     versionId: match.id,
+    s3Prefix: storage.s3Prefix,
     s3Key: match.s3Key,
     archiveSize: match.archiveSize,
     fileCount: match.fileCount,
@@ -1523,7 +1551,11 @@ async function resolveAdditionalStorageInput(args: {
   readonly index: StorageIndex;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
+  readonly source: StorageManifestSource;
 }): Promise<ResolvedManifestStorageInput | null> {
+  if (args.source === "connector_skill") {
+    return await resolveConnectorSkillStorageInput(args);
+  }
   const resolvedResult = await settle(
     resolveVolumeStorage({
       db: args.db,
@@ -1547,6 +1579,55 @@ async function resolveAdditionalStorageInput(args: {
     mountPath: args.volume.mountPath,
     vasStorageName: args.volume.name,
     resolved: resolvedResult.value,
+  };
+}
+
+const CONNECTOR_SKILL_REGISTRATION_ERROR =
+  "Connector skill registration is unavailable";
+
+function connectorSkillRegistrationError(): Error {
+  return new Error(CONNECTOR_SKILL_REGISTRATION_ERROR);
+}
+
+async function resolveConnectorSkillStorageInput(args: {
+  readonly db: Db;
+  readonly index: StorageIndex;
+  readonly volume: AdditionalVolume;
+}): Promise<ResolvedManifestStorageInput> {
+  const version = args.volume.version;
+  if (
+    !args.volume.system ||
+    version === undefined ||
+    !/^[a-f0-9]{64}$/u.test(version)
+  ) {
+    throw connectorSkillRegistrationError();
+  }
+
+  const lookup = volumeStorageLookup(SYSTEM_ORG_ID, args.volume);
+  const storage = args.index.get(
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+  );
+  if (!storage) {
+    throw connectorSkillRegistrationError();
+  }
+  const resolved = await resolveExactVersion(args.db, storage, lookup, version);
+  if (!resolved) {
+    throw connectorSkillRegistrationError();
+  }
+
+  const expectedPrefix = `${SYSTEM_ORG_ID}/volume/${args.volume.name}`;
+  if (
+    resolved.s3Prefix !== expectedPrefix ||
+    resolved.s3Key !== `${expectedPrefix}/${version}`
+  ) {
+    throw connectorSkillRegistrationError();
+  }
+
+  return {
+    name: args.volume.name,
+    mountPath: args.volume.mountPath,
+    vasStorageName: args.volume.name,
+    resolved,
   };
 }
 
@@ -1855,6 +1936,7 @@ async function buildAdditionalStorageEntry(args: {
       index: args.index,
       runtimeOrgId: args.runtimeOrgId,
       volume: args.volume,
+      source: args.source,
     });
   });
   if (input) {
@@ -1898,9 +1980,12 @@ function normalizeAdditionalVolumeSources(args: {
   if (!args.sources) {
     return undefined;
   }
-  return args.sources.length === (args.volumes?.length ?? 0)
-    ? args.sources
-    : undefined;
+  if (args.sources.length !== (args.volumes?.length ?? 0)) {
+    throw new Error(
+      "Additional volume source count must match additional volume count",
+    );
+  }
+  return args.sources;
 }
 
 async function resolveStorageManifestInputs(
@@ -1990,6 +2075,9 @@ function storageManifestLookups(args: {
   readonly userId: string;
   readonly composeVolumes: readonly ResolvedVolume[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources:
+    | readonly StorageManifestSource[]
+    | undefined;
   readonly artifacts: readonly ContextArtifact[];
 }): readonly StorageLookup[] {
   const lookups: StorageLookup[] = [];
@@ -2000,7 +2088,14 @@ function storageManifestLookups(args: {
     }
     lookups.push(volumeStorageLookup(args.agentOrgId, volume));
   }
-  for (const volume of args.additionalVolumes ?? []) {
+  for (const [index, volume] of (args.additionalVolumes ?? []).entries()) {
+    if (
+      additionalVolumeSourceAt(args.additionalVolumeSources, index) ===
+      "connector_skill"
+    ) {
+      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+      continue;
+    }
     if (volume.system) {
       lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
     }
@@ -2061,10 +2156,6 @@ async function resolveStorageManifestEntryPlans(args: {
   readonly phaseTimings: StorageManifestEntryPhaseTimings;
 }): Promise<ResolvedStorageManifestEntryPlans> {
   const input = args.input;
-  const additionalVolumeSources = normalizeAdditionalVolumeSources({
-    volumes: input.additionalVolumes,
-    sources: input.additionalVolumeSources,
-  });
   const [composePlans, additionalPlans, artifactInputs] = await Promise.all([
     measureApiDispatchTiming(
       input.timing,
@@ -2097,7 +2188,10 @@ async function resolveStorageManifestEntryPlans(args: {
               index: input.storageIndex,
               runtimeOrgId: input.runtimeOrgId,
               volume,
-              source: additionalVolumeSourceAt(additionalVolumeSources, index),
+              source: additionalVolumeSourceAt(
+                input.additionalVolumeSources,
+                index,
+              ),
               phaseTiming: args.phaseTimings.additional,
               stats: input.stats,
             });
@@ -2279,6 +2373,10 @@ export function prepareAgentRunStorageManifest(
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const { artifacts, composeVolumes } =
       await resolveStorageManifestInputs(args);
+    const additionalVolumeSources = normalizeAdditionalVolumeSources({
+      volumes: args.additionalVolumes,
+      sources: args.additionalVolumeSources,
+    });
     args.stats?.recordRequestedInputs({
       composeCount: composeVolumes.length,
       additionalCount: args.additionalVolumes?.length ?? 0,
@@ -2303,6 +2401,7 @@ export function prepareAgentRunStorageManifest(
         userId: args.userId,
         composeVolumes,
         additionalVolumes: args.additionalVolumes,
+        additionalVolumeSources,
         artifacts,
       }),
       timing: args.timing,
@@ -2317,7 +2416,7 @@ export function prepareAgentRunStorageManifest(
       userId: args.userId,
       composeVolumes,
       additionalVolumes: args.additionalVolumes,
-      additionalVolumeSources: args.additionalVolumeSources,
+      additionalVolumeSources,
       artifacts,
       timing: args.timing,
       stats: args.stats,

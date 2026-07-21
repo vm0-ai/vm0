@@ -29,6 +29,7 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
   type PersistedAttachment,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatThreadV1GetContract,
@@ -168,6 +169,7 @@ type BddSendMessageBody =
       readonly clientThreadId?: string;
       readonly model?: string;
       readonly runOptions?: ChatRunOptionsRequest;
+      readonly structuredPrompt?: UserMessageDocument;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -672,6 +674,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftStructuredPrompt?: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -679,6 +682,9 @@ export function createChatFilesBddApi(context: TestContext) {
         ...(body.draftContent === undefined
           ? {}
           : { draftContent: body.draftContent }),
+        ...(body.draftStructuredPrompt === undefined
+          ? {}
+          : { draftStructuredPrompt: body.draftStructuredPrompt }),
         ...(body.draftAttachments === undefined
           ? {}
           : {
@@ -703,6 +709,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftStructuredPrompt?: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -715,6 +722,9 @@ export function createChatFilesBddApi(context: TestContext) {
             ...(body.draftContent === undefined
               ? {}
               : { draftContent: body.draftContent }),
+            ...(body.draftStructuredPrompt === undefined
+              ? {}
+              : { draftStructuredPrompt: body.draftStructuredPrompt }),
             ...(body.draftAttachments === undefined
               ? {}
               : {
@@ -1291,6 +1301,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.runOptions === undefined
                   ? {}
                   : { runOptions: body.runOptions }),
+                ...(body.structuredPrompt === undefined
+                  ? {}
+                  : { structuredPrompt: body.structuredPrompt }),
                 ...(body.generationTemplate === undefined
                   ? {}
                   : { generationTemplate: body.generationTemplate }),

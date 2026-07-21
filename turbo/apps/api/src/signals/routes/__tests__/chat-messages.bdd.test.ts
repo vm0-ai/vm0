@@ -15,6 +15,7 @@ import {
   type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type PagedChatMessage,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
@@ -3734,11 +3735,23 @@ describe("CHAT-02: shared user message queue", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        { type: "text", text: "queue-first " },
+        {
+          type: "chat_thread",
+          threadId: randomUUID(),
+          titleSnapshot: "direct dispatch",
+        },
+      ],
+    };
     const sent = await chat.requestSendMessage(
       actor,
       {
         agentId,
         prompt: "queue-first direct dispatch",
+        structuredPrompt,
         clientMessageId: messageId,
       },
       [201],
@@ -3768,6 +3781,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toMatchObject({
       content: "queue-first direct dispatch",
+      structuredPrompt,
       runId,
       revokesMessageId: messageId,
     });
@@ -3780,6 +3794,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(queued).toMatchObject({
       id: messageId,
       content: "queue-first direct dispatch",
+      structuredPrompt,
     });
     expect(queued.runId).toBeUndefined();
 

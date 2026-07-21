@@ -51,7 +51,7 @@ agents:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
 EOF
-    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 }
 
 teardown_file() {
