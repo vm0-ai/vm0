@@ -67,6 +67,7 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -1148,8 +1149,19 @@ async function refreshClaimNetworkPolicies(args: {
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
+  const networkPolicyConnectorRefs = Object.keys(
+    args.storedContext.networkPolicies ?? {},
+  );
+  if (networkPolicyConnectorRefs.length === 0) {
+    return {
+      networkPolicies: args.storedContext.networkPolicies,
+      networkPolicyRefreshes: undefined,
+    };
+  }
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
   const connectorRefs = networkPolicyRefreshConnectorRefs(
-    Object.keys(args.storedContext.networkPolicies ?? {}),
+    connectorCatalogSnapshot.serverFirewalls,
+    networkPolicyConnectorRefs,
   );
   if (connectorRefs.length === 0) {
     return {
@@ -1170,6 +1182,7 @@ async function refreshClaimNetworkPolicies(args: {
           agentId: args.run.agentId,
         },
         connectorRefs,
+        connectorCatalogSnapshot,
       );
       return {
         networkPolicies: mergeNetworkPolicyRefreshes(

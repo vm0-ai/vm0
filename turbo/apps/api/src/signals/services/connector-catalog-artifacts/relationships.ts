@@ -407,6 +407,7 @@ function validateFirewallSemantics(args: {
       return [connector.connectorRef, connector];
     }),
   );
+  const fixedHostOwners = new Map<string, string>();
   for (const connector of args.privateFirewallsArtifact.connectors) {
     validateFirewallGeneratorResult({
       connectorRef: connector.connectorRef,
@@ -427,6 +428,18 @@ function validateFirewallSemantics(args: {
       privateConnector,
       privateFirewall: connector,
     });
+    for (const host of connector.routing.fixedHosts) {
+      const existingOwner = fixedHostOwners.get(host);
+      if (
+        existingOwner !== undefined &&
+        existingOwner !== connector.connectorRef
+      ) {
+        throw new Error(
+          `Firewall fixed host collision: ${host} (${existingOwner}, ${connector.connectorRef})`,
+        );
+      }
+      fixedHostOwners.set(host, connector.connectorRef);
+    }
   }
 }
 

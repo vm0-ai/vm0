@@ -1,8 +1,4 @@
 import { command } from "ccstate";
-import {
-  isFirewallExecutionMetadataConnectorType,
-  loadFirewallPermissionIndex,
-} from "@vm0/connectors/firewall-metadata/server";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -43,6 +39,11 @@ import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
 } from "./firewall-network-policy.service";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
@@ -258,27 +259,36 @@ function resolvedConnectorFirewallPolicies(
   return permissionGrantsToFirewallPolicies(grants) ?? {};
 }
 
-function isNetworkPolicyRefreshConnectorRef(connectorRef: string): boolean {
-  return isFirewallExecutionMetadataConnectorType(connectorRef);
-}
-
 export function networkPolicyRefreshConnectorRefs(
+  catalog: ConnectorServerFirewallCatalog,
   connectorRefs: readonly string[],
 ): string[] {
-  return [...new Set(connectorRefs.filter(isNetworkPolicyRefreshConnectorRef))];
+  return [
+    ...new Set(
+      connectorRefs.filter((connectorRef) => {
+        return catalog.has(connectorRef);
+      }),
+    ),
+  ];
 }
 
 export async function resolveActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   connectorRefs: readonly string[],
+  preloadedSnapshot?: ConnectorRuntimeSnapshot,
   checkedAt: Date = nowDate(),
 ): Promise<readonly ActiveNetworkPolicyRefresh[]> {
   if (connectorRefs.length === 0) {
     return [];
   }
 
-  const uniqueConnectorRefs = networkPolicyRefreshConnectorRefs(connectorRefs);
+  const snapshot =
+    preloadedSnapshot ?? (await loadConnectorRuntimeSnapshot(db));
+  const uniqueConnectorRefs = networkPolicyRefreshConnectorRefs(
+    snapshot.serverFirewalls,
+    connectorRefs,
+  );
   if (uniqueConnectorRefs.length === 0) {
     return [];
   }
@@ -295,7 +305,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
     uniqueConnectorRefs.map(async (connectorRef) => {
       return {
         connectorRef,
-        index: await loadFirewallPermissionIndex(connectorRef),
+        index: await snapshot.serverFirewalls.loadPermissionIndex(connectorRef),
       };
     }),
   );
@@ -458,8 +468,9 @@ async function lockVisibleAgentForUpdate(
 
 async function validateApplyUserPermissionGrants(
   apply: ApplyUserPermissionGrantsRequest,
+  catalog: ConnectorServerFirewallCatalog,
 ): Promise<ValidationErrorResponse | null> {
-  const index = await loadFirewallPermissionIndex(apply.connectorRef);
+  const index = await catalog.loadPermissionIndex(apply.connectorRef);
   if (!index) {
     return validationError(`Unknown connector ref: ${apply.connectorRef}`);
   }
@@ -651,13 +662,14 @@ function applyPermissionGrantResponseScope(
 async function applyRowsAndPublishNetworkPolicyRefreshes(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
+  serverFirewalls: ConnectorServerFirewallCatalog,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
   const rows = await applyVisibleGrantRows(db, args);
   if ("status" in rows) {
     return rows;
   }
 
-  if (!isNetworkPolicyRefreshConnectorRef(args.apply.connectorRef)) {
+  if (!serverFirewalls.has(args.apply.connectorRef)) {
     return rows;
   }
 
@@ -711,14 +723,23 @@ export const applyUserPermissionGrants$ = command(
     args: ApplyUserPermissionGrantsArgs,
     signal: AbortSignal,
   ): Promise<ApplyUserPermissionGrantsResult> => {
-    const validation = await validateApplyUserPermissionGrants(args.apply);
+    const writeDb = set(writeDb$);
+    const snapshot = await loadConnectorRuntimeSnapshot(writeDb);
+    signal.throwIfAborted();
+    const validation = await validateApplyUserPermissionGrants(
+      args.apply,
+      snapshot.serverFirewalls,
+    );
     signal.throwIfAborted();
     if (validation) {
       return validation;
     }
 
-    const writeDb = set(writeDb$);
-    const rows = await applyRowsAndPublishNetworkPolicyRefreshes(writeDb, args);
+    const rows = await applyRowsAndPublishNetworkPolicyRefreshes(
+      writeDb,
+      args,
+      snapshot.serverFirewalls,
+    );
     signal.throwIfAborted();
 
     if ("status" in rows) {

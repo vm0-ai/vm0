@@ -36,6 +36,10 @@ export interface BuiltinConnectorHostOwner {
   readonly label: string;
 }
 
+export interface BuiltinConnectorFixedHostOwner extends BuiltinConnectorHostOwner {
+  readonly host: string;
+}
+
 export interface FirewallPermissionIndex {
   readonly type: FirewallPermissionDetailMetadata["type"];
   readonly label: string;
@@ -147,6 +151,22 @@ export function getBuiltinConnectorHostOwner(
     type,
     label: FIREWALL_PERMISSION_METADATA_SUMMARIES[type].label,
   };
+}
+
+export function listBuiltinConnectorFixedHostOwners(): readonly BuiltinConnectorFixedHostOwner[] {
+  return Object.entries(builtinFirewallFixedHostOwnerLookup).flatMap(
+    ([host, type]) => {
+      return isFirewallServerMetadataConnectorType(type)
+        ? [
+            {
+              host,
+              type,
+              label: FIREWALL_PERMISSION_METADATA_SUMMARIES[type].label,
+            },
+          ]
+        : [];
+    },
+  );
 }
 
 async function loadFirewallPermissionDetail(

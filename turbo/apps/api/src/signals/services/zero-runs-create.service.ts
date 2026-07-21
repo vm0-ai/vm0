@@ -6,7 +6,6 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
-import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
   isFeatureEnabled,
@@ -49,6 +48,11 @@ import {
   type ZeroRunBootstrapSnapshotRows,
 } from "./zero-run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./zero-workflow-data.service";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -784,20 +788,26 @@ async function loadZeroRunPostAuthorizationContext(
   );
   signal.throwIfAborted();
 
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
+  signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,
     "api_dispatch_pre_create_zero_resolve_firewall_metadata",
     async () => {
-      return await resolveFirewallServerMetadataPolicies(
-        permissionGrantsToFirewallPolicies(bootstrapContext.permissionGrants),
-        [...bootstrapContext.allowedConnectorTypes],
-      );
+      return await expandConnectorServerFirewallPolicies({
+        catalog: connectorCatalogSnapshot.serverFirewalls,
+        stored: permissionGrantsToFirewallPolicies(
+          bootstrapContext.permissionGrants,
+        ),
+        connectorRefs: [...bootstrapContext.allowedConnectorTypes],
+      });
     },
   );
   signal.throwIfAborted();
 
   return {
     ...bootstrapContext,
+    connectorCatalogSnapshot,
     runPermissionPolicies,
   };
 }
@@ -952,6 +962,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
@@ -1004,6 +1015,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
         timing: input.timing,
         checkOrgPlanStatusBeforeContext: false,
         preloadedFeatureSwitchContext: input.featureSwitchContext,
+        preloadedConnectorCatalogSnapshot: input.connectorCatalogSnapshot,
       },
       signal,
     );
@@ -1059,6 +1071,7 @@ export const createZeroIntegrationRun$ = command(
       allowedCustomConnectorIds,
       workflows,
       runPermissionPolicies,
+      connectorCatalogSnapshot,
     } = await loadZeroRunPostAuthorizationContext(
       db,
       {
@@ -1084,6 +1097,7 @@ export const createZeroIntegrationRun$ = command(
         zeroWebSearchEnabled,
         zeroMailEnabled,
         runPermissionPolicies,
+        connectorCatalogSnapshot,
         workflows,
         allowedConnectorTypes,
         allowedCustomConnectorIds,
@@ -1147,6 +1161,7 @@ export const createZeroRun$ = command(
       allowedCustomConnectorIds,
       workflows,
       runPermissionPolicies,
+      connectorCatalogSnapshot,
       triggerAgentId,
     } = await loadZeroRunPostAuthorizationContext(
       db,
@@ -1173,6 +1188,7 @@ export const createZeroRun$ = command(
         zeroWebSearchEnabled,
         zeroMailEnabled,
         runPermissionPolicies,
+        connectorCatalogSnapshot,
         triggerAgentId,
         workflows,
         allowedConnectorTypes,
