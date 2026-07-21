@@ -12,7 +12,7 @@
 //! so `guest-download` reads the guest-local staged archive instead of
 //! re-fetching.
 //!
-//! Feature-enabled fresh sandbox attempts can assign bounded cold identities
+//! Eligible fresh sandbox attempts can assign bounded cold identities
 //! to a runner owner before sandbox creation. That owner performs one full
 //! request, keeps the cache writer through atomic publication and the
 //! runner-wide permit through guest application, and stages only complete
