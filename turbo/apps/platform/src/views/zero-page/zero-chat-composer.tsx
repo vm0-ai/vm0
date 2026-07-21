@@ -38,6 +38,7 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
+  IconQuote,
   IconRoute,
   IconSearch,
   IconTarget,
@@ -97,6 +98,7 @@ import type {
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { hasSubmittableInlinePromptContent } from "../../signals/zero-page/composer-inline-prompt-items.ts";
+import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -216,9 +218,11 @@ import {
   sttRecording$,
   sttStarting$,
   sttTranscribing$,
+  sttVoiceInputOwner$,
   sttVoiceLevel$,
   startRecording$,
   stopAndTranscribe$,
+  type VoiceInputOwner,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -251,10 +255,12 @@ export interface ZeroChatComposerProps {
   onSend: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
+    feedbackItems: readonly FeedbackItem[],
   ) => void;
   onQueue?: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
+    feedbackItems: readonly FeedbackItem[],
   ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
@@ -345,6 +351,7 @@ export interface ZeroChatComposerProps {
 export interface QueuedComposerItem {
   id: string;
   text: string;
+  quoteCount?: number;
 }
 
 interface ActiveGoalComposerItem {
@@ -525,12 +532,14 @@ function ComposerQueueGlyph() {
 function ComposerStripRow({
   kind,
   text,
+  quoteCount,
   onRemove,
   onOpenDetail,
   removeAriaLabel,
 }: {
   kind: "queued" | "goal";
   text: string;
+  quoteCount?: number;
   onRemove?: () => void;
   onOpenDetail?: () => void;
   removeAriaLabel: string;
@@ -588,12 +597,24 @@ function ComposerStripRow({
                   ? "Runs after the queue drains and keeps running until you cancel it."
                   : "Waits in line and sends once the current run finishes."}
               </p>
+              {quoteCount ? (
+                <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
+                  <IconQuote size={13} stroke={1.6} aria-hidden="true" />
+                  {String(quoteCount)} {quoteCount === 1 ? "quote" : "quotes"}
+                </p>
+              ) : null}
               <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
                 {text}
               </div>
             </PopoverContent>
           </Popover>
           <span className="min-w-0 flex-1 truncate">{text}</span>
+          {quoteCount ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-background/70 px-1.5 py-0.5 text-xs text-muted-foreground">
+              <IconQuote size={13} stroke={1.6} aria-hidden="true" />
+              {String(quoteCount)} {quoteCount === 1 ? "quote" : "quotes"}
+            </span>
+          ) : null}
         </>
       )}
       <button
@@ -713,6 +734,7 @@ function QueuedMessagesStrip({
               key={item.id}
               kind="queued"
               text={item.text}
+              quoteCount={item.quoteCount}
               onRemove={() => {
                 onRemove?.(item.id);
               }}
@@ -6027,9 +6049,25 @@ function micButtonTooltip(status: MicButtonStatus): string {
   return "Voice input";
 }
 
-function MicButton({
+function micButtonDisabled(
+  status: MicButtonStatus,
+  ownsVoiceInput: boolean,
+  quotaResolved: boolean,
+  voiceInputBusy: boolean,
+): boolean {
+  return (
+    (voiceInputBusy && !ownsVoiceInput) ||
+    status.starting ||
+    status.transcribing ||
+    (!status.recording && !quotaResolved)
+  );
+}
+
+export function MicButton({
+  owner,
   onTranscribed,
 }: {
+  owner: VoiceInputOwner;
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
@@ -6039,29 +6077,40 @@ function MicButton({
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
+  const voiceInputOwner = useGet(sttVoiceInputOwner$);
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const signal = useGet(pageSignal$);
-  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const ownsVoiceInput = voiceInputOwner === owner;
+  const ownedRecording = ownsVoiceInput && recording;
+  const ownedStarting = ownsVoiceInput && starting;
+  const ownedTranscribing = ownsVoiceInput && transcribing;
   const status = {
-    recording,
-    starting,
-    transcribing,
+    recording: ownedRecording,
+    starting: ownedStarting,
+    transcribing: ownedTranscribing,
     quotaLoading: quotaState === "loading" && !quotaResolved,
   };
+  const voiceInputBusy = recording || starting || transcribing;
+  const disabled = micButtonDisabled(
+    status,
+    ownsVoiceInput,
+    quotaResolved,
+    voiceInputBusy,
+  );
 
   if (!available) {
     return null;
   }
 
   const handleClick = () => {
-    if (starting || transcribing) {
+    if (ownedStarting || ownedTranscribing) {
       return;
     }
-    if (recording) {
+    if (ownedRecording) {
       detach(
         (async () => {
           const text = await stopAndTranscribe(signal);
@@ -6081,7 +6130,7 @@ function MicButton({
       return;
     }
     detach(
-      startRec(onTranscribed, quota.limit === null, signal),
+      startRec(owner, onTranscribed, quota.limit === null, signal),
       Reason.DomCallback,
     );
   };
@@ -6095,7 +6144,7 @@ function MicButton({
             className={cn(
               "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
               COMPOSER_CONTROL_FOCUS_CLASS,
-              recording || starting || transcribing
+              ownedRecording || ownedStarting || ownedTranscribing
                 ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
@@ -6103,9 +6152,9 @@ function MicButton({
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
           >
-            {starting || transcribing ? (
+            {ownedStarting || ownedTranscribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
-            ) : recording ? (
+            ) : ownedRecording ? (
               <>
                 <span
                   className="mic-volume-icon-meter"
@@ -6445,6 +6494,7 @@ function ComposerSendButton({
 function ComposerSendControl({
   draft,
   attachmentReferenceClientIds,
+  hasFeedback,
   visibleAttachmentCount,
   uploadsReady,
   submitBlocked,
@@ -6458,6 +6508,7 @@ function ComposerSendControl({
 }: {
   draft: DraftSignals;
   attachmentReferenceClientIds: ReadonlySet<string> | null;
+  hasFeedback: boolean;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
   submitBlocked: boolean;
@@ -6470,10 +6521,9 @@ function ComposerSendControl({
   onSend: () => void;
 }) {
   const input = useGet(draft.input$);
-  const hasInput = hasSubmittableInlinePromptContent(
-    input,
-    attachmentReferenceClientIds,
-  );
+  const hasInput =
+    hasSubmittableInlinePromptContent(input, attachmentReferenceClientIds) ||
+    hasFeedback;
   const canSend = resolveComposerCanSend({
     hasInput,
     visibleAttachmentCount,
@@ -6675,6 +6725,7 @@ export function useZeroChatComposer({
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
   );
+  const hasFeedback = useGet(composer.feedback.active$);
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
@@ -6997,10 +7048,9 @@ export function useZeroChatComposer({
 
   const handleSend = () => {
     const input = readInput();
-    const hasInput = hasSubmittableInlinePromptContent(
-      input,
-      attachmentReferenceClientIds,
-    );
+    const hasInput =
+      hasSubmittableInlinePromptContent(input, attachmentReferenceClientIds) ||
+      hasFeedback;
     const sendAction = resolveKeyboardSendAction({
       canSend:
         !actionsLoading &&
@@ -7021,20 +7071,29 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const currentInput = await readInputForSubmission(
+      const submission = await readInputForSubmission(
         attachmentReferenceClientIds,
         pageSignal,
       );
-      const prompt = currentInput.trim();
-      if (prompt.length === 0 && visibleAttachments.length === 0) {
+      const prompt = submission.text.trim();
+      if (
+        prompt.length === 0 &&
+        submission.feedbackItems.length === 0 &&
+        visibleAttachments.length === 0
+      ) {
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, inlinePromptItems ? undefined : templatePicker?.value);
+        onSend(
+          prompt,
+          inlinePromptItems ? undefined : templatePicker?.value,
+          submission.feedbackItems,
+        );
       } else {
         onQueue?.(
           prompt,
           inlinePromptItems ? undefined : templatePicker?.value,
+          submission.feedbackItems,
         );
       }
     };
@@ -7235,6 +7294,7 @@ export function useZeroChatComposer({
                   />
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
+                    owner="composer"
                     onTranscribed={(text) => {
                       appendComposerText(text);
                       onDraftChange?.();
@@ -7243,6 +7303,7 @@ export function useZeroChatComposer({
                   <ComposerSendControl
                     draft={draft}
                     attachmentReferenceClientIds={attachmentReferenceClientIds}
+                    hasFeedback={hasFeedback}
                     visibleAttachmentCount={visibleAttachments.length}
                     uploadsReady={uploadsReady}
                     submitBlocked={submitBlocker !== undefined}

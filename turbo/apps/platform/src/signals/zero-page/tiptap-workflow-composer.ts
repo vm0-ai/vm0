@@ -131,7 +131,7 @@ export interface WorkflowComposerSignals {
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
-    Promise<string>,
+    Promise<WorkflowComposerSubmission>,
     [
       attachmentReferenceClientIds: ReadonlySet<string> | null,
       signal: AbortSignal,
@@ -143,6 +143,11 @@ export interface WorkflowComposerSignals {
   >;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
+}
+
+export interface WorkflowComposerSubmission {
+  readonly text: string;
+  readonly feedbackItems: readonly FeedbackItem[];
 }
 
 export type ComposerTemplateAttachmentType =
@@ -1968,7 +1973,7 @@ function workflowComposerDocumentForValue(
   if (!templateAttachment) {
     return textDocument;
   }
-  const content = [templateAttachment];
+  const content: ProseMirrorNode[] = [templateAttachment];
   for (let index = 0; index < textDocument.childCount; index++) {
     content.push(textDocument.child(index));
   }
@@ -2024,6 +2029,7 @@ function createMountEditorCommand({
   featureModes,
   autoFocus,
   singleLineOnMobile,
+  feedbackMessageCards,
 }: {
   editor: Editor;
   draft: DraftSignals;
@@ -2036,6 +2042,7 @@ function createMountEditorCommand({
   featureModes: WorkflowComposerFeatureModes;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
+  feedbackMessageCards: boolean;
 }) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
@@ -2047,9 +2054,11 @@ function createMountEditorCommand({
             set(draft.removeAttachmentByClientId$, clientId);
           },
         );
-        runtime.replaceFeedbackItems(
-          feedbackItemsFromWorkflowComposer(updatedEditor),
-        );
+        if (!feedbackMessageCards) {
+          runtime.replaceFeedbackItems(
+            feedbackItemsFromWorkflowComposer(updatedEditor),
+          );
+        }
         set(draft.setInput$, workflowComposerDocToString(updatedEditor));
         runtime.input();
         set(selectedSuggestionIndexState$, 0);
@@ -2074,7 +2083,10 @@ function createMountEditorCommand({
       };
       setWorkflowComposerEditorOptions(editor, runtime, singleLineOnMobile);
       const input = get(draft.input$);
-      if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
+      if (
+        feedbackMessageCards ||
+        feedbackItemsFromWorkflowComposer(editor).length === 0
+      ) {
         setWorkflowComposerDocument(
           editor,
           workflowComposerDocumentForValue(editor, input, featureModes),
@@ -2100,7 +2112,7 @@ function createMountEditorCommand({
             editor,
             workflowComposerDocumentForValue(editor, value, featureModes),
           );
-          if (changed) {
+          if (changed && !feedbackMessageCards) {
             runtime.replaceFeedbackItems(
               feedbackItemsFromWorkflowComposer(editor),
             );
@@ -2299,23 +2311,33 @@ function createTemplateAttachmentControls(
   return { active$, setLifecycleRef$ };
 }
 
-function createComposerFeedback(
+function createFeedback(
   editor: Editor,
+  draft: DraftSignals,
   threadId: string | undefined,
   inlinePromptItems: boolean,
+  feedbackMessageCards: boolean,
 ): FeedbackSignals {
-  return createFeedbackSignals(threadId ?? "", {
-    insertItem(item) {
-      if (inlinePromptItems) {
-        insertPromptFeedbackItem(editor, item);
-      } else {
-        insertFeedbackItem(editor, item);
-      }
+  return createFeedbackSignals(
+    threadId ?? "",
+    {
+      insertItem(item) {
+        if (inlinePromptItems) {
+          insertPromptFeedbackItem(editor, item);
+        } else {
+          insertFeedbackItem(editor, item);
+        }
+      },
+      removeItem(id) {
+        removeFeedbackItem(editor, id);
+      },
     },
-    removeItem(id) {
-      removeFeedbackItem(editor, id);
+    feedbackMessageCards,
+    {
+      items$: draft.feedbackItems$,
+      setItems$: draft.setFeedbackItems$,
     },
-  });
+  );
 }
 
 function createInlinePromptItemCommands(editor: Editor) {
@@ -2361,47 +2383,47 @@ function createInlinePromptItemCommands(editor: Editor) {
   };
 }
 
-function createReadInputForSubmissionCommand(
-  editor: Editor,
-  compositionGate: CompositionGate,
-) {
-  return command(
+function createFeedbackSubmissionControls({
+  editor,
+  draft,
+  feedback,
+  compositionGate,
+  feedbackMessageCards,
+}: {
+  editor: Editor;
+  draft: DraftSignals;
+  feedback: FeedbackSignals;
+  compositionGate: CompositionGate;
+  feedbackMessageCards: boolean;
+}) {
+  const readInputForSubmission$ = command(
     (
-      _context,
+      { get },
       attachmentReferenceClientIds: ReadonlySet<string> | null,
       signal: AbortSignal,
     ) => {
       return compositionGate.runWhenSettled(() => {
-        return workflowComposerDocToString(
-          editor,
-          attachmentReferenceClientIds,
-        );
+        return {
+          text: workflowComposerDocToString(
+            editor,
+            attachmentReferenceClientIds,
+          ),
+          feedbackItems: feedbackMessageCards ? get(feedback.items$) : [],
+        };
       }, signal);
     },
   );
+  const hasInput$ = computed((get) => {
+    return get(draft.hasInput$) || get(feedback.active$);
+  });
+  return { readInputForSubmission$, hasInput$ };
 }
 
-export function createWorkflowComposerSignals(
-  draft: DraftSignals,
-  threadId?: string,
-  inlinePromptItems = false,
-  inlineAttachmentReferences = false,
-): WorkflowComposerSignals {
-  const caretIndex$ = state(-1);
-  const editorFocusedState$ = state(false);
-  const selectedSuggestionIndexState$ = state(0);
-  const runtime = createWorkflowComposerRuntime();
-  const templatePreview = createTemplatePreviewRuntime();
-  const compositionGate = createCompositionGate();
-  const featureModes = { inlinePromptItems, inlineAttachmentReferences };
-
-  const editor = createWorkflowEditor(runtime);
-  const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createComposerFeedback(editor, threadId, inlinePromptItems);
-
-  const selectedSuggestionIndex$ = computed((get) => {
-    return get(selectedSuggestionIndexState$);
-  });
+function createComposerSuggestionState(
+  editor: Editor,
+  caretIndex$: State<number>,
+  editorFocusedState$: State<boolean>,
+) {
   const activeSlashRange$ = computed((get) => {
     const caretIndex = get(caretIndex$);
     if (caretIndex < 0 || !get(editorFocusedState$)) {
@@ -2428,6 +2450,44 @@ export function createWorkflowComposerSignals(
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
   );
+  return {
+    activeSlashRange$,
+    activeChatThreadSuggestionRange$,
+    chatThreadSuggestions$,
+  };
+}
+
+export function createWorkflowComposerSignals(
+  draft: DraftSignals,
+  threadId?: string,
+  inlinePromptItems = false,
+  inlineAttachmentReferences = false,
+  feedbackMessageCards = false,
+): WorkflowComposerSignals {
+  const caretIndex$ = state(-1);
+  const editorFocusedState$ = state(false);
+  const selectedSuggestionIndexState$ = state(0);
+  const runtime = createWorkflowComposerRuntime();
+  const templatePreview = createTemplatePreviewRuntime();
+  const compositionGate = createCompositionGate();
+  const featureModes = { inlinePromptItems, inlineAttachmentReferences };
+  const editor = createWorkflowEditor(runtime);
+  const templateAttachment = createTemplateAttachmentControls(editor, runtime);
+  const feedback = createFeedback(
+    editor,
+    draft,
+    threadId,
+    inlinePromptItems,
+    feedbackMessageCards,
+  );
+  const {
+    activeSlashRange$,
+    activeChatThreadSuggestionRange$,
+    chatThreadSuggestions$,
+  } = createComposerSuggestionState(editor, caretIndex$, editorFocusedState$);
+  const selectedSuggestionIndex$ = computed((get) => {
+    return get(selectedSuggestionIndexState$);
+  });
   const setSelectedSuggestionIndex$ = command(({ set }, index: number) => {
     set(selectedSuggestionIndexState$, index);
   });
@@ -2463,6 +2523,7 @@ export function createWorkflowComposerSignals(
       featureModes,
       autoFocus,
       singleLineOnMobile,
+      feedbackMessageCards,
     });
   };
   const insertWorkflow$ = createInsertWorkflowCommand(
@@ -2476,14 +2537,14 @@ export function createWorkflowComposerSignals(
   const { insertText$, insertPromptMarkdown$, appendText$ } =
     createInsertTextCommands(editor, featureModes);
   const inlinePromptItemCommands = createInlinePromptItemCommands(editor);
-  const readInputForSubmission$ = createReadInputForSubmissionCommand(
-    editor,
-    compositionGate,
-  );
-  const hasInput$ = computed((get) => {
-    return get(draft.hasInput$) || get(feedback.active$);
-  });
-
+  const { readInputForSubmission$, hasInput$ } =
+    createFeedbackSubmissionControls({
+      editor,
+      draft,
+      feedback,
+      compositionGate,
+      feedbackMessageCards,
+    });
   return {
     editor,
     templatePreview,

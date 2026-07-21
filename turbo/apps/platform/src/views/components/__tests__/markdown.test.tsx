@@ -1,8 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type ChatMessageFeedbackPayload,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
 
@@ -16,7 +19,11 @@ import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
 
-function mockThread(content: string): void {
+function mockThread(
+  content: string,
+  role: "assistant" | "user" = "assistant",
+  feedbackPayload?: ChatMessageFeedbackPayload,
+): void {
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
     if (query.sinceId) {
       return respond(200, { messages: [] });
@@ -26,8 +33,10 @@ function mockThread(content: string): void {
       messages: [
         {
           id: "msg-1",
-          role: "assistant",
+          role,
           content,
+          ...(feedbackPayload ? { feedbackPayload } : {}),
+          ...(role === "user" ? { runId: "run-markdown" } : {}),
           createdAt: "2026-01-01T00:00:00Z",
         },
       ],
@@ -51,6 +60,16 @@ function getButtonByText(container: ParentNode, text: string): HTMLElement {
     throw new Error(`Could not find button: ${text}`);
   }
 
+  return button;
+}
+
+function getButtonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`Could not find button: ${label}`);
+  }
   return button;
 }
 
@@ -156,5 +175,103 @@ describe("assistant markdown", () => {
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
     });
+  });
+});
+
+describe("feedback message cards", () => {
+  it("keeps a structured feedback message as a chip after reload", async () => {
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [{ id: 1, quote: "Persisted quote", note: "Persisted note" }],
+    };
+    mockThread("Keep the opening concise.", "user", feedbackPayload);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    const chip = await waitFor(() => {
+      return getButtonByLabel("Show 1 quote");
+    });
+    expect(chip).toBeInTheDocument();
+    expect(document.querySelector(".zero-chat-bubble-user")).toHaveTextContent(
+      "Keep the opening concise.",
+    );
+
+    await userEvent.setup({ delay: null }).click(chip);
+    await expect(
+      screen.findByText("Persisted quote"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Persisted note")).toBeInTheDocument();
+  });
+
+  it("renders one sent-message chip with all feedback details on hover", async () => {
+    const user = userEvent.setup({ delay: null });
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [
+        { id: 1, quote: "First quoted passage", note: "first note" },
+        { id: 2, quote: "Second quoted passage", note: "second note" },
+      ],
+    };
+    mockThread("Follow up on these points.", "user", feedbackPayload);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    const chip = await waitFor(() => {
+      return getButtonByLabel("Show 2 quotes");
+    });
+    expect(document.querySelectorAll("[data-feedback-chip]")).toHaveLength(1);
+    const userBubble = document.querySelector(".zero-chat-bubble-user");
+    expect(userBubble).toHaveTextContent("Follow up on these points.");
+    expect(userBubble).not.toContainElement(chip);
+    expect(screen.queryByText("first note")).not.toBeInTheDocument();
+
+    await user.hover(chip);
+    await waitFor(() => {
+      expect(screen.getAllByText("first note").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("second note").length).toBeGreaterThan(0);
+    });
+    const hoverDetails = document.querySelector<HTMLElement>(
+      '[data-feedback-details="hover"]',
+    );
+    expect(hoverDetails).toHaveStyle({
+      width: "min(22rem, calc(100vw - 1.5rem))",
+    });
+    const quoteList = document.querySelector("[data-feedback-comment-list]");
+    expect(quoteList?.querySelectorAll("[data-feedback-item]")).toHaveLength(2);
+    expect(screen.getAllByText("First quoted passage").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getAllByText("Second quoted passage").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.queryByText("Selected text 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quotes")).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryAllByText("first note")).toHaveLength(0);
+    });
+    await user.click(chip);
+    await waitFor(() => {
+      expect(screen.getAllByText("first note").length).toBeGreaterThan(0);
+    });
+    const clickDetails = document.querySelector<HTMLElement>(
+      '[data-feedback-details="click"]',
+    );
+    expect(clickDetails).toHaveStyle({
+      width: "min(22rem, calc(100vw - 1.5rem))",
+    });
+    // The raw intro line is not shown as literal text.
+    expect(
+      screen.queryByText("Feedback on 2 parts of your reply:"),
+    ).not.toBeInTheDocument();
   });
 });

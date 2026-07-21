@@ -850,6 +850,7 @@ describe("chat drafts", () => {
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
         draftContent: null,
+        draftFeedbackPayload: null,
         draftAttachments: null,
       });
     });

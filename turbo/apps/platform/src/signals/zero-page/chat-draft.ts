@@ -11,6 +11,7 @@ import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import type {
+  ChatMessageFeedbackPayload,
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -215,6 +216,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 // DraftSignals — encapsulates per-thread composer state
 // ---------------------------------------------------------------------------
 
+export type DraftFeedbackItem = ChatMessageFeedbackPayload["items"][number];
+
 export interface DraftSignals {
   input$: Computed<string>;
   hasInput$: Computed<boolean>;
@@ -238,12 +241,21 @@ export interface DraftSignals {
   restoreAttachments$: Command<ZeroChatAttachment[], [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   removeAttachmentByClientId$: Command<void, [string]>;
+  feedbackItems$: Computed<readonly DraftFeedbackItem[]>;
+  setFeedbackItems$: Command<void, [readonly DraftFeedbackItem[]]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
-  /** Reset all draft state (input, template, attachments). Called after send. */
+  /** Reset all draft state (input, template, attachments, feedback). Called after send. */
   clear$: Command<void, []>;
   /** Seed draft from persisted server data. Only called when local cache was empty. */
-  seed$: Command<void, [content: string, attachments: ZeroChatAttachment[]]>;
+  seed$: Command<
+    void,
+    [
+      content: string,
+      attachments: ZeroChatAttachment[],
+      feedbackItems?: readonly DraftFeedbackItem[],
+    ]
+  >;
 }
 
 export interface DraftInputSyncTarget {
@@ -466,6 +478,7 @@ export function createDraftSignals(): DraftSignals {
     GenerationTemplateRequest | undefined
   >(undefined);
   const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+  const internalFeedbackItems$ = state<readonly DraftFeedbackItem[]>([]);
   const internalDragOver$ = state(false);
   const draftAttachments = createDraftAttachmentSignals(internalAttachments$);
 
@@ -475,6 +488,15 @@ export function createDraftSignals(): DraftSignals {
   const setGenerationTemplate$ = command(
     ({ set }, value: GenerationTemplateRequest | undefined) => {
       set(internalGenerationTemplate$, value);
+    },
+  );
+
+  const feedbackItems$ = computed((get) => {
+    return get(internalFeedbackItems$);
+  });
+  const setFeedbackItems$ = command(
+    ({ set }, items: readonly DraftFeedbackItem[]) => {
+      set(internalFeedbackItems$, items);
     },
   );
 
@@ -496,13 +518,20 @@ export function createDraftSignals(): DraftSignals {
     if (attachments.length > 0) {
       set(internalAttachments$, []);
     }
+    set(internalFeedbackItems$, []);
     set(internalDragOver$, false);
   });
 
   const seed$ = command(
-    ({ set }, content: string, attachments: ZeroChatAttachment[]) => {
+    (
+      { set },
+      content: string,
+      attachments: ZeroChatAttachment[],
+      feedbackItems: readonly DraftFeedbackItem[] = [],
+    ) => {
       set(draftInput.setInput$, content);
       set(internalAttachments$, attachments);
+      set(internalFeedbackItems$, feedbackItems);
     },
   );
 
@@ -511,6 +540,8 @@ export function createDraftSignals(): DraftSignals {
     generationTemplate$,
     setGenerationTemplate$,
     ...draftAttachments,
+    feedbackItems$,
+    setFeedbackItems$,
     dragOver$,
     setDragOver$,
     clear$,

@@ -67,14 +67,20 @@ type ChatRealtimeSubscription =
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, attachments }: PatchDraftArgs,
+    { threadId, content, feedbackPayload, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
     await accept(
       client.patch({
         params: { id: threadId },
-        body: { draftContent: content, draftAttachments: attachments },
+        body: {
+          draftContent: content,
+          ...(feedbackPayload === undefined
+            ? {}
+            : { draftFeedbackPayload: feedbackPayload }),
+          draftAttachments: attachments,
+        },
         fetchOptions: { signal },
       }),
       [200, 204],
@@ -146,6 +152,8 @@ const appendQueuedMessage$ = command(
       threadId,
       agentId,
       content,
+      textContent,
+      feedbackPayload,
       attachments,
       clientMessageId,
       chatThreadSortEventId,
@@ -163,6 +171,8 @@ const appendQueuedMessage$ = command(
         body: {
           agentId,
           prompt: content ?? "",
+          textContent,
+          feedbackPayload,
           threadId,
           hasTextContent,
           clientMessageId,
@@ -181,7 +191,8 @@ const appendQueuedMessage$ = command(
     return {
       id: clientMessageId,
       role: "user" as const,
-      content,
+      content: feedbackPayload ? (textContent ?? "") : content,
+      feedbackPayload,
       attachFiles: attachments ?? undefined,
       generationTemplate,
       createdAt: result.body.createdAt ?? nowDate().toISOString(),

@@ -76,6 +76,10 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   );
 });
 
+export const feedbackMessageCardsEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.FeedbackMessageCards] ?? false;
+});
+
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const identity = await get(authenticatedIdentity$);

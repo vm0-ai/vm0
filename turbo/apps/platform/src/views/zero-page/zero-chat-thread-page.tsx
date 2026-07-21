@@ -46,6 +46,7 @@ import {
   IconLoader2,
   IconMessageCircle,
   IconMoodPlus,
+  IconQuote,
   IconPackage,
   IconPresentation,
   IconRoute,
@@ -109,6 +110,11 @@ import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { Markdown } from "../components/markdown.tsx";
+import { feedbackMessageCardsEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  formatFeedbackPrompt,
+  type FeedbackItem,
+} from "../../signals/zero-page/chat-feedback.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -250,6 +256,7 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import type {
   ChatThreadSignals,
+  FeedbackMessageInput,
   QueuedChatMessageItem,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
@@ -3678,6 +3685,12 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+  const queueDraftSync = useSet(thread.queueDraftSync$);
+  const pageSignal = useGet(pageSignal$);
+  const handleDraftChange = () => {
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+  };
+
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -3689,7 +3702,10 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
+      <ChatFeedbackSelection
+        feedback={thread.workflowComposer.feedback}
+        onDraftChange={handleDraftChange}
+      />
     </>
   );
 }
@@ -3955,6 +3971,7 @@ function useChatComposerQueue(
     return {
       id: message.id,
       text: message.text,
+      quoteCount: message.quoteCount,
     };
   });
 
@@ -4070,15 +4087,69 @@ function useChatThreadComposerSendState({
   const rootSignal = useGet(rootSignal$);
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
+  const feedbackCardsEnabled =
+    thread.workflowComposer.feedback.feedbackMessageCardsEnabled;
 
-  const handleSend = (text: string) => {
+  const feedbackMessageFromSubmission = (
+    textContent: string,
+    feedbackItems: readonly FeedbackItem[],
+  ): FeedbackMessageInput | undefined => {
+    if (!feedbackCardsEnabled || feedbackItems.length === 0) {
+      return undefined;
+    }
+    return {
+      textContent,
+      feedbackPayload: {
+        version: 1,
+        items: feedbackItems.map((item) => {
+          return { ...item };
+        }),
+      },
+    };
+  };
+
+  const prepareFeedbackSubmission = (
+    prompt: string,
+    feedbackItems: readonly FeedbackItem[],
+  ) => {
+    const feedbackMessage = feedbackMessageFromSubmission(
+      prompt,
+      feedbackItems,
+    );
+    if (!feedbackMessage) {
+      return { prompt, feedbackMessage };
+    }
+    const formattedFeedback = formatFeedbackPrompt(
+      feedbackMessage.feedbackPayload.items,
+    );
+    return {
+      prompt: [feedbackMessage.textContent.trim(), formattedFeedback]
+        .filter(Boolean)
+        .join("\n\n"),
+      feedbackMessage,
+    };
+  };
+
+  const handleSend = (
+    text: string,
+    _generationTemplate: GenerationTemplateRequest | undefined,
+    feedbackItems: readonly FeedbackItem[],
+  ) => {
     detach(
       (async () => {
+        const submission = prepareFeedbackSubmission(text, feedbackItems);
         const computerUsePatch =
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
-        const sent = await send(text, { ...computerUsePatch }, rootSignal);
+        const sent = await send(
+          submission.prompt,
+          {
+            ...computerUsePatch,
+            feedbackMessage: submission.feedbackMessage,
+          },
+          rootSignal,
+        );
         if (sent) {
           clearComputerUseHostOverride();
         }
@@ -4087,11 +4158,21 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleQueue = (text: string) => {
+  const handleQueue = (
+    text: string,
+    _generationTemplate: GenerationTemplateRequest | undefined,
+    feedbackItems: readonly FeedbackItem[],
+  ) => {
     detach(
       (async () => {
+        const submission = prepareFeedbackSubmission(text, feedbackItems);
         const computerUseHostId = computerUseHostIdForSend;
-        const queued = await queueMessage(text, computerUseHostId, rootSignal);
+        const queued = await queueMessage(
+          submission.prompt,
+          computerUseHostId,
+          submission.feedbackMessage,
+          rootSignal,
+        );
         if (queued) {
           clearComputerUseHostOverride();
         }
@@ -6475,6 +6556,86 @@ function GoalUserMessage({
   );
 }
 
+function FeedbackQuotesDetails({ items }: { items: readonly FeedbackItem[] }) {
+  return (
+    <div className="flex flex-col" data-feedback-comment-list="">
+      {items.map((item) => {
+        return (
+          <div
+            key={item.id}
+            data-feedback-item=""
+            className="border-b border-border/60 px-1 py-3 first:pt-1 last:border-b-0 last:pb-1"
+          >
+            <div className="whitespace-pre-wrap break-words border-l-2 border-foreground/15 pl-3 text-sm leading-5 text-muted-foreground">
+              {item.quote}
+            </div>
+            {item.note ? (
+              <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-foreground">
+                {item.note}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FeedbackQuotesChip({ items }: { items: readonly FeedbackItem[] }) {
+  const detailsClassName =
+    "max-h-[min(28rem,70vh)] max-w-none overflow-y-auto rounded-xl border border-border p-3 shadow-lg";
+  const detailsStyle: CSSProperties = {
+    width: "min(22rem, calc(100vw - 1.5rem))",
+    backgroundColor: "hsl(var(--card))",
+    color: "hsl(var(--foreground))",
+  };
+  return (
+    <Popover>
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-feedback-chip=""
+                aria-label={`Show ${String(items.length)} ${items.length === 1 ? "quote" : "quotes"}`}
+                className="inline-flex h-9 w-fit max-w-56 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <IconQuote size={16} stroke={1.7} className="shrink-0" />
+                <span className="truncate">
+                  {String(items.length)}{" "}
+                  {items.length === 1 ? "quote" : "quotes"}
+                </span>
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent
+            data-feedback-details="hover"
+            side="top"
+            align="end"
+            sideOffset={8}
+            collisionPadding={12}
+            className={detailsClassName}
+            style={detailsStyle}
+          >
+            <FeedbackQuotesDetails items={items} />
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent
+        data-feedback-details="click"
+        side="top"
+        align="end"
+        sideOffset={8}
+        className={detailsClassName}
+        style={detailsStyle}
+      >
+        <FeedbackQuotesDetails items={items} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -6483,6 +6644,7 @@ function PagedUserMessage({
   thread: ChatThreadSignals;
 }) {
   const content = message.content ?? "";
+  const feedbackCardsEnabled = useGet(feedbackMessageCardsEnabled$);
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
   // over from messages sent before #10243 split the flows. Use the structured
@@ -6490,14 +6652,18 @@ function PagedUserMessage({
   const { cleanContent, parsed } = parseInlineAttachments(content);
   const hasStructuredAttachments =
     message.attachFiles !== undefined && message.attachFiles.length > 0;
-  const copyText =
+  const unfilteredCopyText =
     !hasStructuredAttachments && parsed.length === 0
       ? content
       : hasStructuredAttachments &&
           cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
         ? ""
         : cleanContent;
+  const feedbackItems = feedbackCardsEnabled
+    ? message.feedbackPayload?.items
+    : undefined;
   const bodyBlocks = message.blocks;
+  const copyText = feedbackItems ? content : unfilteredCopyText;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -6550,6 +6716,14 @@ function PagedUserMessage({
             attachments={allAttachments}
             onImageClick={openLightbox}
           />
+          {feedbackItems ? (
+            <div
+              data-feedback-message=""
+              className="mb-2 flex max-w-[85%] justify-end"
+            >
+              <FeedbackQuotesChip items={feedbackItems} />
+            </div>
+          ) : null}
           {bodyBlocks.length > 0 && (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
               <div className="px-4 py-3">

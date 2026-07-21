@@ -82,10 +82,16 @@ const loadDraft$ = command(
     }
 
     const hasDraftContent = threadDraft.draftContent !== null;
+    const feedbackMessageCardsEnabled =
+      thread.workflowComposer.feedback.feedbackMessageCardsEnabled;
+    const draftFeedbackItems = feedbackMessageCardsEnabled
+      ? (threadDraft.draftFeedbackPayload?.items ?? [])
+      : [];
+    const hasDraftFeedback = draftFeedbackItems.length > 0;
     const draftAttachments = threadDraft.draftAttachments;
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
-    if (isNew && (hasDraftContent || hasDraftAttachments)) {
+    if (isNew && (hasDraftContent || hasDraftFeedback || hasDraftAttachments)) {
       const restoredAttachments = createRestoredDraftAttachments(
         threadDraft.draftContent ?? "",
         draftAttachments ?? [],
@@ -94,6 +100,7 @@ const loadDraft$ = command(
         thread.draft.seed$,
         threadDraft.draftContent ?? "",
         restoredAttachments,
+        draftFeedbackItems,
       );
     }
   },
@@ -151,6 +158,8 @@ const setupPaneThread$ = command(
         inlineAttachmentReferences:
           features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ??
           false,
+        feedbackMessageCards:
+          features[FeatureSwitchKey.FeedbackMessageCards] ?? false,
       },
     );
     set(spec.setPaneThread$, thread);

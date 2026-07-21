@@ -45,6 +45,7 @@ export const chatPageWorkflowComposer$ = computed((get) => {
     undefined,
     composerInlinePromptItemsEnabled(features),
     features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false,
+    features[FeatureSwitchKey.FeedbackMessageCards] ?? false,
   );
 });
 

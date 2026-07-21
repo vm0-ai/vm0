@@ -1,7 +1,11 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadByIdContract,
+  chatThreadDraftContract,
+  type GenerationTemplateRequest,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
@@ -10,7 +14,9 @@ import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -18,6 +24,7 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
+const SECOND_FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -26,6 +33,11 @@ interface ModelSelectionRequest {
 
 interface RunCreateCapture {
   prompt?: string;
+  textContent?: string;
+  feedbackPayload?: {
+    version: 1;
+    items: { id: number; quote: string; note: string }[];
+  };
   attachFiles?: {
     id: string;
     filename: string;
@@ -58,6 +70,7 @@ function selectTextRangeForInlineFeedback(element: HTMLElement): void {
 }
 
 function selectTextForInlineFeedback(element: HTMLElement): void {
+  document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   selectTextRangeForInlineFeedback(element);
   document.dispatchEvent(new Event("selectionchange"));
 }
@@ -122,12 +135,24 @@ function buttonByText(text: string): HTMLElement {
       label === text ||
       label === `${text}C` ||
       label === `${text} C` ||
+      label === `${text}Q` ||
+      label === `${text} Q` ||
       label === `${text}F` ||
       label === `${text} F`
     );
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -142,6 +167,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
     }
     return editor;
   });
+}
+
+async function navigateToThread(threadId: string): Promise<void> {
+  const link = await waitFor(() => {
+    return document.querySelector<HTMLAnchorElement>(
+      `a[href="/chats/${threadId}"]`,
+    );
+  });
+  if (!link) {
+    throw new Error(`Thread link not found: ${threadId}`);
+  }
+  click(link);
 }
 
 function feedbackNotes(): HTMLElement[] {
@@ -212,6 +249,21 @@ function dispatchDocumentShortcut(
   return event;
 }
 
+function dispatchElementShortcut(
+  target: HTMLElement,
+  key: string,
+  init?: Omit<KeyboardEventInit, "key">,
+): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+    key,
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
 describe("chat inline feedback", () => {
   it("keeps the composer caret after inserting atomic block feedback", async () => {
     const user = userEvent.setup({ delay: null });
@@ -257,6 +309,13 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
+    expect(buttonByText("Provide feedback")).toHaveAttribute(
+      "aria-keyshortcuts",
+      "f",
+    );
+    const disabledCardsShortcutEvent = dispatchDocumentShortcut("q");
+    expect(disabledCardsShortcutEvent.defaultPrevented).toBeFalsy();
+    expect(composerEditor.querySelector("[data-composer-feedback]")).toBeNull();
     const shortcutEvent = dispatchDocumentShortcut("f");
     expect(shortcutEvent.defaultPrevented).toBeTruthy();
     expect(window.getSelection()?.rangeCount).toBe(1);
@@ -389,6 +448,357 @@ describe("chat inline feedback", () => {
 
     expect(feedbackNotes()).toHaveLength(0);
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
+  });
+
+  it("submits feedback cards as structured quote comments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    const sentBodies: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.FeedbackMessageCards]: true,
+      },
+    });
+
+    const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    expect(composerEditor).toHaveFocus();
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    expect(buttonByText("Provide feedback")).toHaveAttribute(
+      "aria-keyshortcuts",
+      "q f",
+    );
+    // Selecting non-focusable reply text leaves the composer focused in the
+    // browser, so the real keydown originates from the editable composer.
+    const shortcutEvent = dispatchElementShortcut(composerEditor, "q");
+    expect(shortcutEvent.defaultPrevented).toBeTruthy();
+
+    // The inline input opens beside the selection; no empty note is inserted
+    // into the composer until it is submitted.
+    const inlineInput = await screen.findByLabelText("Add an optional comment");
+    expect(feedbackNotes()).toHaveLength(0);
+    expect(screen.queryByLabelText("Send feedback")).not.toBeInTheDocument();
+    fireEvent.keyDown(inlineInput, {
+      key: "Enter",
+      keyCode: 229,
+      isComposing: true,
+    });
+    fireEvent.keyDown(inlineInput, { key: "c", metaKey: true });
+    fireEvent.paste(inlineInput, {
+      clipboardData: {
+        getData: () => {
+          return "pasted comment";
+        },
+      },
+    });
+    expect(screen.getByLabelText("Add an optional comment")).toBe(inlineInput);
+    fireEvent.focusOut(inlineInput, { relatedTarget: null });
+    fireEvent.pointerDown(document.body);
+    fireEvent.pointerUp(document.body, { pointerType: "mouse" });
+    fireEvent.mouseUp(document.body);
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Add an optional comment"),
+      ).not.toBeInTheDocument();
+    });
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+    const reopenedInput = await screen.findByLabelText(
+      "Add an optional comment",
+    );
+    Object.defineProperty(reopenedInput, "scrollHeight", {
+      configurable: true,
+      value: 80,
+    });
+    fireEvent.change(reopenedInput, {
+      target: {
+        value:
+          "This is a long feedback comment that should wrap onto several visible lines.",
+      },
+    });
+    expect(reopenedInput).toHaveStyle({ height: "80px" });
+    expect(reopenedInput).toHaveAttribute("data-multiline", "true");
+    await fill(reopenedInput, "Make the dates explicit.");
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Add an optional comment"),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByLabelText("Feedback comment 1"),
+    ).not.toBeInTheDocument();
+    const feedbackChip = buttonByLabel("Open 1 quote");
+    await user.click(feedbackChip);
+    const firstComment = screen.getByLabelText("Feedback comment 1");
+    expect(firstComment).toHaveValue("Make the dates explicit.");
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    dispatchDocumentShortcut("f");
+    const secondInput = await screen.findByLabelText("Add an optional comment");
+    await user.type(secondInput, "Name the owners.");
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    expect(
+      screen.queryByLabelText("Feedback comment 1"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[data-feedback-chip]")).toHaveLength(1);
+    await user.click(buttonByLabel("Open 2 quotes"));
+    expect(screen.getAllByLabelText(/Feedback comment \d/)).toHaveLength(2);
+    expect(screen.getAllByText(assistantReply)).toHaveLength(3);
+    expect(screen.queryByText("Selected text 1")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Feedback comment 2")).toHaveValue(
+      "Name the owners.",
+    );
+
+    const editableComment = screen.getByLabelText("Feedback comment 1");
+    expect(editableComment).toHaveValue("Make the dates explicit.");
+    await fill(editableComment, "Use exact dates.");
+    await user.click(screen.getByLabelText("Remove comment 2"));
+
+    await waitFor(() => {
+      expect(buttonByLabel("Open 1 quote")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentBodies).toHaveLength(1);
+    });
+    const sentBody = sentBodies[0];
+    expect(sentBody?.prompt).toContain(
+      "> The rollout dates are unclear in this summary.",
+    );
+    expect(sentBody?.prompt).toContain("Use exact dates.");
+    expect(sentBody?.prompt).not.toContain("Name the owners.");
+    expect(sentBody).toMatchObject({
+      textContent: "",
+      feedbackPayload: {
+        version: 1,
+        items: [
+          {
+            quote: assistantReply,
+            note: "Use exact dates.",
+          },
+        ],
+      },
+    });
+  });
+
+  it("restores a saved feedback chip and its comments from the thread draft", async () => {
+    const assistantReply = "The rollout plan needs owners and exact dates.";
+    const savedFeedbackPayload = {
+      version: 1 as const,
+      items: [
+        { id: 4, quote: "Assign every risk.", note: "Name the owner." },
+        { id: 7, quote: "The schedule is vague.", note: "Use exact dates." },
+      ],
+    };
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-draft-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-draft",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Add a short summary.",
+        draftFeedbackPayload: savedFeedbackPayload,
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    const composerEditor = await findComposerEditor();
+    await waitFor(() => {
+      expect(composerEditor).toHaveTextContent("Add a short summary.");
+      expect(buttonByLabel("Open 2 quotes")).toBeInTheDocument();
+    });
+    expect(composerEditor).not.toHaveTextContent(
+      "Feedback on 2 parts of your reply:",
+    );
+
+    await userEvent
+      .setup({ delay: null })
+      .click(buttonByLabel("Open 2 quotes"));
+    expect(screen.getByLabelText("Feedback comment 1")).toHaveValue(
+      "Name the owner.",
+    );
+    expect(screen.getByLabelText("Feedback comment 2")).toHaveValue(
+      "Use exact dates.",
+    );
+  });
+
+  it("ignores saved feedback and preserves it during text sync when cards are disabled", async () => {
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [],
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Visible draft text",
+        draftFeedbackPayload: {
+          version: 1,
+          items: [
+            {
+              id: 1,
+              quote: "Hidden saved quote",
+              note: "Hidden saved comment",
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: false },
+    });
+
+    const composerEditor = await findComposerEditor();
+    await waitFor(() => {
+      expect(composerEditor).toHaveTextContent("Visible draft text");
+    });
+    expect(
+      document.querySelector("[data-feedback-chip]"),
+    ).not.toBeInTheDocument();
+    expect(composerEditor).not.toHaveTextContent("Hidden saved quote");
+
+    await fill(composerEditor, "Updated visible draft");
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "Updated visible draft",
+        draftAttachments: null,
+      });
+    });
+  });
+
+  it("shows voice input state only on the feedback input that started it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-voice-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-voice",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "Use exact dates." }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    await findComposerEditor();
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+    const feedbackInput = await screen.findByLabelText(
+      "Add an optional comment",
+    );
+    const feedbackInputRoot = feedbackInput.closest("[data-feedback-input]");
+    if (!(feedbackInputRoot instanceof HTMLElement)) {
+      throw new Error("Feedback input root not found");
+    }
+    Object.defineProperty(feedbackInput, "scrollHeight", {
+      configurable: true,
+      value: 80,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Voice input")).toHaveLength(2);
+    });
+    const feedbackVoiceInput = feedbackInputRoot.querySelector(
+      'button[aria-label="Voice input"]',
+    );
+    if (!(feedbackVoiceInput instanceof HTMLButtonElement)) {
+      throw new Error("Feedback voice input not found");
+    }
+    await user.click(feedbackVoiceInput);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Stop recording")).toHaveLength(1);
+    });
+    expect(
+      feedbackInputRoot.querySelector('button[aria-label="Stop recording"]'),
+    ).not.toBeNull();
+    expect(screen.getByLabelText("Voice input")).toBeDisabled();
+
+    await user.click(screen.getByLabelText("Stop recording"));
+    await waitFor(() => {
+      expect(feedbackInput).toHaveValue("Use exact dates.");
+      expect(feedbackInput).toHaveStyle({ height: "80px" });
+      expect(feedbackInput).toHaveAttribute("data-multiline", "true");
+      expect(screen.getAllByLabelText("Voice input")).toHaveLength(2);
+    });
   });
 
   it("uses slash workflow suggestions inside an inline feedback note", async () => {
@@ -1394,5 +1804,109 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompts[0]).toContain("Name owners.");
     expect(sentPrompts[0]).toContain("Add dates.");
+  });
+
+  it("preserves feedback drafts while switching threads and syncs them to the server", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout plan needs owners and exact dates.";
+    const draftPatches: Record<string, unknown>[] = [];
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-navigation-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-navigation",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+    lifecycle.setThreadList([
+      {
+        id: FEEDBACK_THREAD_ID,
+        title: "Feedback review",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-06-09T10:00:00Z",
+        updatedAt: "2026-06-09T10:01:00Z",
+      },
+      {
+        id: SECOND_FEEDBACK_THREAD_ID,
+        title: "Other review",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-06-09T10:00:00Z",
+        updatedAt: "2026-06-09T10:00:00Z",
+      },
+    ]);
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    await findComposerEditor();
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+    await user.type(
+      await screen.findByLabelText("Add an optional comment"),
+      "Name the owner.",
+    );
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    await waitFor(() => {
+      expect(buttonByLabel("Open 1 quote")).toBeInTheDocument();
+      expect(draftPatches).toContainEqual({
+        draftContent: null,
+        draftFeedbackPayload: {
+          version: 1,
+          items: [
+            {
+              id: 1,
+              quote: assistantReply,
+              note: "Name the owner.",
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    await navigateToThread(SECOND_FEEDBACK_THREAD_ID);
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${SECOND_FEEDBACK_THREAD_ID}"]`,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-feedback-chip]"),
+      ).not.toBeInTheDocument();
+    });
+
+    await navigateToThread(FEEDBACK_THREAD_ID);
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${FEEDBACK_THREAD_ID}"]`,
+        ),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Open 1 quote")).toBeInTheDocument();
+    });
+    await user.click(buttonByLabel("Open 1 quote"));
+    expect(screen.getByLabelText("Feedback comment 1")).toHaveValue(
+      "Name the owner.",
+    );
   });
 });

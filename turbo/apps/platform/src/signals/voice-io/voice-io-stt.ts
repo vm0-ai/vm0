@@ -42,6 +42,8 @@ const internalStream$ = state<MediaStream | null>(null);
 const internalRecorder$ = state<MediaRecorder | null>(null);
 const internalRecordingSession$ = state<VoiceRecordingSession | null>(null);
 const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
+export type VoiceInputOwner = "composer" | "feedback";
+const internalVoiceInputOwner$ = state<VoiceInputOwner | null>(null);
 const audioInputQuotaReload$ = state(0);
 
 // ---------------------------------------------------------------------------
@@ -66,6 +68,10 @@ export const sttSpeechDetected$ = computed((get) => {
 
 export const sttVoiceLevel$ = computed((get) => {
   return get(internalVoiceLevel$);
+});
+
+export const sttVoiceInputOwner$ = computed((get) => {
+  return get(internalVoiceInputOwner$);
 });
 
 export const audioInputAvailable$ = computed(() => {
@@ -423,6 +429,7 @@ const resetState$ = command(({ set }) => {
   set(internalRecordingSession$, null);
   set(internalAudioActivityMonitor$, null);
   set(internalStream$, null);
+  set(internalVoiceInputOwner$, null);
 });
 
 const prepareRecordingStart$ = command(({ set }) => {
@@ -883,6 +890,7 @@ function createVoiceSegmentSession(
 export const startRecording$ = command(
   async (
     { get, set },
+    owner: VoiceInputOwner,
     onSegmentTranscribed: VoiceSegmentTranscribedCallback,
     autoSegment: boolean,
     parentSignal: AbortSignal,
@@ -903,6 +911,7 @@ export const startRecording$ = command(
       },
       { once: true },
     );
+    set(internalVoiceInputOwner$, owner);
     set(prepareRecordingStart$);
 
     await waitForBrowserPaint(signal);
@@ -914,10 +923,12 @@ export const startRecording$ = command(
     });
     if (stream === undefined) {
       set(internalStarting$, false);
+      set(internalVoiceInputOwner$, null);
       return;
     }
     if (!stream) {
       set(internalStarting$, false);
+      set(internalVoiceInputOwner$, null);
       return;
     }
 

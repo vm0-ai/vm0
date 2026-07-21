@@ -127,6 +127,7 @@ import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-
 import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
+  FeedbackMessageInput,
   MessageImageGroupProjection,
   QueuedChatMessageItem,
   RecommendedFollowupSource,
@@ -1002,6 +1003,7 @@ function createDraftSync(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote,
+  feedbackMessageCards: boolean,
 ) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -1022,6 +1024,19 @@ function createDraftSync(
 
       const input = get(draft.input$);
       const content = input.trim() || null;
+      const feedbackItems = feedbackMessageCards
+        ? get(draft.feedbackItems$)
+        : [];
+      const feedbackPayload = !feedbackMessageCards
+        ? undefined
+        : feedbackItems.length > 0
+          ? {
+              version: 1 as const,
+              items: feedbackItems.map((item) => {
+                return { ...item };
+              }),
+            }
+          : null;
       const attachments = get(draft.attachments$);
 
       const infos = await Promise.allSettled(
@@ -1048,6 +1063,7 @@ function createDraftSync(
         {
           threadId,
           content,
+          feedbackPayload,
           attachments: persisted.length > 0 ? persisted : null,
         },
         signal,
@@ -1076,7 +1092,12 @@ function createDraftSync(
       }
       await set(
         dataSource.patchDraft$,
-        { threadId, content: null, attachments: null },
+        {
+          threadId,
+          content: null,
+          feedbackPayload: null,
+          attachments: null,
+        },
         signal,
       );
     },
@@ -1900,6 +1921,7 @@ function latestRecommendedFollowupsFromGroups(
 function createMessageSemanticSignals(
   semanticMessages$: Computed<SemanticChatMessage[]>,
   messageRunIndicatorState$: Computed<Promise<RunIndicatorState>>,
+  feedbackMessageCards: boolean,
 ) {
   const semanticGroups$ = computed((get): SemanticChatGroups => {
     return groupSemanticChatMessages(get(semanticMessages$));
@@ -1930,7 +1952,15 @@ function createMessageSemanticSignals(
     (get): Promise<readonly QueuedChatMessageItem[]> => {
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
-          return { id: message.id, text: (message.content ?? "").trim() };
+          const content = (message.content ?? "").trim();
+          if (!feedbackMessageCards || !message.feedbackPayload) {
+            return { id: message.id, text: content };
+          }
+          return {
+            id: message.id,
+            text: content || "Feedback",
+            quoteCount: message.feedbackPayload.items.length,
+          };
         }),
       );
     },
@@ -2332,6 +2362,7 @@ function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
+  feedbackMessageCards: boolean,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry();
   const artifactCardSignals = createArtifactCardSignalsRegistry();
@@ -2378,6 +2409,7 @@ function createPagedMessages(
   const semanticSignals = createMessageSemanticSignals(
     semanticMessages$,
     messageRunIndicatorState$,
+    feedbackMessageCards,
   );
 
   // The thread's active goal, folded from the (goal-marker) message stream so
@@ -2475,6 +2507,7 @@ function createChatThreadMessagePipeline({
   threadId,
   dataSource,
   initialOptimisticEntries,
+  feedbackMessageCards,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
@@ -2482,6 +2515,7 @@ function createChatThreadMessagePipeline({
   threadId: string;
   dataSource: ChatThreadRemote;
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
+  feedbackMessageCards: boolean;
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
     []
@@ -2496,6 +2530,7 @@ function createChatThreadMessagePipeline({
     threadId,
     dataSource,
     initialOptimisticEntries,
+    feedbackMessageCards,
   );
   const renderWindow = createChatRenderWindow({
     threadId,
@@ -3001,7 +3036,8 @@ function createSendOptimisticMessageEntry({
     message: {
       id: clientMessageId,
       role: "user",
-      content: result.prompt,
+      content: options?.feedbackMessage?.textContent ?? result.prompt,
+      feedbackPayload: options?.feedbackMessage?.feedbackPayload,
       attachFiles: result.attachments,
       generationTemplate,
       ...sendMessageRevocationPatch(options),
@@ -3037,6 +3073,8 @@ function sendMessageRequestBody(params: {
   return {
     agentId: params.agentId,
     prompt: params.result.prompt,
+    textContent: params.options?.feedbackMessage?.textContent,
+    feedbackPayload: params.options?.feedbackMessage?.feedbackPayload,
     threadId: params.threadId,
     hasTextContent: params.result.hasTextContent,
     clientMessageId: params.clientMessageId,
@@ -3348,6 +3386,29 @@ interface QueueMessageDeps {
   dataSource: ChatThreadRemote;
 }
 
+function createQueueOptimisticMessageEntry(params: {
+  readonly threadId: string;
+  readonly clientMessageId: string;
+  readonly createdAt: string;
+  readonly result: PreparedSendMessageResult;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly feedbackMessage: FeedbackMessageInput | undefined;
+}): OptimisticChatMessageInput {
+  return {
+    threadId: params.threadId,
+    optimisticUserMessageAssociation: "queue",
+    message: {
+      id: params.clientMessageId,
+      role: "user",
+      content: params.feedbackMessage?.textContent ?? params.result.prompt,
+      feedbackPayload: params.feedbackMessage?.feedbackPayload,
+      attachFiles: params.result.attachments,
+      generationTemplate: params.generationTemplate,
+      createdAt: params.createdAt,
+    },
+  };
+}
+
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
@@ -3369,6 +3430,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { get, set },
       prompt: string,
       computerUseHostId: string | null | undefined,
+      feedbackMessage: FeedbackMessageInput | undefined,
       signal: AbortSignal,
     ): Promise<boolean> => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -3426,18 +3488,17 @@ function createQueueMessage(deps: QueueMessageDeps) {
         agentId: meta.agentId,
         createdAt: nowIso,
       });
-      set(appendOptimisticMessage$, {
-        threadId,
-        optimisticUserMessageAssociation: "queue",
-        message: {
-          id: clientMessageId,
-          role: "user",
-          content: result.prompt,
-          attachFiles: result.attachments,
-          generationTemplate,
+      set(
+        appendOptimisticMessage$,
+        createQueueOptimisticMessageEntry({
+          threadId,
+          clientMessageId,
           createdAt: nowIso,
-        },
-      });
+          result,
+          generationTemplate,
+          feedbackMessage,
+        }),
+      );
       animationFrame(
         () => {
           set(scrollToBottom$);
@@ -3445,13 +3506,11 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
-      const codexFastModeEnabled =
-        features[FeatureSwitchKey.CodexFastMode] ?? false;
       const realAgentInPreviewEnabled =
         features[FeatureSwitchKey.RealAgentInPreview] ?? false;
       const runOptions = runOptionsFromModelProviderSelection(
         modelSelection,
-        codexFastModeEnabled,
+        features[FeatureSwitchKey.CodexFastMode] ?? false,
       );
       const [, persistedMessage] = await Promise.all([
         set(flushDraftClear$, signal),
@@ -3461,6 +3520,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
             threadId,
             agentId: meta.agentId,
             content: result.prompt,
+            textContent: feedbackMessage?.textContent,
+            feedbackPayload: feedbackMessage?.feedbackPayload,
             attachments: result.attachments ?? null,
             clientMessageId,
             chatThreadSortEventId,
@@ -3488,6 +3549,7 @@ interface RecallMessageDeps {
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   rawMessages$: Computed<ChatMessageProjectionEntry[]>;
   draft: DraftSignals;
+  feedbackMessageCards: boolean;
   writePersistentMessages$: Command<
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
@@ -3502,6 +3564,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
     threadMeta$,
     rawMessages$,
     draft,
+    feedbackMessageCards,
     writePersistentMessages$,
     appendOptimisticMessage$,
     dataSource,
@@ -3541,6 +3604,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
         (message.attachFiles ?? []).map((attachment) => {
           return createRestoredAttachment(attachment);
         }),
+        feedbackMessageCards ? (message.feedbackPayload?.items ?? []) : [],
       );
 
       const persistedMessage = await set(
@@ -4112,6 +4176,7 @@ function publicChatThreadMessageSignals(
 interface ChatThreadComposerFeatureModes {
   inlinePromptItems?: boolean;
   inlineAttachmentReferences?: boolean;
+  feedbackMessageCards?: boolean;
 }
 
 function createThreadComposer(
@@ -4120,13 +4185,17 @@ function createThreadComposer(
   featureModes: ChatThreadComposerFeatureModes,
   agentId$: Computed<Promise<string | null>>,
 ) {
-  const { inlinePromptItems = false, inlineAttachmentReferences = false } =
-    featureModes;
+  const {
+    inlinePromptItems = false,
+    inlineAttachmentReferences = false,
+    feedbackMessageCards = false,
+  } = featureModes;
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     threadId,
     inlinePromptItems,
     inlineAttachmentReferences,
+    feedbackMessageCards,
   );
   return {
     workflowComposer,
@@ -4142,6 +4211,8 @@ export function createChatThreadSignals(
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
   composerFeatureModes: ChatThreadComposerFeatureModes = {},
 ): ChatThreadSignals {
+  const feedbackMessageCards =
+    composerFeatureModes.feedbackMessageCards ?? false;
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
@@ -4176,12 +4247,13 @@ export function createChatThreadSignals(
     threadId,
     dataSource,
     initialOptimisticEntries,
+    feedbackMessageCards,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
     awayFromBottom$,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft, dataSource);
+    createDraftSync(threadId, draft, dataSource, feedbackMessageCards);
   const composerSendButton = createComposerSendButtonSignals(messages);
   const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
@@ -4205,6 +4277,7 @@ export function createChatThreadSignals(
     modelSelectionForSend$,
     rawMessages$: messages.rawMessages$,
     draft,
+    feedbackMessageCards,
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$: scrollSignals.scrollToBottom$,

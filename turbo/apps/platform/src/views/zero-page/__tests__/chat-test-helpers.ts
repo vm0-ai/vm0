@@ -437,6 +437,15 @@ export function mockChatLifecycle(
     afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
+      textContent?: string;
+      feedbackPayload?: {
+        version: 1;
+        items: {
+          id: number;
+          quote: string;
+          note: string;
+        }[];
+      };
       clientMessageId?: string;
       clientThreadId?: string;
       attachFiles?: {

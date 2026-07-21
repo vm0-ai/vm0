@@ -1,5 +1,6 @@
 import type { Command } from "ccstate";
 import type {
+  ChatMessageFeedbackPayload,
   ChatRunOptionsRequest,
   CodexServiceTier,
   GenerationTemplateRequest,
@@ -23,6 +24,7 @@ export interface ChatThreadRealtimeHandlers {
 export interface PatchDraftArgs {
   threadId: string;
   content: string | null;
+  feedbackPayload?: ChatMessageFeedbackPayload | null;
   attachments: PersistedAttachment[] | null;
 }
 
@@ -43,6 +45,8 @@ export interface AppendQueuedMessageArgs {
   threadId: string;
   agentId: string;
   content: string | null;
+  textContent?: string;
+  feedbackPayload?: ChatMessageFeedbackPayload;
   attachments: PersistedAttachment[] | null;
   clientMessageId: string;
   chatThreadSortEventId: string;

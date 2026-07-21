@@ -1,5 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ChatMessageFeedbackPayload,
   PagedChatMessage,
   ChatThreadArtifactRun,
   ChatThreadDraft,
@@ -30,6 +31,7 @@ export interface RecommendedFollowupSource {
 export interface QueuedChatMessageItem {
   readonly id: string;
   readonly text: string;
+  readonly quoteCount?: number;
 }
 
 export type ThinkingIndicatorMode =
@@ -53,6 +55,12 @@ export interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly computerUseHostId?: string | null;
+  readonly feedbackMessage?: FeedbackMessageInput;
+}
+
+export interface FeedbackMessageInput {
+  readonly textContent: string;
+  readonly feedbackPayload: ChatMessageFeedbackPayload;
 }
 
 export interface ChatThreadSignals {
@@ -88,7 +96,12 @@ export interface ChatThreadSignals {
   composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
-    [string, string | null | undefined, AbortSignal]
+    [
+      string,
+      string | null | undefined,
+      FeedbackMessageInput | undefined,
+      AbortSignal,
+    ]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;

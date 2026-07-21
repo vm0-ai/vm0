@@ -21,6 +21,9 @@ const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 // read it off the selection so a feedback draft stays bound to its own thread.
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
+// The Codex-style inline feedback input; interacting with it must not dismiss
+// the quoted passage it is anchored to.
+const FEEDBACK_INPUT_SELECTOR = "[data-feedback-input]";
 
 export interface FeedbackSelectionRect {
   readonly top: number;
@@ -54,12 +57,32 @@ export interface FeedbackEditorAdapter {
   removeItem(id: number): void;
 }
 
+export interface FeedbackDraftSignals {
+  readonly items$: Computed<readonly FeedbackItem[]>;
+  readonly setItems$: Command<void, [readonly FeedbackItem[]]>;
+}
+
 export interface FeedbackSignals {
   readonly items$: Computed<readonly FeedbackItem[]>;
   readonly active$: Computed<boolean>;
+  readonly feedbackMessageCardsEnabled: boolean;
   readonly selection$: Computed<FeedbackSelection | null>;
   readonly startFeedback$: Command<void, []>;
+  // Insert a feedback item whose note is already written — used by the
+  // Codex-style inline input that collects the comment beside the selection
+  // before the item lands in the composer.
+  readonly startFeedbackWithNote$: Command<void, [string]>;
+  // Draft state for that inline input: whether it is open for the current
+  // selection and the note being typed.
+  readonly draftOpen$: Computed<boolean>;
+  readonly draftNote$: Computed<string>;
+  readonly openFeedbackDraft$: Command<void, []>;
+  readonly setFeedbackDraftNote$: Command<void, [string]>;
+  readonly submitFeedbackDraft$: Command<void, []>;
+  readonly cancelFeedbackDraft$: Command<void, []>;
+  readonly dismissFeedbackDraft$: Command<void, []>;
   readonly replaceFromEditor$: Command<void, [readonly FeedbackItem[]]>;
+  readonly updateFeedbackNote$: Command<void, [id: number, note: string]>;
   readonly removeFeedback$: Command<void, [number]>;
   readonly closeSelectionToolbar$: Command<void, []>;
   readonly copySelection$: Command<Promise<void>, [AbortSignal]>;
@@ -276,10 +299,22 @@ function shouldIgnoreTextShortcut(event: KeyboardEvent): boolean {
   return isEditableTarget(event.target);
 }
 
+function isFeedbackInputTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest(FEEDBACK_INPUT_SELECTOR) !== null
+  );
+}
+
 function shouldDismissSelectionForInteractionTarget(
   target: EventTarget | null,
 ): boolean {
   if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  // Typing the comment in the inline feedback input must keep the passage
+  // selected, otherwise the input would dismiss its own anchor.
+  if (isFeedbackInputTarget(target)) {
     return false;
   }
   return (
@@ -290,17 +325,52 @@ function shouldDismissSelectionForInteractionTarget(
 function createFeedbackSelectionState(threadId: string) {
   const selectionState$ = state<FeedbackSelection | null>(null);
   const resetSelectionToolbarSignal$ = resetSignal();
+  // Inline-input draft: open while the user is typing a comment beside the
+  // selected passage, cleared whenever the toolbar is dismissed.
+  const draftOpenState$ = state(false);
+  const draftNoteState$ = state("");
+  const draftOpen$ = computed((get) => {
+    return get(draftOpenState$);
+  });
+  const draftNote$ = computed((get) => {
+    return get(draftNoteState$);
+  });
+  const resetDraft$ = command(({ set }) => {
+    set(draftOpenState$, false);
+    set(draftNoteState$, "");
+  });
+  const openFeedbackDraft$ = command(({ set }) => {
+    set(draftNoteState$, "");
+    set(draftOpenState$, true);
+  });
+  const setFeedbackDraftNote$ = command(({ set }, note: string) => {
+    set(draftNoteState$, note);
+  });
   const selection$ = computed((get) => {
     return get(selectionState$);
   });
-  const closeSelectionToolbar$ = command(({ set }) => {
+  const hideSelectionToolbar$ = command(({ set }) => {
     set(resetSelectionToolbarSignal$);
     set(selectionState$, null);
+    set(resetDraft$);
   });
-  const captureSelection$ = command(({ set }) => {
+  const closeSelectionToolbar$ = command(({ get, set }) => {
+    if (get(selectionState$) === null || get(draftOpenState$)) {
+      return;
+    }
+    set(hideSelectionToolbar$);
+  });
+  const captureSelection$ = command(({ get, set }) => {
     const selection = readFeedbackSelection();
     if (!selection || selection.threadId !== threadId) {
-      set(closeSelectionToolbar$);
+      // While the inline input is open the native selection legitimately moves
+      // into the textarea, so keep the anchored passage instead of dismissing.
+      if (get(draftOpenState$)) {
+        return;
+      }
+      if (get(selectionState$) !== null) {
+        set(hideSelectionToolbar$);
+      }
       return;
     }
     set(selectionState$, selection);
@@ -323,36 +393,62 @@ function createFeedbackSelectionState(threadId: string) {
       toast.success("Copied");
     }
   });
+  const cancelFeedbackDraft$ = command(({ set }) => {
+    set(resetDraft$);
+  });
+  const dismissFeedbackDraft$ = command(({ set }) => {
+    set(hideSelectionToolbar$);
+    window.getSelection()?.removeAllRanges();
+  });
   return {
     selectionState$,
     resetSelectionToolbarSignal$,
     selection$,
+    hideSelectionToolbar$,
     closeSelectionToolbar$,
     captureSelection$,
     dismissSelectionOnScroll$,
     copySelection$,
+    draftOpen$,
+    draftNote$,
+    openFeedbackDraft$,
+    setFeedbackDraftNote$,
+    cancelFeedbackDraft$,
+    dismissFeedbackDraft$,
   };
 }
 
 function createFeedbackItemSignals({
   threadId,
   editor,
+  syncEditor,
+  draft,
   selectionState$,
-  closeSelectionToolbar$,
+  hideSelectionToolbar$,
 }: {
   threadId: string;
   editor: FeedbackEditorAdapter;
+  syncEditor: boolean;
+  draft: FeedbackDraftSignals | undefined;
   selectionState$: State<FeedbackSelection | null>;
-  closeSelectionToolbar$: Command<void, []>;
+  hideSelectionToolbar$: Command<void, []>;
 }) {
   const itemsState$ = state<readonly FeedbackItem[]>([]);
   const rangesState$ = state<ReadonlyMap<number, Range>>(new Map());
   const nextIdState$ = state(1);
-  const items$ = computed((get) => {
+  const localItems$ = computed((get) => {
     return get(itemsState$);
   });
+  const items$ = draft?.items$ ?? localItems$;
+  const setItems$ = command(({ set }, nextItems: readonly FeedbackItem[]) => {
+    if (draft) {
+      set(draft.setItems$, nextItems);
+      return;
+    }
+    set(itemsState$, nextItems);
+  });
   const active$ = computed((get) => {
-    return get(itemsState$).length > 0;
+    return get(items$).length > 0;
   });
   const replaceFromEditor$ = command(
     ({ get, set }, items: readonly FeedbackItem[]) => {
@@ -368,44 +464,79 @@ function createFeedbackItemSignals({
       );
       set(rangesState$, ranges);
       set(setFeedbackHighlight$, threadId, ranges);
-      set(itemsState$, items);
+      set(setItems$, items);
+      set(
+        nextIdState$,
+        items.reduce((nextId, item) => {
+          return Math.max(nextId, item.id + 1);
+        }, 1),
+      );
     },
   );
-  const startFeedback$ = command(({ get, set }) => {
+  const startFeedbackWithNote$ = command(({ get, set }, note: string) => {
     const selection = get(selectionState$);
     if (!selection) {
       return;
     }
-    const id = get(nextIdState$);
-    const item = { id, quote: selection.text, note: "" };
-    const items = [...get(itemsState$), item];
+    const currentItems = get(items$);
+    const id = draft
+      ? currentItems.reduce((nextId, item) => {
+          return Math.max(nextId, item.id + 1);
+        }, 1)
+      : get(nextIdState$);
+    const item = { id, quote: selection.text, note };
     set(nextIdState$, id + 1);
-    set(itemsState$, items);
+    set(setItems$, [...currentItems, item]);
     const ranges = new Map<number, Range>(get(rangesState$));
     if (selection.range) {
       ranges.set(id, selection.range);
     }
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
-    editor.insertItem(item);
-    set(closeSelectionToolbar$);
+    if (syncEditor) {
+      editor.insertItem(item);
+    }
+    set(hideSelectionToolbar$);
   });
+  const startFeedback$ = command(({ set }) => {
+    set(startFeedbackWithNote$, "");
+  });
+  const updateFeedbackNote$ = command(
+    ({ get, set }, id: number, note: string) => {
+      const item = get(items$).find((candidate) => {
+        return candidate.id === id;
+      });
+      if (!item) {
+        return;
+      }
+      set(
+        setItems$,
+        get(items$).map((candidate) => {
+          return candidate.id === id ? { ...item, note } : candidate;
+        }),
+      );
+    },
+  );
   const removeFeedback$ = command(({ get, set }, id: number) => {
-    const items = get(itemsState$).filter((item) => {
+    const items = get(items$).filter((item) => {
       return item.id !== id;
     });
     const ranges = new Map<number, Range>(get(rangesState$));
     ranges.delete(id);
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
-    set(itemsState$, items);
-    editor.removeItem(id);
+    set(setItems$, items);
+    if (syncEditor) {
+      editor.removeItem(id);
+    }
   });
   return {
     items$,
     active$,
     startFeedback$,
+    startFeedbackWithNote$,
     replaceFromEditor$,
+    updateFeedbackNote$,
     removeFeedback$,
   };
 }
@@ -414,12 +545,14 @@ function createSelectionToolbarRef({
   resetSelectionToolbarSignal$,
   closeSelectionToolbar$,
   copySelection$,
-  startFeedback$,
+  provideFeedback$,
+  feedbackMessageCardsEnabled,
 }: {
   resetSelectionToolbarSignal$: ReturnType<typeof resetSignal>;
   closeSelectionToolbar$: Command<void, []>;
   copySelection$: Command<Promise<void>, [AbortSignal]>;
-  startFeedback$: Command<void, []>;
+  provideFeedback$: Command<void, []>;
+  feedbackMessageCardsEnabled: boolean;
 }) {
   return onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
@@ -431,6 +564,9 @@ function createSelectionToolbarRef({
             return;
           }
           if (matchShortcut("mod+c", event)) {
+            if (shouldIgnoreTextShortcut(event)) {
+              return;
+            }
             // Preserve the browser's native copy action, then dismiss only the
             // feedback state without changing the document selection.
             await delay(0, { signal: toolbarSignal });
@@ -445,6 +581,19 @@ function createSelectionToolbarRef({
             set(closeSelectionToolbar$);
             return;
           }
+          const feedbackShortcutMatches =
+            matchShortcut("f", event) ||
+            (feedbackMessageCardsEnabled && matchShortcut("q", event));
+          if (feedbackShortcutMatches && !isFeedbackInputTarget(event.target)) {
+            // Selecting assistant text does not move focus away from the main
+            // composer. Treat the feedback shortcuts before the generic
+            // editable-target guard so that stale composer focus does not make
+            // them inert. F remains supported for users without browser-level
+            // link-hint shortcuts; Q is the conflict-free visible shortcut.
+            event.preventDefault();
+            set(provideFeedback$);
+            return;
+          }
           if (shouldIgnoreTextShortcut(event)) {
             return;
           }
@@ -452,10 +601,6 @@ function createSelectionToolbarRef({
             event.preventDefault();
             await set(copySelection$, signal);
             return;
-          }
-          if (matchShortcut("f", event)) {
-            event.preventDefault();
-            set(startFeedback$);
           }
         }),
         { signal: toolbarSignal },
@@ -466,20 +611,31 @@ function createSelectionToolbarRef({
 
 function createPointerSelectionListeners({
   selectionState$,
-  closeSelectionToolbar$,
+  draftOpen$,
+  hideSelectionToolbar$,
 }: {
   selectionState$: State<FeedbackSelection | null>;
-  closeSelectionToolbar$: Command<void, []>;
+  draftOpen$: Computed<boolean>;
+  hideSelectionToolbar$: Command<void, []>;
 }) {
   return command(({ get, set }, doc: Document, signal: AbortSignal) => {
     doc.addEventListener(
       "pointerdown",
       (event) => {
+        const target = event.target;
+        if (
+          get(draftOpen$) &&
+          target instanceof HTMLElement &&
+          target.closest(FEEDBACK_INPUT_SELECTOR) === null
+        ) {
+          set(hideSelectionToolbar$);
+          return;
+        }
         if (
           get(selectionState$) !== null &&
-          shouldDismissSelectionForInteractionTarget(event.target)
+          shouldDismissSelectionForInteractionTarget(target)
         ) {
-          set(closeSelectionToolbar$);
+          set(hideSelectionToolbar$);
         }
       },
       { capture: true, signal },
@@ -546,23 +702,36 @@ function createSelectionListenersRef({
 export function createFeedbackSignals(
   threadId: string,
   editor: FeedbackEditorAdapter,
+  feedbackMessageCardsEnabled = false,
+  draft?: FeedbackDraftSignals,
 ): FeedbackSignals {
   const selection = createFeedbackSelectionState(threadId);
   const items = createFeedbackItemSignals({
     threadId,
     editor,
+    syncEditor: !feedbackMessageCardsEnabled,
+    draft: feedbackMessageCardsEnabled ? draft : undefined,
     selectionState$: selection.selectionState$,
-    closeSelectionToolbar$: selection.closeSelectionToolbar$,
+    hideSelectionToolbar$: selection.hideSelectionToolbar$,
+  });
+  const provideFeedback$ = command(({ set }) => {
+    if (feedbackMessageCardsEnabled) {
+      set(selection.openFeedbackDraft$);
+      return;
+    }
+    set(items.startFeedback$);
   });
   const setSelectionToolbarRef$ = createSelectionToolbarRef({
     resetSelectionToolbarSignal$: selection.resetSelectionToolbarSignal$,
     closeSelectionToolbar$: selection.closeSelectionToolbar$,
     copySelection$: selection.copySelection$,
-    startFeedback$: items.startFeedback$,
+    provideFeedback$,
+    feedbackMessageCardsEnabled,
   });
   const pointerListeners$ = createPointerSelectionListeners({
     selectionState$: selection.selectionState$,
-    closeSelectionToolbar$: selection.closeSelectionToolbar$,
+    draftOpen$: selection.draftOpen$,
+    hideSelectionToolbar$: selection.hideSelectionToolbar$,
   });
   const documentListeners$ = createDocumentSelectionListeners({
     threadId,
@@ -573,13 +742,28 @@ export function createFeedbackSignals(
     pointerListeners$,
     documentListeners$,
   });
+  const submitFeedbackDraft$ = command(({ get, set }) => {
+    const note = get(selection.draftNote$);
+    if (note.trim().length === 0) {
+      return;
+    }
+    set(items.startFeedbackWithNote$, note);
+  });
 
   return {
     ...items,
+    feedbackMessageCardsEnabled,
     selection$: selection.selection$,
     closeSelectionToolbar$: selection.closeSelectionToolbar$,
     copySelection$: selection.copySelection$,
     setSelectionListenersRef$,
     setSelectionToolbarRef$,
+    draftOpen$: selection.draftOpen$,
+    draftNote$: selection.draftNote$,
+    openFeedbackDraft$: selection.openFeedbackDraft$,
+    setFeedbackDraftNote$: selection.setFeedbackDraftNote$,
+    submitFeedbackDraft$,
+    cancelFeedbackDraft$: selection.cancelFeedbackDraft$,
+    dismissFeedbackDraft$: selection.dismissFeedbackDraft$,
   };
 }

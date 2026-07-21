@@ -136,6 +136,133 @@ function mockActiveRunThread(
 }
 
 describe("chat run queue", () => {
+  it("shows queued feedback as a readable summary", async () => {
+    const user = userEvent.setup({ delay: null });
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [
+        {
+          id: 1,
+          quote: "你好你好你好呀",
+          note: "Use a shorter greeting.",
+        },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-queue-marker`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          runEventId: "queue:queued",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-queued-feedback`,
+          role: "user",
+          content: "额外",
+          feedbackPayload,
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: true },
+    });
+
+    await expect(
+      screen.findByText("1 message waiting to send"),
+    ).resolves.toBeInTheDocument();
+    const queuedMessage = await screen.findByLabelText("Queued message");
+    expect(queuedMessage).toHaveTextContent("额外");
+    expect(queuedMessage).toHaveTextContent("1 quote");
+
+    await user.click(screen.getByLabelText("About this queued message"));
+    await expect(
+      screen.findByText(
+        "Waits in line and sends once the current run finishes.",
+      ),
+    ).resolves.toBeInTheDocument();
+
+    const composer = await activeRunComposer();
+    await user.click(screen.getByLabelText("Remove queued message"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(composer).toHaveTextContent("额外");
+      expect(screen.getByLabelText("Open 1 quote")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Open 1 quote"));
+    expect(screen.getByLabelText("Feedback comment 1")).toHaveValue(
+      "Use a shorter greeting.",
+    );
+  });
+
+  it("hides queued feedback metadata when feedback cards are disabled", async () => {
+    const feedbackPayload = {
+      version: 1 as const,
+      items: [
+        {
+          id: 1,
+          quote: "The rollout starts soon.",
+          note: "Replace soon with a date.",
+        },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-queue-marker`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          runEventId: "queue:queued",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-queued-feedback`,
+          role: "user",
+          content: "Revise the rollout.",
+          feedbackPayload,
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.FeedbackMessageCards]: false },
+    });
+
+    const queuedMessage = await screen.findByLabelText("Queued message");
+    expect(queuedMessage).toHaveTextContent("Revise the rollout.");
+    expect(queuedMessage).not.toHaveTextContent("1 quote");
+  });
+
   it("shows a sent message and stop control while a new chat run is active", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);

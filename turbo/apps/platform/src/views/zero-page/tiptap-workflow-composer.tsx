@@ -4,9 +4,16 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
+import { IconQuote, IconX } from "@tabler/icons-react";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+  type KeyboardEventLike,
+} from "@vm0/ui";
 import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { composerChatThreadSuggestionsEnabled$ } from "../../signals/zero-page/composer-chat-thread-suggestions.ts";
@@ -153,6 +160,96 @@ function WorkflowComposerPlaceholder({
       aria-hidden="true"
     >
       {workflowComposerPlaceholder(sending)}
+    </div>
+  );
+}
+
+function FeedbackChipStrip({
+  composer,
+  onDraftChange,
+}: {
+  composer: WorkflowComposerSignals;
+  onDraftChange: (() => void) | undefined;
+}) {
+  const items = useGet(composer.feedback.items$);
+  const updateNote = useSet(composer.feedback.updateFeedbackNote$);
+  const removeFeedback = useSet(composer.feedback.removeFeedback$);
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  const label = `${String(items.length)} ${items.length === 1 ? "quote" : "quotes"}`;
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 px-4 pt-4"
+      data-feedback-chip-strip=""
+    >
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Open ${label}`}
+            data-feedback-chip=""
+            className="inline-flex h-9 max-w-56 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-medium shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconQuote size={16} stroke={1.7} className="shrink-0" />
+            <span className="truncate">{label}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="max-h-[min(28rem,70vh)] w-[min(32rem,calc(100vw-1.5rem))] max-w-none overflow-y-auto rounded-xl p-3 shadow-lg"
+        >
+          <div
+            className="flex flex-col divide-y divide-border/60"
+            data-feedback-comment-list=""
+          >
+            {items.map((item, index) => {
+              return (
+                <div
+                  key={item.id}
+                  data-feedback-item=""
+                  className="py-3 first:pt-1 last:pb-1"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="whitespace-pre-wrap break-words border-l-2 border-foreground/15 pl-3 text-sm leading-5 text-muted-foreground">
+                        {item.quote}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Remove comment ${String(index + 1)}`}
+                      onClick={() => {
+                        removeFeedback(item.id);
+                        onDraftChange?.();
+                      }}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <IconX size={15} stroke={1.7} />
+                    </button>
+                  </div>
+                  <textarea
+                    value={item.note}
+                    onChange={(event) => {
+                      updateNote(item.id, event.target.value);
+                      onDraftChange?.();
+                    }}
+                    aria-label={`Feedback comment ${String(index + 1)}`}
+                    placeholder="Add an optional comment..."
+                    rows={2}
+                    className="mt-2 max-h-28 min-h-10 w-full resize-none rounded-md border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-muted/25 focus:bg-muted/40 focus:ring-1 focus:ring-primary/30"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -403,6 +500,7 @@ export function TiptapWorkflowComposer({
       ? composer.setAutoFocusContainerRef$
       : composer.setContainerRef$;
   const setContainerRef = useSet(containerRefSignal);
+  const feedbackChipsEnabled = composer.feedback.feedbackMessageCardsEnabled;
 
   function handlePaste(
     event: ClipboardEvent,
@@ -461,6 +559,12 @@ export function TiptapWorkflowComposer({
       <div
         className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}
       >
+        {feedbackChipsEnabled ? (
+          <FeedbackChipStrip
+            composer={composer}
+            onDraftChange={onDraftChange}
+          />
+        ) : null}
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div ref={setContainerRef} />
       </div>
