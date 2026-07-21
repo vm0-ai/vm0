@@ -19,7 +19,7 @@ teardown() {
 # Run tests (verify files are mounted)
 # ============================================
 
-@test "vm0 run with instructions mounts CLAUDE.md file" {
+@test "direct run with instructions mounts CLAUDE.md file" {
     echo "# Creating config with instructions..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -50,16 +50,17 @@ EOF
 
     echo "# Running agent to verify instructions is mounted..."
     # The instructions is mounted at /home/user/.claude/CLAUDE.md
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "cat /home/user/.claude/CLAUDE.md"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/.claude/CLAUDE.md" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
 
     echo "# Verifying output contains the marker from AGENTS.md..."
     assert_output --partial "UNIQUE_MARKER_FOR_E2E_TEST"
 }
 
-@test "vm0 run has gh cli installed by default" {
+@test "direct run has gh cli installed by default" {
     echo "# Creating config without apps field..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -80,9 +81,10 @@ EOF
     assert_success
 
     echo "# Running agent to verify gh cli is installed in base image..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "gh --version"
+    run run_compose_fixture "$AGENT_NAME" \
+        "gh --version" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
 
     echo "# Verifying gh version output..."

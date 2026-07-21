@@ -72,7 +72,7 @@ setup() {
 }
 
 # All timezone tests are in a single test to avoid racing on the global
-# user-level timezone preference.  Two vm0 run calls (~15s each) + CLI
+# user-level timezone preference. Two direct runs (~15s each) + CLI
 # commands (~5s) ≈ 35s, well within the 60s timeout.
 
 @test "zero preference --timezone and TZ injection" {
@@ -96,9 +96,7 @@ setup() {
     # --- TZ injection into sandbox ---
     $ZERO_CLI preference --timezone "Asia/Tokyo" >/dev/null
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --verbose \
-        "echo TZ=\$TZ"
+    run run_compose_fixture "$AGENT_NAME" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Asia/Tokyo"
 
@@ -126,9 +124,7 @@ EOF
 
     seed_compose_fixture "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
-    run $VM0_CLI run "$OVERRIDE_AGENT_NAME" \
-        --verbose \
-        "echo TZ=\$TZ"
+    run run_compose_fixture "$OVERRIDE_AGENT_NAME" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Europe/London"
 }

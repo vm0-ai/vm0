@@ -10,9 +10,7 @@
 # - turbo/apps/web/src/lib/org/__tests__/org-service.test.ts
 # - turbo/apps/cli/src/commands/zero/org/__tests__/set.test.ts
 #
-# Error handling tests have been moved to CLI integration tests:
-# - turbo/apps/cli/src/commands/run/__tests__/index.test.ts
-#   - "should show error when org does not exist" (org not found)
+# Error handling is covered by CLI integration tests:
 # - turbo/apps/cli/src/commands/zero/org/__tests__/set.test.ts
 #   - "should require --force to update existing organization"
 
