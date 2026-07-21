@@ -55,6 +55,7 @@ export enum FeatureSwitchKey {
   Vm0Model = "vm0Model",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
+  StructuredPrompt = "structuredPrompt",
 
   ZapierConnector = "zapierConnector",
   MemoryViewer = "memoryViewer",

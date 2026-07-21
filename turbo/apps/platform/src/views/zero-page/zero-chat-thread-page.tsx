@@ -111,8 +111,10 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -6627,8 +6629,13 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
+  const featureSwitches = useGet(featureSwitch$);
+  const structuredPromptEnabled =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   const structuredPrompt =
-    message.role === "user" ? message.structuredPrompt : undefined;
+    structuredPromptEnabled && message.role === "user"
+      ? message.structuredPrompt
+      : undefined;
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left

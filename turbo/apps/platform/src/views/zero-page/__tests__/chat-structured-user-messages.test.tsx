@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -80,7 +81,11 @@ describe("structured user messages", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
 
     const structuredMessage = await waitFor(() => {
       const element = document.querySelector("[data-structured-user-message]");
@@ -116,5 +121,40 @@ describe("structured user messages", () => {
     const legacyBold = await screen.findByText("bold");
     expect(legacyBold.tagName).toBe("STRONG");
     expect(screen.getByText("Legacy", { exact: false })).toBeInTheDocument();
+  });
+
+  it("uses the legacy renderer when the feature switch is disabled", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000744";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured message disabled",
+      chatMessages: [
+        {
+          id: "00000000-0000-4000-8000-000000000744",
+          role: "user",
+          content: "Legacy **fallback** stays",
+          runId: "d0000000-0000-4000-a000-000000000744",
+          structuredPrompt: {
+            version: 1,
+            parts: [{ type: "text", text: "Structured content stays hidden" }],
+          },
+          createdAt: "2026-07-21T10:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    const legacyBold = await screen.findByText("fallback");
+    expect(legacyBold.tagName).toBe("STRONG");
+    expect(screen.getByText("Legacy", { exact: false })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Structured content stays hidden"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 });
