@@ -6,7 +6,7 @@
 # 2. Agent runs collect telemetry data (system log and metrics)
 # 3. Telemetry data is retrievable (agent/system/metrics log views)
 #
-# Test count: 2 tests with 1 vm0 run call
+# Test count: 1 test with 1 vm0 run call
 
 load '../../helpers/setup'
 
@@ -33,7 +33,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -54,12 +54,6 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
-}
-
-@test "Build VM0 telemetry test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 telemetry: run displays Run ID and logs command retrieves data" {

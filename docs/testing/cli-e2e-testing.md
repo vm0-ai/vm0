@@ -120,10 +120,10 @@ e2e/tests/
 
 ```bash
 setup_file() {
-    # One-time setup: compose agent (runs once per file)
+    # One-time setup: seed agent compose (runs once per file)
     local AGENT_NAME="e2e-session-$(date +%s%3N)"
     echo "$AGENT_NAME" > "$BATS_FILE_TMPDIR/agent_name"
-    vm0 compose "$CONFIG"
+    seed_compose_fixture "$CONFIG" >/dev/null
 }
 
 setup() {
@@ -194,7 +194,7 @@ setup_file() {
     echo "$AGENT_NAME" > "$BATS_FILE_TMPDIR/agent_name"
     echo "$TEST_DIR" > "$BATS_FILE_TMPDIR/test_dir"
 
-    # Create config and compose agent ONCE
+    # Create config and seed the compose ONCE
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
@@ -205,7 +205,7 @@ agents:
 EOF
 
     cd "$TEST_DIR"
-    vm0 compose vm0.yaml
+    seed_compose_fixture vm0.yaml >/dev/null
 }
 
 setup() {
@@ -314,14 +314,14 @@ setup() {
 ### AP-3: Not Using `setup_file()` for Expensive Setup
 
 ```bash
-# ❌ BAD: Composes agent for EVERY test
+# ❌ BAD: Seeds the compose for EVERY test
 setup() {
-    vm0 compose "$CONFIG"  # Runs before each test!
+    seed_compose_fixture "$CONFIG" >/dev/null  # Runs before each test!
 }
 
-# ✅ GOOD: Compose once per file
+# ✅ GOOD: Seed once per file
 setup_file() {
-    vm0 compose "$CONFIG"  # Runs once before all tests
+    seed_compose_fixture "$CONFIG" >/dev/null  # Runs once before all tests
 }
 ```
 
@@ -380,7 +380,7 @@ setup_file() {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 ...
 EOF
-    vm0 compose "$TEST_DIR/vm0.yaml"
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 }
 
 setup() {

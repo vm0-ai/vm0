@@ -15,80 +15,6 @@ teardown() {
 }
 
 # ============================================
-# vm0 compose versioning tests
-#
-# Integration tests verify the full compose workflow.
-# Unit tests for hashing, deduplication, and error handling
-# are in: turbo/apps/cli/src/__tests__/compose-versioning.test.ts
-# ============================================
-
-@test "vm0 compose should display version ID" {
-    echo "# Creating config file..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for version display"
-    framework: claude-code
-EOF
-
-    echo "# Running vm0 compose..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Verifying output contains Version..."
-    assert_output --partial "Version:"
-    # Version should be 8 hex characters (short form of SHA-256)
-    assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
-}
-
-@test "vm0 compose with different content should create new version" {
-    echo "# Creating initial config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Initial description"
-    framework: claude-code
-EOF
-
-    echo "# First compose..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version 1: $VERSION1"
-
-    echo "# Modifying config with different description..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Updated description"
-    framework: claude-code
-EOF
-
-    echo "# Second compose with different content..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    # Should indicate new version created
-    assert_output --partial "Compose created"
-
-    VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version 2: $VERSION2"
-
-    # Different content should produce different version ID
-    [ "$VERSION1" != "$VERSION2" ] || {
-        echo "# ERROR: Versions should differ for different content"
-        echo "#   Version 1: $VERSION1"
-        echo "#   Version 2: $VERSION2"
-        return 1
-    }
-}
-
-# ============================================
 # vm0 run with version specifier tests
 # ============================================
 
@@ -106,9 +32,9 @@ agents:
 EOF
 
     echo "# Building version 1..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
+    VERSION1=$(echo "$output" | jq -r '.versionId')
     echo "# Version 1: $VERSION1"
 
     echo "# Creating updated config..."
@@ -122,9 +48,9 @@ agents:
 EOF
 
     echo "# Building version 2..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
-    VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
+    VERSION2=$(echo "$output" | jq -r '.versionId')
     echo "# Version 2: $VERSION2"
 
     echo "# Initializing artifact storage..."
@@ -154,7 +80,7 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
@@ -184,7 +110,7 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."

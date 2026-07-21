@@ -275,9 +275,6 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Agent not found: nonexistent-agent"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 compose"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
@@ -2804,9 +2801,6 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Agent not found"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 compose"),
-      );
     });
 
     it("should show error when agent does not exist in valid org", async () => {
@@ -2873,10 +2867,6 @@ describe("run command", () => {
           "test prompt",
         ]);
       }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 compose"),
-      );
     });
 
     it("should not allow access to agent from different org", async () => {

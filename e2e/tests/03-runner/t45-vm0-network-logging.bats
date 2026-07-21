@@ -31,7 +31,7 @@ agents:
     framework: claude-code
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
