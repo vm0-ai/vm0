@@ -1,3 +1,11 @@
+/**
+ * Server-side collectors for the Morning Brief input bundle.
+ *
+ * Each source (GitHub, Gmail, Google Calendar) resolves the member's connector
+ * access token through the shared credential runtime, pulls a bounded window
+ * of data, and reports independently: a failed source is annotated in the
+ * input JSON instead of blocking the brief.
+ */
 import { z } from "zod";
 
 import type { Db } from "../external/db";
