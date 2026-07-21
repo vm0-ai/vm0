@@ -54,15 +54,10 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
             .body_includes(r#""sequenceNumber":1"#);
         then.status(500);
     });
-    let sequence_2 = server.mock(|when, then| {
+    let later_batch = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""sequenceNumber":2"#);
-        then.status(200);
-    });
-    let sequence_3 = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/events")
+            .body_includes(r#""sequenceNumber":2"#)
             .body_includes(r#""sequenceNumber":3"#);
         then.status(200);
     });
@@ -83,8 +78,7 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
     );
     sequence_0.assert_calls_async(1).await;
     sequence_1.assert_calls_async(3).await;
-    sequence_2.assert_calls_async(1).await;
-    sequence_3.assert_calls_async(1).await;
+    later_batch.assert_calls_async(1).await;
 
     Ok(())
 }
