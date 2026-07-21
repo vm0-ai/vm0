@@ -36,6 +36,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -320,6 +321,10 @@ interface ExistingClientMessageIdRow {
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
   readonly queueItemId: string | null;
+  readonly replacementRunId: string | null;
+  readonly replacementError: string | null;
+  readonly replacementRunStatus: string | null;
+  readonly replacementRunCreatedAt: Date | null;
 }
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
@@ -329,6 +334,8 @@ const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 const idRowSchema = z.object({ id: z.string() });
+const replacementChatMessage = alias(chatMessages, "replacement_chat_message");
+const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
 
 function forbidden(message: string) {
   return {
@@ -373,15 +380,34 @@ function resolveExistingClientMessageIdRow(
       inserted: false,
     };
   }
-  if (row.runId === null || !row.runCreatedAt || !row.runStatus) {
-    return { kind: "conflict" };
+  if (row.runId !== null && row.runCreatedAt && row.runStatus) {
+    return {
+      kind: "associated",
+      runId: row.runId,
+      status: row.runStatus,
+      createdAt: row.runCreatedAt,
+    };
   }
-  return {
-    kind: "associated",
-    runId: row.runId,
-    status: row.runStatus,
-    createdAt: row.runCreatedAt,
-  };
+  if (
+    row.replacementRunId !== null &&
+    row.replacementRunCreatedAt &&
+    row.replacementRunStatus
+  ) {
+    return {
+      kind: "associated",
+      runId: row.replacementRunId,
+      status: row.replacementRunStatus,
+      createdAt: row.replacementRunCreatedAt,
+    };
+  }
+  if (row.replacementError === INSUFFICIENT_CREDITS_MARKER) {
+    return {
+      kind: "queued",
+      createdAt: row.messageCreatedAt,
+      inserted: false,
+    };
+  }
+  return { kind: "conflict" };
 }
 
 async function resolveClientMessageId(
@@ -406,10 +432,22 @@ async function resolveClientMessageId(
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
       queueItemId: chatMessageQueue.id,
+      replacementRunId: replacementChatMessage.runId,
+      replacementError: replacementChatMessage.error,
+      replacementRunStatus: replacementAgentRun.status,
+      replacementRunCreatedAt: replacementAgentRun.createdAt,
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
     .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .leftJoin(
+      replacementChatMessage,
+      eq(replacementChatMessage.revokesMessageId, chatMessages.id),
+    )
+    .leftJoin(
+      replacementAgentRun,
+      eq(replacementAgentRun.id, replacementChatMessage.runId),
+    )
     .leftJoin(
       chatMessageQueue,
       and(
@@ -1635,10 +1673,22 @@ function appendUnassociatedUserMessage(params: {
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
         queueItemId: chatMessageQueue.id,
+        replacementRunId: replacementChatMessage.runId,
+        replacementError: replacementChatMessage.error,
+        replacementRunStatus: replacementAgentRun.status,
+        replacementRunCreatedAt: replacementAgentRun.createdAt,
       })
       .from(chatMessages)
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
       .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .leftJoin(
+        replacementChatMessage,
+        eq(replacementChatMessage.revokesMessageId, chatMessages.id),
+      )
+      .leftJoin(
+        replacementAgentRun,
+        eq(replacementAgentRun.id, replacementChatMessage.runId),
+      )
       .leftJoin(
         chatMessageQueue,
         and(

@@ -45,9 +45,10 @@ export type {
  * Chat Messages table
  * Each row is a single message belonging to a chat_thread.
  *
- * User messages are persisted immediately on send. Queued user messages have no
- * run_id; when the queue is drained, a new user row is appended with run_id and
- * revokes_message_id pointing at the queued row it supersedes.
+ * User messages are persisted immediately on send. Queued user messages are
+ * represented by chat_message_queue rows; when the queue is drained, a new
+ * user row is appended with run_id and revokes_message_id pointing at the
+ * queued row it supersedes.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run

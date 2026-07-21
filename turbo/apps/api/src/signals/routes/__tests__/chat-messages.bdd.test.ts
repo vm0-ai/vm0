@@ -3791,10 +3791,9 @@ describe("CHAT-02: shared user message queue", () => {
         prompt: "queue-first direct dispatch",
         clientMessageId: messageId,
       },
-      [409],
+      [201],
     );
-    expectApiError(replay.body);
-    expect(replay.body.error.message).toBe("clientMessageId is already in use");
+    expect(replay.body).toStrictEqual(sent.body);
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
