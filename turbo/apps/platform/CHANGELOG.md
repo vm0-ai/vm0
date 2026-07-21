@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.610.3](https://github.com/vm0-ai/vm0/compare/app-v0.610.2...app-v0.610.3) (2026-07-21)
+
+
+### Refactoring
+
+* remove workflow queue trigger identifier ([#22268](https://github.com/vm0-ai/vm0/issues/22268)) ([b01589d](https://github.com/vm0-ai/vm0/commit/b01589dff4a18427b99a73ae2c77fe1a0f336c84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.2
+    * @vm0/core bumped to 8.444.1
+
 ## [0.610.2](https://github.com/vm0-ai/vm0/compare/app-v0.610.1...app-v0.610.2) (2026-07-21)
 
 
