@@ -15,7 +15,7 @@ import {
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
-import type { ConnectorCatalogAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -58,7 +58,7 @@ interface GithubOAuthState {
   readonly sig: string | null;
 }
 
-export function getGithubOAuthAuthMethod(): ConnectorCatalogAuthMethodId {
+export function getGithubOAuthAuthMethod(): ConnectorAuthMethodId {
   return GITHUB_OAUTH_AUTH_METHOD;
 }
 
@@ -372,7 +372,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly vm0UserId: string;
   readonly orgId: string;
   readonly origin: string;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;

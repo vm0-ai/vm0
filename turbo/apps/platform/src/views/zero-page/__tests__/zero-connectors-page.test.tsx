@@ -23,9 +23,9 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -176,7 +176,7 @@ function teamAgent(
 function mockConnectors(
   connectors: {
     type: ConnectorType;
-    authMethod?: ConnectorAuthMethodId;
+    authMethod?: ConnectorRegistryAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
     reconnectReason?: ConnectorResponse["reconnectReason"];
@@ -267,7 +267,7 @@ function customConnector(
 }
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;

@@ -557,7 +557,7 @@ export {
   type ConnectorConfig,
   type ConnectorEnvBindings,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ScopeDiff,
   type ScopeDiffResponse,
   type ConnectorResponseConnectionStatus,

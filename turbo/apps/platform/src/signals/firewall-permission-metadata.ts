@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { CONNECTOR_CATALOG_REF_MAX_LENGTH } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
@@ -18,7 +18,7 @@ export function firewallPermissionMetadataByConnector(
 ): Computed<Promise<PublicConnectorCatalogPermissionDetail | null>> {
   const key = params.connectorRef;
   return computed(async (get) => {
-    if (key.length === 0 || key.length > CONNECTOR_CATALOG_REF_MAX_LENGTH) {
+    if (!connectorRefSchema.safeParse(key).success) {
       return null;
     }
     get(connectorsReloadVersion$);

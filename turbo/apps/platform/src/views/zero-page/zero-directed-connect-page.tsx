@@ -1,8 +1,8 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
-  type ConnectorCatalogRef as ConnectorType,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
@@ -67,11 +67,11 @@ import {
 
 function runDirectedConnect(params: {
   item: ConnectorTypeWithStatus;
-  connectorType: ConnectorType;
+  connectorType: ConnectorRef;
   agentId: string | null;
   signal: AbortSignal;
   connect: (
-    type: ConnectorType,
+    type: ConnectorRef,
     method: ConnectorStatusAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
@@ -81,7 +81,7 @@ function runDirectedConnect(params: {
   ) => Promise<boolean>;
   connectNoAuth: (
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options: {
         readonly connectorLabel?: string;
@@ -173,7 +173,7 @@ function ManualGrantForm({
   manualGrantMethod,
   onSuccess,
 }: {
-  type: ConnectorType;
+  type: ConnectorRef;
   agentId: string | null;
   connectorLabel: string;
   manualGrantMethod: ConnectorStatusAuthMethodDetail;
@@ -279,7 +279,7 @@ function ManualGrantDialog({
   onOpenChange,
   onSuccess,
 }: {
-  type: ConnectorType;
+  type: ConnectorRef;
   agentId: string | null;
   icon: ConnectorTypeWithStatus["icon"] | undefined;
   connectorLabel: string;
@@ -366,7 +366,7 @@ function DirectedConnectModal({
   onSuccess,
 }: {
   readonly open: boolean;
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly agentId: string | null;
   readonly onClose: () => void;
   readonly onSuccess: () => void | Promise<void>;
@@ -396,7 +396,7 @@ function DirectedConnectDialogs({
   setConnectModalOpen,
   onSuccess,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
@@ -432,16 +432,16 @@ function DirectedConnectDialogs({
   );
 }
 
-function useDirectedConnectConnectorType(): ConnectorType | null {
+function useDirectedConnectConnectorType(): ConnectorRef | null {
   const type = useGet(directedConnectType$);
   if (!type) {
     return null;
   }
-  const parsed = connectorCatalogRefSchema.safeParse(type);
+  const parsed = connectorRefSchema.safeParse(type);
   return parsed.success ? parsed.data : null;
 }
 
-function useDirectedConnectCatalogState(connectorType: ConnectorType | null): {
+function useDirectedConnectCatalogState(connectorType: ConnectorRef | null): {
   readonly item: ConnectorTypeWithStatus | undefined;
   readonly isConnected: boolean;
   readonly isLoading: boolean;
@@ -477,7 +477,7 @@ function useDirectedConnectCatalogState(connectorType: ConnectorType | null): {
 function directedConnectManualGrantDialogOpen(
   key: DirectedConnectManualGrantDialogKey | null,
   args: {
-    readonly connectorType: ConnectorType | null;
+    readonly connectorType: ConnectorRef | null;
     readonly agentId: string | null;
     readonly signal: AbortSignal;
   },
@@ -492,7 +492,7 @@ function directedConnectManualGrantDialogOpen(
 function directedConnectModalOpen(
   key: DirectedConnectModalKey | null,
   args: {
-    readonly connectorType: ConnectorType | null;
+    readonly connectorType: ConnectorRef | null;
     readonly agentId: string | null;
     readonly signal: AbortSignal;
   },

@@ -1,18 +1,12 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { CONNECTOR_CATALOG_REF_MAX_LENGTH } from "./connector-identity";
+import { connectorRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
 const agentIdSchema = z.string().uuid();
 const permissionSchema = z.string().min(1).max(128);
-// Permission grants retain their bounded-string wire contract. Exact current
-// connector lookup and availability remain server-owned.
-const permissionGrantConnectorRefSchema = z
-  .string()
-  .min(1)
-  .max(CONNECTOR_CATALOG_REF_MAX_LENGTH);
 
 export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);
 export const userPermissionGrantApplyModeSchema = z.enum(["patch", "replace"]);
@@ -30,7 +24,7 @@ const agentPermissionGrantScopeSchema = z.object({
 export const userPermissionGrantScopeSchema = agentPermissionGrantScopeSchema;
 
 const userPermissionGrantResponseBaseSchema = z.object({
-  connectorRef: permissionGrantConnectorRefSchema,
+  connectorRef: connectorRefSchema,
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
   expiresAt: z.string().nullable(),
@@ -63,7 +57,7 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
 export const applyUserPermissionGrantsRequestSchema =
   userPermissionGrantScopeSchema.and(
     z.object({
-      connectorRef: permissionGrantConnectorRefSchema,
+      connectorRef: connectorRefSchema,
       mode: userPermissionGrantApplyModeSchema,
       grants: z.array(applyUserPermissionGrantSchema),
     }),

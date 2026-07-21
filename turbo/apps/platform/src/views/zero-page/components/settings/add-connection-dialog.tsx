@@ -18,8 +18,8 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
 import type {
-  ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
-  ConnectorCatalogRef as ConnectorType,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FormEvent, ReactElement } from "react";
 import type { PublicConnectorCatalogStartOption } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -95,7 +95,7 @@ type PostConnectOptions = {
 };
 
 type SubmitManualGrantFn = (
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   inputValues: Record<string, string>,
   options: PostConnectOptions,
@@ -103,7 +103,7 @@ type SubmitManualGrantFn = (
 ) => Promise<boolean>;
 
 type ConnectOAuthAuthCodeAndSettleFn = (
-  type: ConnectorType,
+  type: ConnectorRef,
   method: ConnectorStatusAuthMethodDetail,
   onSuccess: () => void | Promise<void>,
   options: PostConnectOptions,
@@ -112,7 +112,7 @@ type ConnectOAuthAuthCodeAndSettleFn = (
 
 type ConnectOAuthDeviceAuthAndSettleFn = (
   args: {
-    readonly type: ConnectorType;
+    readonly type: ConnectorRef;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -123,7 +123,7 @@ type ConnectOAuthDeviceAuthAndSettleFn = (
 
 type ConnectExternalCodeFn = (
   args: {
-    readonly type: ConnectorType;
+    readonly type: ConnectorRef;
     readonly authMethod: ConnectorAuthMethodId;
     readonly agentId?: string;
   },
@@ -132,7 +132,7 @@ type ConnectExternalCodeFn = (
 
 type CompleteExternalCodeAndSettleFn = (
   args: {
-    readonly type: ConnectorType;
+    readonly type: ConnectorRef;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -142,7 +142,7 @@ type CompleteExternalCodeAndSettleFn = (
 
 type ConnectNoAuthAndSettleFn = (
   args: {
-    readonly type: ConnectorType;
+    readonly type: ConnectorRef;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -188,7 +188,7 @@ type ConnectMethodContentEntry = {
 
 function connectorOAuthDeviceAuthFlowIsActive(
   state: ConnectorOAuthDeviceAuthState,
-  type: ConnectorType,
+  type: ConnectorRef,
 ): boolean {
   return (
     state.connectorType === type &&
@@ -200,7 +200,7 @@ function connectorOAuthDeviceAuthFlowIsActive(
 
 function connectorExternalCodeFlowIsActive(
   state: ConnectorExternalCodeState,
-  type: ConnectorType,
+  type: ConnectorRef,
 ): boolean {
   return (
     state.connectorType === type &&
@@ -210,7 +210,7 @@ function connectorExternalCodeFlowIsActive(
 
 function connectorOAuthDeviceAuthStateForMethod(
   state: ConnectorOAuthDeviceAuthState,
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorOAuthDeviceAuthState | null {
   if (state.connectorType !== type || state.status === "idle") {
@@ -221,7 +221,7 @@ function connectorOAuthDeviceAuthStateForMethod(
 
 function connectorExternalCodeStateForMethod(
   state: ConnectorExternalCodeState,
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorExternalCodeState | null {
   if (state.connectorType !== type || state.status === "idle") {
@@ -244,7 +244,7 @@ function ManualGrantForm({
   submit,
   submitting,
 }: {
-  type: ConnectorType;
+  type: ConnectorRef;
   connectorLabel: string;
   authMethod: ConnectorAuthMethodId;
   method: ConnectorStatusAuthMethodDetail;
@@ -536,7 +536,7 @@ function OAuthDeviceAuthStartOptionsForm({
   values,
   setValue,
 }: {
-  type: ConnectorType;
+  type: ConnectorRef;
   authMethod: ConnectorAuthMethodId;
   startOptions: readonly PublicConnectorCatalogStartOption[];
   values: Record<string, string>;
@@ -1264,7 +1264,7 @@ export function ConnectModal({
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
-  selectedType?: ConnectorType | null;
+  selectedType?: ConnectorRef | null;
   agentId?: string;
 }) {
   const globalSelectedType = useGet(selectedConnectorType$);

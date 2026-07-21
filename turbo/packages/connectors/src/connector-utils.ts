@@ -1,10 +1,10 @@
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  connectorAuthMethodIdSchema,
+  connectorRegistryAuthMethodIdSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodRuntimeConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorExternalCodeGrantAuthMethodId,
@@ -63,25 +63,25 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   cli: 2,
   "api-token": 3,
   api: 4,
-} as const satisfies Record<ConnectorAuthMethodId, number>;
+} as const satisfies Record<ConnectorRegistryAuthMethodId, number>;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
 const DEFAULT_AUTH_CODE_CALLBACK_ORIGIN: ConnectorAuthCodeCallbackOrigin =
   "web";
 
 function connectorAuthMethodPriority(
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
 ): number {
   return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
 }
 
 export function getConfiguredConnectorAuthMethodIds(
   type: ConnectorType,
-): ConnectorAuthMethodId[] {
+): ConnectorRegistryAuthMethodId[] {
   // Configured methods are raw registry entries; callers apply availability filters.
   return Object.keys(CONNECTOR_TYPES[type].authMethods)
     .map((authMethod) => {
-      return connectorAuthMethodIdSchema.parse(authMethod);
+      return connectorRegistryAuthMethodIdSchema.parse(authMethod);
     })
     .sort((a, b) => {
       const priorityDiff =
@@ -972,7 +972,7 @@ export function connectorAuthMethodHasGrantKind<
 
 export interface ConnectorAuthMethodRef {
   readonly type: ConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
+  readonly authMethod: ConnectorRegistryAuthMethodId;
 }
 
 export type ConnectorAuthMethodRefByGrantKind<Kind extends ConnectorGrantKind> =
@@ -1373,7 +1373,7 @@ export interface AvailableConnectorAuthMethodsOptions {
  */
 export function isConnectorAuthMethodAvailable(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   const method = getConnectorAuthMethod(type, authMethod);
@@ -1410,9 +1410,9 @@ export function getAvailableConnectorAuthMethodIds(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorAuthMethodId[] {
+): ConnectorRegistryAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethodIds: ConnectorAuthMethodId[] = [];
+  const availableAuthMethodIds: ConnectorRegistryAuthMethodId[] = [];
   const configuredAuthMethodIds = getConfiguredConnectorAuthMethodIds(type);
 
   for (const authMethod of configuredAuthMethodIds) {
@@ -1703,7 +1703,7 @@ export function resolveConnectorAuthClientForMethod(
 
 type AnyConnectorResolvedAuthMethodClient = {
   readonly type: ConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
+  readonly authMethod: ConnectorRegistryAuthMethodId;
   readonly authClient: ConnectorAuthClient;
 };
 
@@ -1859,7 +1859,7 @@ export function getConnectorAuthMethodEnvBindings(
 }
 
 export interface ConnectorEnvBindingEntry {
-  readonly authMethod: ConnectorAuthMethodId;
+  readonly authMethod: ConnectorRegistryAuthMethodId;
   readonly envName: string;
   readonly valueRef: string;
 }

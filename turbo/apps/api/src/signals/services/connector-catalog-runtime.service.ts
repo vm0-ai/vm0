@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
@@ -81,8 +81,8 @@ export type ConnectorRuntimeSnapshotIdentity =
   | ({ readonly source: "external" } & ExternalCatalogIdentity);
 
 export interface ConnectorRuntimeMethod {
-  readonly connectorRef: ConnectorCatalogRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly connectorRef: ConnectorRef;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly availableForNewActions: boolean;
@@ -92,20 +92,14 @@ export interface ConnectorRuntimeMethod {
 }
 
 export interface ConnectorRuntimeConnector {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly catalogConnector: PublicConnectorCatalogDetail;
-  readonly methods: ReadonlyMap<
-    ConnectorCatalogAuthMethodId,
-    ConnectorRuntimeMethod
-  >;
+  readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
   readonly skill: AcceptedPrivateSkill | null;
 }
 
 interface ConnectorRuntimeSnapshotBase {
-  readonly connectors: ReadonlyMap<
-    ConnectorCatalogRef,
-    ConnectorRuntimeConnector
-  >;
+  readonly connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>;
   readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }
 
@@ -514,7 +508,7 @@ function runtimeMethod(args: {
 }
 
 function runtimeMethodEntry(args: {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly availableForNewActions: boolean;
@@ -540,20 +534,14 @@ function runtimeMethodEntry(args: {
 
 const staticRuntimeSnapshot = singleton(() => {
   return (async (): Promise<ConnectorRuntimeSnapshot> => {
-    const connectors = new Map<
-      ConnectorCatalogRef,
-      ConnectorRuntimeConnector
-    >();
+    const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
     for (const connectorRef of CONNECTOR_TYPE_KEYS) {
       const catalogConnector =
         await getStaticConnectorCatalogResolutionDetail(connectorRef);
       if (catalogConnector === null) {
         throw new Error(`Static connector catalog is missing ${connectorRef}`);
       }
-      const methods = new Map<
-        ConnectorCatalogAuthMethodId,
-        ConnectorRuntimeMethod
-      >();
+      const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
       for (const catalogMethod of catalogConnector.authMethods) {
         const method = getConnectorAuthMethod(connectorRef, catalogMethod.id);
         if (method === undefined) {
@@ -597,7 +585,7 @@ function externalRuntimeSnapshot(
       return [connector.connectorRef, connector];
     }),
   );
-  const connectors = new Map<ConnectorCatalogRef, ConnectorRuntimeConnector>();
+  const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
 
   for (const publicConnector of acceptedSnapshot.publicArtifact.connectors) {
     const privateConnector = privateByRef.get(publicConnector.connectorRef);
@@ -618,10 +606,7 @@ function externalRuntimeSnapshot(
         return [method.id, method];
       }),
     );
-    const methods = new Map<
-      ConnectorCatalogAuthMethodId,
-      ConnectorRuntimeMethod
-    >();
+    const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
     for (const publicMethod of publicConnector.authMethods) {
       const privateMethod = privateMethods.get(publicMethod.id);
       const catalogMethod = catalogMethods.get(publicMethod.id);
@@ -921,7 +906,7 @@ async function getConnectorRuntimeAvailableCatalogDetail(args: {
 export async function listConnectorRuntimeVisibleRefs(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): Promise<readonly ConnectorCatalogRef[]> {
+}): Promise<readonly ConnectorRef[]> {
   if (args.snapshot.identity.source === "external") {
     const acceptedSnapshot = args.snapshot.acceptedSnapshot;
     if (acceptedSnapshot === null) {
@@ -932,7 +917,7 @@ export async function listConnectorRuntimeVisibleRefs(args: {
       featureStates: args.featureStates,
     });
   }
-  const refs: ConnectorCatalogRef[] = [];
+  const refs: ConnectorRef[] = [];
   for (const connector of args.snapshot.connectors.values()) {
     const available = await getConnectorRuntimeAvailableCatalogDetail({
       snapshot: args.snapshot,
@@ -948,9 +933,9 @@ export async function listConnectorRuntimeVisibleRefs(args: {
 
 export function filterConnectorRuntimeConfiguredRefs(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly visibleRefs: readonly ConnectorCatalogRef[];
+  readonly visibleRefs: readonly ConnectorRef[];
   readonly readEnv: ConnectorEnvReader;
-}): readonly ConnectorCatalogRef[] {
+}): readonly ConnectorRef[] {
   if (args.snapshot.identity.source === "external") {
     return args.visibleRefs;
   }

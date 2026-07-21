@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   CONNECTOR_TYPE_KEYS,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -492,7 +492,7 @@ export function mockActiveTemplateThread(): void {
 export function mockConnectors(
   connectors: {
     type: ConnectorType;
-    authMethod?: ConnectorAuthMethodId;
+    authMethod?: ConnectorRegistryAuthMethodId;
     externalUsername?: string;
     oauthScopes?: string[];
   }[],

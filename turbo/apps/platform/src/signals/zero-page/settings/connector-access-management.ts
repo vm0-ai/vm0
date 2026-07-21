@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -22,16 +22,16 @@ export interface ConnectorAgentAccessRow {
 
 interface ConnectorAgentAuthorizationRow {
   readonly agent: TeamComposeItem;
-  readonly enabledTypes: readonly ConnectorType[];
+  readonly enabledTypes: readonly ConnectorRef[];
 }
 
 interface SetConnectorAgentAuthorizationParams {
   readonly agentId: string;
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly authorized: boolean;
 }
 
-const managedConnectorAccessTypeState$ = state<ConnectorType | null>(null);
+const managedConnectorAccessTypeState$ = state<ConnectorRef | null>(null);
 const connectorAccessManagementSearchState$ = state("");
 const connectorAccessManagementSavingAgentIdState$ = state<string | null>(null);
 const connectorAccessManagementPermissionAgentIdState$ = state<string | null>(
@@ -55,7 +55,7 @@ export const connectorAccessManagementPermissionAgentId$ = computed((get) => {
 });
 
 export const setManagedConnectorAccessType$ = command(
-  ({ set }, connectorType: ConnectorType | null) => {
+  ({ set }, connectorType: ConnectorRef | null) => {
     set(managedConnectorAccessTypeState$, connectorType);
   },
 );
@@ -116,9 +116,9 @@ export const connectorAgentAuthorizations$ = computed(
 export const connectorAuthorizedAgentsByType$ = computed(
   async (
     get,
-  ): Promise<ReadonlyMap<ConnectorType, readonly TeamComposeItem[]>> => {
+  ): Promise<ReadonlyMap<ConnectorRef, readonly TeamComposeItem[]>> => {
     const authorizations = await get(connectorAgentAuthorizations$);
-    const agentsByType = new Map<ConnectorType, TeamComposeItem[]>();
+    const agentsByType = new Map<ConnectorRef, TeamComposeItem[]>();
     for (const row of authorizations) {
       for (const connectorType of row.enabledTypes) {
         const agents = agentsByType.get(connectorType) ?? [];

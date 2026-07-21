@@ -4,7 +4,7 @@ import type {
   ConnectorCheckRequest,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -50,21 +50,21 @@ import {
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ConnectorCheckIdentity {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly visibility: "available" | "unavailable";
   readonly credentialResolution: "network-boundary" | "none";
 }
 
 interface ConnectorCheckRoutingConfig {
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly candidates: readonly ConnectorDiagnosticBaseCandidate[];
   readonly hasUnresolvedDynamicBase: boolean;
 }
 
 interface StoredRuntimeState {
   readonly baseUrlVarsByType: ReadonlyMap<
-    ConnectorCatalogRef,
+    ConnectorRef,
     Readonly<Record<string, string>> | null
   >;
 }
@@ -117,13 +117,13 @@ type RunContextInlinePermission =
 
 interface ConnectorCheckCatalogContext {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly visibleConnectorRefs: ReadonlySet<ConnectorCatalogRef>;
+  readonly visibleConnectorRefs: ReadonlySet<ConnectorRef>;
 }
 
 function isConnectorRef(
   snapshot: ConnectorRuntimeSnapshot,
   value: string,
-): value is ConnectorCatalogRef {
+): value is ConnectorRef {
   return snapshot.connectors.has(value);
 }
 
@@ -133,7 +133,7 @@ function baseKey(value: string): string {
 
 function connectorCredentialResolution(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
 ): "network-boundary" | "none" {
   return (snapshot.serverFirewalls.getExecutionMetadata(connectorRef)
     ?.secretPlaceholderNames.length ?? 0) > 0
@@ -142,7 +142,7 @@ function connectorCredentialResolution(
 }
 
 function connectorIdentity(
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
   catalogContext: ConnectorCheckCatalogContext,
 ): ConnectorCheckIdentity {
   const connector = getConnectorRuntimeConnector(
@@ -179,11 +179,8 @@ function pendingStoredConnectorRuntimes(
     readonly userId: string;
     readonly snapshot: ConnectorRuntimeSnapshot;
   },
-): ReadonlyMap<ConnectorCatalogRef, PendingStoredConnectorRuntime | null> {
-  const pending = new Map<
-    ConnectorCatalogRef,
-    PendingStoredConnectorRuntime | null
-  >();
+): ReadonlyMap<ConnectorRef, PendingStoredConnectorRuntime | null> {
+  const pending = new Map<ConnectorRef, PendingStoredConnectorRuntime | null>();
 
   for (const row of rows) {
     if (!isConnectorRef(args.snapshot, row.type)) {
@@ -301,7 +298,7 @@ async function loadStoredRuntimeState(
       }),
     );
     const baseUrlVarsByType = new Map<
-      ConnectorCatalogRef,
+      ConnectorRef,
       Readonly<Record<string, string>> | null
     >();
     for (const [type, pendingState] of pending) {
@@ -430,7 +427,7 @@ function inlineApiEnvironmentNames(
 
 function configFromInlineRunContext(
   firewall: RunContextInlineFirewall,
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   view: ConnectorDiagnosticCatalogView | null,
 ): ConnectorCheckRoutingConfig {
   return {
@@ -474,11 +471,11 @@ async function loadRunRoutingConfigs(
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig[]> {
   const viewPromises = new Map<
-    ConnectorCatalogRef,
+    ConnectorRef,
     Promise<ConnectorDiagnosticCatalogView | null>
   >();
   const loadView = (
-    type: ConnectorCatalogRef,
+    type: ConnectorRef,
   ): Promise<ConnectorDiagnosticCatalogView | null> => {
     let promise = viewPromises.get(type);
     if (!promise) {
@@ -509,7 +506,7 @@ async function loadRunRoutingConfigs(
     configs.push(configFromCatalogView(view, baseUrlVars, false));
   }
 
-  const merged = new Map<ConnectorCatalogRef, ConnectorCheckRoutingConfig>();
+  const merged = new Map<ConnectorRef, ConnectorCheckRoutingConfig>();
   for (const config of configs) {
     const existing = merged.get(config.type);
     merged.set(config.type, {
@@ -526,7 +523,7 @@ async function loadRunRoutingConfigs(
 }
 
 async function catalogConfig(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   state: StoredRuntimeState,
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig | null> {
@@ -546,12 +543,12 @@ async function catalogConfig(
 
 async function loadGlobalCatalogConfigs(
   request: ParsedConnectorDiagnosticRequest,
-  requestedType: ConnectorCatalogRef | undefined,
+  requestedType: ConnectorRef | undefined,
   state: StoredRuntimeState,
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorCheckRoutingConfig[]> {
   let bestScore: number | null = null;
-  const ownerTypes = new Set<ConnectorCatalogRef>();
+  const ownerTypes = new Set<ConnectorRef>();
 
   for (const connectorRef of snapshot.serverFirewalls.connectorRefs) {
     const metadata =
@@ -664,7 +661,7 @@ function environmentNamesForWinningCandidates(
 
 function connectorEnvironmentBindings(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
 ): readonly ConnectorRuntimeBindingEntry[] {
   const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
   if (!connector) {
@@ -682,7 +679,7 @@ function connectorEnvironmentBindings(
 
 function environmentValueRefs(
   snapshot: ConnectorRuntimeSnapshot,
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   environmentName: string,
 ): ReadonlySet<string> {
   return new Set(
@@ -698,7 +695,7 @@ function environmentValueRefs(
 
 function environmentNameSupportsRoute(
   snapshot: ConnectorRuntimeSnapshot,
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   environmentName: string,
   routeEnvironmentNames: readonly string[],
 ): boolean {
@@ -758,7 +755,7 @@ function unavailablePolicy(
 }
 
 function permissionPolicy(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   permission: string,
   timeline: ConnectorCheckTimeline,
   configured: boolean,
@@ -787,7 +784,7 @@ function permissionPolicy(
 }
 
 function unknownPolicy(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   timeline: ConnectorCheckTimeline,
   configured: boolean,
 ): ConnectorCheckPolicy {
@@ -816,7 +813,7 @@ function unknownPolicy(
 }
 
 function decisionPermissionResult(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
   decision: Exclude<
     FirewallRequestDecision,
     { readonly kind: "no_match" | "ambiguous" }
@@ -881,7 +878,7 @@ function displayBaseForDecision(
 function connectorTypeForEnvironmentName(
   snapshot: ConnectorRuntimeSnapshot,
   environmentName: string,
-): ConnectorCatalogRef | null {
+): ConnectorRef | null {
   const owners = [...snapshot.connectors.keys()].filter((type) => {
     return connectorEnvironmentBindings(snapshot, type).some((entry) => {
       return entry.envName === environmentName;
@@ -902,7 +899,7 @@ function policyMap(timeline: ConnectorCheckTimeline): NetworkPolicies | null {
 }
 
 function noMatchDiagnostic(
-  requestedType: ConnectorCatalogRef | undefined,
+  requestedType: ConnectorRef | undefined,
   configs: readonly ConnectorCheckRoutingConfig[],
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
@@ -961,7 +958,7 @@ type UrlEnvironmentSelection =
 
 function selectUrlEnvironmentNames(args: {
   readonly catalogContext: ConnectorCheckCatalogContext;
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly config: ConnectorCheckRoutingConfig;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly requestedEnvironmentName: string | undefined;

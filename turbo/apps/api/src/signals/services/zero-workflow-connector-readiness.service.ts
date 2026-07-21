@@ -4,8 +4,8 @@ import type {
   ZeroWorkflowConnectorReadinessStatus,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
@@ -56,7 +56,7 @@ type DetectWorkflowConnectorReadinessResult =
     };
 
 interface AutomationConnectorDependency {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly reason: string;
 }
 
@@ -107,7 +107,7 @@ function automationConnectorDependency(
 
 const modelConnectorSchema = z
   .object({
-    connectorRef: connectorCatalogRefSchema,
+    connectorRef: connectorRefSchema,
     reason: z.string().trim().min(1).max(280),
   })
   .strict();
@@ -133,7 +133,7 @@ async function loadAutomationConnectorDependencies(
     readonly userId: string;
     readonly workflowId: string;
   },
-): Promise<ReadonlyMap<ConnectorCatalogRef, AutomationConnectorDependency>> {
+): Promise<ReadonlyMap<ConnectorRef, AutomationConnectorDependency>> {
   const automations = await db
     .select({ eventType: zeroWorkflowAutomations.eventType })
     .from(zeroWorkflowAutomations)
@@ -145,10 +145,7 @@ async function loadAutomationConnectorDependencies(
       ),
     );
 
-  const dependencies = new Map<
-    ConnectorCatalogRef,
-    AutomationConnectorDependency
-  >();
+  const dependencies = new Map<ConnectorRef, AutomationConnectorDependency>();
   for (const automation of automations) {
     if (!automation.eventType) {
       continue;
@@ -162,7 +159,7 @@ async function loadAutomationConnectorDependencies(
 }
 
 interface ModelCatalogEntry {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly description: string;
 }
@@ -171,7 +168,7 @@ async function detectModelConnectorDependencies(args: {
   readonly workflow: WorkflowConnectorReadinessInput;
   readonly catalog: readonly ModelCatalogEntry[];
   readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<ConnectorCatalogRef, string>> {
+}): Promise<ReadonlyMap<ConnectorRef, string>> {
   const signal = AbortSignal.any([
     args.signal,
     AbortSignal.timeout(CONNECTOR_READINESS_TIMEOUT_MS),
@@ -215,7 +212,7 @@ async function detectModelConnectorDependencies(args: {
       return entry.connectorRef;
     }),
   );
-  const dependencies = new Map<ConnectorCatalogRef, string>();
+  const dependencies = new Map<ConnectorRef, string>();
   for (const connector of modelResult.connectors) {
     if (!catalogRefs.has(connector.connectorRef)) {
       throw new Error(
@@ -329,12 +326,10 @@ export const detectWorkflowConnectorReadiness$ = command(
         return [connector.connectorRef, connector];
       }),
     );
-    const enabledForAgent = new Set<ConnectorCatalogRef>(
+    const enabledForAgent = new Set<ConnectorRef>(
       agentScope.allowedConnectorTypes,
     );
-    const mergedDependencies = new Map<ConnectorCatalogRef, string>(
-      modelDependencies,
-    );
+    const mergedDependencies = new Map<ConnectorRef, string>(modelDependencies);
     for (const dependency of automationDependencies.values()) {
       mergedDependencies.set(dependency.connectorRef, dependency.reason);
     }

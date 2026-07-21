@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import type { ConnectorRegistryAuthMethodId } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -95,7 +95,7 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 async function requestOauthStart(
   type: string,
   options: {
-    readonly authMethod?: ConnectorAuthMethodId;
+    readonly authMethod?: ConnectorRegistryAuthMethodId;
     readonly authenticated?: boolean;
     readonly headers?: HeadersInit;
     readonly origin?: string;

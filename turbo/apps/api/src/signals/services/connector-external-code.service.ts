@@ -7,9 +7,9 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  connectorCatalogAuthMethodIdSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
@@ -61,8 +61,8 @@ const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
 type ExternalCodeSessionOwner = {
-  readonly type: ConnectorCatalogRef;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly type: ConnectorRef;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly orgId: string;
   readonly userId: string;
 };
@@ -96,8 +96,8 @@ const connectorExternalCodeDisabled = Object.freeze({
 function externalCodeResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
-    readonly connectorRef: ConnectorCatalogRef;
-    readonly authMethodId: ConnectorCatalogAuthMethodId;
+    readonly connectorRef: ConnectorRef;
+    readonly authMethodId: ConnectorAuthMethodId;
   },
 ) {
   switch (resolution.reason) {
@@ -179,10 +179,10 @@ function resolveRequiredAuthClient(
 
 async function resolveStoredExternalCodeMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethodId: string;
 }) {
-  const storedAuthMethod = connectorCatalogAuthMethodIdSchema.safeParse(
+  const storedAuthMethod = connectorAuthMethodIdSchema.safeParse(
     args.authMethodId,
   );
   if (!storedAuthMethod.success) {
@@ -241,7 +241,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -549,7 +549,7 @@ const authorizeExternalCodeSessionConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly session: ExternalCodeSessionRow;
-      readonly connectorType: ConnectorCatalogRef;
+      readonly connectorType: ConnectorRef;
     },
     signal: AbortSignal,
   ) => {
@@ -733,8 +733,8 @@ export const startConnectorExternalCodeSession$ = command(
       readonly userId: string;
       readonly agentId: string | undefined;
       readonly authorizeAgent: true | undefined;
-      readonly type: ConnectorCatalogRef;
-      readonly authMethod: ConnectorCatalogAuthMethodId;
+      readonly type: ConnectorRef;
+      readonly authMethod: ConnectorAuthMethodId;
     },
     signal: AbortSignal,
   ) => {
@@ -851,7 +851,7 @@ export const completeConnectorExternalCodeSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorCatalogRef;
+      readonly type: ConnectorRef;
       readonly sessionId: string;
       readonly sessionToken: string;
       readonly code: string;

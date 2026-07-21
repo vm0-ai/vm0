@@ -1,7 +1,7 @@
-import { connectorCatalogRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 
-export { connectorCatalogRefSchema };
+export { connectorRefSchema };
 
 export const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 
