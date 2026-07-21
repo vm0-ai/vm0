@@ -26,8 +26,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -77,12 +76,10 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     # Initial content: counter at 100, no agent marker
     echo "100" > counter.txt
     echo "initial content" > state.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # --- Phase 2: Run agent to create checkpoint (~15s) ---
@@ -119,7 +116,7 @@ teardown_file() {
     echo "external marker" > external-marker.txt  # Add new file
     rm -f agent-marker.txt 2>/dev/null || true    # Remove agent's file
 
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
     echo "# New HEAD version pushed"
 

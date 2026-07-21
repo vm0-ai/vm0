@@ -30,8 +30,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -91,11 +90,9 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     echo "initial" > marker.txt
     echo "100" > counter.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent to create session (was t06-2b) --
@@ -126,7 +123,7 @@ teardown_file() {
     echo "999" > counter.txt                 # Update counter
     rm -f agent.txt 2>/dev/null || true      # Remove agent's file
 
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
     echo "# New HEAD version pushed"
 
@@ -163,10 +160,8 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     echo "initial-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent with templateVars (was t06-3b) --
@@ -195,7 +190,7 @@ teardown_file() {
     echo "# Updating artifact..."
     cd "$artifact_dir"
     echo "updated-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 4: Continue from session with templateVars (was t06-3d) --
@@ -250,9 +245,8 @@ EOF
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
     echo "test-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent with secrets to create session (was t06-4b) --
