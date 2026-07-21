@@ -57,9 +57,9 @@ function uploadedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
   return sql`EXISTS (
     SELECT 1
     FROM ${runUploadedFiles}
-    WHERE ${runUploadedFiles.userId} = ${args.userId}
-      AND ${runUploadedFiles.orgId} = ${args.orgId}
-      AND ${runUploadedFiles.url} = ${args.artifactUrl}
+    WHERE ${eq(runUploadedFiles.userId, args.userId)}
+      AND ${eq(runUploadedFiles.orgId, args.orgId)}
+      AND ${eq(runUploadedFiles.url, args.artifactUrl)}
     LIMIT 1
   )`;
 }
@@ -74,11 +74,11 @@ function attachedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
     SELECT 1
     FROM ${chatMessages}
     INNER JOIN ${chatThreads}
-      ON ${chatThreads.id} = ${chatMessages.chatThreadId}
+      ON ${eq(chatThreads.id, chatMessages.chatThreadId)}
     INNER JOIN ${agentComposes}
-      ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-    WHERE ${chatThreads.userId} = ${args.userId}
-      AND ${agentComposes.orgId} = ${args.orgId}
+      ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
+    WHERE ${eq(chatThreads.userId, args.userId)}
+      AND ${eq(agentComposes.orgId, args.orgId)}
       AND EXISTS (
         SELECT 1
         FROM jsonb_array_elements(COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)) AS attached_file

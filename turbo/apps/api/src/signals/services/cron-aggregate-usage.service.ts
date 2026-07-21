@@ -1,7 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { gte, isNotNull, lt, sql } from "drizzle-orm";
 
 import { nowDate } from "../external/time";
 import { writeDb$ } from "../external/db";
@@ -32,9 +32,9 @@ export const aggregateUsageDaily$ = command(
         COUNT(*)::int,
         COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint
       FROM ${agentRuns}
-      WHERE ${agentRuns.createdAt} >= ${yesterday}
-        AND ${agentRuns.createdAt} < ${today}
-        AND ${agentRuns.completedAt} IS NOT NULL
+      WHERE ${gte(agentRuns.createdAt, yesterday)}
+        AND ${lt(agentRuns.createdAt, today)}
+        AND ${isNotNull(agentRuns.completedAt)}
       GROUP BY ${agentRuns.userId}, ${agentRuns.orgId}
       ON CONFLICT (user_id, org_id, date) DO UPDATE SET
         run_count = EXCLUDED.run_count,

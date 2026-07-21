@@ -9,7 +9,17 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+  sql,
+} from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
@@ -778,7 +788,7 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql`MAX(${agentRuns.completedAt})`
+        lastActivity: max(agentRuns.completedAt)
           .mapWith(agentRuns.completedAt)
           .as("last_activity"),
       })
@@ -794,7 +804,7 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql`MAX(${usageEvent.processedAt})`
+        lastActivity: max(usageEvent.processedAt)
           .mapWith(usageEvent.processedAt)
           .as("last_activity"),
       })
@@ -918,7 +928,7 @@ async function queryUsageEventCreditRows(
   dayEnd: Date,
   signal: AbortSignal,
 ): Promise<LedgerCreditRow[]> {
-  const isRunless = sql`${usageEvent.runId} IS NULL`;
+  const isRunless = isNull(usageEvent.runId);
   const rows = await db
     .select({
       orgId: usageEvent.orgId,
@@ -1299,7 +1309,7 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql`MAX(${insightsDaily.updatedAt})`
+        lastUpdated: max(insightsDaily.updatedAt)
           .mapWith(insightsDaily.updatedAt)
           .as("last_updated"),
       })

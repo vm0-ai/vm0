@@ -3,8 +3,8 @@ import {
   ESLintUtils,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import type { Declaration } from "typescript";
 
+import { isDrizzleDeclaration } from "../drizzle.ts";
 import { createRule } from "../utils.ts";
 
 function memberName(node: TSESTree.MemberExpression): string | null {
@@ -137,11 +137,6 @@ function executeUsage(node: TSESTree.CallExpression): ExecuteUsage {
   }
 
   return { kind: "raw-result", assertion };
-}
-
-function isDrizzleDeclaration(node: Declaration): boolean {
-  const sourcePath = node.getSourceFile().fileName.replaceAll("\\", "/");
-  return sourcePath.includes("/node_modules/drizzle-orm/");
 }
 
 export const requireExecuteRowSchema = createRule({
