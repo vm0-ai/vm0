@@ -1,16 +1,12 @@
 use aws_sdk_s3::types::{Delete, ObjectIdentifier};
 
-use super::{
-    R2Error, R2ImageCache, io_other,
-    keys::{LEGACY_ROOTFS_KEY_PREFIX, TEMPLATE_KEY_PREFIX},
-};
+use super::{R2Error, R2ImageCache, io_other, keys::TEMPLATE_KEY_PREFIX};
 
 impl R2ImageCache {
-    /// Delete legacy rootfs objects and shared template objects older
-    /// than `max_age`. Returns `(deleted_count, freed_bytes)`. Attempts to
-    /// scan `runner-images/` and `runner-templates/`; on a full pass, each
-    /// prefix costs at least one LIST, paginated prefixes cost one LIST per
-    /// page, and DELETE is issued only for pages with expired objects.
+    /// Delete shared template objects older than `max_age`. Returns
+    /// `(deleted_count, freed_bytes)`. A full pass costs at least one LIST,
+    /// paginated results cost one LIST per page, and DELETE is issued only for
+    /// pages with expired objects.
     /// Idempotent under concurrent fleet execution: hosts can attempt the same
     /// scan and `DeleteObjects` returns success for already-absent keys (S3
     /// spec). Per-host returned counts are best-effort and are not fleet-unique
@@ -21,17 +17,10 @@ impl R2ImageCache {
     pub async fn gc_older_than(&self, max_age: std::time::Duration) -> Result<(u64, u64), R2Error> {
         let cutoff = cutoff_unix_secs(std::time::SystemTime::now(), max_age)?;
 
-        let mut total_deleted = 0u64;
-        let mut total_freed = 0u64;
-        for prefix in [LEGACY_ROOTFS_KEY_PREFIX, TEMPLATE_KEY_PREFIX] {
-            let (deleted, freed) = self.gc_prefix_older_than(prefix, cutoff).await?;
-            total_deleted = total_deleted.saturating_add(deleted);
-            total_freed = total_freed.saturating_add(freed);
-        }
-        Ok((total_deleted, total_freed))
+        self.gc_template_objects_older_than(cutoff).await
     }
 
-    async fn gc_prefix_older_than(&self, prefix: &str, cutoff: i64) -> Result<(u64, u64), R2Error> {
+    async fn gc_template_objects_older_than(&self, cutoff: i64) -> Result<(u64, u64), R2Error> {
         let mut continuation_token: Option<String> = None;
         let mut total_deleted = 0u64;
         let mut total_freed = 0u64;
@@ -40,7 +29,7 @@ impl R2ImageCache {
                 .client
                 .list_objects_v2()
                 .bucket(&self.bucket)
-                .prefix(prefix);
+                .prefix(TEMPLATE_KEY_PREFIX);
             if let Some(token) = continuation_token.as_ref() {
                 req = req.continuation_token(token);
             }
