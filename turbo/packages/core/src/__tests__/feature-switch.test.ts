@@ -143,6 +143,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.RunnerColdArchiveDelivery]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -173,6 +176,9 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.RunnerColdArchiveDelivery]).toBe(
       false,
     );
   });
@@ -220,6 +226,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.PresentationElementDragging,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.RunnerColdArchiveDelivery,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroScrape,
     );
@@ -233,6 +242,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.PresentationElementDragging]: true,
+        [FeatureSwitchKey.RunnerColdArchiveDelivery]: true,
         [FeatureSwitchKey.ZeroScrape]: true,
         [FeatureSwitchKey.ZeroWebSearch]: true,
         [FeatureSwitchKey.Dummy]: false,

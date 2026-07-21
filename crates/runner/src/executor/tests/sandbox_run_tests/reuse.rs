@@ -31,9 +31,14 @@ async fn execute_job_reuse_succeeds() {
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
     let cancel = tokio_util::sync::CancellationToken::new();
-    let (reuse_outcome, _telemetry) = execute_job_reuse(
+    let mut reuse_context = minimal_context();
+    reuse_context.feature_flags = Some(HashMap::from([(
+        "runnerColdArchiveDelivery".to_string(),
+        true,
+    )]));
+    let (reuse_outcome, telemetry) = execute_job_reuse(
         idle_sandbox,
-        minimal_context(),
+        reuse_context,
         &config,
         &default_params(),
         cancel,
@@ -42,6 +47,12 @@ async fn execute_job_reuse_succeeds() {
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.error().is_none());
     assert!(reuse_outcome.sandbox.is_some());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_reused_archive_delivery_guest_owned",
+        true,
+        None,
+    );
 }
 
 #[tokio::test]

@@ -1,5 +1,49 @@
 use super::*;
 
+use async_trait::async_trait;
+use sandbox::SandboxConfig;
+
+struct CreateGateFactory {
+    inner: MockSandboxFactory,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+impl CreateGateFactory {
+    fn new() -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl SandboxFactory for CreateGateFactory {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn config_hash(&self) -> String {
+        self.inner.config_hash()
+    }
+
+    async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.inner.create(config).await
+    }
+
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
+        self.inner.destroy(sandbox).await;
+    }
+
+    async fn shutdown(&mut self) {
+        self.inner.shutdown().await;
+    }
+}
+
 fn guest_dns_readiness_failure(message: &str) -> SandboxError {
     SandboxError::GuestDnsReadiness {
         message: message.to_string(),
@@ -19,6 +63,164 @@ async fn execute_inner_happy_path() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
     assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn fresh_archive_download_overlaps_blocked_sandbox_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = Arc::new(CreateGateFactory::new());
+    let server = httpmock::MockServer::start_async().await;
+    let body = b"fresh archive".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/fresh-overlap.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.feature_flags = Some(HashMap::from([(
+        "runnerColdArchiveDelivery".to_string(),
+        true,
+    )]));
+    let mut storage = api_storage(
+        "fresh-overlap",
+        "/data",
+        "v1",
+        &server.url("/fresh-overlap.tar.gz"),
+    );
+    storage.archive_size = Some(body.len() as u64);
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: Vec::new(),
+    });
+
+    let task = tokio::spawn({
+        let factory = Arc::clone(&factory);
+        async move {
+            let mut telemetry = test_telemetry(&config, &ctx);
+            let outcome = execute_new_sandbox(
+                factory.as_ref(),
+                &ctx,
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                &mut telemetry,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await;
+            (outcome, telemetry)
+        }
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), factory.entered.notified())
+        .await
+        .expect("sandbox create should start");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if full_get.calls_async().await == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("runner archive GET should start while sandbox create is blocked");
+    assert!(
+        !task.is_finished(),
+        "sandbox create gate should keep the run from reaching guest download"
+    );
+
+    factory.release.notify_one();
+    let (outcome, telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("run should finish after sandbox create is released")
+        .expect("run task should not panic");
+    assert_eq!(outcome.unwrap().exit_code(), 0);
+    full_get.assert_calls_async(1).await;
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_archive_delivery_enabled",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_staged",
+        true,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn fresh_archive_planning_failure_records_apply_and_prepare_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = minimal_context();
+    ctx.feature_flags = Some(HashMap::from([(
+        "runnerColdArchiveDelivery".to_string(),
+        true,
+    )]));
+    let mut artifact = api_artifact(
+        "memory",
+        "/home/user/.claude/projects/project",
+        "storage-id-1",
+        "version-2",
+        "https://storage.example/artifact.tar.gz",
+    );
+    artifact.archive_url = None;
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: Vec::new(),
+        artifacts: vec![artifact],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let error = match result {
+        Ok(_) => panic!("invalid fresh storage plan should fail"),
+        Err(error) => error,
+    };
+    let error = error.to_string();
+    assert!(
+        error.contains("storage manifest artifact memory version version-2 is missing archiveUrl"),
+        "got: {error}"
+    );
+    assert!(
+        overrides.create_configs().is_empty(),
+        "invalid fresh storage plan should fail before sandbox creation"
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_storage_manifest_apply",
+        false,
+        Some(&error),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_prepare",
+        false,
+        Some(&error),
+    );
 }
 
 #[tokio::test]
@@ -112,6 +314,67 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
     assert_telemetry_action(
         &telemetry,
         "runner_fresh_sandbox_dns_readiness_retry",
+        true,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn dns_readiness_retry_keeps_one_fresh_archive_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let server = httpmock::MockServer::start_async().await;
+    let body = b"fresh archive across DNS retry".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/fresh-dns-retry.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.feature_flags = Some(HashMap::from([(
+        "runnerColdArchiveDelivery".to_string(),
+        true,
+    )]));
+    let mut storage = api_storage(
+        "fresh-dns-retry",
+        "/data",
+        "v1",
+        &server.url("/fresh-dns-retry.tar.gz"),
+    );
+    storage.archive_size = Some(body.len() as u64);
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: Vec::new(),
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(overrides.create_configs().len(), 2);
+    full_get.assert_calls_async(1).await;
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_single_request",
         true,
         None,
     );

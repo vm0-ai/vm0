@@ -479,6 +479,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.RunnerColdArchiveDelivery]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Deliver bounded cold archives from the runner while fresh sandboxes start.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
 };
 
 interface ResolvedHashes {

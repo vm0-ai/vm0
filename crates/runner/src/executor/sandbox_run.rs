@@ -38,6 +38,8 @@ use crate::network_log_manager::NetworkLogSession;
 use crate::provider::NetworkPolicyRefreshRegistration;
 use crate::proxy;
 use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::storage_cache::PreparedFreshStorage;
+use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, FirewallEntry};
 use crate::workspace_image_cache::{
@@ -128,6 +130,11 @@ const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
 const DNS_READINESS_RETRY_PREPARE_FAILED: &str = "replacement_prepare_failed";
 const SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN: &str = "cleanup_uncertain";
+const RUNNER_COLD_ARCHIVE_DELIVERY_FEATURE: &str = "runnerColdArchiveDelivery";
+const RUNNER_FRESH_ARCHIVE_DELIVERY_ENABLED: &str = "runner_fresh_archive_delivery_enabled";
+const RUNNER_FRESH_ARCHIVE_DELIVERY_DISABLED: &str = "runner_fresh_archive_delivery_disabled";
+const RUNNER_REUSED_ARCHIVE_DELIVERY_GUEST_OWNED: &str =
+    "runner_reused_archive_delivery_guest_owned";
 
 struct FreshSandboxFactoryCreateObserver<'a> {
     telemetry: &'a mut JobTelemetry,
@@ -307,6 +314,76 @@ pub(super) async fn execute_new_sandbox(
     .await
 }
 
+fn fresh_archive_delivery_enabled(context: &ExecutionContext) -> bool {
+    context
+        .feature_flags
+        .as_ref()
+        .and_then(|flags| flags.get(RUNNER_COLD_ARCHIVE_DELIVERY_FEATURE))
+        .copied()
+        .unwrap_or(false)
+}
+
+async fn prepare_fresh_storage(
+    context: &ExecutionContext,
+    workspace_image: Option<&WorkspaceImageLease>,
+    config: &ExecutorConfig,
+    cancel: &CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> RunnerResult<Option<PreparedFreshStorage>> {
+    if !fresh_archive_delivery_enabled(context) {
+        telemetry.record(
+            RUNNER_FRESH_ARCHIVE_DELIVERY_DISABLED,
+            Duration::ZERO,
+            true,
+            None,
+        );
+        return Ok(None);
+    }
+    telemetry.record(
+        RUNNER_FRESH_ARCHIVE_DELIVERY_ENABLED,
+        Duration::ZERO,
+        true,
+        None,
+    );
+    let Some(manifest) = &context.storage_manifest else {
+        return Ok(None);
+    };
+    let apply_started = Instant::now();
+    let result: RunnerResult<Option<PreparedFreshStorage>> = async {
+        let runtime_dir = super::guest_runtime_dir(context.run_id)?;
+        let plan = build_storage_plan(
+            manifest,
+            runtime_dir.as_str(),
+            workspace_image.and_then(WorkspaceImageLease::previous_storage),
+        )?;
+        let delivery = crate::storage_cache::prepare_fresh_archive_delivery(
+            &plan,
+            &config.home,
+            &config.fresh_archive_delivery,
+            cancel,
+            telemetry,
+        )
+        .await?;
+        Ok(Some(PreparedFreshStorage { plan, delivery }))
+    }
+    .await;
+    if let Err(error) = &result {
+        telemetry.record(
+            "runner_storage_manifest_apply",
+            apply_started.elapsed(),
+            false,
+            Some(&error.to_string()),
+        );
+    }
+    result
+}
+
+async fn cancel_prepared_storage(controls: &mut RunControls, telemetry: &mut JobTelemetry) {
+    if let Some(mut prepared) = controls.prepared_storage.take() {
+        prepared.delivery.cancel_and_drain(telemetry).await;
+    }
+}
+
 pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
@@ -334,6 +411,26 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         telemetry,
     )
     .await;
+    let prepared_storage = prepare_fresh_storage(
+        context,
+        workspace_image.as_ref(),
+        config,
+        &controls.cancel,
+        telemetry,
+    )
+    .await;
+    match prepared_storage {
+        Ok(prepared_storage) => controls.prepared_storage = prepared_storage,
+        Err(error) => {
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+    }
     controls.session_history_restore_plan = resolve_fresh_session_history_restore_plan(
         std::mem::take(&mut controls.session_history_restore_plan),
         workspace_image.as_ref(),
@@ -382,6 +479,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 false,
                 Some(&error.to_string()),
             );
+            cancel_prepared_storage(&mut controls, telemetry).await;
             return Err(error);
         }
 
@@ -424,6 +522,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 false,
                 Some(&error.to_string()),
             );
+            cancel_prepared_storage(&mut controls, telemetry).await;
             return Err(error);
         }
         if !retry_guest_dns && !retry_without_workspace {
@@ -434,6 +533,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 false,
                 Some(&error.to_string()),
             );
+            cancel_prepared_storage(&mut controls, telemetry).await;
             return Err(error);
         }
 
@@ -448,6 +548,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if cache_hit {
+            cancel_prepared_storage(&mut controls, telemetry).await;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
                 context.run_id,
@@ -467,6 +568,18 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 None,
             );
             workspace_image = None;
+            match prepare_fresh_storage(context, None, config, &controls.cancel, telemetry).await {
+                Ok(prepared_storage) => controls.prepared_storage = prepared_storage,
+                Err(error) => {
+                    telemetry.record(
+                        "runner_fresh_sandbox_prepare",
+                        prepare_started.elapsed(),
+                        false,
+                        Some(&error.to_string()),
+                    );
+                    return Err(error);
+                }
+            }
             controls.session_history_restore_plan =
                 discard_local_sidecar_restore_plan_for_workspace_retry(
                     std::mem::take(&mut controls.session_history_restore_plan),
@@ -1007,6 +1120,14 @@ pub(super) async fn execute_reused_sandbox(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> ExecuteOutcome {
+    if fresh_archive_delivery_enabled(context) {
+        telemetry.record(
+            RUNNER_REUSED_ARCHIVE_DELIVERY_GUEST_OWNED,
+            Duration::ZERO,
+            true,
+            None,
+        );
+    }
     info!(
         run_id = %context.run_id,
         sandbox_id = %sandbox.id(),
