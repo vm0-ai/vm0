@@ -25,7 +25,7 @@ describe("zero onboarding routing", () => {
     });
 
     await expect(
-      screen.findByRole("heading", { name: "Start your first task" }),
+      screen.findByRole("heading", { name: "Try this prompt" }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe("/onboarding/make");
     expect(context.store.get(searchParams$).get("prompt")).toBe("hello world");
@@ -33,7 +33,9 @@ describe("zero onboarding routing", () => {
     expect(context.store.get(searchParams$).get("vm0_source")).toBe(
       "presentation",
     );
-    expect(screen.getByLabelText("Request")).toHaveValue("hello world");
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      "hello world",
+    );
   });
 
   it("keeps legacy onboarding links as internal aliases", async () => {
@@ -46,7 +48,7 @@ describe("zero onboarding routing", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "What do you want to make first?",
+        name: "What do you want to make first",
       }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe("/onboarding/make");
