@@ -108,6 +108,10 @@ pub mod runners {
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
 
+    /// Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.
+    /// Rust runners use this shared contract value to bound local cooldown state and poll request size.
+    pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = 128;
+
     /// Telemetry value for session history downloads signed with a configured S3 endpoint.
     /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
     pub const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT: &str =

@@ -83,29 +83,34 @@ export const sessionAffinityResourceSchema = z.enum([
 ]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
-const runnerClaimTelemetrySchema = z.object({
-  discoverySource: runnerClaimDiscoverySourceSchema.optional(),
-  jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
-  localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
-  directCandidateNotificationToEnqueueMs: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional(),
-  directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
-  providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
-  mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
-  pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
-  pollHttpRequestMs: z.number().int().nonnegative().optional(),
-  pollReason: runnerClaimPollReasonSchema.optional(),
-});
+const runnerClaimTelemetrySchema = z
+  .object({
+    discoverySource: runnerClaimDiscoverySourceSchema.optional(),
+    jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
+    localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+    directCandidateNotificationToEnqueueMs: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
+    directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
+    providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
+    mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
+    pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
+    pollHttpRequestMs: z.number().int().nonnegative().optional(),
+    pollReason: runnerClaimPollReasonSchema.optional(),
+  })
+  .catch({});
 
-const runnerPollTelemetrySchema = z.object({
-  pollReason: runnerClaimPollReasonSchema.optional(),
-});
+const runnerPollTelemetrySchema = z
+  .object({
+    pollReason: runnerClaimPollReasonSchema.optional(),
+  })
+  .catch({});
 
 const runnerProfileListSchema = z.array(z.string());
 const runnerSupportedProfileListSchema = runnerProfileListSchema.min(1);
+export const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX = 128;
 
 const networkPolicyRefreshSchema = z.object({
   nextRefreshAt: z.string().datetime({ offset: true }),
@@ -155,6 +160,10 @@ const runnersPollBodySchema = z.object({
   runnerId: z.uuid().optional(),
   group: runnerGroupSchema,
   supportedProfiles: runnerSupportedProfileListSchema,
+  excludedRunIds: z
+    .array(z.uuid())
+    .max(RUNNER_POLL_EXCLUDED_RUN_IDS_MAX)
+    .optional(),
   telemetry: runnerPollTelemetrySchema.optional(),
 });
 
