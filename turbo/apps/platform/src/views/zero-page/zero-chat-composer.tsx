@@ -725,11 +725,6 @@ function PendingItemsStripHeader({
         <span className="text-sm text-muted-foreground">
           {count > 0 ? label : "Automation events paused"}
         </span>
-        {workflowEventCount > 0 ? (
-          <span className="ml-2 text-xs text-muted-foreground/70">
-            Messages run first
-          </span>
-        ) : null}
       </div>
       {showWorkflowControls ? (
         <button
@@ -804,24 +799,28 @@ function PendingItemsStrip({
 }) {
   const queued = items ?? [];
   const events = workflowEvents ?? [];
-  const count = queued.length + events.length + (activeGoal ? 1 : 0);
-  const onlyMessages = events.length === 0 && !activeGoal;
-  const label = onlyMessages
-    ? `${count} ${count === 1 ? "message" : "messages"} waiting to send`
-    : `${count} ${count === 1 ? "item" : "items"} waiting`;
-  if (count === 0 && !workflowEventsPaused) {
+  const count = queued.length + events.length;
+  const messageLabel = `${queued.length} ${queued.length === 1 ? "message" : "messages"}`;
+  const eventLabel = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  const label =
+    queued.length > 0 && events.length > 0
+      ? `${messageLabel} and ${eventLabel} waiting`
+      : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
+  if (count === 0 && !activeGoal && !workflowEventsPaused) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      <PendingItemsStripHeader
-        count={count}
-        label={label}
-        workflowEventCount={events.length}
-        workflowEventsPaused={workflowEventsPaused}
-        onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-        onClearWorkflowEvents={onClearWorkflowEvents}
-      />
+      {count > 0 || workflowEventsPaused ? (
+        <PendingItemsStripHeader
+          count={count}
+          label={label}
+          workflowEventCount={events.length}
+          workflowEventsPaused={workflowEventsPaused}
+          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
+          onClearWorkflowEvents={onClearWorkflowEvents}
+        />
+      ) : null}
       {workflowEventsPaused ? (
         <div className="mx-4 mb-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
           Automation events paused

@@ -144,8 +144,9 @@ describe("workflow queue panel", () => {
     await setupWorkflowQueuePage();
 
     await waitFor(() => {
-      expect(screen.getByText("4 items waiting")).toBeInTheDocument();
-      expect(screen.getByText("Messages run first")).toBeInTheDocument();
+      expect(
+        screen.getByText("1 message and 2 events waiting"),
+      ).toBeInTheDocument();
       expect(screen.getByText("Nightly sync")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
