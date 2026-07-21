@@ -222,17 +222,17 @@ wait_for_chat_assistant_done() {
 # Exports on success:
 #   LAST_RUN_ID    — runId returned by the route
 #   LAST_THREAD_ID — threadId returned by the route (newly created)
-# Usage: send_chat_run_message <agent_id> <prompt>
+# Usage: send_chat_run_message <agent_id> <prompt> <model>
 send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
+    local selected_model="$3"
     local payload body
     # realAgentInPreview=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
     # guest_mock_codex::build_events.
-    local selected_model="${CODEX_ZERO_SELECTED_MODEL:-gpt-5.5}"
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
