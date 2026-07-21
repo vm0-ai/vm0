@@ -25,18 +25,20 @@ const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
 const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
 const STRUCTURED_MESSAGE = "Use the source thread for context";
-const STRUCTURED_PROMPT: UserMessageDocument = {
-  version: 1,
-  parts: [
-    { type: "text", text: "Use " },
-    {
-      type: "chat_thread",
-      threadId: FIRST_THREAD_ID,
-      titleSnapshot: "IndexedDB source thread",
-    },
-    { type: "text", text: " for context" },
-  ],
-};
+function structuredPromptFixture(): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      { type: "text", text: "Use " },
+      {
+        type: "chat_thread",
+        threadId: FIRST_THREAD_ID,
+        titleSnapshot: "IndexedDB source thread",
+      },
+      { type: "text", text: " for context" },
+    ],
+  };
+}
 
 async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
   const link = (await screen.findByText(title)).closest("a");
@@ -49,6 +51,7 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 describe("chat message persistence", () => {
   it("round-trips structured and legacy messages through IndexedDB on thread re-entry", async () => {
     const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
+    const structuredPrompt = structuredPromptFixture();
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
     const firstThreadCaughtUp = context.mocks.deferred<void>();
@@ -92,7 +95,7 @@ describe("chat message persistence", () => {
                 id: STRUCTURED_MESSAGE_ID,
                 role: "user",
                 content: STRUCTURED_MESSAGE,
-                structuredPrompt: STRUCTURED_PROMPT,
+                structuredPrompt,
                 createdAt: "2026-06-09T10:00:00Z",
               },
               {
@@ -147,7 +150,7 @@ describe("chat message persistence", () => {
         );
         expect(structuredMessage).toMatchObject({
           content: STRUCTURED_MESSAGE,
-          structuredPrompt: STRUCTURED_PROMPT,
+          structuredPrompt,
           threadId: FIRST_THREAD_ID,
         });
         const persistedMessage: unknown = await testDb.get(
