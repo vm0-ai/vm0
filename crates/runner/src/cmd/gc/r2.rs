@@ -4,7 +4,7 @@ use crate::r2_cache::R2ImageCache;
 
 use super::report::{GcReport, human_bytes};
 
-/// Delete R2 image cache objects older than `keep_days`. Errors (R2 not
+/// Delete R2 template cache objects older than `keep_days`. Errors (R2 not
 /// configured, network blip, etc.) are logged and swallowed: GC must not
 /// fail the deploy because the cache layer is misconfigured. Returns the
 /// successful full-pass report, or an empty report on init or scan failure. A
@@ -29,7 +29,7 @@ pub(super) async fn gc_r2(keep_days: u64, dry_run: bool) -> GcReport {
         // No safe dry-run: list_objects_v2 + counting age would still cost
         // R2 reads, and we can't filter without making the call. Surface the
         // intent and skip the destructive part.
-        info!("[dry-run] would delete R2 image objects older than {keep_days} days");
+        info!("[dry-run] would delete R2 template objects older than {keep_days} days");
         return GcReport::default();
     }
 
