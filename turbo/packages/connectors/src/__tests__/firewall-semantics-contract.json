@@ -1990,8 +1990,7 @@
             },
             {
               "base": "https://api.example.com",
-              "auth": { "headers": { "Authorization": "Bearer default" } },
-              "permissions": []
+              "auth": { "headers": { "Authorization": "Bearer default" } }
             }
           ]
         }

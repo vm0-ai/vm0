@@ -164,6 +164,8 @@ export const firewallBaseHostPolicySchema = z.union([
 
 /**
  * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
+ * An entry without permissions is the owner's fallback when no concrete
+ * permission route matches.
  */
 export const firewallApiSchema = z.object({
   base: z.string(),
