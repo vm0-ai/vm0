@@ -194,13 +194,18 @@ enum FreshArchiveFetchTaskResult {
 
 struct FreshArchivePublicationTaskResult {
     group: CacheTargetGroup,
-    result: RunnerResult<Bytes>,
+    result: RunnerResult<FreshArchivePublished>,
+}
+
+struct FreshArchivePublished {
+    bytes: Bytes,
+    permit: OwnedSemaphorePermit,
 }
 
 enum FreshArchiveResolved {
     Ready {
         group: CacheTargetGroup,
-        bytes: Bytes,
+        archive: FreshArchivePublished,
     },
     Passthrough {
         group: CacheTargetGroup,
@@ -318,8 +323,9 @@ impl FreshArchiveDelivery {
                     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
                     self.publications.spawn(async move {
                         let _writer = writer;
-                        let _permit = permit;
-                        let result = write_to_cache(&cache_dir, &bytes).await.map(|()| bytes);
+                        let result = write_to_cache(&cache_dir, &bytes)
+                            .await
+                            .map(|()| FreshArchivePublished { bytes, permit });
                         FreshArchivePublicationTaskResult { group, result }
                     });
                 }
@@ -340,7 +346,7 @@ impl FreshArchiveDelivery {
                 RunnerError::Internal(format!("fresh archive publication task: {error}"))
             })?;
             match task.result {
-                Ok(bytes) => {
+                Ok(archive) => {
                     telemetry.record(
                         STORAGE_CACHE_FRESH_DELIVERY_PUBLISHED,
                         Duration::ZERO,
@@ -349,7 +355,7 @@ impl FreshArchiveDelivery {
                     );
                     resolved.push(FreshArchiveResolved::Ready {
                         group: task.group,
-                        bytes,
+                        archive,
                     });
                 }
                 Err(_) => {
@@ -432,6 +438,7 @@ struct GuestStageBatch {
 struct FreshGuestStageBatch {
     groups: Vec<CacheTargetGroup>,
     writes: Vec<GuestStageWrite>,
+    permits: Vec<OwnedSemaphorePermit>,
     content_bytes: usize,
 }
 
@@ -661,10 +668,16 @@ impl FreshGuestStageBatch {
                     > GUEST_STAGE_BATCH_MAX_BYTES)
     }
 
-    fn push(&mut self, group: CacheTargetGroup, write: GuestStageWrite) {
+    fn push(
+        &mut self,
+        group: CacheTargetGroup,
+        write: GuestStageWrite,
+        permit: OwnedSemaphorePermit,
+    ) {
         self.content_bytes += write.bytes.len();
         self.groups.push(group);
         self.writes.push(write);
+        self.permits.push(permit);
     }
 
     fn should_flush_after_push(&self) -> bool {
@@ -799,6 +812,7 @@ async fn flush_fresh_guest_stage_batch(
         outcomes.push((group, outcome));
     }
     batch.writes.clear();
+    batch.permits.clear();
     batch.content_bytes = 0;
 }
 
@@ -820,7 +834,8 @@ async fn stage_fresh_archives(
 
     for result in resolved {
         match result {
-            FreshArchiveResolved::Ready { group, bytes } => {
+            FreshArchiveResolved::Ready { group, archive } => {
+                let FreshArchivePublished { bytes, permit } = archive;
                 let target = group.targets.first().ok_or_else(|| {
                     RunnerError::Internal("empty fresh archive target group".to_string())
                 })?;
@@ -831,7 +846,7 @@ async fn stage_fresh_archives(
                 if batch.should_flush_before(&write) {
                     flush_fresh_guest_stage_batch(&mut batch, &mut stage, &mut outcomes).await;
                 }
-                batch.push(group, write);
+                batch.push(group, write, permit);
                 if batch.should_flush_after_push() {
                     flush_fresh_guest_stage_batch(&mut batch, &mut stage, &mut outcomes).await;
                 }
@@ -1233,6 +1248,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
     if groups.is_empty() {
         return Ok(delivery);
     }
+    let group_count = groups.len();
 
     let prepare_result: RunnerResult<()> = async {
         let http = Client::builder()
@@ -1242,6 +1258,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 RunnerError::Internal(format!("build fresh archive client: {error}"))
             })?;
 
+        let mut scanned = 0;
         for group in groups.into_iter().take(FRESH_DELIVERY_SCAN_LIMIT) {
             if delivery.apply.len() >= FRESH_DELIVERY_PER_RUN_LIMIT {
                 telemetry.record(
@@ -1252,6 +1269,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 );
                 break;
             }
+            scanned += 1;
             if group.archive_size.is_some_and(|size| size > CACHE_MAX_SIZE) {
                 telemetry.record(
                     STORAGE_CACHE_FRESH_DELIVERY_OVERSIZED,
@@ -1376,6 +1394,14 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 Duration::ZERO,
                 true,
                 None,
+            );
+        }
+        if group_count > FRESH_DELIVERY_SCAN_LIMIT && scanned == FRESH_DELIVERY_SCAN_LIMIT {
+            telemetry.record(
+                STORAGE_CACHE_FRESH_DELIVERY_CAPACITY,
+                Duration::ZERO,
+                true,
+                Some("scan-limit"),
             );
         }
         Ok(())
@@ -3277,6 +3303,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_delivery_retains_runner_capacity_until_guest_staging_finishes() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = Arc::new(MockSandbox::new("test"));
+        let gate = MockLifecycleGate::new();
+        sandbox.set_write_file_lifecycle_gate(gate.clone());
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/fresh-capacity.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+        let mut plan = fresh_storage_plan_with_archive_size(
+            server.url("/fresh-capacity.tar.gz"),
+            "fresh-capacity",
+            "v1",
+            body.len() as u64,
+        );
+        let admission = FreshArchiveDeliveryAdmission::new();
+        let cancel = CancellationToken::new();
+        let mut delivery =
+            prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
+                .await
+                .unwrap();
+        let task = tokio::spawn({
+            let home = home.clone();
+            let sandbox = Arc::clone(&sandbox);
+            async move {
+                populate_cache_with_fresh_delivery(
+                    &mut plan,
+                    sandbox.as_ref(),
+                    &home,
+                    &mut telemetry,
+                    Some(&mut delivery),
+                )
+                .await
+            }
+        });
+
+        gate.wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("fresh archive should reach guest staging");
+        assert_eq!(
+            admission.permits.available_permits(),
+            FRESH_DELIVERY_RUNNER_LIMIT - 1,
+            "published bytes must retain runner capacity while guest staging is blocked"
+        );
+
+        gate.release_one();
+        assert!(task.await.unwrap().unwrap().is_none());
+        assert_eq!(
+            admission.permits.available_permits(),
+            FRESH_DELIVERY_RUNNER_LIMIT
+        );
+        get.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
     async fn fresh_delivery_uses_full_response_content_length_without_a_probe() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -3723,22 +3812,35 @@ mod tests {
             .unwrap();
         let completed = Arc::new(Mutex::new(false));
         let task_completed = Arc::clone(&completed);
+        let publication_cancel = CancellationToken::new();
+        let release_after_cancel = publication_cancel.clone();
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
         let mut delivery = FreshArchiveDelivery {
-            cancel: CancellationToken::new(),
+            cancel: publication_cancel,
             apply: Vec::new(),
             fetches: JoinSet::new(),
             publications: JoinSet::new(),
         };
         delivery.publications.spawn(async move {
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            entered_tx.send(()).unwrap();
+            release_rx.await.unwrap();
             *task_completed.lock().unwrap() = true;
             FreshArchivePublicationTaskResult {
                 group,
-                result: Ok(Bytes::from_static(b"complete")),
+                result: Ok(FreshArchivePublished {
+                    bytes: Bytes::from_static(b"complete"),
+                    permit: Arc::new(Semaphore::new(1)).try_acquire_owned().unwrap(),
+                }),
             }
         });
 
-        delivery.cancel_and_drain(&mut telemetry).await;
+        entered_rx.await.unwrap();
+        let release = async move {
+            release_after_cancel.cancelled().await;
+            release_tx.send(()).unwrap();
+        };
+        tokio::join!(delivery.cancel_and_drain(&mut telemetry), release);
 
         assert!(*completed.lock().unwrap());
         let ops = telemetry.pending_ops_snapshot();
@@ -3874,6 +3976,11 @@ mod tests {
             STORAGE_CACHE_FRESH_DELIVERY_OVERSIZED,
             FRESH_DELIVERY_SCAN_LIMIT,
         );
+        assert!(ops.iter().any(|(action, success, error)| {
+            action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
+                && *success
+                && error.as_deref() == Some("scan-limit")
+        }));
         assert_no_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_ADMITTED);
     }
 
