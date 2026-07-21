@@ -31,6 +31,7 @@ E2E tests verify the system works end-to-end. Error cases belong in CLI Command 
 ### 2. `vm0 run` is Expensive (~15s)
 
 Each `vm0 run` call takes ~15 seconds due to:
+
 - API call to platform
 - Runner job queuing and sandbox creation
 - Volume/artifact mounting
@@ -42,7 +43,7 @@ Each `vm0 run` call takes ~15 seconds due to:
 ### 3. Parallelization Model
 
 ```
-Files run in PARALLEL (up to -j 10)
+Files run in PARALLEL
 ├── file-a.bats ──► case1 → case2 → case3  (SERIAL within file)
 ├── file-b.bats ──► case1 → case2          (SERIAL within file)
 └── file-c.bats ──► case1                  (SERIAL within file)
@@ -54,10 +55,10 @@ Files run in PARALLEL (up to -j 10)
 
 ### 4. State Sharing Strategy
 
-| Scenario | Strategy |
-|----------|----------|
+| Scenario                                      | Strategy                  |
+| --------------------------------------------- | ------------------------- |
 | Tests share state (session ID, checkpoint ID) | Same file, separate cases |
-| Tests are independent | Separate files (parallel) |
+| Tests are independent                         | Separate files (parallel) |
 
 ### 5. Timeout Management
 
@@ -99,17 +100,18 @@ e2e/tests/
 
 ### When to Create Separate Files
 
-| Condition | Action |
-|-----------|--------|
-| Tests share state | Same file |
-| Tests are independent | Separate files |
-| Test is slow (>15s) but independent | Own file |
+| Condition                           | Action         |
+| ----------------------------------- | -------------- |
+| Tests share state                   | Same file      |
+| Tests are independent               | Separate files |
+| Test is slow (>15s) but independent | Own file       |
 
 ---
 
 ## State Sharing with `$BATS_FILE_TMPDIR`
 
 `$BATS_FILE_TMPDIR` is a temporary directory:
+
 - **Shared** by all tests within the same file
 - **Isolated** between different files (parallel-safe)
 - **Automatically cleaned** after file completes
@@ -396,6 +398,7 @@ teardown_file() {
 ```
 
 **Why this works**:
+
 - `setup_file()`: Runs once, does expensive work, saves state to files
 - `setup()`: Runs before each test, loads state from files (fast)
 - `$BATS_FILE_TMPDIR`: Persists across all tests in the file
@@ -420,4 +423,3 @@ Before committing E2E tests:
 
 - BATS documentation: https://bats-core.readthedocs.io/en/stable/writing-tests.html
 - Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=240` (parallel/runner)
-- Parallelization: `-j 10 --no-parallelize-within-files`

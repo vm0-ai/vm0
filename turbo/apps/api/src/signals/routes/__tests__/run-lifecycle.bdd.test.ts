@@ -7739,6 +7739,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
       "zero connector status <type>",
       "zero connector check --help",
+      "An attached generation template takes precedence",
+      "Without an attached generation template",
       "zero generate -h",
       "zero doctor credit",
       "zero credit <credits>",
