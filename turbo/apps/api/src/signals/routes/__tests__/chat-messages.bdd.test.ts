@@ -3022,7 +3022,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain("# Artifact Template Context");
     expect(websitePrompt).toContain("This template is already selected");
     expect(websitePrompt).toContain(
-      "Do not begin with generic `zero generate -h` or provider/resource discovery",
+      "skip generic `zero generate -h` and provider/resource discovery",
     );
     expect(websitePrompt).toContain(
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
