@@ -46,7 +46,6 @@ import {
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
@@ -102,6 +101,13 @@ function isOAuthMemberType(type: ModelProviderType): boolean {
 
 function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
+}
+
+function isOpenAIOrAnthropicModel(model: SupportedRunModel): boolean {
+  const providerType = getModelIconType(model);
+  return (
+    providerType === "openai-api-key" || providerType === "anthropic-api-key"
+  );
 }
 
 function getApiProviderTypes(
@@ -1287,13 +1293,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    if (configuredModels.has(model)) {
-      return false;
-    }
-    return (
-      model !== "vm0-model" ||
-      (featureStates[FeatureSwitchKey.Vm0Model] ?? false)
-    );
+    return isOpenAIOrAnthropicModel(model) && !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
