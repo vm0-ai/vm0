@@ -1067,7 +1067,7 @@ jobs:
                   text: "*Host Worker* ❌ Deploy failed\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Fan-in barrier: non-API build-phase and release validation jobs must finish
-  # (success or skipped) before promote-phase jobs start. If any included build
+  # (success or skipped) before deployment-phase jobs start. If any included build
   # or validation fails, this job fails, which in turn blocks jobs that keep a
   # `needs: builds-complete` edge.
   #
@@ -1077,7 +1077,6 @@ jobs:
     needs:
       - release-please
       - validate-db-release-coupling
-      - build-app-production
       - build-runner-release-assets
       - runner-production-host-groups
       - build-runner-production
@@ -1304,134 +1303,14 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Build app (Vite SPA) production deployment (Staged)
-  build-app-production:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.url }}
-      git_sha: ${{ steps.build-commit.outputs.sha }}
-    permissions:
-      contents: read
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* building staged production deployment..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve App Build Commit SHA
-        id: build-commit
-        run: |
-          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Build App Staged Production Deployment
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
-          environment: production
-          deployment-env: app
-          prebuilt: "true"
-          skip-domain: "true"
-          skip-start: "true"
-          skip-finish: "true"
-          environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY_PREVIEW=${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
-            VITE_CLERK_PUBLISHABLE_KEY_PROD=${{ vars.CLERK_PUBLISHABLE_KEY_PROD }}
-            VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_VAPID_PUBLIC_KEY_PREVIEW=${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
-            VITE_VAPID_PUBLIC_KEY_PROD=${{ vars.VAPID_PUBLIC_KEY_PROD }}
-            VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
-            VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
-            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
-            VITE_SENTRY_DSN_PROD=${{ vars.SENTRY_DSN_APP_PROD }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ✅ Staged build ready (not yet serving)"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ❌ Staged build failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Promote app staged deployment to production (traffic switch). If the same
-  # release run also promotes API, wait for API traffic to be live first.
-  promote-app-production:
-    needs:
-      [
-        release-please,
-        builds-complete,
-        build-app-production,
-        promote-api-production,
-      ]
+  # Publish the immutable app artifact to Cloudflare Pages. If the same release
+  # run also promotes API, wait for API traffic to be live first.
+  deploy-app-cloudflare-production:
+    needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_release_created == 'true' &&
       needs.builds-complete.result == 'success' &&
-      needs.build-app-production.result == 'success' &&
       (needs.release-please.outputs.api_deploy_required != 'true' ||
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
@@ -1441,8 +1320,8 @@ jobs:
       run:
         shell: bash
     outputs:
-      deployment_url: ${{ needs.build-app-production.outputs.deployment_url }}
-      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+      deployment_url: ${{ steps.deploy-pages.outputs.url }}
+      cloudflare_dashboard_url: ${{ steps.pages-dashboard.outputs.url }}
     permissions:
       contents: read
       deployments: write
@@ -1459,7 +1338,7 @@ jobs:
           token: ${{ github.token }}
           env: app/production
           ref: ${{ github.ref }}
-          desc: Promoting app staged deployment to production
+          desc: Deploying app to Cloudflare Pages production
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -1470,109 +1349,16 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* promoting staged deployment to production..."
+            text: "*App* deploying to Cloudflare Pages production..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+                  text: "*App* deploying to Cloudflare Pages production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
 
       - name: Record start time
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Promote App Deployment
-        uses: ./.github/actions/vercel-promote
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
-          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
-
-      - name: Resolve Vercel dashboard URL
-        id: vercel-dashboard
-        if: ${{ needs.build-app-production.outputs.deployment_url != '' }}
-        uses: ./.github/actions/vercel-dashboard-url
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
-
-      - name: Finish GitHub Deployment
-        if: always()
-        uses: bobheadxi/deployments@v1
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: ${{ steps.vercel-dashboard.outputs.url }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ✅ Promoted to production"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ❌ Promote failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Publish the immutable app artifact to Cloudflare Pages independently from
-  # the Vercel staged build and traffic promotion. If the same release run also
-  # promotes API, wait for API traffic to be live first.
-  deploy-app-cloudflare-production:
-    needs: [release-please, promote-api-production]
-    if: >-
-      always() &&
-      needs.release-please.outputs.app_release_created == 'true' &&
-      (needs.release-please.outputs.api_deploy_required != 'true' ||
-       needs.promote-api-production.result == 'success')
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    defaults:
-      run:
-        shell: bash
-    permissions:
-      contents: read
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/toolchain-init
 
       - name: Resolve App Build Commit SHA
         id: build-commit
@@ -1675,6 +1461,7 @@ jobs:
           pnpm --filter @vm0/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
 
       - name: Deploy Cloudflare Pages production
+        id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
@@ -1693,15 +1480,83 @@ jobs:
             --commit-hash "$ARTIFACT_SHA" \
             --commit-dirty=false
 
-          production_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          curl -fsSL \
-            --retry 12 \
-            --retry-delay 5 \
-            --retry-max-time 120 \
-            --retry-all-errors \
-            "$production_url" \
-            --output /dev/null
-          echo "Cloudflare Pages production is serving: $production_url"
+          pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+          production_url="https://app.vm0.ai"
+          for url in "$pages_url" "$production_url"; do
+            curl -fsSL \
+              --retry 12 \
+              --retry-delay 5 \
+              --retry-max-time 120 \
+              --retry-all-errors \
+              "$url" \
+              --output /dev/null
+            echo "Cloudflare Pages production is serving: $url"
+          done
+          echo "url=$production_url" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Cloudflare Pages dashboard URL
+        id: pages-dashboard
+        env:
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+        run: |
+          : "${CF_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          echo "url=https://dash.cloudflare.com/${CF_ACCOUNT_ID}/pages/view/${CF_PAGES_PROJECT_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: https://app.vm0.ai
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Deployed to Cloudflare Pages"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|Open App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Cloudflare Pages deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
@@ -1709,14 +1564,14 @@ jobs:
       [
         release-please,
         promote-api-production,
-        promote-app-production,
+        deploy-app-cloudflare-production,
         promote-runner-production,
       ]
     if: >-
       always() &&
       (
        needs.promote-api-production.result == 'success' ||
-       needs.promote-app-production.result == 'success' ||
+       needs.deploy-app-cloudflare-production.result == 'success' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
     permissions:
@@ -1734,10 +1589,10 @@ jobs:
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           API_RESULT: ${{ needs.promote-api-production.result }}
-          APP_RESULT: ${{ needs.promote-app-production.result }}
+          APP_RESULT: ${{ needs.deploy-app-cloudflare-production.result }}
           RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
           API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
-          APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
+          APP_DASHBOARD_URL: ${{ needs.deploy-app-cloudflare-production.outputs.cloudflare_dashboard_url }}
           SAFETY: safe
           MIGRATION_FILES: ""
           RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml
@@ -1796,7 +1651,7 @@ jobs:
 
           if [ -n "$APP_VERSION" ]; then
             if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
-              append_row "| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
+              append_row "| app | v${APP_VERSION} | [Rollback in Cloudflare](${APP_DASHBOARD_URL}) |"
             elif [ "$APP_RESULT" = "success" ]; then
               append_row "| app | v${APP_VERSION} | _URL unavailable_ |"
             else
@@ -1824,7 +1679,7 @@ jobs:
           # - Runner has no auto-computed compatibility indicator. We print
           #   a static advisory whenever the release includes runner so the
           #   operator doesn't silently treat runner rollbacks the same as
-          #   app (which are Vercel-level atomic flips). Deliberately
+          #   app (which uses a provider-level deployment rollback). Deliberately
           #   NOT naming specific compat surfaces — that would encourage a
           #   checklist mindset and miss cases the list doesn't anticipate.
           {

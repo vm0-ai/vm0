@@ -1405,87 +1405,6 @@ jobs:
             echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  # Deploy app (Vite SPA)
-  deploy-app:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: deploy-app-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and
-    # browser/playwright E2E may need a matching app preview.
-    if: >-
-      ${{
-        (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-        needs.prepare.outputs.job-ref != '' && (
-          needs.prepare.outputs.api-changed == 'true' ||
-          needs.prepare.outputs.cli-changed == 'true' ||
-          needs.prepare.outputs.platform-changed == 'true' ||
-          needs.prepare.outputs.e2e-changed == 'true' ||
-          needs.prepare.outputs.ci-changed == 'true'
-        )
-      }}
-    outputs:
-      preview-url: ${{ steps.app-alias.outputs.url || steps.deploy.outputs.url }}
-    permissions:
-      contents: read
-      pull-requests: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Resolve App Build Commit SHA
-        id: build-commit
-        run: |
-          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy App to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
-          environment: preview
-          deployment-env: app
-          prebuilt: "true"
-          environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY_PREVIEW=${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
-            VITE_CLERK_PUBLISHABLE_KEY_PROD=${{ vars.CLERK_PUBLISHABLE_KEY_PROD }}
-            VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_VAPID_PUBLIC_KEY_PREVIEW=${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
-            VITE_VAPID_PUBLIC_KEY_PROD=${{ vars.VAPID_PUBLIC_KEY_PROD }}
-            VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
-            VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
-            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
-            VITE_SENTRY_DSN_PROD=${{ vars.SENTRY_DSN_APP_PROD }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
-
-      - name: Create Vercel Alias
-        id: app-alias
-        if: vars.PREVIEW_DOMAIN != ''
-        uses: ./.github/actions/vercel-alias
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: app
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
-
   deploy-stripe-listener:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -2658,7 +2577,6 @@ jobs:
       - test-other
       - alias-onboarding-www
       - deploy-api
-      - deploy-app
       - build-app-cf
       - deploy-stripe-listener
       - build-cli
@@ -2748,7 +2666,6 @@ jobs:
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "alias-onboarding-www" "${{ needs.alias-onboarding-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
-          check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-app-cf" "${{ needs.build-app-cf.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
