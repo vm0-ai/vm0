@@ -1077,8 +1077,6 @@ export {
   type ZeroConnectorCheckContract,
 } from "./zero-connector-check";
 export {
-  CONNECTOR_AUTH_METHOD_ID_MAX_LENGTH,
-  CONNECTOR_REF_MAX_LENGTH,
   connectorAuthMethodIdSchema,
   connectorRefSchema,
   type ConnectorAuthMethodId,

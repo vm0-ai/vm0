@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const CONNECTOR_REF_MAX_LENGTH = 64;
-export const CONNECTOR_AUTH_METHOD_ID_MAX_LENGTH = 50;
+const CONNECTOR_REF_MAX_LENGTH = 64;
+const CONNECTOR_AUTH_METHOD_ID_MAX_LENGTH = 50;
 
 const connectorIdentityPattern = /^[a-z0-9][a-z0-9-]*$/u;
 
