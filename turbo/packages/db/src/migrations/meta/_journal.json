@@ -4404,6 +4404,13 @@
       "when": 1784541390307,
       "tag": "0628_activate_connector_credential_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 629,
+      "version": "7",
+      "when": 1784600262183,
+      "tag": "0629_contract_chat_message_queue_automation_id",
+      "breakpoints": true
     }
   ]
 }

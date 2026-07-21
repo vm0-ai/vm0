@@ -67,14 +67,6 @@ export const chatMessageQueue = pgTable(
       },
       { onDelete: "cascade" },
     ),
-    // Rollback compatibility for API releases that predate automation_id.
-    // Remove after the canonical API has been live for a full rollback release.
-    triggerId: uuid("trigger_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "cascade" },
-    ),
     triggerSource: text("trigger_source"),
     // Short human-readable event summary, safe to render in the queue UI.
     triggerBrief: text("trigger_brief"),
@@ -95,10 +87,6 @@ export const chatMessageQueue = pgTable(
       index("idx_chat_message_queue_automation")
         .on(table.automationId)
         .where(sql`${table.automationId} IS NOT NULL`),
-      // Rollback compatibility for API releases that still query trigger_id.
-      index("idx_chat_message_queue_trigger")
-        .on(table.triggerId)
-        .where(sql`${table.triggerId} IS NOT NULL`),
     ];
   },
 );

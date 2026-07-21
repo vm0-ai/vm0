@@ -215,11 +215,6 @@ describe("workflow queue API", () => {
         return event.automationId;
       }),
     ).toStrictEqual([automation.automationId, automation.automationId]);
-    expect(
-      queue.body.pending.map((event) => {
-        return event.triggerId;
-      }),
-    ).toStrictEqual([automation.automationId, automation.automationId]);
     expect(Date.parse(queue.body.pending[0]!.createdAt)).toBeLessThanOrEqual(
       Date.parse(queue.body.pending[1]!.createdAt),
     );
