@@ -4288,6 +4288,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   });
   const composerOptions: ZeroChatComposerProps = {
     composer: thread.workflowComposer,
+    composerConnectors: thread.composerConnectors,
     onSend: handleSend,
     onQueue: handleQueue,
     sending: composerSending,

@@ -50,6 +50,7 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
+  chatPageComposerConnectors,
   chatPageWorkflowComposer$,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
@@ -736,6 +737,7 @@ export function AgentChatPage() {
           <ZeroChatComposer
             className="w-full"
             composer={composer}
+            composerConnectors={chatPageComposerConnectors}
             draft={draft}
             onSend={handleSendMessage}
             onDraftChange={handleDraftChange}

@@ -148,8 +148,6 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
   matchesConnectorSearch,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   type ConnectorTypeWithStatus,
@@ -169,34 +167,13 @@ import {
   ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
-import {
-  zeroAuthorizedConnectors$,
-  authorizeConnector$,
-  deauthorizeConnector$,
-} from "../../signals/zero-page/zero-connectors.ts";
-import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
-import {
-  userPermissionGrantsByAgent,
-  applyUserPermissionGrants$,
-} from "../../signals/permission-allow/permission-allow-signals.ts";
+import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
+import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  showAddDialog$,
-  setShowAddDialog$,
-  pendingConnectType$,
-  setPendingConnectType$,
-  composerSavingType$,
-  setComposerSavingType$,
-  computerUseDownloadDialogOpen$,
-  addDialogSearch$,
-  setAddDialogSearch$,
-  popoverSearch$,
-  setPopoverSearch$,
-  popoverSortOrder$,
-  setPopoverSortOrder$,
   modelPickerOpen$,
   setModelPickerOpen$,
   uploadPopoverOpen$,
@@ -214,10 +191,6 @@ import {
   setTemplatePickerPreviewSlug$,
   restoreTemplatePickerPresentationScroll$,
   setTemplatePickerPresentationScrollTop$,
-  setComputerUseDownloadDialogOpen$,
-  composerPermissionConnector$,
-  setComposerPermissionConnector$,
-  composerPermissionMetadata$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
   templateCardHover$,
@@ -274,6 +247,7 @@ function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
 
 export interface ZeroChatComposerProps {
   composer: WorkflowComposerSignals;
+  composerConnectors: ComposerConnectorSignals;
   onSend: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
@@ -5418,18 +5392,20 @@ function ConnectorTriggerIcons({
 }
 
 function AddConnectorsDialog({
+  signals,
   unconnected,
   pollingType,
   onClose,
   onSelect,
 }: {
+  signals: ComposerConnectorSignals;
   unconnected: ConnectorTypeWithStatus[];
   pollingType: string | null;
   onClose: () => void;
   onSelect: (type: ConnectorType) => void;
 }) {
-  const search = useGet(addDialogSearch$);
-  const setSearch = useSet(setAddDialogSearch$);
+  const search = useGet(signals.addDialogSearch$);
+  const setSearch = useSet(signals.setAddDialogSearch$);
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
   });
@@ -5617,19 +5593,19 @@ function ComputerUseConnectorMenuSection({
 }
 
 function ComposerConnectorPermissionDialog({
+  signals,
   agentId,
   agentDisplayName,
   connector,
   onClose,
 }: {
+  signals: ComposerConnectorSignals;
   agentId: string;
   agentDisplayName: string;
   connector: ComposerConnectorItem;
   onClose: () => void;
 }) {
-  const grantsLoadable = useLastLoadable(
-    userPermissionGrantsByAgent({ agentId }),
-  );
+  const grantsLoadable = useLastLoadable(signals.permissionGrants$);
   const pageSignal = useGet(pageSignal$);
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
 
@@ -5648,7 +5624,7 @@ function ComposerConnectorPermissionDialog({
       agentId={agentId}
       connectorType={connector.type}
       connectorLabel={connector.label}
-      metadata$={composerPermissionMetadata$}
+      metadata$={signals.permissionMetadata$}
       displayName={agentDisplayName}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
@@ -5673,6 +5649,7 @@ function ComposerConnectorPermissionDialog({
 }
 
 function ConnectorsPopoverButton({
+  signals,
   agentId,
   agentDisplayName,
   agentConnectors,
@@ -5682,6 +5659,7 @@ function ConnectorsPopoverButton({
   onOpenAddDialog,
   onToggle,
 }: {
+  signals: ComposerConnectorSignals;
   agentId: string | null;
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
@@ -5691,15 +5669,17 @@ function ConnectorsPopoverButton({
   onOpenAddDialog: () => void;
   onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
 }) {
-  const search = useGet(popoverSearch$);
-  const setSearch = useSet(setPopoverSearch$);
-  const sortOrder = useGet(popoverSortOrder$);
-  const setSortOrder = useSet(setPopoverSortOrder$);
-  const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
-  const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
+  const search = useGet(signals.popoverSearch$);
+  const setSearch = useSet(signals.setPopoverSearch$);
+  const sortOrder = useGet(signals.popoverSortOrder$);
+  const setSortOrder = useSet(signals.setPopoverSortOrder$);
+  const downloadDialogOpen = useGet(signals.computerUseDownloadDialogOpen$);
+  const setDownloadDialogOpen = useSet(
+    signals.setComputerUseDownloadDialogOpen$,
+  );
   const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
-  const permissionConnectorType = useGet(composerPermissionConnector$);
-  const setPermissionConnectorType = useSet(setComposerPermissionConnector$);
+  const permissionConnectorType = useGet(signals.permissionConnector$);
+  const setPermissionConnectorType = useSet(signals.setPermissionConnector$);
   const showSearch = agentConnectors.length > 20;
   const permissionConnector =
     permissionEntryEnabled && permissionConnectorType
@@ -5886,6 +5866,7 @@ function ConnectorsPopoverButton({
       )}
       {agentId && permissionConnector && (
         <ComposerConnectorPermissionDialog
+          signals={signals}
           agentId={agentId}
           agentDisplayName={agentDisplayName}
           connector={permissionConnector}
@@ -6624,11 +6605,16 @@ function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
   return loadable.state === "hasData" ? loadable.data : null;
 }
 
+function nullToUndefined<T>(value: T | null): T | undefined {
+  return value === null ? undefined : value;
+}
+
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
 export function useZeroChatComposer({
   composer,
+  composerConnectors,
   onSend,
   onQueue,
   sending,
@@ -6656,8 +6642,8 @@ export function useZeroChatComposer({
   activeGoal,
   onCancelActiveGoal,
 }: ZeroChatComposerProps) {
-  const showAddDialog = useGet(showAddDialog$);
-  const setShowAddDialog = useSet(setShowAddDialog$);
+  const showAddDialog = useGet(composerConnectors.showAddDialog$);
+  const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
 
   const resolved = useResolvedComposerSignals(
@@ -6911,23 +6897,27 @@ export function useZeroChatComposer({
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const authorizedConnectorsLoadable = useLastLoadable(
-    zeroAuthorizedConnectors$,
+    composerConnectors.authorizedConnectors$,
     { equalityFn: equalArrays },
   );
   const pageSignal = useGet(pageSignal$);
-  const selectedConnType = useGet(selectedConnectorType$);
-  const pendingConnectType = useGet(pendingConnectType$);
-  const setPendingConnectType = useSet(setPendingConnectType$);
-  const setSelectedConnType = useSet(setSelectedConnectorType$);
+  const selectedConnType = useGet(composerConnectors.selectedConnectType$);
+  const pendingConnectType = useGet(composerConnectors.pendingConnectType$);
+  const setPendingConnectType = useSet(
+    composerConnectors.setPendingConnectType$,
+  );
+  const setSelectedConnType = useSet(
+    composerConnectors.setSelectedConnectType$,
+  );
   const pollingConnType = useGet(pollingOAuthAuthCodeConnectorType$);
-  const authorizeFn = useSet(authorizeConnector$);
-  const deauthorizeFn = useSet(deauthorizeConnector$);
+  const authorizeFn = useSet(composerConnectors.authorizeConnector$);
+  const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
   const optimisticConnected = useGet(justConnectedTypes$);
 
-  const savingType = useGet(composerSavingType$);
-  const setSavingType = useSet(setComposerSavingType$);
+  const savingType = useGet(composerConnectors.savingType$);
+  const setSavingType = useSet(composerConnectors.setSavingType$);
   const agentRecordId = loadableDataOrNull(
-    useLastLoadable(currentChatAgentRecordId$),
+    useLastLoadable(composerConnectors.agentId$),
   );
 
   const connectorsLoading =
@@ -7223,6 +7213,7 @@ export function useZeroChatComposer({
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
                   <ConnectorsPopoverButton
+                    signals={composerConnectors}
                     agentId={agentRecordId}
                     agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
@@ -7276,6 +7267,8 @@ export function useZeroChatComposer({
       </div>
       {selectedConnType && (
         <ConnectModal
+          selectedType={selectedConnType}
+          agentId={nullToUndefined(agentRecordId)}
           onClose={() => {
             return setSelectedConnType(null);
           }}
@@ -7295,6 +7288,7 @@ export function useZeroChatComposer({
       )}
       {showAddDialog && (
         <AddConnectorsDialog
+          signals={composerConnectors}
           unconnected={unconnectedConnectors}
           pollingType={pollingConnType}
           onClose={() => {

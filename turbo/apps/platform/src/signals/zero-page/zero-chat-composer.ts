@@ -1,47 +1,11 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { jsonParseOr } from "../utils.ts";
-import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
 // ---------------------------------------------------------------------------
-
-// -- Add-connectors dialog --------------------------------------------------
-
-const internalShowAddDialog$ = state(false);
-export const showAddDialog$ = computed((get) => {
-  return get(internalShowAddDialog$);
-});
-export const setShowAddDialog$ = command(({ set }, open: boolean) => {
-  set(internalShowAddDialog$, open);
-});
-
-// -- Pending OAuth connection type ------------------------------------------
-
-const internalPendingConnectType$ = state<ConnectorType | null>(null);
-export const pendingConnectType$ = computed((get) => {
-  return get(internalPendingConnectType$);
-});
-export const setPendingConnectType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    set(internalPendingConnectType$, type);
-  },
-);
-
-// -- Connector toggle saving indicator --------------------------------------
-
-const internalComposerSavingType$ = state<string | null>(null);
-export const composerSavingType$ = computed((get) => {
-  return get(internalComposerSavingType$);
-});
-export const setComposerSavingType$ = command(
-  ({ set }, type: string | null) => {
-    set(internalComposerSavingType$, type);
-  },
-);
 
 // -- Slash workflow picker --------------------------------------------------
 
@@ -75,38 +39,6 @@ export const setSelectedSlashWorkflowIndex$ = command(
   },
 );
 
-// -- Add-connectors dialog search filter ------------------------------------
-
-const internalAddDialogSearch$ = state("");
-export const addDialogSearch$ = computed((get) => {
-  return get(internalAddDialogSearch$);
-});
-export const setAddDialogSearch$ = command(({ set }, value: string) => {
-  set(internalAddDialogSearch$, value);
-});
-
-// -- Connector popover search filter ----------------------------------------
-
-const internalPopoverSearch$ = state("");
-export const popoverSearch$ = computed((get) => {
-  return get(internalPopoverSearch$);
-});
-export const setPopoverSearch$ = command(({ set }, value: string) => {
-  set(internalPopoverSearch$, value);
-});
-
-// -- Connector popover sort order snapshot ----------------------------------
-
-const internalPopoverSortOrder$ = state<ConnectorType[] | null>(null);
-export const popoverSortOrder$ = computed((get) => {
-  return get(internalPopoverSortOrder$);
-});
-export const setPopoverSortOrder$ = command(
-  ({ set }, order: ConnectorType[] | null) => {
-    set(internalPopoverSortOrder$, order);
-  },
-);
-
 // -- New-thread Computer Use host selection ---------------------------------
 
 const internalNewThreadComputerUseHostId$ = state<string | null>(null);
@@ -118,37 +50,6 @@ export const setNewThreadComputerUseHostId$ = command(
     set(internalNewThreadComputerUseHostId$, hostId);
   },
 );
-
-const internalComputerUseDownloadDialogOpen$ = state(false);
-export const computerUseDownloadDialogOpen$ = computed((get) => {
-  return get(internalComputerUseDownloadDialogOpen$);
-});
-export const setComputerUseDownloadDialogOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalComputerUseDownloadDialogOpen$, open);
-  },
-);
-
-// -- Connector permission dialog (composer popover) -------------------------
-
-const internalComposerPermissionConnector$ = state<ConnectorType | null>(null);
-export const composerPermissionConnector$ = computed((get) => {
-  return get(internalComposerPermissionConnector$);
-});
-export const setComposerPermissionConnector$ = command(
-  ({ set }, connectorType: ConnectorType | null) => {
-    set(internalComposerPermissionConnector$, connectorType);
-  },
-);
-export const composerPermissionMetadata$ = computed(async (get) => {
-  const connectorType = get(composerPermissionConnector$);
-  if (!connectorType) {
-    return null;
-  }
-  return await get(
-    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
-  );
-});
 
 // -- Model picker open state ------------------------------------------------
 
