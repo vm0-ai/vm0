@@ -790,6 +790,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
     });
 
     await waitFor(() => {
@@ -1447,6 +1448,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
     });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
