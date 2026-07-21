@@ -45,6 +45,8 @@ interface ExternalCatalogCache {
   key: string | undefined;
 }
 
+type ReadonlyDbLoader = () => ReadonlyDb;
+
 const log = logger("connector-catalog:runner-firewall-shadow");
 
 function externalIdentityKey(identity: ExternalCatalogIdentity): string {
@@ -141,8 +143,16 @@ async function loadExternalCatalog(
   return catalog;
 }
 
-async function compareShadowCatalog(db: ReadonlyDb): Promise<void> {
-  const result = await settle(loadExternalCatalog(db));
+async function loadExternalCatalogFromDb(
+  loadDb: ReadonlyDbLoader,
+): Promise<ExternalConnectorRunnerFirewallCatalog> {
+  // Keep DB initialization inside this async boundary so shadow mode can
+  // contain synchronous loader failures without affecting the static result.
+  return await loadExternalCatalog(loadDb());
+}
+
+async function compareShadowCatalog(loadDb: ReadonlyDbLoader): Promise<void> {
+  const result = await settle(loadExternalCatalogFromDb(loadDb));
   if (!result.ok) {
     log.warn("Connector runner firewall shadow comparison unavailable", {
       type: "connector_runner_firewall_shadow_comparison",
@@ -174,15 +184,15 @@ async function compareShadowCatalog(db: ReadonlyDb): Promise<void> {
 }
 
 export async function loadConnectorRunnerFirewallCatalog(
-  loadDb: () => ReadonlyDb,
+  loadDb: ReadonlyDbLoader,
 ): Promise<ConnectorRunnerFirewallCatalog> {
   const sourceMode = env("CONNECTOR_CATALOG_SOURCE_MODE");
   if (sourceMode === "external") {
-    return await loadExternalCatalog(loadDb());
+    return await loadExternalCatalogFromDb(loadDb);
   }
   const catalog = staticCatalog();
   if (sourceMode === "shadow") {
-    waitUntil(compareShadowCatalog(loadDb()));
+    waitUntil(compareShadowCatalog(loadDb));
   }
   return catalog;
 }
