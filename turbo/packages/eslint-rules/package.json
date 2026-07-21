@@ -24,10 +24,10 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@typescript-eslint/utils": "^8.62.1"
+    "@typescript-eslint/utils": "^8.64.0"
   },
   "devDependencies": {
-    "@typescript-eslint/rule-tester": "^8.62.1",
+    "@typescript-eslint/rule-tester": "^8.64.0",
     "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
@@ -35,6 +35,6 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
     "typescript": "6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
