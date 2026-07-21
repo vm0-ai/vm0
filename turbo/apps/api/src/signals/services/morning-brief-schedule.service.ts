@@ -4,6 +4,8 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../external/db";
 import { calculateNextRun } from "./time-automation";
 
+// Fixed product schedule: the brief always targets 7:00 in the member's
+// local timezone.
 const MORNING_BRIEF_CRON = "0 7 * * *";
 
 /** Next 7:00 in the member's local timezone strictly after `from`. */
