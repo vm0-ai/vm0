@@ -596,6 +596,9 @@ export function createStaticConnectorServerFirewallCatalog(
         compareStrings(left.connectorRef, right.connectorRef)
       );
     });
+  let shadowProjectionPromise:
+    | Promise<ConnectorServerFirewallShadowProjection>
+    | undefined;
   return {
     connectorRefs: refs,
     has: (connectorRef) => {
@@ -637,43 +640,43 @@ export function createStaticConnectorServerFirewallCatalog(
         ? { connectorRef: owner.type, label: owner.label }
         : null;
     },
-    shadowProjection: async () => {
-      const items = await Promise.all(
-        refs.map(async (connectorRef) => {
-          const metadata = compactMetadata.get(connectorRef);
-          const permissionIndex =
-            await loadFirewallPermissionIndex(connectorRef);
-          const routingMetadata = await staticRoutingMetadata(connectorRef);
-          if (!metadata || !permissionIndex || !routingMetadata) {
-            throw new Error(
-              `Static connector server firewall metadata is missing: ${connectorRef}`,
-            );
-          }
-          return {
-            connectorRef,
-            label: metadata.summary.label,
-            billable: metadata.execution.billable,
-            permissionCount: metadata.summary.permissionCount,
-            hasCategories: metadata.summary.hasCategories,
-            hasDefaultPolicyOverrides:
-              metadata.summary.hasDefaultPolicyOverrides,
-            permissionDigest: permissionShadowDigest(
-              staticPermissionIndex(connectorRef, permissionIndex),
-            ),
-            routingDigest: routingShadowDigest(routingMetadata),
-            routingBases: metadata.routing.apis.map((api) => {
-              return api.base;
-            }),
-            baseUrlVarNames: metadata.execution.baseUrlVarNames,
-            baseUrlTemplates: metadata.execution.baseUrlTemplates,
-            secretPlaceholderNames: metadata.execution.secretPlaceholderNames,
-          };
-        }),
-      );
-      return {
-        items,
-        fixedHostOwners,
-      };
+    shadowProjection: () => {
+      shadowProjectionPromise ??= (async () => {
+        const items = await Promise.all(
+          refs.map(async (connectorRef) => {
+            const metadata = compactMetadata.get(connectorRef);
+            const permissionIndex =
+              await loadFirewallPermissionIndex(connectorRef);
+            const routingMetadata = await staticRoutingMetadata(connectorRef);
+            if (!metadata || !permissionIndex || !routingMetadata) {
+              throw new Error(
+                `Static connector server firewall metadata is missing: ${connectorRef}`,
+              );
+            }
+            return {
+              connectorRef,
+              label: metadata.summary.label,
+              billable: metadata.execution.billable,
+              permissionCount: metadata.summary.permissionCount,
+              hasCategories: metadata.summary.hasCategories,
+              hasDefaultPolicyOverrides:
+                metadata.summary.hasDefaultPolicyOverrides,
+              permissionDigest: permissionShadowDigest(
+                staticPermissionIndex(connectorRef, permissionIndex),
+              ),
+              routingDigest: routingShadowDigest(routingMetadata),
+              routingBases: metadata.routing.apis.map((api) => {
+                return api.base;
+              }),
+              baseUrlVarNames: metadata.execution.baseUrlVarNames,
+              baseUrlTemplates: metadata.execution.baseUrlTemplates,
+              secretPlaceholderNames: metadata.execution.secretPlaceholderNames,
+            };
+          }),
+        );
+        return { items, fixedHostOwners };
+      })();
+      return shadowProjectionPromise;
     },
   };
 }
@@ -784,6 +787,27 @@ export function createExternalConnectorServerFirewallCatalog(args: {
   const fixedHostOwners = externalFixedHostOwners(
     args.privateFirewallsArtifact.connectors,
   );
+  const shadowProjection: ConnectorServerFirewallShadowProjection = {
+    items: connectorRefs.map((connectorRef) => {
+      const entry = entries.get(connectorRef);
+      if (!entry) {
+        throw new Error(
+          `Accepted connector server firewall is missing: ${connectorRef}`,
+        );
+      }
+      return entry.shadowItem;
+    }),
+    fixedHostOwners: [...fixedHostOwners.entries()]
+      .map(([host, owner]) => {
+        return { host, connectorRef: owner.connectorRef };
+      })
+      .sort((left, right) => {
+        return (
+          compareStrings(left.host, right.host) ||
+          compareStrings(left.connectorRef, right.connectorRef)
+        );
+      }),
+  };
   return {
     connectorRefs,
     has: (connectorRef) => {
@@ -810,27 +834,7 @@ export function createExternalConnectorServerFirewallCatalog(args: {
       return normalized ? (fixedHostOwners.get(normalized) ?? null) : null;
     },
     shadowProjection: () => {
-      return Promise.resolve({
-        items: connectorRefs.map((connectorRef) => {
-          const entry = entries.get(connectorRef);
-          if (!entry) {
-            throw new Error(
-              `Accepted connector server firewall is missing: ${connectorRef}`,
-            );
-          }
-          return entry.shadowItem;
-        }),
-        fixedHostOwners: [...fixedHostOwners.entries()]
-          .map(([host, owner]) => {
-            return { host, connectorRef: owner.connectorRef };
-          })
-          .sort((left, right) => {
-            return (
-              compareStrings(left.host, right.host) ||
-              compareStrings(left.connectorRef, right.connectorRef)
-            );
-          }),
-      });
+      return Promise.resolve(shadowProjection);
     },
   };
 }
