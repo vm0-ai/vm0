@@ -6,6 +6,11 @@ import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
+type RequiredAxiomIngest = (
+  dataset: string,
+  events: readonly Record<string, unknown>[],
+) => Promise<boolean>;
+type RequiredAxiomIngestMock = Mock<RequiredAxiomIngest>;
 type SignalTimerDelayOptions = { readonly signal?: AbortSignal };
 type SignalTimerDelayMock = Mock<
   (ms: number, options?: SignalTimerDelayOptions) => Promise<void>
@@ -37,10 +42,13 @@ type PinnedRequestCallback = (
 
 export interface ApiTestMocks {
   readonly axiom: {
+    readonly datasetName: Mock<(name: string) => string>;
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
+    readonly requiredIngest: RequiredAxiomIngestMock;
     readonly query: AsyncMock;
     readonly sdkIngest: UnknownMock;
+    readonly useRealSdk: Mock<() => boolean>;
   };
   readonly axiomLogging: {
     readonly debug: SyncMock;
@@ -228,11 +236,19 @@ export interface ApiTestMocks {
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
+    datasetName: vi.fn<(name: string) => string>(),
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
+    requiredIngest: vi.fn<RequiredAxiomIngest>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     sdkIngest: vi.fn<(...args: unknown[]) => unknown>(),
+    useRealSdk: vi.fn<() => boolean>(),
   };
+  axiom.datasetName.mockImplementation((name) => {
+    return name;
+  });
+  axiom.requiredIngest.mockResolvedValue(true);
+  axiom.useRealSdk.mockReturnValue(false);
 
   const clerk = {
     authenticateRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -855,7 +871,7 @@ vi.mock("../signals/external/axiom", () => {
       return apiTestMocks.axiom.query(apl, options);
     },
     getDatasetName: (name: string) => {
-      return name;
+      return apiTestMocks.axiom.datasetName(name);
     },
     ingestToAxiom: (
       dataset: string,
@@ -863,15 +879,29 @@ vi.mock("../signals/external/axiom", () => {
     ) => {
       return apiTestMocks.axiom.ingest(dataset, events);
     },
+    ingestRequiredToAxiom: (
+      dataset: string,
+      events: readonly Record<string, unknown>[],
+    ) => {
+      return apiTestMocks.axiom.requiredIngest(dataset, events);
+    },
     flushAxiom: (options?: unknown) => {
       return apiTestMocks.axiom.flush(options);
     },
   };
 });
 
-vi.mock("@axiomhq/js", () => {
+vi.mock("@axiomhq/js", async () => {
+  const actual =
+    await vi.importActual<typeof import("@axiomhq/js")>("@axiomhq/js");
+  type AxiomOptions = ConstructorParameters<typeof actual.Axiom>[0];
+
   return {
-    Axiom: vi.fn(function () {
+    ...actual,
+    Axiom: vi.fn(function (options: AxiomOptions) {
+      if (apiTestMocks.axiom.useRealSdk()) {
+        return new actual.Axiom(options);
+      }
       return {
         flush: apiTestMocks.axiom.flush,
         ingest: apiTestMocks.axiom.sdkIngest,
@@ -912,10 +942,18 @@ export function resetApiTestMocks(): void {
     token: "test-ably-token",
   });
   apiTestMocks.axiom.flush.mockReset();
+  apiTestMocks.axiom.datasetName.mockReset();
+  apiTestMocks.axiom.datasetName.mockImplementation((name) => {
+    return name;
+  });
   apiTestMocks.axiom.ingest.mockReset();
   apiTestMocks.axiom.ingest.mockReturnValue(true);
+  apiTestMocks.axiom.requiredIngest.mockReset();
+  apiTestMocks.axiom.requiredIngest.mockResolvedValue(true);
   apiTestMocks.axiom.query.mockReset();
   apiTestMocks.axiom.sdkIngest.mockReset();
+  apiTestMocks.axiom.useRealSdk.mockReset();
+  apiTestMocks.axiom.useRealSdk.mockReturnValue(false);
   apiTestMocks.axiomLogging.debug.mockReset();
   apiTestMocks.axiomLogging.info.mockReset();
   apiTestMocks.axiomLogging.warn.mockReset();

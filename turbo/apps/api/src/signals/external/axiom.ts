@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
-import { Axiom } from "@axiomhq/js";
+import { Axiom, AxiomWithoutBatching } from "@axiomhq/js";
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import {
   getAxiomTokenEnvNameForApl,
@@ -9,13 +10,38 @@ import {
 
 const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
+const L = logger("axiom");
+
+type AxiomClientName = "sessions" | "telemetry";
+
+interface AxiomDatasetTarget {
+  readonly client: AxiomClientName;
+  readonly token: string;
+}
+
+function logBestEffortDeliveryError(
+  client: AxiomClientName,
+  error: unknown,
+): void {
+  L.error("Best-effort Axiom delivery failed", { client, error });
+}
 
 const sessionsAxiomClient = singleton(() => {
-  return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
+  return new Axiom({
+    token: env("AXIOM_TOKEN_SESSIONS"),
+    onError(error) {
+      logBestEffortDeliveryError("sessions", error);
+    },
+  });
 });
 
 const telemetryAxiomClient = singleton(() => {
-  return new Axiom({ token: env("AXIOM_TOKEN_TELEMETRY") });
+  return new Axiom({
+    token: env("AXIOM_TOKEN_TELEMETRY"),
+    onError(error) {
+      logBestEffortDeliveryError("telemetry", error);
+    },
+  });
 });
 
 export function getDatasetName(base: string): string {
@@ -30,12 +56,24 @@ function axiomClientForApl(apl: string): Axiom {
   return telemetryAxiomClient();
 }
 
-function axiomClientForDataset(dataset: string): Axiom | null {
+function axiomTargetForDataset(dataset: string): AxiomDatasetTarget | null {
   const tokenEnvName = getAxiomTokenEnvNameForDataset(dataset);
-  if (!optionalEnv(tokenEnvName)) {
+  const token = optionalEnv(tokenEnvName);
+  if (!token) {
     return null;
   }
-  if (tokenEnvName === "AXIOM_TOKEN_SESSIONS") {
+  return {
+    client: tokenEnvName === "AXIOM_TOKEN_SESSIONS" ? "sessions" : "telemetry",
+    token,
+  };
+}
+
+function axiomClientForDataset(dataset: string): Axiom | null {
+  const target = axiomTargetForDataset(dataset);
+  if (!target) {
+    return null;
+  }
+  if (target.client === "sessions") {
     return sessionsAxiomClient();
   }
   return telemetryAxiomClient();
@@ -53,9 +91,49 @@ export function ingestToAxiom(
   return true;
 }
 
+function requiredIngestError(
+  target: AxiomDatasetTarget,
+  dataset: string,
+  cause: unknown,
+): Error {
+  return new Error(
+    `Required Axiom ingest failed for ${target.client} dataset "${dataset}"`,
+    { cause },
+  );
+}
+
+export async function ingestRequiredToAxiom(
+  dataset: string,
+  events: readonly Record<string, unknown>[],
+): Promise<boolean> {
+  const target = axiomTargetForDataset(dataset);
+  if (!target) {
+    return false;
+  }
+
+  let reportedError: Error | undefined;
+  const client = new AxiomWithoutBatching({
+    token: target.token,
+    onError(error) {
+      reportedError ??= error;
+    },
+  });
+  const status = await client.ingest(dataset, [...events]);
+  if (reportedError) {
+    throw requiredIngestError(target, dataset, reportedError);
+  }
+  if (status.failed > 0) {
+    throw requiredIngestError(
+      target,
+      dataset,
+      new Error(`Axiom reported ${status.failed} failed event(s)`),
+    );
+  }
+  return true;
+}
+
 interface FlushAxiomOptions {
-  readonly throwOnError?: boolean;
-  readonly client?: "all" | "sessions" | "telemetry";
+  readonly client?: "all" | AxiomClientName;
 }
 
 export async function flushAxiom(
@@ -89,17 +167,13 @@ export async function flushAxiom(
       return flush.promise;
     }),
   );
-  const errors: unknown[] = [];
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
-      errors.push({
-        client: flushes[index]?.name ?? "unknown",
-        error: result.reason,
-      });
+      const name = flushes[index]?.name;
+      if (name === "sessions" || name === "telemetry") {
+        logBestEffortDeliveryError(name, result.reason);
+      }
     }
-  }
-  if (options.throwOnError && errors.length > 0) {
-    throw new AggregateError(errors, "Axiom flush failed");
   }
 }
 

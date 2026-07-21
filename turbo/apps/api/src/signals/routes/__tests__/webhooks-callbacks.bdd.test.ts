@@ -1101,16 +1101,14 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         { type: "tool_result", sequenceNumber: 2, result: "ok" },
       ],
     };
-    context.mocks.axiom.ingest.mockReturnValue(true);
-    context.mocks.axiom.flush.mockResolvedValue(undefined);
-
+    context.mocks.axiom.requiredIngest.mockResolvedValue(true);
     const ingested = await api.requestAgentEvents(body, headers, [200]);
     expect(ingested.body).toStrictEqual({
       received: 2,
       firstSequence: 1,
       lastSequence: 2,
     });
-    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
+    expect(context.mocks.axiom.requiredIngest).toHaveBeenCalledWith(
       "agent-run-events",
       [
         {
@@ -1133,22 +1131,19 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         },
       ],
     );
-    expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
-      throwOnError: true,
-      client: "sessions",
-    });
-
-    context.mocks.axiom.ingest.mockReturnValueOnce(false);
+    context.mocks.axiom.requiredIngest.mockResolvedValueOnce(false);
     const unconfigured = await api.requestAgentEvents(body, headers, [500]);
     expectApiError(unconfigured.body);
     expect(unconfigured.body.error.message).toBe(
       "Required event consumer dispatch failed: axiom",
     );
 
-    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
-    const flushFailed = await api.requestAgentEvents(body, headers, [500]);
-    expectApiError(flushFailed.body);
-    expect(flushFailed.body.error.message).toBe(
+    context.mocks.axiom.requiredIngest.mockRejectedValueOnce(
+      new Error("axiom down"),
+    );
+    const ingestFailed = await api.requestAgentEvents(body, headers, [500]);
+    expectApiError(ingestFailed.body);
+    expect(ingestFailed.body.error.message).toBe(
       "Required event consumer dispatch failed: axiom",
     );
   });

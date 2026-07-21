@@ -8701,8 +8701,10 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
 
-    context.mocks.axiom.flush.mockResolvedValue(undefined);
-    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
+    context.mocks.axiom.requiredIngest.mockResolvedValue(true);
+    context.mocks.axiom.requiredIngest.mockRejectedValueOnce(
+      new Error("axiom down"),
+    );
     const failed = await webhooks.requestAgentEvents(
       {
         runId: run.runId,
@@ -9393,11 +9395,10 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       sandboxHeaders,
       [200],
     );
-    const networkIngestCall = context.mocks.axiom.ingest.mock.calls.find(
-      ([dataset]) => {
+    const networkIngestCall =
+      context.mocks.axiom.requiredIngest.mock.calls.find(([dataset]) => {
         return dataset === "sandbox-telemetry-network";
-      },
-    );
+      });
     expect(networkIngestCall).toBeDefined();
     expect(networkIngestCall?.[1]).toHaveLength(2);
     expect(networkIngestCall?.[1]).toStrictEqual([

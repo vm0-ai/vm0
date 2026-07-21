@@ -22,7 +22,7 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
+import { getDatasetName, ingestRequiredToAxiom } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route-entry";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
@@ -356,23 +356,24 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
-  let telemetryBuffered = false;
+  const telemetryIngestions: Promise<boolean>[] = [];
 
   if (body.systemLog) {
-    telemetryBuffered =
-      ingestToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
+    telemetryIngestions.push(
+      ingestRequiredToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
         {
           _time: nowDate().toISOString(),
           runId: body.runId,
           userId: auth.userId,
           log: body.systemLog,
         },
-      ]) || telemetryBuffered;
+      ]),
+    );
   }
 
   if (body.metrics && body.metrics.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
+    telemetryIngestions.push(
+      ingestRequiredToAxiom(
         getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
         body.metrics.map((metric) => {
           return {
@@ -386,12 +387,13 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
             disk_total: metric.disk_total,
           };
         }),
-      ) || telemetryBuffered;
+      ),
+    );
   }
 
   if (body.networkLogs && body.networkLogs.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
+    telemetryIngestions.push(
+      ingestRequiredToAxiom(
         getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
         body.networkLogs.map(({ timestamp, ...rest }) => {
           return {
@@ -401,11 +403,12 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
             userId: auth.userId,
           };
         }),
-      ) || telemetryBuffered;
+      ),
+    );
   }
 
-  if (telemetryBuffered) {
-    await flushAxiom({ client: "telemetry", throwOnError: true });
+  if (telemetryIngestions.length > 0) {
+    await Promise.all(telemetryIngestions);
     signal.throwIfAborted();
   }
 

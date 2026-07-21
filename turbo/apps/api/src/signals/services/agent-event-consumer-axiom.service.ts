@@ -1,8 +1,7 @@
 import { command } from "ccstate";
 
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
-import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
-import { tapError } from "../utils";
+import { getDatasetName, ingestRequiredToAxiom } from "../external/axiom";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 
@@ -21,30 +20,17 @@ export const ingestAxiomEvents$ = command(
       };
     });
 
-    const ingested = ingestToAxiom(
+    const ingested = await ingestRequiredToAxiom(
       getDatasetName(AGENT_RUN_EVENTS_DATASET),
       axiomEvents,
     );
+    signal.throwIfAborted();
     if (!ingested) {
       return {
         status: 503 as const,
         body: {
           error: "Axiom agent-run-events dataset is not configured",
         },
-      };
-    }
-
-    const flushed = await tapError(
-      (async () => {
-        await flushAxiom({ throwOnError: true, client: "sessions" });
-        return true;
-      })(),
-    );
-    signal.throwIfAborted();
-    if (!flushed) {
-      return {
-        status: 503 as const,
-        body: { error: "Axiom agent-run-events flush failed" },
       };
     }
 
