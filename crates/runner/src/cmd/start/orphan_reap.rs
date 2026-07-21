@@ -105,6 +105,7 @@ impl OrphanedActiveRuns {
 #[derive(Clone)]
 pub(super) struct OrphanReapProcessDiscovery {
     pub(super) firecrackers: Arc<Vec<process::FirecrackerProcessInfo>>,
+    pub(super) proc_scan_complete: bool,
     pub(super) incomplete_for_current_runner: bool,
 }
 
@@ -196,19 +197,26 @@ async fn reap_orphaned_active_run_records(
     }
 
     let discovered;
-    let (firecrackers, discovery_incomplete_for_current_runner) =
+    let (firecrackers, proc_scan_complete, identity_incomplete_for_current_runner) =
         if let Some(discovery) = process_discovery_override {
             (
                 discovery.firecrackers.as_slice(),
+                discovery.proc_scan_complete,
                 discovery.incomplete_for_current_runner,
             )
         } else {
-            discovered = process::discover_all().await;
+            discovered = process::discover_all_with_status().await;
             (
-                discovered.firecrackers.as_slice(),
-                firecracker_discovery_incomplete_for_current_runner(&discovered.firecrackers).await,
+                discovered.processes.firecrackers.as_slice(),
+                discovered.proc_scan_complete,
+                firecracker_discovery_incomplete_for_current_runner(
+                    &discovered.processes.firecrackers,
+                )
+                .await,
             )
         };
+    let discovery_incomplete_for_current_runner =
+        !proc_scan_complete || identity_incomplete_for_current_runner;
     reap_orphaned_active_runs_with_firecrackers(
         orphaned_active_runs,
         status,
@@ -648,6 +656,7 @@ mod tests {
             .await;
         let discovery = OrphanReapProcessDiscovery {
             firecrackers: Arc::new(Vec::new()),
+            proc_scan_complete: true,
             incomplete_for_current_runner: false,
         };
 
@@ -728,6 +737,7 @@ mod tests {
         };
         let discovery = OrphanReapProcessDiscovery {
             firecrackers: Arc::new(vec![unresolved_firecracker]),
+            proc_scan_complete: true,
             incomplete_for_current_runner: true,
         };
 
@@ -808,6 +818,62 @@ mod tests {
 
         fixture.assert_status(&[], &[]).await;
         fixture.assert_orphan_count(0).await;
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_incomplete_proc_scan_does_not_count_as_periodic_absence() {
+        let fixture = OrphanReapFixture::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        fixture.add_active_orphan(run_id, sandbox_id).await;
+        let incomplete_discovery = OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(Vec::new()),
+            proc_scan_complete: false,
+            incomplete_for_current_runner: false,
+        };
+        let complete_discovery = OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(Vec::new()),
+            proc_scan_complete: true,
+            incomplete_for_current_runner: false,
+        };
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ConfirmAbsent, &incomplete_discovery)
+            .await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
+        fixture.assert_orphans(&[(run_id, sandbox_id)]).await;
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ConfirmAbsent, &complete_discovery)
+            .await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
+        fixture.assert_orphans(&[(run_id, sandbox_id)]).await;
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ConfirmAbsent, &complete_discovery)
+            .await;
+        fixture.assert_status(&[], &[]).await;
+        fixture.assert_orphan_count(0).await;
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_shutdown_final_preserves_active_run_after_incomplete_proc_scan() {
+        let fixture = OrphanReapFixture::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        fixture.add_active_orphan(run_id, sandbox_id).await;
+        let discovery = OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(Vec::new()),
+            proc_scan_complete: false,
+            incomplete_for_current_runner: false,
+        };
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ShutdownFinal, &discovery)
+            .await;
+
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
+        fixture.assert_orphans(&[(run_id, sandbox_id)]).await;
     }
 
     #[tokio::test]

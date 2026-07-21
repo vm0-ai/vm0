@@ -61,6 +61,7 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::ActiveOrUnknown);
     config.orphan_reap.process_discovery = Some(OrphanReapProcessDiscovery {
         firecrackers: Arc::new(Vec::new()),
+        proc_scan_complete: true,
         incomplete_for_current_runner: false,
     });
     let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
@@ -101,6 +102,7 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
     config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
     config.orphan_reap.process_discovery = Some(OrphanReapProcessDiscovery {
         firecrackers: Arc::new(Vec::new()),
+        proc_scan_complete: true,
         incomplete_for_current_runner: false,
     });
     let budget = Arc::clone(&config.capacity.budget);
