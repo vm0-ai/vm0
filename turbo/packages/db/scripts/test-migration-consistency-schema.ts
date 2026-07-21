@@ -1223,6 +1223,280 @@ async function validateConnectorCredentialOwnershipContraction(): Promise<void> 
   );
 }
 
+const STORAGE_ARCHIVE_SIZE_PREVIOUS_MIGRATION = 630;
+const STORAGE_ARCHIVE_SIZE_FINALIZATION_MIGRATION = 631;
+
+const storageArchiveSizeFixture = {
+  orgId: "archive-finalization-org",
+  storageId: "40000000-0000-4000-8000-000000000001",
+  positiveVersionId: "a".repeat(64),
+  emptyVersionId: "b".repeat(64),
+  headVersionId: "c".repeat(64),
+  historyVersionId: "d".repeat(64),
+} as const;
+
+async function applyMigrationsUpToInTransaction(
+  client: Client,
+  upToIdx: number,
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    await applyMigrationsUpTo(client, upToIdx);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function seedStorageArchiveSizeFinalizationFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = storageArchiveSizeFixture;
+
+  await client.query(
+    `
+      INSERT INTO "storages"
+        ("id", "org_id", "user_id", "name", "type", "s3_prefix", "size", "file_count")
+      VALUES
+        ($1, $2, '__org__', 'legacy-volume', 'volume', 'archive-finalization/legacy', 42, 1)
+    `,
+    [fixture.storageId, fixture.orgId],
+  );
+
+  await client.query(
+    `
+      INSERT INTO "storage_versions"
+        ("id", "storage_id", "s3_key", "size", "archive_size", "file_count", "created_by", "created_at")
+      VALUES
+        ($1, $5, 'archive-finalization/positive', 7, 11, 1, 'test', '2025-01-01'),
+        ($2, $5, 'archive-finalization/empty', 0, 0, 0, 'test', '2025-01-01'),
+        ($3, $5, 'archive-finalization/head', 42, NULL, 1, 'test', '2025-01-01'),
+        ($4, $5, 'archive-finalization/history', 24, NULL, 1, 'test', '2025-01-01')
+    `,
+    [
+      fixture.positiveVersionId,
+      fixture.emptyVersionId,
+      fixture.headVersionId,
+      fixture.historyVersionId,
+      fixture.storageId,
+    ],
+  );
+
+  await client.query(
+    `
+      UPDATE "storages"
+      SET "head_version_id" = $1
+      WHERE "id" = $2
+    `,
+    [fixture.headVersionId, fixture.storageId],
+  );
+
+  await client.query(
+    `
+      INSERT INTO "storage_archive_size_backfill_work"
+        (
+          "storage_version_id",
+          "claim_token",
+          "lease_expires_at",
+          "attempt_count",
+          "last_attempt_at",
+          "outcome",
+          "error_code"
+        )
+      VALUES
+        ($1, '50000000-0000-4000-8000-000000000001', '2025-01-02', 1, '2025-01-02', 'missing', 'archive-not-found'),
+        ($2, '50000000-0000-4000-8000-000000000002', '2025-01-02', 1, '2025-01-02', 'missing', 'archive-not-found')
+    `,
+    [fixture.headVersionId, fixture.historyVersionId],
+  );
+}
+
+async function expectStorageArchiveSizeConstraintRejected(
+  client: Client,
+  args: {
+    readonly versionId: string;
+    readonly archiveSize: number | null;
+    readonly expectedCode: "23502" | "23514";
+    readonly expectedConstraint?: string;
+  },
+): Promise<void> {
+  const fixture = storageArchiveSizeFixture;
+  try {
+    await client.query(
+      `
+        INSERT INTO "storage_versions"
+          ("id", "storage_id", "s3_key", "archive_size", "file_count", "created_by")
+        VALUES ($1, $2, $3, $4, 1, 'test')
+      `,
+      [
+        args.versionId,
+        fixture.storageId,
+        `archive-finalization/rejected/${args.versionId}`,
+        args.archiveSize,
+      ],
+    );
+  } catch (error) {
+    assert.equal(databaseErrorCode(error), args.expectedCode);
+    if (args.expectedConstraint) {
+      assert.ok(
+        error instanceof Error &&
+          error.message.includes(args.expectedConstraint),
+      );
+    }
+    return;
+  }
+
+  throw new Error(`Storage archive-size constraint accepted ${args.versionId}`);
+}
+
+async function validateStorageArchiveSizeFinalization(): Promise<void> {
+  console.log(
+    "=== Phase 1.5: Validate storage archive-size finalization ===\n",
+  );
+  const testDb = "migration_storage_archive_size_finalization_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = storageArchiveSizeFixture;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, STORAGE_ARCHIVE_SIZE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedStorageArchiveSizeFinalizationFixture(client);
+      await applyMigrationsUpToInTransaction(
+        client,
+        STORAGE_ARCHIVE_SIZE_FINALIZATION_MIGRATION,
+      );
+
+      const versions = await client.query<{
+        archive_size: string;
+        file_count: number;
+        id: string;
+      }>(
+        `
+          SELECT "id", "archive_size", "file_count"
+          FROM "storage_versions"
+          WHERE "storage_id" = $1
+          ORDER BY "id"
+        `,
+        [fixture.storageId],
+      );
+      assert.deepEqual(versions.rows, [
+        {
+          id: fixture.positiveVersionId,
+          archive_size: "11",
+          file_count: 1,
+        },
+        {
+          id: fixture.emptyVersionId,
+          archive_size: "0",
+          file_count: 0,
+        },
+        {
+          id: fixture.headVersionId,
+          archive_size: "0",
+          file_count: 1,
+        },
+        {
+          id: fixture.historyVersionId,
+          archive_size: "0",
+          file_count: 1,
+        },
+      ]);
+
+      const storage = await client.query<{
+        file_count: number;
+        head_version_id: string | null;
+        size: string;
+      }>(
+        `
+          SELECT "head_version_id", "size", "file_count"
+          FROM "storages"
+          WHERE "id" = $1
+        `,
+        [fixture.storageId],
+      );
+      assert.deepEqual(storage.rows, [
+        {
+          head_version_id: fixture.headVersionId,
+          size: "42",
+          file_count: 1,
+        },
+      ]);
+
+      const finalState = await client.query<{
+        archive_size_nullable: string;
+        null_archive_sizes: string;
+        null_index: string | null;
+        work_table: string | null;
+      }>(`
+        SELECT
+          (
+            SELECT is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'storage_versions'
+              AND column_name = 'archive_size'
+          ) AS archive_size_nullable,
+          (
+            SELECT count(*)::text
+            FROM storage_versions
+            WHERE archive_size IS NULL
+          ) AS null_archive_sizes,
+          to_regclass('public.idx_storage_versions_archive_size_null')::text
+            AS null_index,
+          to_regclass('public.storage_archive_size_backfill_work')::text
+            AS work_table
+      `);
+      assert.deepEqual(finalState.rows, [
+        {
+          archive_size_nullable: "NO",
+          null_archive_sizes: "0",
+          null_index: null,
+          work_table: null,
+        },
+      ]);
+
+      const finalConstraints = await client.query<{ conname: string }>(`
+        SELECT conname
+        FROM pg_constraint
+        WHERE conname IN (
+          'chk_storage_versions_archive_size_nonnegative',
+          'chk_storage_versions_nonempty_archive_size_positive'
+        )
+        ORDER BY conname
+      `);
+      assert.deepEqual(
+        finalConstraints.rows.map((row) => {
+          return row.conname;
+        }),
+        ["chk_storage_versions_archive_size_nonnegative"],
+      );
+
+      await expectStorageArchiveSizeConstraintRejected(client, {
+        versionId: "e".repeat(64),
+        archiveSize: null,
+        expectedCode: "23502",
+      });
+      await expectStorageArchiveSizeConstraintRejected(client, {
+        versionId: "f".repeat(64),
+        archiveSize: -1,
+        expectedCode: "23514",
+        expectedConstraint: "chk_storage_versions_archive_size_nonnegative",
+      });
+    } finally {
+      await client.end();
+    }
+    console.log(
+      "   ✅ Finalization normalizes legacy null sizes, preserves storage metadata, and installs the final constraints\n",
+    );
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -1541,6 +1815,8 @@ async function main(): Promise<void> {
 
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
+
+    await validateStorageArchiveSizeFinalization();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
