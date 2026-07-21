@@ -95,6 +95,7 @@ resolve() {
     echo "missing HEAD_SHA or GITHUB_SHA" >&2
     exit 2
   fi
+  local source_head_sha="${SOURCE_HEAD_SHA:-$head_sha}"
 
   local job_ref="" release_skip="false" skip_reason="" pr_number="" pr_head_ref=""
 
@@ -158,6 +159,7 @@ resolve() {
   emit "skip-reason" "$skip_reason"
   emit "job-ref" "$job_ref"
   emit "head-sha" "$head_sha"
+  emit "source-head-sha" "$source_head_sha"
   emit "pr-number" "$pr_number"
   emit "pr-head-ref" "$pr_head_ref"
 }

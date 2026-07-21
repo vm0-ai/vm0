@@ -23,6 +23,7 @@ jobs:
       skip-reason: ${{ steps.identity.outputs.skip-reason }}
       job-ref: ${{ steps.identity.outputs.job-ref }}
       head-sha: ${{ steps.identity.outputs.head-sha }}
+      source-head-sha: ${{ steps.identity.outputs.source-head-sha }}
       pr-number: ${{ steps.identity.outputs.pr-number }}
       pr-head-ref: ${{ steps.identity.outputs.pr-head-ref }}
       turbo-runner-consumer-needed: ${{ steps.needed.outputs.turbo-runner-consumer-needed }}
@@ -48,6 +49,7 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
           HEAD_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           CHECK_PR_OPEN: "true"
@@ -457,7 +459,7 @@ jobs:
           FRESH_METADATA_PATH: runner-binary-fresh/metadata.json
           OUTPUT_DIR: runner-binary-asset
           PRODUCER_EVENT: ${{ github.event_name }}
-          PRODUCER_HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+          PRODUCER_HEAD_SHA: ${{ needs.prepare.outputs.source-head-sha }}
           PRODUCER_PR_NUMBER: ${{ needs.prepare.outputs.pr-number }}
           PRODUCER_REPOSITORY: ${{ github.repository }}
           PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
