@@ -64,7 +64,6 @@ export enum FeatureSwitchKey {
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",
   AgentUnreadIndicators = "agentUnreadIndicators",
-  MobileUnreadChatThreadShortcuts = "mobileUnreadChatThreadShortcuts",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
   SidebarManageIconCollapse = "sidebarManageIconCollapse",
