@@ -129,7 +129,6 @@ describe("zero connector status command", () => {
     vi.stubEnv("ZERO_TOKEN", "");
     vi.stubEnv("ZERO_AGENT_ID", "");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
   });
 
   afterEach(() => {
@@ -263,7 +262,6 @@ describe("zero connector status command", () => {
     it("prints a callback URL example in the current web chat", async () => {
       vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
       vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
-      vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),

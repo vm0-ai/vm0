@@ -199,10 +199,8 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await reads.requestReadCheckpoint(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
       (await reads.requestRunEvents(null, missingId, {}, [401])).body,
-      (await reads.requestRunAgentEvents(null, missingId, {}, [401])).body,
       (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
       (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
-      (await reads.requestRunNetworkLogs(null, missingId, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
       (await reads.requestZeroRunNetworkLogs(null, missingId, {}, [401])).body,
       (await reads.requestListLogs(null, {}, [401])).body,
@@ -2262,117 +2260,6 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     expect(sandboxEvents.body).toMatchObject({ hasMore: true });
 
-    // Paged agent events: asc with since, then desc past the watermark.
-    const ascStart = axiomCallCount();
-    const ascEvents = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { since: 0, limit: 2, order: "asc" },
-      [200],
-    );
-    if (ascEvents.status !== 200) {
-      throw new Error("Expected the asc agent events read to succeed");
-    }
-    expect(ascEvents.body.events).toHaveLength(2);
-    expect(ascEvents.body.hasMore).toBeTruthy();
-    expect(ascEvents.body.nextCursor).toBe("sequence:asc:1");
-    expect(ascEvents.body.framework).toBe("claude-code");
-    expect(axiomCallCount()).toBe(ascStart + 3);
-    const ascApl = axiomCallSince(ascStart, "| where sequenceNumber > 0")[0];
-    expect(ascApl).toContain("| where sequenceNumber > 0");
-    expect(ascApl).toContain("| order by sequenceNumber asc");
-    expectRunContextFrameworkQuery(ascStart, runId);
-
-    const cursorAgentStart = axiomCallCount();
-    await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
-      [200],
-    );
-    const cursorAgentApl = axiomCallSince(
-      cursorAgentStart,
-      "| where sequenceNumber < 2",
-    )[0];
-    expect(cursorAgentApl).toContain("| where sequenceNumber < 2");
-    expect(cursorAgentApl).toContain("| order by sequenceNumber desc");
-    expectRunContextFrameworkQuery(cursorAgentStart, runId);
-
-    const agentSinceTime = Date.parse("2026-06-10T10:29:30Z");
-    const agentSinceTimeStart = axiomCallCount();
-    await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { sinceTime: agentSinceTime, limit: 1, order: "asc" },
-      [200],
-    );
-    const agentSinceTimeApl = axiomCallSince(
-      agentSinceTimeStart,
-      "| where _time >",
-    )[0];
-    expect(agentSinceTimeApl).toContain(
-      `| where _time > datetime("${new Date(agentSinceTime).toISOString()}")`,
-    );
-    expect(agentSinceTimeApl).toContain("| order by sequenceNumber asc");
-    expectRunContextFrameworkQuery(agentSinceTimeStart, runId);
-
-    const malformedAgentCursor = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { cursor: "not-a-cursor", limit: 1, order: "desc" },
-      [400],
-    );
-    expectApiError(malformedAgentCursor.body);
-
-    const wrongAgentCursorKind = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { cursor: "time:desc:1", limit: 1, order: "desc" },
-      [400],
-    );
-    expectApiError(wrongAgentCursorKind.body);
-
-    const outOfRangeAgentSince = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { since: 2_147_483_648, limit: 1, order: "desc" },
-      [400],
-    );
-    expectApiError(outOfRangeAgentSince.body);
-
-    const outOfRangeAgentCursor = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
-      [400],
-    );
-    expectApiError(outOfRangeAgentCursor.body);
-
-    const decimalAgentLimit = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { since: 0, limit: 1.5, order: "asc" },
-      [400],
-    );
-    expectApiError(decimalAgentLimit.body);
-
-    const descStart = axiomCallCount();
-    const descEvents = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { since: 5, limit: 5, order: "desc" },
-      [200],
-    );
-    if (descEvents.status !== 200) {
-      throw new Error("Expected the desc agent events read to succeed");
-    }
-    expect(descEvents.body.hasMore).toBeFalsy();
-    expect(axiomCallCount()).toBe(descStart + 2);
-    expect(
-      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
-    ).toBeUndefined();
-    expectRunContextFrameworkQuery(descStart, runId);
-
     // System log pages.
     const sinceMs = Date.parse("2026-06-10T10:29:00Z");
     const systemAsc = await reads.requestRunSystemLog(
@@ -2504,50 +2391,6 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(metricsApl).toContain("sandbox-telemetry-metrics");
     expect(metricsApl).toContain("| order by _time desc");
 
-    // Network pages with capture fields and sparse-null omission.
-    const networkPage = await reads.requestRunNetworkLogs(
-      actor,
-      runId,
-      { limit: 10, order: "desc" },
-      [200],
-    );
-    if (networkPage.status !== 200) {
-      throw new Error("Expected the network log read to succeed");
-    }
-    expect(networkPage.body.hasMore).toBeFalsy();
-    expect(networkPage.body.networkLogs).toHaveLength(3);
-    expect(networkPage.body.networkLogs[0]).toMatchObject({
-      timestamp: "2026-06-10T10:30:00Z",
-      action: "ALLOW",
-      host: "example.com",
-      browser_user_agent: true,
-      dns_result: "1.2.3.4",
-      firewall_params: { owner: "vm0-ai" },
-      connector_diagnostic_type: "fal",
-      connector_diagnostic_reason: "not_configured_for_run",
-      connector_diagnostic_env_names: ["FAL_TOKEN"],
-      connector_diagnostic_base: "https://fal.run",
-      connector_route_reason: "connector_intent_required",
-      connector_route_candidates: ["auditor", "primary"],
-      request_headers: { host: "example.com" },
-      request_body: "abc",
-      response_headers: { server: "test" },
-      response_body: "def",
-    });
-    expect(networkPage.body.networkLogs[1]).toStrictEqual({
-      timestamp: "2026-06-10T10:31:00Z",
-      type: "tcp",
-      port: 0,
-      status: 0,
-      latency_ms: 0,
-    });
-    expect(networkPage.body.networkLogs[2]).toMatchObject({
-      timestamp: "2026-06-10T10:32:00Z",
-      action: "BLOCK",
-      host: "blocked.example.com",
-      firewall_error: "connector_not_configured",
-    });
-
     // Telemetry families hide other users' runs without leaking existence.
     const memberEvents = await reads.requestRunEvents(member, runId, {}, [404]);
     expectApiError(memberEvents.body);
@@ -2563,41 +2406,28 @@ describe("RUN-04: agent run telemetry families", () => {
     await api.requestCancelRun(actor, pendingRun.runId, [200]);
   });
 
-  it("hardens network log rows consistently across agent and zero read APIs", async () => {
+  it("hardens network log rows in the zero read API", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");
-    const agentRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
-      prompt: "agent network hardening",
-    });
     const zeroRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "zero network hardening",
     });
 
     dispatchAxiomQueries({
-      [agentRun.runId]: {
-        network: networkHardeningRows(agentRun.runId, actor.userId),
-      },
       [zeroRun.runId]: {
         network: networkHardeningRows(zeroRun.runId, actor.userId),
       },
     });
 
-    const agentNetwork = await reads.requestRunNetworkLogs(
-      actor,
-      agentRun.runId,
-      { limit: 4, order: "asc" },
-      [200],
-    );
     const zeroNetwork = await reads.requestZeroRunNetworkLogs(
       actor,
       zeroRun.runId,
       { limit: 4, order: "asc" },
       [200],
     );
-    if (agentNetwork.status !== 200 || zeroNetwork.status !== 200) {
-      throw new Error("Expected both network log reads to succeed");
+    if (zeroNetwork.status !== 200) {
+      throw new Error("Expected the zero network log read to succeed");
     }
 
     const expectedNetworkLogs = [
@@ -2623,11 +2453,6 @@ describe("RUN-04: agent run telemetry families", () => {
       "cursor-0003",
     );
 
-    expect(agentNetwork.body).toStrictEqual({
-      networkLogs: expectedNetworkLogs,
-      hasMore: true,
-      nextCursor: expectedNextCursor,
-    });
     expect(zeroNetwork.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
@@ -2844,56 +2669,6 @@ describe("RUN-04: agent run telemetry families", () => {
       order: "asc",
     });
 
-    const directNetworkFirst = await reads.requestRunNetworkLogs(
-      actor,
-      runId,
-      { limit: 1, order: "asc" },
-      [200],
-    );
-    expect(directNetworkFirst.body).toStrictEqual({
-      networkLogs: [
-        {
-          timestamp,
-          type: "http",
-          action: "ALLOW",
-          host: "first.example.com",
-        },
-      ],
-      hasMore: true,
-      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
-    });
-
-    const directNetworkCursor = directNetworkFirst.body.nextCursor;
-    if (!directNetworkCursor) {
-      throw new Error(
-        "Expected the first tied direct network page to return a cursor",
-      );
-    }
-
-    const directNetworkSecond = await reads.requestRunNetworkLogs(
-      actor,
-      runId,
-      { cursor: directNetworkCursor, limit: 1, order: "asc" },
-      [200],
-    );
-    expect(directNetworkSecond.body).toStrictEqual({
-      networkLogs: [
-        {
-          timestamp,
-          type: "http",
-          action: "ALLOW",
-          host: "second.example.com",
-        },
-      ],
-      hasMore: true,
-      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
-    });
-    const directNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
-    expectTimeCursorAxiomResume(directNetworkSecondCall, {
-      cursor: "network-a",
-      order: "asc",
-    });
-
     const zeroNetworkFirst = await reads.requestZeroRunNetworkLogs(
       actor,
       runId,
@@ -3079,19 +2854,6 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const agentEvents = await reads.requestRunAgentEvents(
-      actor,
-      runId,
-      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
-      [200],
-    );
-    if (agentEvents.status !== 200) {
-      throw new Error("Expected the agent events read to succeed");
-    }
-    expect(agentEvents.body.events).toHaveLength(1);
-    expect(agentEvents.body.hasMore).toBeFalsy();
-    expect(agentEvents.body.nextCursor).toBeUndefined();
-
     const telemetryCursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
     const systemLog = await reads.rawApiRequest(
       actor,
@@ -3115,19 +2877,6 @@ describe("RUN-04: agent run telemetry families", () => {
       }),
     );
     expect(metrics).toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-
-    const networkLogs = await reads.rawApiRequest(
-      actor,
-      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/network`, {
-        cursor: telemetryCursor,
-        limit: 1,
-        order: "asc",
-      }),
-    );
-    expect(networkLogs).toStrictEqual({
       status: 500,
       body: { error: "Internal server error" },
     });

@@ -45,7 +45,6 @@ import { apiBuildInfo$ } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
-import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
@@ -215,7 +214,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...legacyFileRoutes,
-  ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,

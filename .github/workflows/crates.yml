@@ -330,7 +330,7 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-      - name: Run vsock-guest production identity test
+      - name: Run vsock-guest production configuration tests
         if: |
           needs.detect.outputs.vsock-test-changed == 'true' ||
           needs.detect.outputs.ci-changed == 'true'
@@ -367,6 +367,10 @@ jobs:
             /sbin/guest-write-file
 
           cd crates
+          cargo test -p vsock-guest --release --no-default-features \
+            --lib \
+            exec_operation::tests::stdout_drain_spawn_failure_returns_wait_failed_and_cleans_registry -- \
+            --exact
           HOME=/root USER=root LOGNAME=root \
             cargo test -p vsock-guest --release --no-default-features \
               --test production_identity -- \

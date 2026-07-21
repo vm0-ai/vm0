@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.22...runner-rs-v0.146.23) (2026-07-21)
+
+
+### Documentation
+
+* **runner:** clarify name validation lifecycle ([#22352](https://github.com/vm0-ai/vm0/issues/22352)) ([a21cdb9](https://github.com/vm0-ai/vm0/commit/a21cdb97ac7ac2072b0b1093477bd32ac91b28c3))
+
 ## [0.146.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.21...runner-rs-v0.146.22) (2026-07-21)
 
 

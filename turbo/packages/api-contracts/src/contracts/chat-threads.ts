@@ -303,6 +303,44 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const userMessagePartSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("text"),
+      text: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat_thread"),
+      threadId: z.string().uuid(),
+      titleSnapshot: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("template"),
+      titleSnapshot: z.string().min(1),
+      template: generationTemplateRequestSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file"),
+      fileId: z.string().min(1),
+      filenameSnapshot: z.string().min(1),
+      contentType: z.string().min(1),
+    })
+    .strict(),
+]);
+
+const userMessageDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z.array(userMessagePartSchema).min(1),
+  })
+  .strict();
+
 const workflowSnapshotSchema = z.object({
   id: z.string().uuid().optional(),
   agentId: z.string().uuid().optional(),
@@ -1317,6 +1355,8 @@ export {
   chatThreadDraftSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
+  userMessagePartSchema,
+  userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
@@ -1345,6 +1385,8 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
+export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
+export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
   "workflow" | "website"

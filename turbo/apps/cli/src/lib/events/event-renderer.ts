@@ -95,7 +95,7 @@ export class EventRenderer {
     if (info.sandboxId) {
       console.log(`  Sandbox:  ${chalk.dim(info.sandboxId)}`);
     }
-    console.log(chalk.dim(`  (use "vm0 logs ${info.runId}" to view logs)`));
+    console.log(chalk.dim(`  (use "zero logs ${info.runId}" to view logs)`));
     console.log();
   }
 
@@ -215,9 +215,7 @@ export class EventRenderer {
       console.error(`  Error: ${chalk.red(errorText)}`);
     }
 
-    console.error(
-      chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
-    );
+    console.error(chalk.dim(`  (use "zero logs ${runId}" to view agent logs)`));
   }
 
   /**
