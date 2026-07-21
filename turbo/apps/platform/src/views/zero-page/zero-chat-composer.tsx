@@ -6637,7 +6637,7 @@ export function useZeroChatComposer({
     dragOver,
     setDragOver,
   } = resolved;
-  const insertComposerText = useSet(composer.insertText$);
+  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6677,7 +6677,7 @@ export function useZeroChatComposer({
         }
         e.preventDefault();
         if (chatPayload.text) {
-          insertComposerText(chatPayload.text);
+          insertPromptMarkdown(chatPayload.text);
         }
         if (allowedAttachments.length > 0) {
           restoreAttachments(allowedAttachments);
@@ -6697,7 +6697,7 @@ export function useZeroChatComposer({
       if (pastedPlainText || !plainText) {
         return;
       }
-      insertComposerText(plainText);
+      insertPromptMarkdown(plainText);
       pastedPlainText = true;
     };
     for (const item of items) {

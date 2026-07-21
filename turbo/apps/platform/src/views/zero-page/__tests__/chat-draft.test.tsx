@@ -833,10 +833,10 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores copied chat text in the slash composer when attachments prevent default paste", async () => {
+  it("preserves multiline copied chat text when attachments prevent default paste", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "thread-copied-attachment-slash-composer";
-    const pastedText = "123";
+    const pastedText = `first\n[Thread 1](/chats/${THREAD_ONE_ID})\nlast `;
     const filename = "image.png";
     const url =
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
@@ -853,6 +853,10 @@ describe("chat drafts", () => {
 
     const editor = await findComposerEditor();
     await user.click(editor);
+    await user.keyboard("Before after");
+    await user.keyboard(
+      "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
+    );
 
     fireEvent.paste(editor, {
       clipboardData: {
@@ -878,7 +882,18 @@ describe("chat drafts", () => {
     });
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent(pastedText);
+      expect(
+        Array.from(editor.children, (element) => {
+          return element.textContent ?? "";
+        }).filter((text) => {
+          return text.length > 0;
+        }),
+      ).toStrictEqual(["Before first", "Thread 1", "last after"]);
+      expect(
+        editor.querySelector(
+          `span[data-chat-thread-mention="${THREAD_ONE_ID}"]`,
+        ),
+      ).toHaveTextContent("Thread 1");
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });
