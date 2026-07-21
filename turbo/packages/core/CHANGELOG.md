@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.447.0](https://github.com/vm0-ai/vm0/compare/core-v8.446.0...core-v8.447.0) (2026-07-21)
+
+
+### Features
+
+* route canonical slack turns through chat message queue ([#22429](https://github.com/vm0-ai/vm0/issues/22429)) ([eddb41b](https://github.com/vm0-ai/vm0/commit/eddb41b47ef26e02468f6fac1926346624e75492))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+
 ## [8.446.0](https://github.com/vm0-ai/vm0/compare/core-v8.445.1...core-v8.446.0) (2026-07-21)
 
 
