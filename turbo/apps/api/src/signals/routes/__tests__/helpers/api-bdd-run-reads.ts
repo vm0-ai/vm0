@@ -1,9 +1,7 @@
 import type { z } from "zod";
 import {
-  runAgentEventsContract,
   runEventsContract,
   runMetricsContract,
-  runNetworkLogsContract,
   runsByIdContract,
   runsCancelContract,
   runsMainContract,
@@ -38,7 +36,7 @@ type DirectRunRequest = z.input<(typeof runsMainContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunEventsQuery = z.input<(typeof runEventsContract.getEvents)["query"]>;
 type PagedTelemetryQuery = z.input<
-  (typeof runAgentEventsContract.getAgentEvents)["query"]
+  (typeof runSystemLogContract.getSystemLog)["query"]
 >;
 type ZeroAgentEventsQuery = z.input<
   (typeof zeroRunAgentEventsContract.getAgentEvents)["query"]
@@ -255,22 +253,6 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunAgentEvents<TStatus extends 200 | 400 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      query: PagedTelemetryQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runAgentEventsContract).getAgentEvents({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
     async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
@@ -295,22 +277,6 @@ export function createRunReadsApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context })(runMetricsContract).getMetrics({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestRunNetworkLogs<TStatus extends 200 | 400 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      query: PagedTelemetryQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runNetworkLogsContract).getNetworkLogs({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -442,7 +408,6 @@ export function createRunReadsApi(context: TestContext) {
 
     // Raw GET for 400s the typed contracts cannot express (queue-position
     // without runId, telemetry queries rejected by zod before the handler).
-    // Modeled on rawSearchLogs in helpers/api-bdd-ops-logs.ts.
     async rawApiRequest(
       actor: ApiTestUser | null,
       path: string,
