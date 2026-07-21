@@ -10,7 +10,7 @@ import {
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, eq, inArray, isNull, isNotNull, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -50,7 +50,6 @@ const log = logger("api:morning-brief");
 
 const CLAIM_LIMIT = 50;
 const PROCESS_CONCURRENCY = 5;
-const BACKFILL_LIMIT = 200;
 const LOOKBACK_CAP_MS = 72 * 60 * 60 * 1000;
 const SIGNED_URL_TTL_SECONDS = 30 * 60;
 const MORNING_BRIEF_THREAD_TITLE = "Morning Brief";
@@ -81,55 +80,6 @@ function morningBriefStorageKey(
   filename: string,
 ): string {
   return `morning-brief/${orgId}/${userId}/${briefDate}/${filename}`;
-}
-
-/**
- * Existing members never touch Settings, so schedules are also materialized
- * lazily here: any member with a known timezone and the preference still on
- * gets a schedule row with their next 7:00 local run.
- */
-async function backfillMorningBriefSchedules(
-  db: Db,
-  currentTime: Date,
-): Promise<void> {
-  const missing = await db
-    .select({
-      orgId: orgMembersMetadata.orgId,
-      userId: orgMembersMetadata.userId,
-      timezone: orgMembersMetadata.timezone,
-    })
-    .from(orgMembersMetadata)
-    .leftJoin(
-      morningBriefSchedules,
-      and(
-        eq(morningBriefSchedules.orgId, orgMembersMetadata.orgId),
-        eq(morningBriefSchedules.userId, orgMembersMetadata.userId),
-      ),
-    )
-    .where(
-      and(
-        isNotNull(orgMembersMetadata.timezone),
-        eq(orgMembersMetadata.morningBriefEnabled, true),
-        isNull(morningBriefSchedules.orgId),
-      ),
-    )
-    .limit(BACKFILL_LIMIT);
-
-  for (const row of missing) {
-    if (!row.timezone) {
-      continue;
-    }
-    await db
-      .insert(morningBriefSchedules)
-      .values({
-        orgId: row.orgId,
-        userId: row.userId,
-        nextRunAt: nextMorningBriefRunAt(row.timezone, currentTime),
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      })
-      .onConflictDoNothing();
-  }
 }
 
 /** Optimistic claim: advance next_run_at only if it is still the observed value. */
@@ -669,9 +619,6 @@ export const executeDueMorningBriefs$ = command(
   ): Promise<ExecuteMorningBriefsResult> => {
     const db = set(writeDb$);
     const { currentTime } = args;
-
-    await backfillMorningBriefSchedules(db, currentTime);
-    signal.throwIfAborted();
 
     const due: DueMorningBriefRow[] = await db
       .select({

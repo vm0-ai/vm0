@@ -8,7 +8,7 @@ let mockPreferences: UserPreferencesResponse = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
-  morningBriefEnabled: true,
+  morningBriefEnabled: false,
   captureNetworkBodiesRemaining: 0,
 };
 
@@ -21,7 +21,7 @@ export function resetMockUserPreferences(): void {
     timezone: null,
     pinnedAgentIds: [],
     sendMode: "enter",
-    morningBriefEnabled: true,
+    morningBriefEnabled: false,
     captureNetworkBodiesRemaining: 0,
   };
 }

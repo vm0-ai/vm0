@@ -25,9 +25,10 @@ export const orgMembersMetadata = pgTable(
       .$type<OrgMembersPinnedAgentIds>()
       .default([]),
     sendMode: text("send_mode").notNull().default("enter"),
+    // Opt-in: rollout must not flip existing members on by default.
     morningBriefEnabled: boolean("morning_brief_enabled")
       .notNull()
-      .default(true),
+      .default(false),
     selectedModel: varchar("selected_model", { length: 255 }),
     onboardingDone: boolean("onboarding_done").notNull().default(false),
     captureNetworkBodiesRemaining: integer(

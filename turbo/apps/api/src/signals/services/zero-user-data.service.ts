@@ -140,7 +140,7 @@ export function userPreferences({
         timezone: null,
         pinnedAgentIds: [],
         sendMode: "enter",
-        morningBriefEnabled: true,
+        morningBriefEnabled: false,
         captureNetworkBodiesRemaining: 0,
       };
     }

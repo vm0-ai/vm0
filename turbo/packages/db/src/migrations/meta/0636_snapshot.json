@@ -1,5 +1,5 @@
 {
-  "id": "52cbaf60-5b2e-43a3-a523-7ce9f12326d4",
+  "id": "d7d01365-bbf9-4a11-8217-1481bb065366",
   "prevId": "2d70139f-4865-4e77-a0c5-0a749bf57481",
   "version": "7",
   "dialect": "postgresql",
@@ -11644,7 +11644,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "selected_model": {
           "name": "selected_model",

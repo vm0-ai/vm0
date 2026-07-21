@@ -1,5 +1,6 @@
 import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { IconSunrise } from "@tabler/icons-react";
@@ -8,9 +9,11 @@ import {
   userPreferences$,
   updateUserPreference$,
 } from "../../../../signals/zero-page/settings/user-preferences.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
 
 export function MorningBriefSettings() {
+  const features = useLastResolved(featureSwitch$);
   const preferences = useLastResolved(userPreferences$);
   const [updateLoadable, updatePreference] = useLoadableSet(
     updateUserPreference$,
@@ -22,6 +25,12 @@ export function MorningBriefSettings() {
   const handleChange = onDomEventFn(async (checked: boolean) => {
     await updatePreference({ morningBriefEnabled: checked }, pageSignal);
   });
+
+  // Rollout entry point: the setting only appears for orgs (or users) with
+  // the morningBrief feature switch enabled.
+  if (!(features?.[FeatureSwitchKey.MorningBrief] ?? false)) {
+    return null;
+  }
 
   if (!preferences) {
     return <Skeleton className="h-[76px] w-full rounded-xl" />;

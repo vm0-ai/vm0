@@ -23,7 +23,7 @@ CREATE TABLE "morning_brief_schedules" (
 	CONSTRAINT "morning_brief_schedules_org_id_user_id_pk" PRIMARY KEY("org_id","user_id")
 );
 --> statement-breakpoint
-ALTER TABLE "org_members_metadata" ADD COLUMN "morning_brief_enabled" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "org_members_metadata" ADD COLUMN "morning_brief_enabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "morning_brief_deliveries" ADD CONSTRAINT "morning_brief_deliveries_run_id_agent_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."agent_runs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "morning_brief_schedules" ADD CONSTRAINT "morning_brief_schedules_chat_thread_id_chat_threads_id_fk" FOREIGN KEY ("chat_thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_morning_brief_deliveries_org_user_date" ON "morning_brief_deliveries" USING btree ("org_id","user_id","brief_date");--> statement-breakpoint

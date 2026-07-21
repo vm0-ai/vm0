@@ -291,11 +291,18 @@ async function setupMorningBriefActor(
   routeMocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
 
-  // Setting the timezone schedules the next 7:00 local run.
+  // Morning Brief is opt-in: the preference defaults to off for everyone.
+  const initial = await accept(
+    preferencesClient().get({ headers: actorHeaders() }),
+    [200],
+  );
+  expect(initial.body.morningBriefEnabled).toBeFalsy();
+
+  // Opting in with a timezone schedules the next 7:00 local run.
   await accept(
     preferencesClient().update({
       headers: actorHeaders(),
-      body: { timezone: TIMEZONE },
+      body: { timezone: TIMEZONE, morningBriefEnabled: true },
     }),
     [200],
   );
