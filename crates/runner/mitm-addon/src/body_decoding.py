@@ -21,6 +21,8 @@ from body_limits import (
     DEFAULT_BODY_DECODE_LIMIT,
     LARGE_RESPONSE_DECOMPRESS_LIMIT,
     STREAM_DECODE_CHUNK_LIMIT,
+    STREAM_DECODE_EXPANSION_GRACE,
+    STREAM_DECODE_MAX_EXPANSION_RATIO,
 )
 
 # Brotli 1.2's output_buffer_limit is a soft allocation threshold, not a hard
@@ -91,26 +93,45 @@ def _create_zlib_stream_decode_session(
 ) -> StreamDecodeSession:
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
     obj = zlib.decompressobj(wbits)
+    compressed_bytes_seen = 0
     decode_error: str | None = None
+    decoded_bytes_emitted = 0
     member_in_progress = False
     saw_input = False
 
     def decode(chunk: bytes) -> None:
-        nonlocal decode_error, member_in_progress, obj, saw_input
+        nonlocal compressed_bytes_seen, decode_error, decoded_bytes_emitted
+        nonlocal member_in_progress, obj, saw_input
         if decode_error is not None:
             return
         if chunk:
             saw_input = True
+            compressed_bytes_seen += len(chunk)
         data = chunk
         while data:
             member_in_progress = True
+            allowed_decoded_bytes = max(
+                STREAM_DECODE_EXPANSION_GRACE,
+                compressed_bytes_seen * STREAM_DECODE_MAX_EXPANSION_RATIO,
+            )
+            remaining_decoded_bytes = allowed_decoded_bytes - decoded_bytes_emitted
+            probing_for_additional_output = remaining_decoded_bytes == 0
+            max_length = (
+                1
+                if probing_for_additional_output
+                else min(max_decoded_chunk, remaining_decoded_bytes)
+            )
             try:
-                decoded = obj.decompress(data, max_length=max_decoded_chunk)
+                decoded = obj.decompress(data, max_length=max_length)
             except zlib.error as exc:
                 decode_error = INVALID_COMPRESSED_BODY
                 _log_streaming_decode_error(encoding, exc)
                 return
+            if probing_for_additional_output and decoded:
+                decode_error = DECODED_BODY_LIMIT_EXCEEDED
+                return
             if decoded:
+                decoded_bytes_emitted += len(decoded)
                 feed(decoded)
             if obj.unconsumed_tail:
                 data = obj.unconsumed_tail
@@ -175,9 +196,12 @@ def create_stream_decode_session(
     """Create a bounded streaming decoder session for usage-parser chunks.
 
     Usage parsers are bounded-state scanners and may need to inspect long
-    responses, so this helper does not enforce a total decoded-byte cap. It
-    bounds each decoded chunk before parser entry. Returns None when a content
-    encoding cannot be safely decoded incrementally.
+    responses, so this helper does not enforce a fixed total decoded-byte cap.
+    For gzip and deflate, one response-scoped budget bounds cumulative decoded
+    output to the larger of the streaming grace or compressed bytes seen times
+    the maximum expansion ratio. The budget is shared across callbacks and
+    concatenated members. Each decoded parser chunk is bounded independently.
+    Returns None when a content encoding cannot be safely decoded incrementally.
 
     The returned session exposes ``finish_error()`` so billing paths can reject
     parser state from compressed streams that never reached a valid frame/member
