@@ -19,10 +19,8 @@ import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
 
 const log = logger("artifacts:preview");
 
-// Browser rendering is slow (seconds per page), so keep each cron sweep small
-// enough to finish within the function's time budget. The sweep is only a
-// backfill / retry safety net behind the deploy-time trigger, so steady-state
-// batches are tiny.
+// Keep each video poster sweep small enough to finish within the function's
+// time budget.
 const PREVIEW_BATCH_SIZE = 10;
 const PREVIEW_SCAN_PAGE_SIZE = 50;
 // Render at a full 1280-wide desktop layout for fidelity, but rasterize at half
@@ -109,22 +107,11 @@ async function extractVideoPoster(
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    // Re-render HTML previews created by the previous renderer so the new key
-    // also bypasses cached challenge images. Video posters remain null-only.
-    sql`((
-      ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-      AND (
-        ${runUploadedFiles.previewImageUrl} IS NULL
-        OR ${runUploadedFiles.previewImageUrl} NOT LIKE ${`%/${PREVIEW_IMAGE_BASENAME}%`}
-      )
-    ) OR (
-      jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
-      AND ${runUploadedFiles.contentType} LIKE 'video/%'
-      AND ${runUploadedFiles.previewImageUrl} IS NULL
-    ))`,
-    // Grace window: skip rows touched in the last 2 minutes so the deploy-time
-    // fast path can finish first. The cron only picks up missing or superseded
-    // previews, avoiding a duplicate render racing the deploy trigger.
+    sql`jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'`,
+    sql`${runUploadedFiles.contentType} LIKE 'video/%'`,
+    sql`${runUploadedFiles.previewImageUrl} IS NULL`,
+    // Preserve the existing grace window so recently written generated videos
+    // settle before the cron selects them.
     sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
   ];
 
@@ -238,9 +225,9 @@ async function renderArtifactSnapshot(
  * Render a static preview image for a single hosted-site/HTML artifact row,
  * upload it to the user-artifacts R2 bucket next to the artifact, and persist
  * the CDN URL on the row. Returns false (no-op) when the browser-rendering
- * token is unset. Used by both the deploy-time trigger (fast path) and the cron
- * sweep (backfill / retry), keyed by the row id so it always targets the exact
- * artifact of that run.
+ * token is unset. Used by the deploy-time HTML trigger and the video poster
+ * cron, keyed by the row id so it always targets the exact artifact of that
+ * run.
  */
 const renderAndStoreArtifactPreview$ = command(
   async (
@@ -325,10 +312,9 @@ export const scheduleArtifactPreviewRender$ = command(
 );
 
 /**
- * Backfill / retry sweep: render previews that are missing, failed during the
- * deploy-time trigger, or were produced by an older HTML renderer. Best-effort
- * per artifact — a failure leaves the row eligible for the next sweep. Returns
- * the count generated.
+ * Render missing poster frames for generated video artifacts. Best-effort per
+ * artifact — a failure leaves the row eligible for the next sweep. Returns the
+ * count generated.
  */
 export const generateArtifactPreviews$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
