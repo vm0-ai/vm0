@@ -14,6 +14,10 @@ import type {
   FirewallRoutingIndexMetadata,
   FirewallRoutingMetadata,
 } from "@vm0/connectors/firewall-metadata/routing";
+import {
+  createRunnerRuntimeFirewallCatalog,
+  projectRunnerRuntimeFirewall,
+} from "@vm0/connectors/firewall-metadata/runner-runtime-catalog";
 import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import {
   extractFirewallTemplateReferences,
@@ -242,50 +246,12 @@ function buildFixedHostOwners(
   return sortedRecord(owners.entries());
 }
 
-interface RunnerRuntimePermissionSource {
-  readonly name: string;
-  readonly rules: readonly string[];
-}
-
-interface RunnerRuntimeApiSource {
-  readonly base: string;
-  readonly hostPolicy?: FirewallBaseHostPolicy;
-  readonly auth: Firewall["apis"][number]["auth"];
-  readonly permissions?: readonly RunnerRuntimePermissionSource[];
-}
-
-interface RunnerRuntimeFirewallSource {
-  readonly name: string;
-  readonly apis: readonly RunnerRuntimeApiSource[];
-}
-
 interface RunnerRuntimeDetail {
   readonly name: string;
   readonly fileName: string;
   readonly moduleSpecifier: string;
   readonly firewall: Firewall;
   readonly content: string;
-}
-
-function buildRunnerRuntimeFirewall(
-  firewall: RunnerRuntimeFirewallSource,
-): Firewall {
-  return {
-    name: firewall.name,
-    apis: firewall.apis.map((api) => {
-      return {
-        base: api.base,
-        ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
-        auth: api.auth,
-        permissions: (api.permissions ?? []).map((permission) => {
-          return {
-            name: permission.name,
-            rules: [...permission.rules],
-          };
-        }),
-      };
-    }),
-  };
 }
 
 function assertUniqueRunnerRuntimeDetails(
@@ -875,19 +841,6 @@ export async function loadGeneratedRunnerRuntimeFirewall(
 `;
 }
 
-function catalogDigest(runtimeFirewalls: Readonly<Record<string, Firewall>>): {
-  readonly digest: string;
-  readonly version: string;
-} {
-  const hex = createHash("sha256")
-    .update(stableJson(runtimeFirewalls))
-    .digest("hex");
-  return {
-    digest: `sha256:${hex}`,
-    version: `sha256-${hex.slice(0, 12)}`,
-  };
-}
-
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -949,7 +902,7 @@ export async function generateFirewallMetadata(): Promise<void> {
   for (const source of sources) {
     const detail = buildDetailMetadata(source);
     const executionDetail = buildExecutionMetadata(source, billableTypes);
-    const runnerRuntimeFirewall = buildRunnerRuntimeFirewall(source.firewall);
+    const runnerRuntimeFirewall = projectRunnerRuntimeFirewall(source.firewall);
     summaries[source.type] = buildSummaryMetadata(detail);
     executionMetadata[source.type] = executionDetail;
     permissionDetails.push({
@@ -974,7 +927,7 @@ export async function generateFirewallMetadata(): Promise<void> {
     });
   }
   for (const firewall of Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS)) {
-    const runnerRuntimeFirewall = buildRunnerRuntimeFirewall(firewall);
+    const runnerRuntimeFirewall = projectRunnerRuntimeFirewall(firewall);
     runnerRuntimeDetails.push({
       name: runnerRuntimeFirewall.name,
       fileName: generatedRunnerRuntimeDetailFileName(
@@ -988,16 +941,11 @@ export async function generateFirewallMetadata(): Promise<void> {
     });
   }
   assertUniqueRunnerRuntimeDetails(runnerRuntimeDetails);
-  const runnerRuntimeCatalog = Object.fromEntries(
-    runnerRuntimeDetails
-      .map((detail) => {
-        return [detail.name, detail.firewall] as const;
-      })
-      .sort(([a], [b]) => {
-        return compareStrings(a, b);
-      }),
+  const runnerRuntimeCatalog = createRunnerRuntimeFirewallCatalog(
+    runnerRuntimeDetails.map((detail) => {
+      return detail.firewall;
+    }),
   );
-  const runnerRuntimeCatalogDigest = catalogDigest(runnerRuntimeCatalog);
 
   const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
   const nextPermissionDetailsDir = path.join(
@@ -1069,8 +1017,8 @@ export async function generateFirewallMetadata(): Promise<void> {
   writeGeneratedFile(
     path.join(nextOutputDir, "runner-runtime-loader.generated.ts"),
     renderRunnerRuntimeLoaderFile({
-      catalogDigest: runnerRuntimeCatalogDigest.digest,
-      catalogVersion: runnerRuntimeCatalogDigest.version,
+      catalogDigest: runnerRuntimeCatalog.catalogDigest,
+      catalogVersion: runnerRuntimeCatalog.catalogVersion,
       entries: runnerRuntimeDetails
         .map((detail) => {
           return {

@@ -316,9 +316,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(
-        screen.queryByText("1 message waiting to send"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("1 message waiting")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(screen.getByText(prompt)).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

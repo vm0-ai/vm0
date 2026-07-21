@@ -390,22 +390,26 @@ export const remoteArtifactFavoriteUrls$ = computed(
   },
 );
 
+export type ArtifactPageItem = ArtifactItem & {
+  readonly isFavorited: boolean;
+};
+
 function applyArtifactFavoriteState(
   item: ArtifactItem,
-  favoriteUrls: ReadonlySet<string>,
+  favoriteUrls: ReadonlySet<string> | null,
   overrides: Readonly<Record<string, boolean>>,
-): ArtifactItem {
+): ArtifactPageItem {
   return {
     ...item,
-    isFavorited: overrides[item.url] ?? favoriteUrls.has(item.url),
+    isFavorited: overrides[item.url] ?? favoriteUrls?.has(item.url) ?? false,
   };
 }
 
 export function applyArtifactFavorites(
   artifacts: readonly ArtifactItem[],
-  favoriteUrls: ReadonlySet<string>,
+  favoriteUrls: ReadonlySet<string> | null,
   overrides: Readonly<Record<string, boolean>>,
-): ArtifactItem[] {
+): ArtifactPageItem[] {
   return artifacts.map((artifact) => {
     return applyArtifactFavoriteState(artifact, favoriteUrls, overrides);
   });
@@ -418,14 +422,14 @@ export const artifactFavoriteOverrides$ = computed((get) => {
 // Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
-  artifacts: readonly ArtifactItem[],
+  artifacts: readonly ArtifactPageItem[],
   filters: {
     readonly search: string;
     readonly agentId: string | null;
     readonly category: ArtifactCategory | null;
     readonly favoritesOnly: boolean;
   },
-): ArtifactItem[] {
+): ArtifactPageItem[] {
   const searchTokens = normalizedSearchTokens(filters.search);
   const filtered = artifacts.filter((item) => {
     if (filters.agentId && item.agentId !== filters.agentId) {
@@ -449,8 +453,8 @@ export function filterArtifacts(
 }
 
 export const toggleArtifactFavorite$ = command(
-  async ({ get, set }, item: ArtifactItem, signal: AbortSignal) => {
-    const currentIsFavorited = item.isFavorited === true;
+  async ({ get, set }, item: ArtifactPageItem, signal: AbortSignal) => {
+    const currentIsFavorited = item.isFavorited;
     const nextIsFavorited = !currentIsFavorited;
     set(internalArtifactFavoriteOverrides$, (overrides) => {
       return { ...overrides, [item.url]: nextIsFavorited };

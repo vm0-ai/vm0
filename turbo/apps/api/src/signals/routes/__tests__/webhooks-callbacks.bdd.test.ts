@@ -4865,7 +4865,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       visibility: "private",
     });
 
-    const doomedKey = await runs.createApiKey(doomed);
+    const doomedKey = await runs.createCliToken(doomed);
     const doomedBearer = `Bearer ${doomedKey.token}`;
     const livePoll = await runs.requestPollRunnerAs(
       doomedBearer,

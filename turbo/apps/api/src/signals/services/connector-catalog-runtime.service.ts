@@ -47,7 +47,6 @@ import { settle } from "../utils";
 import type {
   ConnectorCatalogPrivateArtifact,
   ConnectorCatalogPublicArtifact,
-  ConnectorCatalogRunnerFirewallsArtifact,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   acceptedConnectorCatalogMethodIsCompatible,
@@ -76,8 +75,6 @@ type AcceptedPrivateAuthMethod =
 type AcceptedPrivateSkill = AcceptedPrivateConnector["skill"];
 type AcceptedPublicAuthMethod =
   ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
-type AcceptedRunnerFirewall =
-  ConnectorCatalogRunnerFirewallsArtifact["firewalls"][number];
 
 export type ConnectorRuntimeSnapshotIdentity =
   | { readonly source: "static" }
@@ -102,7 +99,6 @@ export interface ConnectorRuntimeConnector {
     ConnectorRuntimeMethod
   >;
   readonly skill: AcceptedPrivateSkill | null;
-  readonly runnerFirewall: AcceptedRunnerFirewall | null;
 }
 
 interface ConnectorRuntimeSnapshotBase {
@@ -581,7 +577,6 @@ const staticRuntimeSnapshot = singleton(() => {
         catalogConnector,
         methods,
         skill: null,
-        runnerFirewall: null,
       });
     }
     return {
@@ -600,11 +595,6 @@ function externalRuntimeSnapshot(
   const privateByRef = new Map(
     acceptedSnapshot.privateArtifact.connectors.map((connector) => {
       return [connector.connectorRef, connector];
-    }),
-  );
-  const runnerFirewallByRef = new Map(
-    acceptedSnapshot.runnerFirewallsArtifact.firewalls.map((firewall) => {
-      return [firewall.name, firewall];
     }),
   );
   const connectors = new Map<ConnectorCatalogRef, ConnectorRuntimeConnector>();
@@ -661,8 +651,6 @@ function externalRuntimeSnapshot(
       catalogConnector,
       methods,
       skill: privateConnector.skill,
-      runnerFirewall:
-        runnerFirewallByRef.get(publicConnector.connectorRef) ?? null,
     });
   }
   const runtimeMethodsByRef = new Map(

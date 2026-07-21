@@ -36,6 +36,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
     ).toBe(false);
@@ -55,21 +56,11 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -120,7 +111,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
@@ -136,6 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
@@ -148,7 +139,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
@@ -166,6 +156,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
     );

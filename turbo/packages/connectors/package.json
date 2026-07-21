@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.175.0",
+  "version": "1.176.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -63,6 +63,10 @@
     "./firewall-metadata/runner-runtime": {
       "import": "./src/firewall-metadata/runner-runtime.ts",
       "types": "./src/firewall-metadata/runner-runtime.ts"
+    },
+    "./firewall-metadata/runner-runtime-catalog": {
+      "import": "./src/firewall-metadata/runner-runtime-catalog.ts",
+      "types": "./src/firewall-metadata/runner-runtime-catalog.ts"
     },
     "./firewalls": null,
     "./firewalls/*": null,
