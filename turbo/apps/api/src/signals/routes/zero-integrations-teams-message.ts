@@ -125,6 +125,16 @@ async function resolveTeamsMessageTarget(args: {
       "NOT_FOUND",
     );
   }
+  if (!args.installation.serviceUrl) {
+    return routeError(
+      404,
+      "Microsoft Teams installation has no service URL yet. Send a message to the Teams bot first.",
+      "NOT_FOUND",
+    );
+  }
+  if (!args.body.user) {
+    return routeError(400, "Teams user ID is required", "BAD_REQUEST");
+  }
 
   const targetUser =
     args.body.user === "me"
@@ -135,7 +145,7 @@ async function resolveTeamsMessageTarget(args: {
         })
       : {
           kind: "ok" as const,
-          teamsUserId: args.body.user ?? "",
+          teamsUserId: args.body.user,
           teamsUserDisplayName: null,
         };
   args.signal.throwIfAborted();
@@ -149,7 +159,7 @@ async function resolveTeamsMessageTarget(args: {
   }
 
   const conversation = await createTeamsPersonalConversation({
-    serviceUrl: args.installation.serviceUrl ?? "",
+    serviceUrl: args.installation.serviceUrl,
     tenantId: args.installation.teamsTenantId,
     botId: args.installation.botId,
     botName: args.installation.botName,
