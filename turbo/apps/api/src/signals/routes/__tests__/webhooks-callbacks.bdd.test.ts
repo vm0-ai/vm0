@@ -3654,7 +3654,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(lateStatus.hasSubscription).toBeTruthy();
   });
 
-  it("grants one-time and custom credit purchases once payment settles", async () => {
+  it("grants purchased and Atom-issued custom credits", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
@@ -3807,6 +3807,96 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
         }),
       ]),
+    );
+
+    // Atom grants use the configured zero-price line and declare the credit
+    // amount in trusted invoice metadata instead of encoding it in subtotal.
+    const metadataCreditInvoiceId = `in_bdd_metadata_credit_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: metadataCreditInvoiceId,
+          customer: null,
+          subtotal: 0,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_custom_credits",
+            grantType: "credits",
+            orgId,
+            creditsAmount: "2500",
+            creditsExpiresAt: String(invoiceCreditExpiresAt),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_metadata_credit_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: invoiceCreditExpiresAt,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const afterMetadataCredit = await billing.readBillingStatus(actor);
+    expect(afterMetadataCredit.credits).toBe(baselineCredits + 302_500);
+    expect(afterMetadataCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "credit_purchase",
+          amount: 2500,
+          expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
+        }),
+      ]),
+    );
+
+    // Metadata credit amounts are ignored outside the configured Atom grant
+    // price path.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_untrusted_metadata_credit_${suffix}`,
+          customer: null,
+          subtotal: 0,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_custom_credits",
+            grantType: "credits",
+            orgId,
+            creditsAmount: "9000",
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_untrusted_metadata_credit_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_other" },
+                period: {
+                  start: epochSeconds(0),
+                  end: invoiceCreditExpiresAt,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits + 302_500,
     );
   });
 
