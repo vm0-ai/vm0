@@ -33,8 +33,15 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, Ar
 #[cfg(target_os = "linux")]
 fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) -> Result<(), ArchiveError> {
     let entries = match current.read_dir() {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
+        Ok(entries) => entries,
+        Err(error) => {
+            log_warn!(
+                LOG_TAG,
+                "Could not read artifact directory {:?}: {error}; skipping subtree",
+                artifact_directory_path(relative)
+            );
+            return Ok(());
+        }
     };
     walk_entries(current, relative, entries, out)
 }
@@ -46,46 +53,130 @@ fn walk_entries(
     entries: fs::ReadDir,
     out: &mut Vec<FileEntry>,
 ) -> Result<(), ArchiveError> {
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        if is_excluded_artifact_entry(&name) {
-            continue;
-        }
-
-        let (try_directory, try_file) = match entry.file_type() {
-            Ok(file_type) => (file_type.is_dir(), file_type.is_file()),
-            Err(_) => (true, true),
-        };
-        if try_directory && let Ok(dir) = current.open_child_dir(&name) {
-            let name_str = artifact_path_component(&name, relative)?;
-            let rel = relative_artifact_path(relative, name_str);
-            walk_dir(&dir, &rel, out)?;
-            continue;
-        }
-        if !try_file {
-            continue;
-        }
-
-        let Ok(file) = current.open_child_file(&name) else {
-            continue;
-        };
-        let Ok(metadata) = file.metadata() else {
-            continue;
-        };
-        if !metadata.is_file() {
-            continue;
-        }
-        let name_str = artifact_path_component(&name, relative)?;
-        let rel = relative_artifact_path(relative, name_str);
-        match compute_file_hash_from_reader(file) {
-            Ok((hash, size)) => out.push(FileEntry {
-                path: rel,
-                hash,
-                size,
-            }),
-            Err(e) => {
-                log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
+    for entry_result in entries {
+        match entry_result {
+            Ok(entry) => walk_entry(current, relative, entry, out)?,
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Could not read artifact directory entry under {:?}: {error}; skipping entry",
+                    artifact_directory_path(relative)
+                );
             }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn walk_entry(
+    current: &Dir,
+    relative: &str,
+    entry: fs::DirEntry,
+    out: &mut Vec<FileEntry>,
+) -> Result<(), ArchiveError> {
+    let name = entry.file_name();
+    if is_excluded_artifact_entry(&name) {
+        return Ok(());
+    }
+
+    let file_type = entry.file_type();
+    let (try_directory, try_file) = match &file_type {
+        Ok(file_type) => (file_type.is_dir(), file_type.is_file()),
+        Err(_) => (true, true),
+    };
+    let mut directory_open_error = None;
+    if try_directory {
+        match current.open_child_dir(&name) {
+            Ok(dir) => {
+                let name_str = artifact_path_component(&name, relative)?;
+                let rel = relative_artifact_path(relative, name_str);
+                walk_dir(&dir, &rel, out)?;
+                return Ok(());
+            }
+            Err(error) if !try_file => {
+                log_warn!(
+                    LOG_TAG,
+                    "Could not open artifact directory {}: {error}; skipping subtree",
+                    artifact_entry_log_path(relative, &name)
+                );
+                return Ok(());
+            }
+            Err(error) => directory_open_error = Some(error),
+        }
+    }
+    if !try_file {
+        return Ok(());
+    }
+
+    let file = match current.open_child_file(&name) {
+        Ok(file) => file,
+        Err(error) => {
+            let path = artifact_entry_log_path(relative, &name);
+            match (&file_type, directory_open_error.as_ref()) {
+                (Err(type_error), Some(directory_error)) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Could not process artifact entry {path}: type lookup failed: {type_error}; directory open failed: {directory_error}; file open failed: {error}; skipping entry"
+                    );
+                }
+                (Err(type_error), None) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Could not process artifact entry {path}: type lookup failed: {type_error}; file open failed: {error}; skipping entry"
+                    );
+                }
+                (Ok(_), _) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Could not open artifact file {path}: {error}; skipping file"
+                    );
+                }
+            }
+            return Ok(());
+        }
+    };
+    let metadata = match file.metadata() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            let path = artifact_entry_log_path(relative, &name);
+            if let Err(type_error) = &file_type {
+                log_warn!(
+                    LOG_TAG,
+                    "Could not read metadata for artifact entry {path} after type lookup failed: {type_error}; metadata read failed: {error}; skipping entry"
+                );
+            } else {
+                log_warn!(
+                    LOG_TAG,
+                    "Could not read metadata for artifact file {path}: {error}; skipping file"
+                );
+            }
+            return Ok(());
+        }
+    };
+    if !metadata.is_file() {
+        if file_type.is_ok() {
+            log_warn!(
+                LOG_TAG,
+                "Artifact file {} is no longer a regular file; skipping file",
+                artifact_entry_log_path(relative, &name)
+            );
+        }
+        return Ok(());
+    }
+    let name_str = artifact_path_component(&name, relative)?;
+    let rel = relative_artifact_path(relative, name_str);
+    match compute_file_hash_from_reader(file) {
+        Ok((hash, size)) => out.push(FileEntry {
+            path: rel,
+            hash,
+            size,
+        }),
+        Err(error) => {
+            log_warn!(
+                LOG_TAG,
+                "Could not hash artifact file {rel:?}: {error}; skipping file"
+            );
         }
     }
     Ok(())
@@ -102,6 +193,22 @@ fn relative_artifact_path(parent: &str, component: &str) -> String {
         component.to_string()
     } else {
         format!("{parent}/{component}")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn artifact_directory_path(relative: &str) -> &str {
+    if relative.is_empty() { "." } else { relative }
+}
+
+#[cfg(target_os = "linux")]
+fn artifact_entry_log_path(parent: &str, name: &std::ffi::OsStr) -> String {
+    match name.to_str() {
+        Some(component) => format!("{:?}", relative_artifact_path(parent, component)),
+        None => format!(
+            "under {:?} for component {name:?}",
+            artifact_directory_path(parent)
+        ),
     }
 }
 
@@ -564,6 +671,29 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
+    struct SystemLogOverrideGuard;
+
+    impl SystemLogOverrideGuard {
+        fn set(path: &Path) -> Self {
+            guest_common::log::set_system_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SystemLogOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::log::clear_system_log_file();
+        }
+    }
+
+    fn read_system_log(path: &Path) -> io::Result<String> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => Ok(content),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(String::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     struct FailingWriter;
 
     impl io::Write for FailingWriter {
@@ -624,6 +754,79 @@ mod tests {
         for fragment in expected_fragments {
             assert!(msg.contains(fragment), "got: {msg}");
         }
+    }
+
+    #[test]
+    fn walk_entry_warns_when_listed_directory_disappears() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let private = root.join("private");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("secret.txt"), "secret").unwrap();
+        let root_dir = Dir::open(&root).unwrap();
+        let entry = std::fs::read_dir(&root).unwrap().next().unwrap().unwrap();
+        std::fs::remove_dir_all(&private).unwrap();
+        let system_log_path = temp.path().join("system.log");
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let mut files = Vec::new();
+
+        walk_entry(&root_dir, "", entry, &mut files).unwrap();
+
+        assert!(files.is_empty());
+        let log = read_system_log(&system_log_path).unwrap();
+        assert!(log.contains("[WARN] [sandbox:guest-agent]"), "got: {log}");
+        assert!(
+            log.contains("Could not open artifact directory \"private\""),
+            "got: {log}"
+        );
+        assert!(log.contains("os error 2"), "got: {log}");
+    }
+
+    #[test]
+    fn walk_entry_warns_when_listed_regular_file_disappears() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        std::fs::create_dir(&root).unwrap();
+        let private_file = root.join("secret.txt");
+        std::fs::write(&private_file, "secret").unwrap();
+        let root_dir = Dir::open(&root).unwrap();
+        let entry = std::fs::read_dir(&root).unwrap().next().unwrap().unwrap();
+        std::fs::remove_file(&private_file).unwrap();
+        let system_log_path = temp.path().join("system.log");
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let mut files = Vec::new();
+
+        walk_entry(&root_dir, "", entry, &mut files).unwrap();
+
+        assert!(files.is_empty());
+        let log = read_system_log(&system_log_path).unwrap();
+        assert!(log.contains("[WARN] [sandbox:guest-agent]"), "got: {log}");
+        assert!(
+            log.contains("Could not open artifact file \"secret.txt\""),
+            "got: {log}"
+        );
+        assert!(log.contains("os error 2"), "got: {log}");
+    }
+
+    #[test]
+    fn collect_file_metadata_silently_skips_intentional_non_regular_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("real.txt"), "hello").unwrap();
+        unix_fs::symlink(root.join("real.txt"), root.join("link.txt")).unwrap();
+        make_fifo(&root.join("pipe")).unwrap();
+        let system_log_path = temp.path().join("system.log");
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "real.txt");
+        assert!(read_system_log(&system_log_path).unwrap().is_empty());
     }
 
     #[test]
