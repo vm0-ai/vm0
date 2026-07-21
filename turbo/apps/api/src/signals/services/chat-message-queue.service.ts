@@ -11,6 +11,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { settle } from "../utils";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
@@ -156,28 +157,25 @@ async function pendingTickExistsForAutomation(
 }
 
 type WorkflowQueueAdmission = "proceed" | "enqueued";
+type WorkflowQueueAdmissionAttempt =
+  | { readonly kind: "proceed" }
+  | { readonly kind: "enqueued" }
+  | { readonly kind: "payload-required" };
 
-/**
- * Decide whether a fired automation event may create its run now or must wait in
- * the chat message queue. Serialized per chat thread via an advisory lock.
- * Schedule ticks coalesce per automation: at most one pending tick.
- */
-export async function admitWorkflowAutomationEvent(
+interface WorkflowQueueAdmissionArgs {
+  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly chatThreadId: string;
+  readonly triggerSource: TriggerSource;
+  readonly triggerBrief: string | undefined;
+  readonly params: WorkflowQueueEventParams;
+}
+
+async function attemptWorkflowQueueAdmission(
   db: Db,
-  args: {
-    readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
-    readonly chatThreadId: string;
-    readonly triggerSource: TriggerSource;
-    readonly triggerBrief: string | undefined;
-    readonly params: WorkflowQueueEventParams;
-  },
-): Promise<WorkflowQueueAdmission> {
+  args: WorkflowQueueAdmissionArgs,
+  encryptedParams: string | undefined,
+): Promise<WorkflowQueueAdmissionAttempt> {
   const { automation } = args;
-  const encryptedParams = await encryptWorkflowQueueEventParams(args.params, {
-    userId: automation.ownerUserId,
-    orgId: automation.orgId,
-  });
-
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(args.chatThreadId));
 
@@ -189,7 +187,7 @@ export async function admitWorkflowAutomationEvent(
         args.chatThreadId,
       );
       if (!busy && !(await pendingWorkflowEventExists(tx, args.chatThreadId))) {
-        return "proceed";
+        return { kind: "proceed" };
       }
     }
 
@@ -197,7 +195,11 @@ export async function admitWorkflowAutomationEvent(
       automation.kind === "schedule" &&
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
-      return "enqueued";
+      return { kind: "enqueued" };
+    }
+
+    if (encryptedParams === undefined) {
+      return { kind: "payload-required" };
     }
 
     await tx.insert(chatMessageQueue).values({
@@ -210,8 +212,54 @@ export async function admitWorkflowAutomationEvent(
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,
     });
-    return "enqueued";
+    return { kind: "enqueued" };
   });
+}
+
+/**
+ * Decide whether a fired automation event may create its run now or must wait in
+ * the chat message queue. Serialized per chat thread via an advisory lock.
+ * Schedule ticks coalesce per automation: at most one pending tick.
+ * Queue payload encryption runs only after a locked attempt requires it and
+ * outside the transaction; the subsequent locked attempt owns the final state.
+ */
+export async function admitWorkflowAutomationEvent(
+  db: Db,
+  args: WorkflowQueueAdmissionArgs,
+): Promise<WorkflowQueueAdmission> {
+  const { automation } = args;
+  const initial = await attemptWorkflowQueueAdmission(db, args, undefined);
+  if (initial.kind !== "payload-required") {
+    return initial.kind;
+  }
+
+  const encryptedParamsResult = await settle(
+    encryptWorkflowQueueEventParams(args.params, {
+      userId: automation.ownerUserId,
+      orgId: automation.orgId,
+    }),
+  );
+  if (!encryptedParamsResult.ok) {
+    const retryWithoutPayload = await attemptWorkflowQueueAdmission(
+      db,
+      args,
+      undefined,
+    );
+    if (retryWithoutPayload.kind !== "payload-required") {
+      return retryWithoutPayload.kind;
+    }
+    throw encryptedParamsResult.error;
+  }
+
+  const final = await attemptWorkflowQueueAdmission(
+    db,
+    args,
+    encryptedParamsResult.value,
+  );
+  if (final.kind === "payload-required") {
+    throw new Error("Workflow queue admission still required encrypted params");
+  }
+  return final.kind;
 }
 
 export interface ClaimedWorkflowQueueEvent {
