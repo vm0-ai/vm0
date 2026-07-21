@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.610.6](https://github.com/vm0-ai/vm0/compare/app-v0.610.5...app-v0.610.6) (2026-07-21)
+
+
+### Refactoring
+
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+
 ## [0.610.5](https://github.com/vm0-ai/vm0/compare/app-v0.610.4...app-v0.610.5) (2026-07-21)
 
 

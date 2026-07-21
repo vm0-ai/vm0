@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
@@ -13,13 +12,9 @@ import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$, type ReadonlyDb } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
-import {
-  loadUserFeatureSwitchContext,
-  userFeatureSwitchContext,
-} from "./feature-switches.service";
 import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
 
 const log = logger("artifacts:preview");
@@ -71,7 +66,6 @@ export interface RenderArtifactPreviewArgs {
   readonly id: string;
   readonly runId: string;
   readonly userId: string;
-  readonly orgId: string | null;
   readonly url: string;
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
@@ -110,21 +104,6 @@ async function extractVideoPoster(
     );
   }
   return Buffer.from(await response.arrayBuffer());
-}
-
-async function isHtmlArtifactPreviewEnabledForOwner(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string | null;
-    readonly userId: string;
-  },
-): Promise<boolean> {
-  const featureCtx = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId ?? "",
-    args.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx);
 }
 
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
@@ -270,20 +249,6 @@ const renderAndStoreArtifactPreview$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const isVideo = isVideoContentType(args.contentType);
-    if (!isVideo) {
-      // Resolve the HTML preview switch against the artifact owner's context,
-      // including per-user Lab overrides. Video posters are fully rolled out.
-      const featureCtx = await get(
-        userFeatureSwitchContext(args.orgId ?? "", args.userId),
-      );
-      signal.throwIfAborted();
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx)
-      ) {
-        return false;
-      }
-    }
-
     let image: Buffer;
     let filename: string;
     let contentType: string;
@@ -370,7 +335,6 @@ export const generateArtifactPreviews$ = command(
     const db = set(writeDb$);
     let generated = 0;
     let cursor: PreviewCandidateCursor | undefined;
-    const htmlPreviewEnabledByOwner = new Map<string, boolean>();
 
     while (generated < PREVIEW_BATCH_SIZE) {
       const rows = await db
@@ -378,7 +342,6 @@ export const generateArtifactPreviews$ = command(
           id: runUploadedFiles.id,
           runId: runUploadedFiles.runId,
           userId: runUploadedFiles.userId,
-          orgId: runUploadedFiles.orgId,
           url: runUploadedFiles.url,
           contentType: runUploadedFiles.contentType,
           createdAt: runUploadedFiles.createdAt,
@@ -402,23 +365,6 @@ export const generateArtifactPreviews$ = command(
           continue;
         }
 
-        if (!isVideoContentType(row.contentType)) {
-          // HTML preview generation remains gated and is cached per owner.
-          const ownerKey = `${row.orgId ?? ""}:${row.userId}`;
-          let enabled = htmlPreviewEnabledByOwner.get(ownerKey);
-          if (enabled === undefined) {
-            enabled = await isHtmlArtifactPreviewEnabledForOwner(db, {
-              orgId: row.orgId,
-              userId: row.userId,
-            });
-            htmlPreviewEnabledByOwner.set(ownerKey, enabled);
-            signal.throwIfAborted();
-          }
-          if (!enabled) {
-            continue;
-          }
-        }
-
         const succeeded = await tapError(
           set(
             renderAndStoreArtifactPreview$,
@@ -426,7 +372,6 @@ export const generateArtifactPreviews$ = command(
               id: row.id,
               runId: row.runId,
               userId: row.userId,
-              orgId: row.orgId,
               url: row.url,
               contentType: row.contentType,
               deploymentId: row.deploymentId,

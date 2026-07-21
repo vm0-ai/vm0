@@ -10,7 +10,6 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
@@ -69,146 +68,134 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
   });
 
-  it.each([true, false])(
-    "lets a user grant an expiring connector permission when callback continuation is %s",
-    async (callbackEnabled) => {
-      mockNow();
-      const agentId = "c0000000-0000-4000-a000-000000000001";
-      const threadId = "c0000000-0000-4000-a000-000000000101";
-      const callbackPrompt = "Re-check Slack access, then continue";
-      let capturedBody: unknown = null;
-      let capturedContinuationBody: unknown = null;
+  it("lets a user grant an expiring connector permission and continue the callback", async () => {
+    mockNow();
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    const threadId = "c0000000-0000-4000-a000-000000000101";
+    const callbackPrompt = "Re-check Slack access, then continue";
+    let capturedBody: unknown = null;
+    let capturedContinuationBody: unknown = null;
 
-      context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Research Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ params, respond }) => {
+        expect(params.connectorRef).toBe("slack");
         return respond(200, {
-          agentId,
-          ownerId: "test-user-123",
-          description: null,
-          displayName: "Research Bot",
-          sound: null,
-          avatarUrl: null,
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-        });
-      });
-      context.mocks.api(
-        zeroConnectorCatalogContract.permissions,
-        ({ params, respond }) => {
-          expect(params.connectorRef).toBe("slack");
-          return respond(200, {
-            permissions: catalogPermissionDetail({
-              connectorRef: "slack",
-              label: "Catalog Slack",
-              icon: {
-                url: "https://icons.example.test/permission-slack.svg",
-                invertInDarkMode: false,
-              },
-              permissions: [
-                {
-                  name: "catalog.analytics:read",
-                  description: "Catalog analytics access",
-                },
-              ],
-            }),
-          });
-        },
-      );
-      context.mocks.api(
-        zeroUserPermissionGrantsContract.apply,
-        ({ body, respond }) => {
-          capturedBody = body;
-          const appliedGrant = body.grants[0];
-          if (!appliedGrant) {
-            throw new Error("Expected a permission grant");
-          }
-          return respond(200, [
-            {
-              agentId: body.agentId,
-              connectorRef: body.connectorRef,
-              permission: appliedGrant.permission,
-              action: appliedGrant.action,
-              expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
-              createdAt: "2026-03-10T00:00:00.000Z",
-              updatedAt: "2026-03-10T00:01:00.000Z",
+          permissions: catalogPermissionDetail({
+            connectorRef: "slack",
+            label: "Catalog Slack",
+            icon: {
+              url: "https://icons.example.test/permission-slack.svg",
+              invertInDarkMode: false,
             },
-          ]);
-        },
-      );
-      context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
-        capturedContinuationBody = body;
-        return respond(201, {
-          runId: "c0000000-0000-4000-a000-000000000201",
-          threadId,
+            permissions: [
+              {
+                name: "catalog.analytics:read",
+                description: "Catalog analytics access",
+              },
+            ],
+          }),
         });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        capturedBody = body;
+        const appliedGrant = body.grants[0];
+        if (!appliedGrant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: appliedGrant.permission,
+            action: appliedGrant.action,
+            expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+            createdAt: "2026-03-10T00:00:00.000Z",
+            updatedAt: "2026-03-10T00:01:00.000Z",
+          },
+        ]);
+      },
+    );
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      capturedContinuationBody = body;
+      return respond(201, {
+        runId: "c0000000-0000-4000-a000-000000000201",
+        threadId,
       });
+    });
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ConnectorActionCallback]: callbackEnabled,
-        },
-        user: {
-          id: "test-user-123",
-          fullName: "Dana Analyst",
-          firstName: "Dana",
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      user: {
+        id: "test-user-123",
+        fullName: "Dana Analyst",
+        firstName: "Dana",
+      },
+    });
 
-      await waitFor(() => {
-        expect(
-          screen.getByText(
-            "Hey Dana, you're updating your permissions for Research Bot.",
-          ),
-        ).toBeInTheDocument();
-      });
-      expect(screen.getByText("Research Bot")).toBeInTheDocument();
-      expect(screen.getByText("Catalog Slack")).toBeInTheDocument();
+    await waitFor(() => {
       expect(
-        document.querySelector(
-          'img[src="https://icons.example.test/permission-slack.svg"]',
+        screen.getByText(
+          "Hey Dana, you're updating your permissions for Research Bot.",
         ),
       ).toBeInTheDocument();
-      expect(screen.getByText("Catalog analytics access")).toBeInTheDocument();
-      expect(screen.getByText("catalog.analytics:read")).toBeInTheDocument();
-      expect(screen.getByText("Duration")).toBeInTheDocument();
-      expect(screen.getByText("24 hours")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Research Bot")).toBeInTheDocument();
+    expect(screen.getByText("Catalog Slack")).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'img[src="https://icons.example.test/permission-slack.svg"]',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Catalog analytics access")).toBeInTheDocument();
+    expect(screen.getByText("catalog.analytics:read")).toBeInTheDocument();
+    expect(screen.getByText("Duration")).toBeInTheDocument();
+    expect(screen.getByText("24 hours")).toBeInTheDocument();
 
-      await user.click(screen.getByText("Confirm"));
+    await user.click(screen.getByText("Confirm"));
 
-      await waitFor(() => {
-        expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-      });
-      expect(
-        screen.getByText("Your connector permission grant has been updated"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Expires in (1 day|24 hours)/),
-      ).toBeInTheDocument();
-      expect(capturedBody).toMatchObject({
-        agentId,
-        connectorRef: "slack",
-        mode: "patch",
-        grants: [
-          {
-            permission: "catalog.analytics:read",
-            action: "allow",
-            expiresIn: "24h",
-          },
-        ],
-      });
-      if (callbackEnabled) {
-        expect(capturedContinuationBody).toMatchObject({
-          agentId,
-          threadId,
-          prompt: callbackPrompt,
-        });
-      } else {
-        expect(capturedContinuationBody).toBeNull();
-      }
-    },
-  );
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Your connector permission grant has been updated"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Expires in (1 day|24 hours)/)).toBeInTheDocument();
+    expect(capturedBody).toMatchObject({
+      agentId,
+      connectorRef: "slack",
+      mode: "patch",
+      grants: [
+        {
+          permission: "catalog.analytics:read",
+          action: "allow",
+          expiresIn: "24h",
+        },
+      ],
+    });
+    expect(capturedContinuationBody).toMatchObject({
+      agentId,
+      threadId,
+      prompt: callbackPrompt,
+    });
+  });
 
   it("fails closed when catalog permissions returns not found", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000009";
