@@ -1,3 +1,5 @@
+import { normalizeConnectorFixedHost } from "@vm0/connectors/firewall-metadata/server";
+
 import {
   type ConnectorCatalogIntegrityArtifact,
   type ConnectorCatalogPrivateArtifact,
@@ -428,7 +430,13 @@ function validateFirewallSemantics(args: {
       privateConnector,
       privateFirewall: connector,
     });
-    for (const host of connector.routing.fixedHosts) {
+    for (const rawHost of connector.routing.fixedHosts) {
+      const host = normalizeConnectorFixedHost(rawHost);
+      if (!host) {
+        throw new Error(
+          `Firewall fixed host is invalid: ${connector.connectorRef}`,
+        );
+      }
       const existingOwner = fixedHostOwners.get(host);
       if (
         existingOwner !== undefined &&

@@ -24,6 +24,7 @@ import {
   getFirewallExecutionMetadata,
   listBuiltinConnectorFixedHostOwners,
   loadFirewallPermissionIndex,
+  normalizeConnectorFixedHost,
 } from "@vm0/connectors/firewall-metadata/server";
 import {
   extractSecretNamesFromApis,
@@ -37,7 +38,6 @@ import type {
   ConnectorCatalogPrivateFirewallsArtifact,
   ConnectorCatalogPublicArtifact,
 } from "./connector-catalog-artifacts/artifacts";
-import { safeUrlParse } from "../utils";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
@@ -429,35 +429,6 @@ function externalRoutingMetadata(
   };
 }
 
-function trimTrailingDots(value: string): string {
-  let end = value.length;
-  while (end > 0 && value.charCodeAt(end - 1) === 46) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function stripHostnameTrailingDot(host: string): string {
-  const portStart = host.startsWith("[") ? -1 : host.lastIndexOf(":");
-  if (portStart === -1) {
-    return trimTrailingDots(host);
-  }
-  return `${trimTrailingDots(host.slice(0, portStart))}${host.slice(portStart)}`;
-}
-
-function normalizeFixedHost(host: string): string | null {
-  const trimmedHost = host.trim();
-  if (trimmedHost.length === 0) {
-    return null;
-  }
-  const url = safeUrlParse(
-    trimmedHost.includes("://") ? trimmedHost : `https://${trimmedHost}`,
-  );
-  return url
-    ? stripHostnameTrailingDot(url.host.toLowerCase())
-    : stripHostnameTrailingDot(trimmedHost.toLowerCase());
-}
-
 function externalShadowItem(args: {
   readonly firewall: AcceptedServerFirewall;
   readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
@@ -753,7 +724,7 @@ function externalFixedHostOwners(
   const owners = new Map<string, ConnectorServerFirewallHostOwner>();
   for (const firewall of firewalls) {
     for (const rawHost of firewall.routing.fixedHosts) {
-      const host = normalizeFixedHost(rawHost);
+      const host = normalizeConnectorFixedHost(rawHost);
       if (!host) {
         throw new Error(
           `Accepted connector server firewall fixed host is invalid: ${firewall.connectorRef}`,
@@ -830,7 +801,7 @@ export function createExternalConnectorServerFirewallCatalog(args: {
       );
     },
     getFixedHostOwner: (host) => {
-      const normalized = normalizeFixedHost(host);
+      const normalized = normalizeConnectorFixedHost(host);
       return normalized ? (fixedHostOwners.get(normalized) ?? null) : null;
     },
     shadowProjection: () => {

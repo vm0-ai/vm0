@@ -4463,7 +4463,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "cross-connector firewall fixed host collision",
+      name: "normalized cross-connector firewall fixed host collision",
       expected: "relationship-mismatch",
       release: () => {
         const secondConnectorRef = "collision-b";
@@ -4507,13 +4507,22 @@ describe("connector catalog rejection and latest-valid retention", () => {
             );
             second.connectorRef = secondConnectorRef;
             second.label = "Collision B";
-            recordValue(second.firewall, "firewall").name = secondConnectorRef;
+            const firewall = recordValue(second.firewall, "firewall");
+            firewall.name = secondConnectorRef;
+            firstRecord(firewall.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            const routing = recordValue(second.routing, "routing");
+            routing.fixedHosts = ["api.example.test."];
+            firstRecord(routing.apis, "routing.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
             connectors.push(second);
           },
           mutateRunnerFirewalls: (artifact) => {
             const firewalls = arrayValue(artifact.firewalls, "firewalls");
             const second = structuredClone(firstRecord(firewalls, "firewalls"));
             second.name = secondConnectorRef;
+            firstRecord(second.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
             firewalls.push(second);
           },
         });

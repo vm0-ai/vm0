@@ -78,7 +78,7 @@ function stripHostnameTrailingDot(host: string): string {
   return `${hostname}${host.slice(portStart)}`;
 }
 
-function normalizeBuiltinConnectorHostLookupKey(host: string): string | null {
+export function normalizeConnectorFixedHost(host: string): string | null {
   const trimmedHost = host.trim();
   if (trimmedHost.length === 0) {
     return null;
@@ -133,7 +133,7 @@ export function getFirewallExecutionMetadata(
 export function getBuiltinConnectorHostOwner(
   host: string,
 ): BuiltinConnectorHostOwner | null {
-  const normalizedHost = normalizeBuiltinConnectorHostLookupKey(host);
+  const normalizedHost = normalizeConnectorFixedHost(host);
   if (!normalizedHost) {
     return null;
   }
