@@ -264,7 +264,10 @@ fetch_run_log() {
     case "$mode" in
         agent)
             _paginate_run_log "/api/zero/runs/$run_id/telemetry/agent" \
-                '.events[].eventData | if type == "string" then . else tojson end'
+                '.events[].eventData |
+                    if type == "string" then .
+                    else (tojson, (.. | strings))
+                    end'
             ;;
         system)
             _paginate_run_log "/api/agent/runs/$run_id/telemetry/system-log" '.systemLog'
