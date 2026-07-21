@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.610.2](https://github.com/vm0-ai/vm0/compare/app-v0.610.1...app-v0.610.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* disable meta ads connector ([#22262](https://github.com/vm0-ai/vm0/issues/22262)) ([b78dbd9](https://github.com/vm0-ai/vm0/commit/b78dbd96dcf4eeea9e7dff0735a4521535610ada))
+* hide short expiry text on permission cards ([#22090](https://github.com/vm0-ai/vm0/issues/22090)) ([626af4c](https://github.com/vm0-ai/vm0/commit/626af4c67a7e369d5cfd26d32f59af274c1604c9))
+
+
+### CI
+
+* make cloudflare the only app deploy target ([#22256](https://github.com/vm0-ai/vm0/issues/22256)) ([128e207](https://github.com/vm0-ai/vm0/commit/128e207e104c061d6b1f22a0927cebe0256600c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.1
+    * @vm0/connectors bumped to 1.173.1
+    * @vm0/core bumped to 8.444.0
+
 ## [0.610.1](https://github.com/vm0-ai/vm0/compare/app-v0.610.0...app-v0.610.1) (2026-07-20)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.61](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.60...desktop-v0.27.61) (2026-07-21)
+
+
+### Bug Fixes
+
+* derive cloudflare app preview urls in cli and desktop ([#22253](https://github.com/vm0-ai/vm0/issues/22253)) ([b61b678](https://github.com/vm0-ai/vm0/commit/b61b678b2af53393738dbad794a2a41dd8731601))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.1
+
 ## [0.27.60](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.59...desktop-v0.27.60) (2026-07-20)
 
 

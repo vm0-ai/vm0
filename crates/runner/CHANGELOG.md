@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.18...runner-rs-v0.146.19) (2026-07-21)
+
+
+### Bug Fixes
+
+* **runner:** prevent claim rejection rediscovery loops ([#22250](https://github.com/vm0-ai/vm0/issues/22250)) ([068c509](https://github.com/vm0-ai/vm0/commit/068c509eb9b9e864fb4665c1bc8450a3d9bfbd37))
+
 ## [0.146.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.17...runner-rs-v0.146.18) (2026-07-20)
 
 
