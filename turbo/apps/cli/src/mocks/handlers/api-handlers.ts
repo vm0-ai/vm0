@@ -192,14 +192,6 @@ export const apiHandlers = [
     );
   }),
 
-  // POST /api/agent/composes - createOrUpdateCompose
-  http.post("http://localhost:3000/api/agent/composes", () => {
-    return HttpResponse.json(
-      { composeId: "default", name: "default", action: "created" },
-      { status: 201 },
-    );
-  }),
-
   // POST /api/agent/runs - createRun
   http.post("http://localhost:3000/api/agent/runs", () => {
     return HttpResponse.json(

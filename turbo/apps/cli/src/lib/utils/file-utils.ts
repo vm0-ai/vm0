@@ -56,15 +56,3 @@ export function formatRelativeTime(isoDate: string): string {
   if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
   return `${diffWeek} week${diffWeek === 1 ? "" : "s"} ago`;
 }
-
-/**
- * Filter function for tar.create to exclude .vm0 directory.
- * Paths come as "./.vm0" or ".vm0" depending on tar version.
- */
-export function excludeVm0Filter(filePath: string): boolean {
-  const shouldExclude =
-    filePath === ".vm0" ||
-    filePath.startsWith(".vm0/") ||
-    filePath.startsWith("./.vm0");
-  return !shouldExclude;
-}

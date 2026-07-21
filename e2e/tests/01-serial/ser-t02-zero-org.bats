@@ -49,27 +49,6 @@ teardown() {
 }
 
 # ============================================
-# Compose Tests
-# ============================================
-
-@test "vm0 compose succeeds with minimal config" {
-    TEST_DIR="$(mktemp -d)"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  test-agent:
-    framework: claude-code
-EOF
-
-    # Should succeed - image is resolved server-side based on framework
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    rm -rf "$TEST_DIR"
-}
-
-# ============================================
 # Organization Creation and Update Tests (CI has isolated DB)
 # ============================================
 

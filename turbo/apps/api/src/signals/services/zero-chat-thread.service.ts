@@ -10,6 +10,7 @@ import {
   type PagedChatMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
+  type UserMessageDocument,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -34,6 +35,7 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
+  type ChatMessageStructuredPrompt,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
@@ -115,6 +117,7 @@ type ChatMessageRow = {
   readonly id: string;
   readonly role: string;
   readonly content: string | null;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
@@ -195,6 +198,7 @@ type ChatThreadRow = {
   readonly title: string | null;
   readonly agentComposeId: string;
   readonly draftContent: string | null;
+  readonly draftStructuredPrompt: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -224,6 +228,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
+  structuredPrompt: chatMessages.structuredPrompt,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -448,6 +453,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
+        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         modelProviderId: chatThreads.modelProviderId,
@@ -476,6 +482,7 @@ function ownedChatThread(
       title: thread.title,
       agentComposeId: thread.agentComposeId,
       draftContent: thread.draftContent ?? null,
+      draftStructuredPrompt: thread.draftStructuredPrompt ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
@@ -512,6 +519,7 @@ export function zeroChatThreadDraft(args: {
 
     return {
       draftContent: thread.draftContent,
+      draftStructuredPrompt: thread.draftStructuredPrompt,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -686,6 +694,7 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
+        structuredPrompt: row.structuredPrompt ?? undefined,
       };
     }
     const recommendedFollowups = normalizeRecommendedFollowups(
@@ -906,7 +915,7 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent` or one+ `draftAttachments`).
+ * (non-empty `draftContent`, a structured prompt, or one+ `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(
   userId: string,
@@ -921,6 +930,7 @@ export function zeroChatThreadDraftIds(
           eq(chatThreads.userId, userId),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
+            OR ${chatThreads.draftStructuredPrompt} IS NOT NULL
             OR (
               ${chatThreads.draftAttachments} IS NOT NULL
               AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
@@ -2190,6 +2200,7 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftContent: string | null;
+      readonly draftStructuredPrompt: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
@@ -2200,6 +2211,7 @@ export const updateChatThreadDraft$ = command(
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
+        draftStructuredPrompt: args.draftStructuredPrompt,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

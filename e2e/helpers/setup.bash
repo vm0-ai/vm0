@@ -7,6 +7,7 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 load "${TEST_ROOT}/helpers/storage-fixtures"
+load "${TEST_ROOT}/helpers/compose-fixtures"
 
 # Path to CLI binaries (trace wrappers log each invocation for timeout debugging)
 export VM0_CLI="${TEST_ROOT}/helpers/trace-vm0.sh"

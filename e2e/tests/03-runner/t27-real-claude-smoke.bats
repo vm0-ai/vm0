@@ -89,9 +89,9 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
-    $VM0_CLI compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
-    $VM0_CLI compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-basic.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-flags.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-settings.yaml" >/dev/null
 }
 
 teardown_file() {
