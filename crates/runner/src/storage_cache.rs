@@ -1433,7 +1433,7 @@ async fn fetch_fresh_archive(
                 "http"
             }
         })?;
-    if !response.status().is_success() {
+    if response.status() != reqwest::StatusCode::OK {
         return Err("http-status");
     }
 
@@ -3644,6 +3644,44 @@ mod tests {
         let ops = telemetry.pending_ops_snapshot();
         assert_op_error(&ops, STORAGE_CACHE_FRESH_DELIVERY_FAILED, "http-status");
         assert_op_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_SINGLE_REQUEST, 1);
+        assert_op_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_GUEST_FALLBACK, 1);
+    }
+
+    #[tokio::test]
+    async fn fresh_delivery_rejects_unsolicited_partial_content() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/fresh-partial.tar.gz")
+                    .header_missing("range");
+                then.status(206).body(tarball_bytes());
+            })
+            .await;
+        let original = server.url("/fresh-partial.tar.gz");
+        let mut plan = fresh_storage_plan(original.clone(), "fresh-partial", "v1");
+
+        let deferred =
+            populate_cache_through_fresh_delivery(&mut plan, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+
+        assert!(deferred.is_none());
+        get.assert_calls_async(1).await;
+        assert_eq!(storage_archive_url(&plan, 0), Some(original.as_str()));
+        assert!(
+            !home
+                .storage_cache_dir("fresh-partial", "v1")
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_FRESH_DELIVERY_FAILED, "http-status");
+        assert_no_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_PUBLISHED);
         assert_op_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_GUEST_FALLBACK, 1);
     }
 
