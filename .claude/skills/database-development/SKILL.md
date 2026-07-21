@@ -132,14 +132,16 @@ use a dedicated decoder that preserves or validates the required representation.
 
 Prefer schema-aware Drizzle builders and operators when they preserve the
 intended SQL semantics. Use the `sql` tag or `SQL` type without a compile-time
-result generic for constructs they cannot express cleanly. Raw SQL used only as
-a predicate, join condition, ordering or grouping expression, write value,
-discarded command, or `rowCount` command result does not produce a structured
-field and needs no result decoder. If a write query adds `.returning({...})`,
-map raw SQL in the returned fields independently of `.set({...})`. Likewise,
-raw SQL passed to `insert(...).select(...)` is the write source rather than a
-returned field; only a subsequent `returning(...)` introduces a result-mapping
-boundary.
+result generic for constructs they cannot express cleanly. Compose dynamic SQL
+from tagged `sql` fragments so interpolated values remain driver parameters;
+`sql.raw(...)` bypasses parameter binding and is prohibited in API source except
+for the local development seed script. Raw SQL used only as a predicate, join
+condition, ordering or grouping expression, write value, discarded command, or
+`rowCount` command result does not produce a structured field and needs no
+result decoder. If a write query adds `.returning({...})`, map raw SQL in the
+returned fields independently of `.set({...})`. Likewise, raw SQL passed to
+`insert(...).select(...)` is the write source rather than a returned field; only
+a subsequent `returning(...)` introduces a result-mapping boundary.
 
 ### Raw Execute Rows
 

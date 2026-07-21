@@ -190,7 +190,7 @@ function usageEventTokenSum(categories: readonly string[], alias: string) {
     categories.map((category) => {
       return sql`${category}`;
     }),
-    sql.raw(", "),
+    sql`, `,
   );
   return sql`COALESCE(SUM(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)

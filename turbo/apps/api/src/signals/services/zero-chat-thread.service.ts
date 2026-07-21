@@ -712,7 +712,7 @@ function activeRunStatusSqlList() {
     ACTIVE_RUN_STATUSES.map((status) => {
       return sql`${status}`;
     }),
-    sql.raw(", "),
+    sql`, `,
   );
 }
 

@@ -5,6 +5,7 @@ import { noLoggerInfo } from "./rules/no-logger-info.ts";
 import { noNewPromise } from "./rules/no-new-promise.ts";
 import { noPackageVariable } from "./rules/no-package-variable.ts";
 import { noStoreInParams } from "./rules/no-store-in-params.ts";
+import { noSqlRaw } from "./rules/no-sql-raw.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
 import { requireExecuteRowSchema } from "./rules/require-execute-row-schema.ts";
 import { requireSqlResultMapping } from "./rules/require-sql-result-mapping.ts";
@@ -23,6 +24,7 @@ export const apiLintPlugin = {
     "no-new-promise": noNewPromise,
     "no-package-variable": noPackageVariable,
     "no-store-in-params": noStoreInParams,
+    "no-sql-raw": noSqlRaw,
     "no-test-vi-mocks": noTestViMocks,
     "require-execute-row-schema": requireExecuteRowSchema,
     "require-sql-result-mapping": requireSqlResultMapping,

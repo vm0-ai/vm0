@@ -23,8 +23,6 @@ const MODEL_TOKEN_CATEGORIES = [
   "tokens.cache_creation",
 ] as const;
 
-const USAGE_ROW_ALIAS = "ur";
-
 interface UsageInsightOptions {
   range: "today" | "yesterday" | "day" | "7d" | "28d" | "30d";
   date?: string;
@@ -42,12 +40,12 @@ interface TimeParts {
 }
 
 interface UsageInsightSqlParams {
-  userIdLit: string;
-  orgIdLit: string;
-  startTsLit: string;
-  endTsLit: string;
-  truncLit: string;
-  tzLit: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly startTs: string;
+  readonly endTs: string;
+  readonly trunc: "hour" | "day";
+  readonly tz: string;
 }
 
 const usageInsightBucketRowSchema = z.object({
@@ -274,7 +272,7 @@ function rangeToWindow(
   range: UsageInsightOptions["range"],
   tz: string,
   date: string | undefined,
-): { trunc: string; startTs: Date; endTs: Date } {
+): { trunc: "hour" | "day"; startTs: Date; endTs: Date } {
   const now = nowDate();
   const todayStart = startOfDayInTz(now, tz);
 
@@ -309,56 +307,54 @@ function rangeToWindow(
   }
 }
 
-function pgLit(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+function usageBucketExpr(p: UsageInsightSqlParams) {
+  return sql`date_trunc(${p.trunc}, ur.activity_time AT TIME ZONE 'UTC' AT TIME ZONE ${p.tz})`;
 }
 
-function usageBucketExpr(p: UsageInsightSqlParams): string {
-  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.activity_time AT TIME ZONE 'UTC' AT TIME ZONE ${p.tzLit})`;
+function activityTimeWindowPredicate(p: UsageInsightSqlParams) {
+  return sql`ue.created_at AT TIME ZONE 'UTC' >= ${p.startTs}::timestamptz
+        AND ue.created_at AT TIME ZONE 'UTC' < ${p.endTs}::timestamptz`;
 }
 
-function activityTimeWindowPredicate(
-  alias: string,
-  p: UsageInsightSqlParams,
-): string {
-  return `${alias}.created_at AT TIME ZONE 'UTC' >= ${p.startTsLit}::timestamptz
-        AND ${alias}.created_at AT TIME ZONE 'UTC' < ${p.endTsLit}::timestamptz`;
+function usageRowTokenExpr() {
+  const tokenCategoryList = sql.join(
+    MODEL_TOKEN_CATEGORIES.map((category) => {
+      return sql`${category}`;
+    }),
+    sql`, `,
+  );
+  return sql`CASE WHEN ue.kind = ${MODEL_USAGE_KIND} AND ue.category IN (${tokenCategoryList}) THEN ue.quantity ELSE 0 END`;
 }
 
-function usageRowTokenExpr(): string {
-  const tokenCategoryList = MODEL_TOKEN_CATEGORIES.map(pgLit).join(", ");
-  return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${tokenCategoryList}) THEN ue.quantity ELSE 0 END`;
+function usageCreditsExpr() {
+  return sql`COALESCE(ue.credits_charged, 0) + COALESCE(uaa.units_applied, 0)`;
 }
 
-function usageCreditsExpr(usageAlias: string, allowanceAlias: string): string {
-  return `COALESCE(${usageAlias}.credits_charged, 0) + COALESCE(${allowanceAlias}.units_applied, 0)`;
-}
-
-function usageRowsCte(p: UsageInsightSqlParams): string {
-  return `
+function usageRowsCte(p: UsageInsightSqlParams) {
+  return sql`
     usage_rows AS (
       SELECT
         ue.created_at AS activity_time,
         ue.run_id,
         ue.user_id,
         ue.org_id,
-        ${usageCreditsExpr("ue", "uaa")}::bigint AS credits_charged,
+        ${usageCreditsExpr()}::bigint AS credits_charged,
         ${usageRowTokenExpr()}::bigint AS tokens
       FROM usage_event ue
       LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-      WHERE ue.user_id = ${p.userIdLit}
-        AND ue.org_id = ${p.orgIdLit}
+      WHERE ue.user_id = ${p.userId}
+        AND ue.org_id = ${p.orgId}
         AND ue.status = 'processed'
-        AND ${activityTimeWindowPredicate("ue", p)}
+        AND ${activityTimeWindowPredicate(p)}
     )`;
 }
 
-function usageRowsWith(p: UsageInsightSqlParams): string {
-  return `WITH ${usageRowsCte(p)}`;
+function usageRowsWith(p: UsageInsightSqlParams) {
+  return sql`WITH ${usageRowsCte(p)}`;
 }
 
-function agentNameExpr(): string {
-  return `CASE
+function agentNameExpr() {
+  return sql`CASE
     WHEN ar.id IS NULL THEN 'others'
     ELSE COALESCE(za.display_name, za.name, acv_compose.name, 'unknown')
   END`;
@@ -395,7 +391,7 @@ function pivotBucketRows(
 function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
   return executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${usageRowsWith(p)}
       SELECT
         ${usageBucketExpr(p)} AS ts,
@@ -406,13 +402,13 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
           WHEN zr.trigger_source IN ('workflow-schedule', 'workflow-event') THEN 'automation'
           ELSE 'others'
         END AS bucket,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens
-      FROM usage_rows ${USAGE_ROW_ALIAS}
-      LEFT JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
+        COALESCE(SUM(ur.credits_charged), 0)::bigint AS credits,
+        COALESCE(SUM(ur.tokens), 0)::bigint AS tokens
+      FROM usage_rows ur
+      LEFT JOIN zero_runs zr ON zr.id = ur.run_id
       GROUP BY 1, 2
       ORDER BY 1
-    `),
+    `,
     usageInsightBucketRowSchema,
   );
 }
@@ -422,14 +418,14 @@ function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
 
   return executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${usageRowsWith(p)},
       agent_totals AS (
         SELECT
           ${agentName} AS agent_name,
-          COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS total_credits
-        FROM usage_rows ${USAGE_ROW_ALIAS}
-        LEFT JOIN agent_runs ar ON ar.id = ${USAGE_ROW_ALIAS}.run_id
+          COALESCE(SUM(ur.credits_charged), 0)::bigint AS total_credits
+        FROM usage_rows ur
+        LEFT JOIN agent_runs ar ON ar.id = ur.run_id
         LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
         LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
         LEFT JOIN zero_agents za ON za.id = acv_compose.id
@@ -444,16 +440,16 @@ function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
           THEN ${agentName}
           ELSE 'others'
         END AS bucket,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens
-      FROM usage_rows ${USAGE_ROW_ALIAS}
-      LEFT JOIN agent_runs ar ON ar.id = ${USAGE_ROW_ALIAS}.run_id
+        COALESCE(SUM(ur.credits_charged), 0)::bigint AS credits,
+        COALESCE(SUM(ur.tokens), 0)::bigint AS tokens
+      FROM usage_rows ur
+      LEFT JOIN agent_runs ar ON ar.id = ur.run_id
       LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
       LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
       LEFT JOIN zero_agents za ON za.id = acv_compose.id
       GROUP BY 1, 2
       ORDER BY 1
-    `),
+    `,
     usageInsightBucketRowSchema,
   );
 }
@@ -464,13 +460,13 @@ async function queryUsageInsightGrandTotal(
 ): Promise<{ grandTotalCredits: number; grandTotalTokens: number }> {
   const rows = await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${usageRowsWith(p)}
       SELECT
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS grand_credits,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS grand_tokens
-      FROM usage_rows ${USAGE_ROW_ALIAS}
-    `),
+        COALESCE(SUM(ur.credits_charged), 0)::bigint AS grand_credits,
+        COALESCE(SUM(ur.tokens), 0)::bigint AS grand_tokens
+      FROM usage_rows ur
+    `,
     usageInsightGrandTotalRowSchema,
   );
   return {
@@ -490,17 +486,17 @@ async function queryUsageInsightChannelTotals(
 }> {
   const rows = await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${usageRowsWith(p)}
       SELECT
         zr.trigger_source AS source,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
-        COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens
-      FROM usage_rows ${USAGE_ROW_ALIAS}
-      LEFT JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
+        COALESCE(SUM(ur.credits_charged), 0)::bigint AS credits,
+        COALESCE(SUM(ur.tokens), 0)::bigint AS tokens
+      FROM usage_rows ur
+      LEFT JOIN zero_runs zr ON zr.id = ur.run_id
       WHERE zr.trigger_source IN ('email', 'slack')
       GROUP BY 1
-    `),
+    `,
     usageInsightChannelTotalRowSchema,
   );
   let emailCredits = 0;
@@ -529,17 +525,17 @@ async function queryUsageInsightTopChats(
 }> {
   const rows = await executeRawRows(
     db,
-    sql.raw(`
+    sql`
       ${usageRowsWith(p)},
       agg AS (
         SELECT
           zr.chat_thread_id,
           ct.title AS thread_title,
-          COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
-          COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
-          ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
-        FROM usage_rows ${USAGE_ROW_ALIAS}
-        INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
+          COALESCE(SUM(ur.credits_charged), 0)::bigint AS credits,
+          COALESCE(SUM(ur.tokens), 0)::bigint AS tokens,
+          ROW_NUMBER() OVER (ORDER BY SUM(ur.credits_charged) DESC NULLS LAST) AS rn
+        FROM usage_rows ur
+        INNER JOIN zero_runs zr ON zr.id = ur.run_id
         LEFT JOIN chat_threads ct ON ct.id = zr.chat_thread_id
         WHERE zr.chat_thread_id IS NOT NULL
         GROUP BY zr.chat_thread_id, ct.title
@@ -555,7 +551,7 @@ async function queryUsageInsightTopChats(
         101 AS rn
       FROM agg WHERE rn > 100
       ORDER BY rn
-    `),
+    `,
     usageInsightTopChatRowSchema,
   );
 
@@ -580,18 +576,18 @@ async function queryUsageInsightTopChats(
   if (hasChatOverflow) {
     const countRows = await executeRawRows(
       db,
-      sql.raw(`
+      sql`
         ${usageRowsWith(p)},
         agg AS (
           SELECT zr.chat_thread_id,
-            ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
-          FROM usage_rows ${USAGE_ROW_ALIAS}
-          INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
+            ROW_NUMBER() OVER (ORDER BY SUM(ur.credits_charged) DESC NULLS LAST) AS rn
+          FROM usage_rows ur
+          INNER JOIN zero_runs zr ON zr.id = ur.run_id
           WHERE zr.chat_thread_id IS NOT NULL
           GROUP BY zr.chat_thread_id
         )
         SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100
-      `),
+      `,
       usageInsightCountRowSchema,
     );
     chatOtherCount = countRows[0]?.cnt ?? 0;
@@ -613,12 +609,12 @@ export const zeroUsageInsight$ = command(
       args.options.date,
     );
     const params: UsageInsightSqlParams = {
-      userIdLit: pgLit(args.userId),
-      orgIdLit: pgLit(args.orgId),
-      startTsLit: pgLit(startTs.toISOString()),
-      endTsLit: pgLit(endTs.toISOString()),
-      truncLit: pgLit(trunc),
-      tzLit: pgLit(args.options.tz),
+      userId: args.userId,
+      orgId: args.orgId,
+      startTs: startTs.toISOString(),
+      endTs: endTs.toISOString(),
+      trunc,
+      tz: args.options.tz,
     };
 
     signal.throwIfAborted();
