@@ -16,7 +16,7 @@ export interface PlatformRuntimeConfig {
 const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
-const PREVIEW_SERVICE_DOMAIN = "vm6.ai";
+const PREVIEW_API_DOMAIN = "vm6.ai";
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
@@ -89,10 +89,10 @@ function rewritePreviewServiceHostname(
 ): string {
   const rewrittenHostname = rewritePlatformHostname(hostname, target);
   const okouPreviewSuffix = `.${OKOU_PREVIEW_DOMAIN}`;
-  if (!rewrittenHostname.endsWith(okouPreviewSuffix)) {
+  if (target !== "api" || !rewrittenHostname.endsWith(okouPreviewSuffix)) {
     return rewrittenHostname;
   }
-  return `${rewrittenHostname.slice(0, -okouPreviewSuffix.length)}.${PREVIEW_SERVICE_DOMAIN}`;
+  return `${rewrittenHostname.slice(0, -okouPreviewSuffix.length)}.${PREVIEW_API_DOMAIN}`;
 }
 
 export function derivePlatformServiceOrigin(

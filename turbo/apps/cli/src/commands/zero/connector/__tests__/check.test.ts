@@ -613,7 +613,7 @@ describe("zero connector check command", () => {
       },
       {
         name: "staging web",
-        baseUrl: "https://staging-www.vm6.ai",
+        baseUrl: "https://staging-www.omby.ai",
         platformOrigin: "https://staging-app.omby.ai",
       },
       {
@@ -633,7 +633,7 @@ describe("zero connector check command", () => {
       },
       {
         name: "preview web",
-        baseUrl: "https://pr-123-www.vm6.ai",
+        baseUrl: "https://pr-123-www.omby.ai",
         platformOrigin: "https://pr-123-app.omby.ai",
       },
       {
