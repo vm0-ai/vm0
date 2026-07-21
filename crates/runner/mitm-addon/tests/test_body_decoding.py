@@ -143,9 +143,11 @@ class TestStreamDecodeFeed:
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
-    def test_zlib_expansion_budget_allows_exact_grace(self, headers, encoding):
+    def test_zlib_expansion_budget_allows_exact_grace_and_empty_member(self, headers, encoding):
         plaintext = b"A" * STREAM_DECODE_EXPANSION_GRACE
-        compressed = _compress_one_shot_body(encoding, plaintext)
+        compressed = _compress_one_shot_body(encoding, plaintext) + _compress_one_shot_body(
+            encoding, b""
+        )
         assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < len(plaintext)
         chunks: list[bytes] = []
         session = create_stream_decode_session(

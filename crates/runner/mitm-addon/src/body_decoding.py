@@ -133,15 +133,18 @@ def _create_zlib_stream_decode_session(
             if decoded:
                 decoded_bytes_emitted += len(decoded)
                 feed(decoded)
-            if obj.unconsumed_tail:
-                data = obj.unconsumed_tail
-                continue
             if obj.eof:
+                # At an exact output boundary, zlib can expose the next member
+                # through both unused_data and unconsumed_tail. Reset before
+                # consulting unconsumed_tail so the next member makes progress.
                 data = obj.unused_data
                 obj = zlib.decompressobj(wbits)
                 member_in_progress = False
                 if data:
                     continue
+            if obj.unconsumed_tail:
+                data = obj.unconsumed_tail
+                continue
             return
 
     def finish_error() -> str | None:
