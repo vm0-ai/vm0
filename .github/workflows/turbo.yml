@@ -785,7 +785,6 @@ jobs:
       contents: read
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
       CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
@@ -796,6 +795,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Bind PR WWW to marketing staging Pages
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
@@ -816,9 +816,11 @@ jobs:
       - name: Deploy PR API proxy Worker
         env:
           API_BACKEND_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
           : "${API_BACKEND_BYPASS_SECRET:?VERCEL_AUTOMATION_BYPASS_SECRET is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
           : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
           worker_name="vm0-www-${JOB_REF}-runtime"
           api_backend_origin="https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
@@ -834,8 +836,10 @@ jobs:
 
       - name: Route PR WWW API requests to the proxy Worker
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
+          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
           hostname="${JOB_REF}-www.${CF_PAGES_PREVIEW_DOMAIN}"
           worker_name="vm0-www-${JOB_REF}-runtime"
           bash .github/scripts/manage-cloudflare-worker-route.sh \
