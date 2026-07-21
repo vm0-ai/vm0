@@ -116,7 +116,6 @@ function templateFraming(artifactNoun: string): readonly string[] {
     "",
     `- The user deliberately selected this artifact template for this run — treat it as the default style for any ${artifactNoun} you produce here.`,
     `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
-    "- This template is already selected. Follow its exact instructions below; skip generic `zero generate -h` and provider/resource discovery. Use type-specific help only when named as a fallback.",
     "- Other artifact templates, files, or attachments may also be present.",
     "",
   ];

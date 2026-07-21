@@ -3020,10 +3020,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const websiteRun = await api.readRun(actor, website.runId);
     const websitePrompt = websiteRun.appendSystemPrompt ?? "";
     expect(websitePrompt).toContain("# Artifact Template Context");
-    expect(websitePrompt).toContain("This template is already selected");
-    expect(websitePrompt).toContain(
-      "skip generic `zero generate -h` and provider/resource discovery",
-    );
     expect(websitePrompt).toContain(
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
