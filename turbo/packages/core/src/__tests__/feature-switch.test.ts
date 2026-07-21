@@ -46,12 +46,6 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ComposerInlinePromptItems, {}),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ComposerInlineAttachmentReferences, {}),
-    ).toBe(false);
-    expect(
       isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
     ).toBe(false);
   });
@@ -157,12 +151,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
-      true,
-    );
-    expect(
-      staffOrgStates[FeatureSwitchKey.ComposerInlineAttachmentReferences],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
@@ -201,12 +189,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorActionCallback]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
-      false,
-    );
-    expect(
-      otherOrgStates[FeatureSwitchKey.ComposerInlineAttachmentReferences],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
     );

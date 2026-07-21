@@ -8,8 +8,7 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredDraftAttachments } from "../zero-page/chat-draft.ts";
-import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
+import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
@@ -19,8 +18,6 @@ import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 export const SIDEBAR_PARAM = "sidebar";
 
@@ -86,9 +83,8 @@ const loadDraft$ = command(
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
-      const restoredAttachments = createRestoredDraftAttachments(
-        threadDraft.draftContent ?? "",
-        draftAttachments ?? [],
+      const restoredAttachments = (draftAttachments ?? []).map(
+        createRestoredAttachment,
       );
       set(
         thread.draft.seed$,
@@ -140,18 +136,11 @@ const setupPaneThread$ = command(
     const initialOptimisticEntries = get(
       createOptimisticChatMessagesForThread(threadId),
     );
-    const features = get(featureSwitch$);
     const thread = createChatThreadSignals(
       threadId,
       draft,
       dataSource,
       initialOptimisticEntries,
-      {
-        inlinePromptItems: composerInlinePromptItemsEnabled(features),
-        inlineAttachmentReferences:
-          features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ??
-          false,
-      },
     );
     set(spec.setPaneThread$, thread);
 
