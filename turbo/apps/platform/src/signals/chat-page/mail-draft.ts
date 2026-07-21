@@ -24,9 +24,8 @@ export interface MailDraftDescriptor {
 
 export interface MailDraftSignals extends MailDraftDescriptor {
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
-  readonly reload$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
-  readonly send$: Command<Promise<ZeroMailDraft>, [AbortSignal]>;
+  readonly send$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
@@ -117,21 +116,11 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
-function newestDraft(
-  first: ZeroMailDraft,
-  second: ZeroMailDraft,
-): ZeroMailDraft {
-  return Date.parse(second.updatedAt) >= Date.parse(first.updatedAt)
-    ? second
-    : first;
-}
-
 function createMailDraftSignals(
   descriptor: MailDraftDescriptor,
 ): MailDraftSignals {
   const reloadVersion$ = state(0);
-  const mutationDraft$ = state<ZeroMailDraft | null | undefined>(undefined);
-  const serverDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+  const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
     get(reloadVersion$);
     const response = await accept(
       get(zeroClient$)(zeroMailContract).getDraft({
@@ -141,14 +130,6 @@ function createMailDraftSignals(
       [200, 404],
     );
     return response.status === 200 ? response.body.mailDraft : null;
-  });
-  const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    const mutation = get(mutationDraft$);
-    const server = await get(serverDraft$);
-    if (mutation === null || server === null) {
-      return mutation === undefined ? server : mutation;
-    }
-    return mutation === undefined ? server : newestDraft(server, mutation);
   });
   const reload$ = command(({ set }) => {
     set(reloadVersion$, (version) => {
@@ -165,11 +146,11 @@ function createMailDraftSignals(
         [204],
       );
       signal.throwIfAborted();
-      set(mutationDraft$, null);
+      set(reload$);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const response = await accept(
+    await accept(
       get(zeroClient$)(zeroMailContract).sendDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal },
@@ -177,10 +158,9 @@ function createMailDraftSignals(
       [200],
     );
     signal.throwIfAborted();
-    set(mutationDraft$, response.body.mailDraft);
-    return response.body.mailDraft;
+    set(reload$);
   });
-  return { ...descriptor, draft$, reload$, delete$, send$ };
+  return { ...descriptor, draft$, delete$, send$ };
 }
 
 export function createMailDraftCardSignalsRegistry(): MailDraftCardSignalsRegistry {

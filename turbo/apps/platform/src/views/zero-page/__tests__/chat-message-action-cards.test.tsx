@@ -199,7 +199,7 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
-  it("shares a link-backed mail draft between cards and the detail sidebar", async () => {
+  it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
@@ -226,11 +226,17 @@ describe("chat message action cards", () => {
           bcc: [],
           subject: "Hello",
           body: "Mail body",
-          status: "draft",
+          status: sent ? "sent" : "draft",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
+          ...(sent
+            ? {
+                sentGmailMessageId: "gmail-sent-message-id",
+                sentAt: "2026-07-14T10:01:00.000Z",
+              }
+            : {}),
           references: [],
           attachments: [
             {
@@ -240,7 +246,7 @@ describe("chat message action cards", () => {
             },
           ],
           createdAt,
-          updatedAt: createdAt,
+          updatedAt: sent ? "2026-07-14T10:01:00.000Z" : createdAt,
         },
       });
     });
@@ -341,6 +347,7 @@ describe("chat message action cards", () => {
     expect(within(sidebar).getByText("Mail body")).toBeInTheDocument();
     expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(draftRequests).toBe(1);
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
@@ -350,6 +357,84 @@ describe("chat message action cards", () => {
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Send", sidebar)).toBeNull();
     expect(draftRequests).toBe(2);
+  });
+
+  it("reloads the shared mail draft after deleting it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000018";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000019";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let deleted = false;
+    let draftRequests = 0;
+
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      draftRequests += 1;
+      if (deleted) {
+        return respond(404, {
+          error: { message: "Mail draft not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Delete me",
+          body: "Mail body",
+          status: "draft",
+          detailAvailable: true,
+          gmailDraftId: "r-delete-draft",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    context.mocks.api(zeroMailContract.deleteDraft, ({ respond }) => {
+      deleted = true;
+      return respond(204);
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delete mail card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-00000000001a",
+          role: "assistant",
+          content: mailDraftUrl,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const card = await screen.findByLabelText("Open draft email: Delete me");
+    expect(draftRequests).toBe(1);
+    await user.click(card);
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(draftRequests).toBe(1);
+    await user.click(await waitForButtonByText("Delete", sidebar));
+
+    await waitFor(() => {
+      expect(deleted).toBeTruthy();
+      expect(draftRequests).toBe(2);
+      expect(screen.queryByLabelText("Open draft email: Delete me")).toBeNull();
+      expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
+    });
   });
 
   it("renders a deleted email card without an interactive sidebar trigger", async () => {
