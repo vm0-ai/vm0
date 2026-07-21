@@ -930,7 +930,7 @@ export function zeroChatThreadDraftIds(
           eq(chatThreads.userId, userId),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
-            OR ${chatThreads.draftStructuredPrompt} IS NOT NULL
+            OR ${isNotNull(chatThreads.draftStructuredPrompt)}
             OR (
               ${isNotNull(chatThreads.draftAttachments)}
               AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
