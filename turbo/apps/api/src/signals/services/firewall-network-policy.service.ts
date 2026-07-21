@@ -1,11 +1,12 @@
-import type { FirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import type {
   FirewallPolicy,
   NetworkPolicy,
 } from "@vm0/connectors/firewall-types";
 
+import type { ConnectorServerFirewallPermissionIndex } from "./connector-server-firewall-catalog.service";
+
 export function defaultFirewallPolicyForPermissionIndex(
-  index: FirewallPermissionIndex,
+  index: ConnectorServerFirewallPermissionIndex,
 ): FirewallPolicy {
   const policies: FirewallPolicy["policies"] = {};
   for (const name of index.permissionNames) {

@@ -1,12 +1,4 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import {
-  loadFirewallRoutingMetadata,
-  type FirewallRoutingRouteMetadata,
-} from "@vm0/connectors/firewall-metadata/routing";
-import {
-  getFirewallExecutionMetadata,
-  type FirewallExecutionMetadata,
-} from "@vm0/connectors/firewall-metadata/server";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   FirewallBaseUrlResolutionError,
   hasUnsafeFirewallPath,
@@ -15,6 +7,11 @@ import {
 } from "@vm0/connectors/firewall-types";
 
 import { safeSync, safeUrlParse } from "../utils";
+import type {
+  ConnectorServerFirewallCatalog,
+  ConnectorServerFirewallExecutionMetadata,
+  FirewallRoutingRouteMetadata,
+} from "./connector-server-firewall-catalog.service";
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
@@ -30,10 +27,11 @@ export interface ConnectorDiagnosticCatalogApi {
 }
 
 export interface ConnectorDiagnosticCatalogView {
-  readonly type: ConnectorType;
+  readonly type: ConnectorCatalogRef;
   readonly label: string;
   readonly baseUrlVarNames: readonly string[];
   readonly apis: readonly ConnectorDiagnosticCatalogApi[];
+  readonly executionMetadata: ConnectorServerFirewallExecutionMetadata;
 }
 
 export interface ConnectorDiagnosticBaseCandidate {
@@ -96,14 +94,14 @@ function sameNames(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function executionTemplatesByBase(
-  metadata: FirewallExecutionMetadata,
+  metadata: ConnectorServerFirewallExecutionMetadata,
 ): ReadonlyMap<string, ConnectorDiagnosticExecutionTemplate> {
   const templates = new Map<string, ConnectorDiagnosticExecutionTemplate>();
   for (const template of metadata.baseUrlTemplates) {
     const key = baseKey(template.base);
     if (templates.has(key)) {
       throw new Error(
-        `Duplicate firewall execution base template for ${metadata.type}`,
+        `Duplicate firewall execution base template for ${metadata.connectorRef}`,
       );
     }
     templates.set(key, {
@@ -117,16 +115,19 @@ function executionTemplatesByBase(
 }
 
 export async function loadConnectorDiagnosticCatalogView(
+  catalog: ConnectorServerFirewallCatalog,
   connectorRef: string,
 ): Promise<ConnectorDiagnosticCatalogView | null> {
-  const routing = await loadFirewallRoutingMetadata(connectorRef);
+  const routing = await catalog.loadRoutingMetadata(connectorRef);
   if (!routing) {
     return null;
   }
 
-  const execution = getFirewallExecutionMetadata(routing.type);
-  if (!execution || execution.type !== routing.type) {
-    throw new Error(`Missing firewall execution metadata for ${routing.type}`);
+  const execution = catalog.getExecutionMetadata(routing.connectorRef);
+  if (!execution || execution.connectorRef !== routing.connectorRef) {
+    throw new Error(
+      `Missing firewall execution metadata for ${routing.connectorRef}`,
+    );
   }
 
   const executionTemplates = executionTemplatesByBase(execution);
@@ -144,7 +145,7 @@ export async function loadConnectorDiagnosticCatalogView(
       names.length === 0 ? null : (executionTemplates.get(key) ?? null);
     if (names.length > 0 && !executionTemplate) {
       throw new Error(
-        `Missing firewall execution base template for ${routing.type}`,
+        `Missing firewall execution base template for ${routing.connectorRef}`,
       );
     }
     if (executionTemplate) {
@@ -161,14 +162,17 @@ export async function loadConnectorDiagnosticCatalogView(
     !sameNames([...routingBaseUrlVarNames], execution.baseUrlVarNames) ||
     executionTemplates.size !== dynamicBaseKeys.size
   ) {
-    throw new Error(`Mismatched firewall base metadata for ${routing.type}`);
+    throw new Error(
+      `Mismatched firewall base metadata for ${routing.connectorRef}`,
+    );
   }
 
   return {
-    type: routing.type,
+    type: routing.connectorRef,
     label: routing.label,
     baseUrlVarNames: [...routingBaseUrlVarNames].sort(),
     apis,
+    executionMetadata: execution,
   };
 }
 
@@ -267,15 +271,16 @@ function dynamicTemplateToPattern(base: string): string | null {
 }
 
 function executionTemplateForBase(
-  type: ConnectorType,
+  metadata: ConnectorServerFirewallExecutionMetadata,
   base: string,
 ): ConnectorDiagnosticExecutionTemplate {
-  const execution = getFirewallExecutionMetadata(type);
-  const template = execution?.baseUrlTemplates.find((entry) => {
+  const template = metadata.baseUrlTemplates.find((entry) => {
     return baseKey(entry.base) === baseKey(base);
   });
   if (!template) {
-    throw new Error(`Missing firewall execution base template for ${type}`);
+    throw new Error(
+      `Missing firewall execution base template for ${metadata.connectorRef}`,
+    );
   }
   return {
     credentialed: template.credentialed,
@@ -295,7 +300,7 @@ interface ConnectorDiagnosticBaseResolution {
 }
 
 export function resolveConnectorDiagnosticBase(
-  type: ConnectorType,
+  executionMetadata: ConnectorServerFirewallExecutionMetadata,
   base: string,
   baseUrlVars: Readonly<Record<string, string>> | null,
   options: { readonly allowStructuralDynamic: boolean },
@@ -312,11 +317,11 @@ export function resolveConnectorDiagnosticBase(
     };
   }
 
-  const executionTemplate = executionTemplateForBase(type, base);
+  const executionTemplate = executionTemplateForBase(executionMetadata, base);
   if (baseUrlVars) {
     const resolution = safeSync(() => {
       return resolveFirewallBaseUrlTemplate({
-        serviceName: type,
+        serviceName: executionMetadata.connectorRef,
         base,
         vars: baseUrlVars,
         credentialed: executionTemplate.credentialed,
@@ -374,7 +379,7 @@ export function buildConnectorDiagnosticBaseCandidates(
 
   for (const api of view.apis) {
     const resolution = resolveConnectorDiagnosticBase(
-      view.type,
+      view.executionMetadata,
       api.base,
       baseUrlVars,
       options,
