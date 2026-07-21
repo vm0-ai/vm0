@@ -17,14 +17,14 @@ require_env JOB_REF
 require_env HEAD_SHA
 require_env METAL_HOSTS
 require_env METAL_USER
-JOB_REF=${JOB_REF:-}
-HEAD_SHA=${HEAD_SHA:-}
+job_ref=${JOB_REF:-}
+head_sha=${HEAD_SHA:-}
 
 TARGET_TRIPLE="${TARGET_TRIPLE-aarch64-unknown-linux-musl}"
 PROFILE="${PROFILE:-vm0/default}"
 MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
-BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
-RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
+BIN_DIR="/var/lib/vm0-runner/bin/${job_ref}"
+RUNNER_DIR="/var/lib/vm0-runner/runners/${job_ref}"
 CARGO_TARGET_DIR="${REPO_ROOT}/crates/target"
 TARGET_DIR="${CARGO_TARGET_DIR}/${TARGET_TRIPLE}/ci"
 DERIVED_EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
@@ -78,7 +78,7 @@ guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
 prepare_host() {
   local host=$1
   local host_index=$2
-  local runner_name="${JOB_REF}-${host_index}"
+  local runner_name="${job_ref}-${host_index}"
   local remote="${METAL_USER}@${host}"
   echo "=== Preparing ${host} (runner: ${runner_name}) ==="
 
@@ -133,7 +133,7 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  local tmp_runner="${BIN_DIR}/runner.${HEAD_SHA}.${host_index}.tmp"
+  local tmp_runner="${BIN_DIR}/runner.${head_sha}.${host_index}.tmp"
   if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "${TARGET_DIR}/runner"; then
     return 1
   fi
@@ -280,8 +280,8 @@ done
 
 tmp_manifest="${MANIFEST_PATH}.tmp"
 jq -n \
-  --arg head_sha "$HEAD_SHA" \
-  --arg job_ref "$JOB_REF" \
+  --arg head_sha "$head_sha" \
+  --arg job_ref "$job_ref" \
   --arg target "$TARGET_TRIPLE" \
   --arg profile "$PROFILE" \
   --arg bin_dir "$BIN_DIR" \
