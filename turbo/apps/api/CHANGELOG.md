@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.290.1](https://github.com/vm0-ai/vm0/compare/api-v1.290.0...api-v1.290.1) (2026-07-21)
+
+
+### Refactoring
+
+* **api:** eliminate unsafe sql.raw usage ([#22271](https://github.com/vm0-ai/vm0/issues/22271)) ([e29eb69](https://github.com/vm0-ai/vm0/commit/e29eb69bc2c360298dfb6178de356f06db60b5d1))
+* remove workflow queue trigger identifier ([#22268](https://github.com/vm0-ai/vm0/issues/22268)) ([b01589d](https://github.com/vm0-ai/vm0/commit/b01589dff4a18427b99a73ae2c77fe1a0f336c84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.2
+    * @vm0/core bumped to 8.444.1
+    * @vm0/db bumped to 1.122.2
+
 ## [1.290.0](https://github.com/vm0-ai/vm0/compare/api-v1.289.0...api-v1.290.0) (2026-07-21)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.17...guest-agent-v0.53.18) (2026-07-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** raise cli event delivery queue to 512 ([#22265](https://github.com/vm0-ai/vm0/issues/22265)) ([30b0657](https://github.com/vm0-ai/vm0/commit/30b06579b766b6f1966c94688c9b84cc3e7066a5))
+
 ## [0.53.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.16...guest-agent-v0.53.17) (2026-07-21)
 
 ## [0.53.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.15...guest-agent-v0.53.16) (2026-07-20)

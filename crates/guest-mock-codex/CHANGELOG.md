@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.10](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.9...guest-mock-codex-v0.6.10) (2026-07-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** raise cli event delivery queue to 512 ([#22265](https://github.com/vm0-ai/vm0/issues/22265)) ([30b0657](https://github.com/vm0-ai/vm0/commit/30b06579b766b6f1966c94688c9b84cc3e7066a5))
+
 ## [0.6.9](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.8...guest-mock-codex-v0.6.9) (2026-07-17)
 
 
