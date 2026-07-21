@@ -373,6 +373,7 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     size: 9216,
     url: "https://artifacts.example.com/launch-plan.html",
     createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",
     ...overrides,
   };
@@ -1598,6 +1599,38 @@ describe("artifacts page", () => {
         resolvedChatIdb(db),
       ).readStore.readLastSyncedAt(),
     ).resolves.toBe("2026-01-04T00:00:00.000Z");
+  });
+
+  it("keeps the most recently updated artifact for a shared URL", async () => {
+    setupTeam();
+    const scope = testAuthScope("shared-url-winner");
+    const newestCreated = createArtifact({
+      artifactItemId: "newest-created:file-1",
+      threadId: "thread-newest-created",
+      runId: "newest-created",
+      filename: "newest-created.html",
+      createdAt: "2026-01-03T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z",
+    });
+    const newestUpdated = createArtifact({
+      artifactItemId: "newest-updated:file-1",
+      threadId: "thread-newest-updated",
+      runId: "newest-updated",
+      filename: "newest-updated.html",
+      createdAt: "2026-01-02T00:00:00Z",
+      updatedAt: "2026-01-04T00:00:00Z",
+    });
+    mockArtifacts([newestCreated, newestUpdated]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("newest-updated.html");
+    expect(screen.queryByText("newest-created.html")).not.toBeInTheDocument();
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        newestUpdated.artifactItemId,
+      ]);
+    });
   });
 
   it("replaces the cache when the server omits incremental sync metadata", async () => {
