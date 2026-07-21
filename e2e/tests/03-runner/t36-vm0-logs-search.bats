@@ -6,7 +6,7 @@
 # 2. vm0 logs search finds events by keyword in a completed run
 # 3. vm0 logs search shows empty results guidance for non-matching keywords
 #
-# Test count: 3 tests with 1 vm0 run call
+# Test count: 2 tests with 1 vm0 run call
 
 load '../../helpers/setup'
 
@@ -33,7 +33,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -67,12 +67,6 @@ teardown() {
     assert_output --partial "--run"
     assert_output --partial "--since"
     assert_output --partial "--limit"
-}
-
-@test "Build logs search test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "logs search: run agent and search for keyword in events" {

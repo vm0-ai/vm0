@@ -51,7 +51,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_MASK" >/dev/null
+    seed_compose_fixture "$CONFIG_MASK" >/dev/null
 
     # Create compose config for multi-secret masking test
     export AGENT_MULTI="e2e-secret-multi-${UNIQUE_ID}"
@@ -72,7 +72,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_MULTI" >/dev/null
+    seed_compose_fixture "$CONFIG_MULTI" >/dev/null
 }
 
 # Generate unique secret name for each test run to avoid conflicts

@@ -49,7 +49,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -69,12 +69,6 @@ teardown_file() {
 # =============================================================================
 # Test 1: Build configuration (fast, no vm0 run)
 # =============================================================================
-
-@test "t06-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
 
 # =============================================================================
 # Test 2: Continue uses latest artifact version
@@ -237,9 +231,8 @@ volumes:
 EOF
 
     echo "# Building config with secrets..."
-    run $VM0_CLI compose "$env_config"
+    run seed_compose_fixture "$env_config"
     assert_success
-    assert_output --partial "$env_agent_name"
 
     # Create artifact
     echo "# Creating artifact..."

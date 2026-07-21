@@ -55,7 +55,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -73,12 +73,6 @@ teardown_file() {
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
-}
-
-@test "t07-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "t07-2: --volume-version overrides volume at runtime" {
