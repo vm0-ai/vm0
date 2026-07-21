@@ -19,6 +19,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import type { SlackChatThreadRouteBackend } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -91,8 +92,14 @@ import {
 } from "./zero-user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import {
+  admitCanonicalSlackChatEvent,
+  ensureCanonicalSlackChatThreadRoute,
+  ensureLegacySlackChatThreadRoute,
+  findSlackChatThreadRoute,
+} from "./slack-chat-ingress.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { safeJsonParse, tapError } from "../utils";
+import { onRejection, safeJsonParse, tapError } from "../utils";
 import type { SlackOrgCallbackPayload } from "./slack-org-callback-payload";
 
 const L = logger("ZeroSlackWebhooks");
@@ -119,6 +126,7 @@ interface SlackCommandPayload {
 interface SlackEventCallback {
   readonly type: "event_callback";
   readonly team_id: string;
+  readonly event_id?: string;
   readonly event:
     | SlackAppMentionEvent
     | SlackDirectMessageEvent
@@ -277,6 +285,11 @@ interface SlackEventCallbackArgs {
   readonly backgroundScheduledAt: number;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
+}
+
+interface SlackAgentRouteAdmission {
+  readonly backend: SlackChatThreadRouteBackend;
+  readonly routeId?: string;
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
@@ -721,6 +734,83 @@ async function resolveEffectiveCompose(
     agent: visibleDefaultAgent,
   };
 }
+
+const resolveSlackAgentRouteAdmission$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly workspaceId: string;
+      readonly channelId: string;
+      readonly slackUserId: string;
+      readonly threadTs: string;
+    },
+  ): Promise<SlackAgentRouteAdmission> => {
+    const installation = await installationForWorkspace(
+      args.db,
+      args.workspaceId,
+    );
+    if (!installation?.orgId) {
+      return { backend: "legacy" };
+    }
+    const connection = await connectionForSlackUser(
+      args.db,
+      args.workspaceId,
+      args.slackUserId,
+    );
+    if (!connection) {
+      return { backend: "legacy" };
+    }
+
+    const routeKey = {
+      connectionId: connection.id,
+      channelId: args.channelId,
+      threadTs: args.threadTs,
+      userId: connection.vm0UserId,
+    };
+    const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
+    if (existingRoute) {
+      return { backend: existingRoute.backend, routeId: existingRoute.id };
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(installation.orgId, connection.vm0UserId),
+    );
+    const canonicalEnabled = isFeatureEnabled(
+      FeatureSwitchKey.CanonicalSlackIngress,
+      {
+        orgId: installation.orgId,
+        userId: connection.vm0UserId,
+        overrides,
+      },
+    );
+    const currentTime = nowDate();
+    if (!canonicalEnabled) {
+      const route = await ensureLegacySlackChatThreadRoute(args.db, {
+        ...routeKey,
+        currentTime,
+      });
+      return { backend: route.backend, routeId: route.id };
+    }
+
+    const effectiveCompose = await resolveEffectiveCompose(
+      args.db,
+      connection.vm0UserId,
+      installation.orgId,
+    );
+    if (effectiveCompose.status !== "resolved") {
+      return { backend: "legacy" };
+    }
+
+    const route = await ensureCanonicalSlackChatThreadRoute(args.db, {
+      ...routeKey,
+      orgId: installation.orgId,
+      agentComposeId: effectiveCompose.composeId,
+      currentTime,
+    });
+    return { backend: route.backend, routeId: route.id };
+  },
+);
 
 async function disconnect(db: Db, connectionId: string): Promise<void> {
   await db
@@ -2187,6 +2277,18 @@ function isSlackDirectAgentMessageEvent(
   );
 }
 
+function slackAgentMessageEvent(
+  event: SlackEventCallback["event"],
+): SlackAppMentionEvent | SlackDirectMessageEvent | undefined {
+  if (event.type === "app_mention") {
+    return event;
+  }
+  if (isSlackDirectAgentMessageEvent(event)) {
+    return event;
+  }
+  return undefined;
+}
+
 function slackAppMentionChannelType(
   event: SlackAppMentionEvent,
 ): SlackChannelType {
@@ -2366,7 +2468,65 @@ export const handleZeroSlackEvents$ = command(
     }
 
     if (payload.type === "event_callback") {
-      if (request.header("x-slack-retry-num")) {
+      const retryNum = request.header("x-slack-retry-num");
+      const agentEvent = slackAgentMessageEvent(payload.event);
+      if (agentEvent) {
+        const db = set(writeDb$);
+        const route = await set(resolveSlackAgentRouteAdmission$, {
+          db,
+          workspaceId: payload.team_id,
+          channelId: agentEvent.channel,
+          slackUserId: agentEvent.user,
+          threadTs: agentEvent.thread_ts ?? agentEvent.ts,
+        });
+        signal.throwIfAborted();
+        if (route.backend === "canonical") {
+          if (!route.routeId || !payload.event_id) {
+            L.error("Canonical Slack ingress is missing required identity", {
+              type: "canonical_slack_ingress_admission",
+              success: false,
+              hasRouteId: Boolean(route.routeId),
+              hasEventId: Boolean(payload.event_id),
+              isRetry: Boolean(retryNum),
+            });
+            return jsonResponse(
+              { error: "Canonical Slack event identity is missing" },
+              400,
+            );
+          }
+
+          const ingress = await onRejection(
+            admitCanonicalSlackChatEvent(db, {
+              routeId: route.routeId,
+              eventId: payload.event_id,
+              payload: verified.body,
+              isRetry: Boolean(retryNum),
+              currentTime: nowDate(),
+            }),
+            (error) => {
+              L.error("Canonical Slack ingress admission failed", {
+                type: "canonical_slack_ingress_admission",
+                success: false,
+                isRetry: Boolean(retryNum),
+                retryNum: retryNum ?? null,
+                error,
+              });
+            },
+          );
+          signal.throwIfAborted();
+          L.debug("Canonical Slack ingress admitted", {
+            type: "canonical_slack_ingress_admission",
+            success: true,
+            isRetry: Boolean(retryNum),
+            retryNum: retryNum ?? null,
+            outcome: ingress.inserted ? "accepted" : "deduplicated",
+            status: ingress.status,
+          });
+          return textResponse("OK");
+        }
+      }
+
+      if (retryNum) {
         return textResponse("OK");
       }
       const timing = new ApiDispatchTimingCollector();

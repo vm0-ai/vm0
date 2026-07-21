@@ -5,7 +5,7 @@ import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
-import { isUUID } from "../../run/shared";
+import { isUuid } from "../../../lib/utils/uuid";
 
 function formatStatus(status: string): string {
   switch (status) {
@@ -67,7 +67,7 @@ Examples:
             : undefined;
         const since =
           options.since !== undefined ? parseTime(options.since) : undefined;
-        if (options.agent !== undefined && !isUUID(options.agent)) {
+        if (options.agent !== undefined && !isUuid(options.agent)) {
           console.error(
             chalk.red(
               `✗ Invalid agent ID "${options.agent}" — expected a UUID`,

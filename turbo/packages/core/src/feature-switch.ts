@@ -223,6 +223,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.CanonicalSlackIngress]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Route newly admitted per-user Slack threads through canonical chat ingress.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -299,12 +305,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CodexFrameworkForMinimax]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Expose the experimental MiniMax Codex framework provider route for Responses API compatibility testing.",
-    enabled: false,
   },
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",

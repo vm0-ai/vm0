@@ -11,7 +11,7 @@ use sandbox::{
 };
 use sandbox_mock::MockSandboxFactory;
 
-const QUEUED_COPY_FILE_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const QUEUED_COPY_FILE_MAX_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(in crate::executor::tests) struct DestroyPanicFactory {
     pub(in crate::executor::tests) inner: MockSandboxFactory,

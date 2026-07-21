@@ -1,7 +1,8 @@
 use std::path::Path;
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryRefKind, SESSION_HISTORY_SIDECAR_MAX_BYTES,
+    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
 };
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -69,7 +70,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
         if self.version != SESSION_HISTORY_SIDECAR_FORMAT_VERSION {
             return Err(WorkspaceSessionHistorySidecarMiss::InvalidMetadata);
         }
-        if self.encoded_size == 0 || self.encoded_size > SESSION_HISTORY_SIDECAR_MAX_BYTES {
+        if self.encoded_size == 0 || self.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES {
             return Err(WorkspaceSessionHistorySidecarMiss::InvalidMetadata);
         }
         let fields = expected
@@ -195,7 +196,7 @@ impl SessionWorkspaceCache {
         if !tmp_metadata.is_file()
             || tmp_metadata.len() != source.encoded_size
             || source.encoded_size == 0
-            || source.encoded_size > SESSION_HISTORY_SIDECAR_MAX_BYTES
+            || source.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES
         {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             self.prune_session_history_sidecar(cache_key).await?;

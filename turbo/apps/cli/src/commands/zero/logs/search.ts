@@ -10,7 +10,7 @@ import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { withErrorHandler } from "../../../lib/command";
-import { isUUID } from "../../run/shared";
+import { isUuid } from "../../../lib/utils/uuid";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../../lib/utils/search-query";
 import { isSupportedFramework } from "@vm0/core/frameworks";
@@ -170,7 +170,7 @@ export async function runLogsSearch(
   const searchKeyword = parseSearchQuery(keyword, "Keyword");
   const { before, after } = parseContextOptions(options);
 
-  if (options.agentId !== undefined && !isUUID(options.agentId)) {
+  if (options.agentId !== undefined && !isUuid(options.agentId)) {
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agentId}" — expected a UUID`),
     );
@@ -178,7 +178,7 @@ export async function runLogsSearch(
     process.exit(1);
   }
 
-  if (options.run !== undefined && !isUUID(options.run)) {
+  if (options.run !== undefined && !isUuid(options.run)) {
     console.error(
       chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
     );

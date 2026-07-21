@@ -30,10 +30,12 @@ import {
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const storages = createStoragesBddApi(context);
 
 const OFFICIAL_BOT_TOKEN = "9876543210:fake-test-token";
 const OFFICIAL_BOT_USERNAME = "official_zero_bot";
@@ -1234,7 +1236,6 @@ describe("POST /api/integrations/telegram/link", () => {
 
   beforeEach(() => {
     configureOfficialBotEnv();
-    context.mocks.s3.send.mockResolvedValue({});
   });
 
   afterEach(async () => {
@@ -1352,7 +1353,7 @@ describe("POST /api/integrations/telegram/link", () => {
     );
   });
 
-  it("links a custom bot account via Telegram Login Widget auth", async () => {
+  it("links a custom bot account without provisioning artifact storage", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     const telegramBotId = newTelegramBotId();
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -1394,6 +1395,17 @@ describe("POST /api/integrations/telegram/link", () => {
       telegramUserId: "99002",
       botUsername: `bot_${telegramBotId}`,
     });
+    await expect(
+      storages.listStorages(
+        {
+          userId,
+          orgId,
+          orgRole: "org:admin",
+          email: `${userId}@example.test`,
+        },
+        "artifact",
+      ),
+    ).resolves.toStrictEqual([]);
     await expectTelegramBotConnection({
       token,
       botId: telegramBotId,

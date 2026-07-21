@@ -66,15 +66,14 @@ teardown_file() {
 }
 
 @test "t54-0: BYOK provider — firewall not billable" {
-    run $VM0_CLI run "$RUN_AGENT_NAME" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        "Reply with exactly: DONE"
+    run run_compose_fixture "$RUN_AGENT_NAME" \
+        "Reply with exactly: DONE" \
+        '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     echo "$output"
     assert_success
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

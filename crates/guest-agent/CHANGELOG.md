@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.19...guest-agent-v0.53.20) (2026-07-21)
+
+
+### Bug Fixes
+
+* disable vm0 model reasoning summaries ([#22337](https://github.com/vm0-ai/vm0/issues/22337)) ([9d04a70](https://github.com/vm0-ai/vm0/commit/9d04a70c81bfb3e30ed8214b767a2eb9bbb64587))
+
 ## [0.53.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.18...guest-agent-v0.53.19) (2026-07-21)
 
 

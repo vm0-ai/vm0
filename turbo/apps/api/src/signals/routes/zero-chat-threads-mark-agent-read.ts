@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { chatThreadMarkAgentReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -48,8 +48,8 @@ function latestRunFinishCreatedAtSql() {
   return sql`(
     SELECT ${chatMessages.createdAt}
     FROM ${chatMessages}
-    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
-      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
+    WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
+      AND ${isNotNull(chatMessages.runLifecycleEvent)}
     ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
     LIMIT 1
   )`;
@@ -98,7 +98,7 @@ const markAgentReadInner$ = command(
             isNotNull(lastRunFinish.id),
             or(
               isNull(chatThreads.lastReadAt),
-              sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+              gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
             )!,
           ),
         );

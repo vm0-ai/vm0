@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.612.0](https://github.com/vm0-ai/vm0/compare/app-v0.611.0...app-v0.612.0) (2026-07-21)
+
+
+### Features
+
+* **artifacts:** load favorites independently ([#22371](https://github.com/vm0-ai/vm0/issues/22371)) ([c4d23d9](https://github.com/vm0-ai/vm0/commit/c4d23d9a5e4c92b323df57d50fb732ec5ccacde1))
+* **chat:** add structured prompt editor codecs ([#22370](https://github.com/vm0-ai/vm0/issues/22370)) ([09cfdf3](https://github.com/vm0-ai/vm0/commit/09cfdf3746e1b04ee01522daa8a2e03aabc5b7f8))
+
+
+### Bug Fixes
+
+* simplify email draft sidebar details ([#22379](https://github.com/vm0-ai/vm0/issues/22379)) ([e8e0c6a](https://github.com/vm0-ai/vm0/commit/e8e0c6a5271698a2cb31a02cc0017665db252534))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+
+## [0.611.0](https://github.com/vm0-ai/vm0/compare/app-v0.610.6...app-v0.611.0) (2026-07-21)
+
+
+### Features
+
+* **chat:** persist structured prompts through api and indexeddb ([#22357](https://github.com/vm0-ai/vm0/issues/22357)) ([655136e](https://github.com/vm0-ai/vm0/commit/655136e2d01cbe57ac67af61711b21867eea2d2a))
+
+
+### Refactoring
+
+* **platform:** remove agent detail workflows tab ([#22361](https://github.com/vm0-ai/vm0/issues/22361)) ([ea6cf92](https://github.com/vm0-ai/vm0/commit/ea6cf9246a646441986bc930ce653de2c2f947fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+
 ## [0.610.6](https://github.com/vm0-ai/vm0/compare/app-v0.610.5...app-v0.610.6) (2026-07-21)
 
 
