@@ -125,20 +125,15 @@ describe("website template items", () => {
     expect(findWebsiteTemplateItem("template:web-prototype")).toBeUndefined();
   });
 
-  it("does not expose existing Open Design website templates through the picker catalog", () => {
-    const websiteTemplateIds = WEBSITE_TEMPLATE_ITEMS.flatMap((item) => {
-      return [item.id, item.templateId, item.resourceId];
-    });
-
-    expect(websiteTemplateIds).not.toContain("template:web-prototype");
-    expect(websiteTemplateIds).not.toContain(
-      "template:web-prototype-taste-editorial",
-    );
-    expect(websiteTemplateIds).not.toContain(
-      "template:web-prototype-taste-brutalist",
-    );
-    expect(websiteTemplateIds).not.toContain(
-      "template:web-prototype-taste-soft",
+  it("does not expose Open Design website registry entries", () => {
+    expect(
+      listTemplates("website").map((template) => {
+        return template.id;
+      }),
+    ).toEqual(
+      WEBSITE_TEMPLATE_ITEMS.map((item) => {
+        return item.templateId;
+      }),
     );
   });
 

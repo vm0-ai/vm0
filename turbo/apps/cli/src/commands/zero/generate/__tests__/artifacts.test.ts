@@ -140,8 +140,8 @@ describe("zero generate source-backed artifact commands", () => {
     expect(selection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "template:saas-landing",
-          description: expect.stringContaining("Single-page SaaS landing"),
+          id: "template:finance-report",
+          description: expect.stringContaining("financial report"),
         }),
       ]),
     );
@@ -162,10 +162,6 @@ describe("zero generate source-backed artifact commands", () => {
     expect(websiteSelection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "template:saas-landing",
-          description: expect.stringContaining("Single-page SaaS landing"),
-        }),
-        expect.objectContaining({
           id: "template:warm-cards",
           source: expect.objectContaining({
             path: "warm-cards",
@@ -176,6 +172,7 @@ describe("zero generate source-backed artifact commands", () => {
     );
     expect(websiteSelection.candidates.templates).not.toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "template:saas-landing" }),
         expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
       ]),
     );
@@ -251,7 +248,7 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("rejects a template that does not target the requested kind", async () => {
-    // saas-landing is a website-only template — should fail for dashboard-design
+    // finance-report only targets report and should fail for dashboard-design
     await expect(async () => {
       await generateCommand.parseAsync([
         "node",
@@ -260,7 +257,7 @@ describe("zero generate source-backed artifact commands", () => {
         "--prompt",
         "a dashboard",
         "--template",
-        "saas-landing",
+        "finance-report",
       ]);
     }).rejects.toThrow("process.exit called");
 

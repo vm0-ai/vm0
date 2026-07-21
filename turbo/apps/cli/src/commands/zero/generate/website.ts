@@ -84,7 +84,7 @@ export const websiteCommand = new Command()
   )
   .option(
     "--template <id>",
-    "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
+    "Template id scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
   )
   .addHelpText("after", () => {
     const designSystems = listDesignSystems();
@@ -92,7 +92,7 @@ export const websiteCommand = new Command()
     return `
 Examples:
   Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero generate website --template saas-landing --prompt "Launch site for a billing API"
+  Pick template:         zero generate website --template black-slabs --prompt "Launch site for a billing API"
   Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
   Custom site slug:      zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero generate website
