@@ -121,7 +121,10 @@ pub(crate) fn verify_exec_process_containment_empty() -> Result<(), ProcessConta
 }
 
 fn use_test_noop_backend() -> bool {
-    cfg!(feature = "test-support")
+    // Library unit tests do not own the guest cgroup hierarchy. Controlled
+    // containment tests exercise real behavior through caller-provided paths.
+    cfg!(test)
+        || cfg!(feature = "test-support")
         || (cfg!(debug_assertions) && !Path::new(EXEC_CGROUP_BASE_PATH).is_dir())
 }
 

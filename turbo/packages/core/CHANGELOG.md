@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.444.4](https://github.com/vm0-ai/vm0/compare/core-v8.444.3...core-v8.444.4) (2026-07-21)
+
+
+### Refactoring
+
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+
 ## [8.444.3](https://github.com/vm0-ai/vm0/compare/core-v8.444.2...core-v8.444.3) (2026-07-21)
 
 

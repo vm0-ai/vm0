@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.244.6](https://github.com/vm0-ai/vm0/compare/cli-v9.244.5...cli-v9.244.6) (2026-07-21)
+
+
+### Refactoring
+
+* **cli:** remove vm0 volume and artifact commands ([#22350](https://github.com/vm0-ai/vm0/issues/22350)) ([e26a104](https://github.com/vm0-ai/vm0/commit/e26a104bc415ce98a4a89965e18d1f52cb19de2f)), closes [#22342](https://github.com/vm0-ai/vm0/issues/22342)
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+
 ## [9.244.5](https://github.com/vm0-ai/vm0/compare/cli-v9.244.4...cli-v9.244.5) (2026-07-21)
 
 

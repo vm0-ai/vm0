@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
@@ -16,7 +15,6 @@ import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
 
 const log = logger("artifacts:preview");
@@ -66,7 +64,6 @@ export interface RenderArtifactPreviewArgs {
   readonly id: string;
   readonly runId: string;
   readonly userId: string;
-  readonly orgId: string | null;
   readonly url: string;
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
@@ -239,20 +236,6 @@ const renderAndStoreArtifactPreview$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const isVideo = isVideoContentType(args.contentType);
-    if (!isVideo) {
-      // Resolve the HTML preview switch against the artifact owner's context,
-      // including per-user Lab overrides. Video posters are fully rolled out.
-      const featureCtx = await get(
-        userFeatureSwitchContext(args.orgId ?? "", args.userId),
-      );
-      signal.throwIfAborted();
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx)
-      ) {
-        return false;
-      }
-    }
-
     let image: Buffer;
     let filename: string;
     let contentType: string;
@@ -345,7 +328,6 @@ export const generateArtifactPreviews$ = command(
           id: runUploadedFiles.id,
           runId: runUploadedFiles.runId,
           userId: runUploadedFiles.userId,
-          orgId: runUploadedFiles.orgId,
           url: runUploadedFiles.url,
           contentType: runUploadedFiles.contentType,
           createdAt: runUploadedFiles.createdAt,
@@ -376,7 +358,6 @@ export const generateArtifactPreviews$ = command(
               id: row.id,
               runId: row.runId,
               userId: row.userId,
-              orgId: row.orgId,
               url: row.url,
               contentType: row.contentType,
               deploymentId: row.deploymentId,

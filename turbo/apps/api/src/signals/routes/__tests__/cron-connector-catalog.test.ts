@@ -9,7 +9,9 @@ import {
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorCheckContract } from "@vm0/api-contracts/contracts/zero-connector-check";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsCollectionContract,
@@ -811,6 +813,88 @@ function buildGeneratedFirewall(args: {
       ],
     },
   };
+}
+
+const DUPLICATE_DYNAMIC_FIREWALL_BASE = `https://${catalogTemplate("vars.SERVICE_HOST")}.example.test/v1`;
+const DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY = {
+  kind: "providerOwned",
+  suffixes: [".example.test"],
+} as const;
+
+function addDynamicFirewallVariableBinding(artifact: JsonRecord): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const method = firstRecord(connector.authMethods, "authMethods");
+  recordValue(method.storage, "storage").variables = ["SERVICE_HOST"];
+  recordValue(
+    recordValue(method.access, "access").envBindings,
+    "envBindings",
+  ).SERVICE_HOST = "$vars.SERVICE_HOST";
+}
+
+function addDuplicateDynamicPrivateFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const firewall = recordValue(connector.firewall, "firewall");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
+
+  const routing = recordValue(connector.routing, "routing");
+  routing.fixedHosts = [];
+  routing.baseUrlVarNames = ["SERVICE_HOST"];
+  routing.baseUrlTemplates = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: true,
+      hostPolicy: DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY,
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: false,
+      hostPolicy: fallbackApi.hostPolicy,
+    },
+  ];
+  routing.apis = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST", "SERVICE_TOKEN"],
+      routes: [{ permissionName: "items.read", rule: "GET /items" }],
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST"],
+      routes: [],
+    },
+  ];
+  recordValue(connector.diagnostics, "diagnostics").apiCount = 2;
+}
+
+function addDuplicateDynamicRunnerFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const firewall = firstRecord(artifact.firewalls, "firewalls");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
 }
 
 function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
@@ -2015,6 +2099,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-run-materialization",
       connectorRef,
       label: "External Runtime",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").billable = true;
+      },
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
@@ -2055,6 +2143,61 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const check = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://api.example.test/v1/items",
+          connectorRef,
+        },
+      }),
+      [200],
+    );
+    expect(check.body).toMatchObject({
+      outcome: "resolved",
+      mode: "url",
+      connector: {
+        connectorRef,
+        label: "External Runtime",
+      },
+      base: "https://api.example.test/v1",
+      relativePath: "/items",
+      permission: {
+        kind: "matched",
+        permissions: [{ name: "items.read" }],
+      },
+    });
+    const hostCollision = await connectorsApi.requestCreateCustomConnector(
+      actor,
+      {
+        displayName: "External Host Collision",
+        prefixes: ["https://api.example.test/custom/"],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+      [400],
+    );
+    expectApiError(hostCollision.body);
+    expect(hostCollision.body.error.message).toContain("api.example.test");
+    expect(hostCollision.body.error.message).toContain("External Runtime");
+    const grants = await accept(
+      setupApp({ context })(zeroUserPermissionGrantsContract).apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorRef,
+          mode: "replace",
+          grants: [{ permission: "items.read", action: "deny" }],
+        },
+      }),
+      [200],
+    );
+    expect(grants.body).toMatchObject([
+      { connectorRef, permission: "items.read", action: "deny" },
+    ]);
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
       prompt: "Use the externally sourced connector credential",
@@ -2074,6 +2217,17 @@ describe("connector catalog valid lifecycle", () => {
     expect(claim.environment?.SERVICE_TOKEN).toBeTruthy();
     expect(claim.secretConnectorMap).toMatchObject({
       SERVICE_TOKEN: connectorRef,
+    });
+    expect(claim.firewalls).toContainEqual({
+      kind: "builtin",
+      name: connectorRef,
+    });
+    expect(claim.billableFirewalls).toContain(connectorRef);
+    expect(claim.networkPolicies?.[connectorRef]).toStrictEqual({
+      allow: [],
+      deny: ["items.read"],
+      ask: [],
+      unknownPolicy: "deny",
     });
     expect(
       claim.storageManifest?.storages.some((storage) => {
@@ -3272,12 +3426,17 @@ describe("connector catalog valid lifecycle", () => {
       schemaVersion: 1,
       catalogVersion: release.version,
       externalConnectorCount: 1,
+      staticServerFirewallCount: expect.any(Number),
+      externalServerFirewallCount: 0,
+      staticServerFirewallDigest: expect.stringMatching(/^sha256:/),
+      externalServerFirewallDigest: expect.stringMatching(/^sha256:/),
     });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicRead);
     const logged = JSON.stringify(context.mocks.axiomLogging.debug.mock.calls);
     expect(logged).not.toContain(userId);
     expect(logged).not.toContain(orgId);
     expect(logged).not.toContain(PRIVATE_VALUE);
+    expect(logged).not.toContain("placeholder-token");
   });
 
   it("accepts a complete generated firewall projection", async () => {
@@ -3292,6 +3451,52 @@ describe("connector catalog valid lifecycle", () => {
       outcome: "accepted",
       state: "current",
       active: { catalogVersion: release.version },
+    });
+  });
+
+  it("merges duplicate dynamic firewall execution templates", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.duplicate-dynamic-firewall-base",
+      connectorRef: "dynamic-firewall",
+      label: "Dynamic Firewall",
+      generatedFirewall: true,
+      mutatePrivate: addDynamicFirewallVariableBinding,
+      mutatePrivateFirewalls: addDuplicateDynamicPrivateFirewallApi,
+      mutateRunnerFirewalls: addDuplicateDynamicRunnerFirewallApi,
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://tenant.example.test/v1/items",
+          connectorRef: "dynamic-firewall",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "dynamic-firewall",
+        label: "Dynamic Firewall",
+      },
+      permission: {
+        kind: "matched",
+        permissions: [{ name: "items.read" }],
+      },
     });
   });
 
@@ -3568,6 +3773,22 @@ describe("connector catalog executable compatibility", () => {
           reasons: ["missing-grant-provider"],
         },
       ],
+    });
+
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "environment",
+          environmentName: "TEST_OAUTH_DEVICE_TOKEN",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toStrictEqual({
+      outcome: "unknown-environment",
     });
 
     const allFiltered = buildRelease({
@@ -4365,6 +4586,93 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const auth = recordValue(api.auth, "firewall api auth");
             recordValue(auth.headers, "firewall auth headers")["X-Unknown"] =
               catalogTemplate("secrets.UNKNOWN_SECRET");
+          },
+        });
+      },
+    },
+    {
+      name: "conflicting duplicate dynamic firewall host policies",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-dynamic-base-host-policy-conflict",
+          generatedFirewall: true,
+          mutatePrivate: addDynamicFirewallVariableBinding,
+          mutatePrivateFirewalls: (artifact) => {
+            addDuplicateDynamicPrivateFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            addDuplicateDynamicRunnerFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
+          },
+        });
+      },
+    },
+    {
+      name: "normalized cross-connector firewall fixed host collision",
+      expected: "relationship-mismatch",
+      release: () => {
+        const secondConnectorRef = "collision-b";
+        return buildRelease({
+          version: "firewall-fixed-host-collision",
+          connectorRef: "collision-a",
+          generatedFirewall: true,
+          mutatePublic: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            second.label = "Collision B";
+            connectors.push(second);
+          },
+          mutatePrivate: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            const method = firstRecord(second.authMethods, "authMethods");
+            recordValue(method.storage, "storage").secrets = [
+              "SECOND_SECRET_TOKEN",
+            ];
+            firstRecord(
+              recordValue(method.grant, "grant").fields,
+              "grant.fields",
+            ).privateName = "SECOND_SECRET_TOKEN";
+            recordValue(
+              recordValue(method.access, "access").envBindings,
+              "envBindings",
+            ).SERVICE_TOKEN = "$secrets.SECOND_SECRET_TOKEN";
+            connectors.push(second);
+          },
+          mutatePrivateFirewalls: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            second.label = "Collision B";
+            const firewall = recordValue(second.firewall, "firewall");
+            firewall.name = secondConnectorRef;
+            firstRecord(firewall.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            const routing = recordValue(second.routing, "routing");
+            routing.fixedHosts = ["api.example.test."];
+            firstRecord(routing.apis, "routing.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            connectors.push(second);
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            const firewalls = arrayValue(artifact.firewalls, "firewalls");
+            const second = structuredClone(firstRecord(firewalls, "firewalls"));
+            second.name = secondConnectorRef;
+            firstRecord(second.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            firewalls.push(second);
           },
         });
       },

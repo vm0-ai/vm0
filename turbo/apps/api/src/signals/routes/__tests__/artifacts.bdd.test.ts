@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +21,6 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -358,17 +356,6 @@ describe("GET /api/cron/artifact-preview", () => {
         context,
         artifact,
         legacyPreviewImageUrl ? { previewImageUrl: legacyPreviewImageUrl } : {},
-      );
-      await updateFeatureSwitchesForUser(
-        context,
-        {
-          userId: owner.actor.userId,
-          orgId: owner.actor.orgId,
-          orgRole: owner.actor.orgRole,
-        },
-        {
-          [FeatureSwitchKey.ArtifactPreviewImage]: true,
-        },
       );
       mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
       mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
@@ -718,17 +705,6 @@ describe("GET /api/zero/artifacts", () => {
     if (!owner.actor.orgId) {
       throw new Error("Expected challenge preview test actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactPreviewImage]: true,
-      },
-    );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
     const pageErrorRequests = mockCloudflareSnapshot({
@@ -775,48 +751,6 @@ describe("GET /api/zero/artifacts", () => {
     expect(pageErrorRequests).toHaveLength(1);
     expect(challengeRequests).toHaveLength(1);
   }, 180_000);
-
-  it("does not render previews when the feature switch is disabled with browser rendering configured", async () => {
-    const owner = await artifactActor("Artifacts API preview disabled agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected preview disabled test actor to have an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactPreviewImage]: false,
-      },
-    );
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    const snapshotRequests = mockCloudflareSnapshot();
-
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `preview-disabled-${randomUUID().slice(0, 8)}`,
-    });
-    await flushWaitUntilForTest();
-
-    const response = await chat.listArtifacts(owner.actor);
-    const disabledArtifact = response.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(disabledArtifact).toBeDefined();
-    expect(disabledArtifact).not.toHaveProperty("previewImageUrl");
-    expect(snapshotRequests).toHaveLength(0);
-    expect(
-      owner.objectStore.puts.some((put) => {
-        return put.key.endsWith(`/preview-v2-${artifact.deploymentId}.webp`);
-      }),
-    ).toBeFalsy();
-  }, 120_000);
 
   it("returns every artifact for the org in one bulk response", async () => {
     const first = await artifactActor("Artifacts API bulk agent");
