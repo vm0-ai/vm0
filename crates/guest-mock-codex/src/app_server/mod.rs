@@ -30,10 +30,10 @@ const METHOD_NOT_FOUND: i64 = -32601;
 /// # Errors
 ///
 /// Returns an error when `listen` is unsupported, the environment names an
-/// unsupported scenario, stdin cannot be read, an input message cannot be
-/// decoded or validated, a response cannot be serialized or written to stdout,
-/// stdout cannot be flushed, or a scenario-specific helper process cannot be
-/// started.
+/// unsupported scenario, stdin cannot be read, an input line cannot be decoded
+/// as JSON, a client response is invalid, input events cannot be persisted, a
+/// response cannot be serialized or written to stdout, stdout cannot be
+/// flushed, or a scenario-specific helper process cannot be started.
 pub fn run_app_server(listen: &str) -> io::Result<()> {
     if listen != "stdio://" {
         return Err(io::Error::new(
