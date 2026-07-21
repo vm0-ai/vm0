@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { eq, gte, lt, sql } from "drizzle-orm";
+import { eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -65,16 +65,11 @@ function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
 }
 
-function getModelStatsModelIdSql() {
-  return sql.join(
-    [
-      ...Object.keys(VM0_MODEL_TO_PROVIDER),
-      ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
-    ].map((model) => {
-      return sql`${model}`;
-    }),
-    sql`, `,
-  );
+function getModelStatsModelIds(): string[] {
+  return [
+    ...Object.keys(VM0_MODEL_TO_PROVIDER),
+    ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
+  ];
 }
 
 interface ModelStatsAggregationResult {
@@ -164,7 +159,7 @@ async function replaceModelStats(
   windowEnd: Date,
 ): Promise<number> {
   const observationModelExpr = modelUsageObservationModelExpression();
-  const modelStatsModelIdSql = getModelStatsModelIdSql();
+  const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
 
@@ -173,7 +168,7 @@ async function replaceModelStats(
       DELETE FROM ${modelStat}
       WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
         AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
-        AND ${modelStat.model} IN (${modelStatsModelIdSql})
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
     `);
 
     const { rowCount } = await tx.execute(sql`
@@ -196,7 +191,7 @@ async function replaceModelStats(
         FROM ${modelUsageObservation}
         WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
           AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
-          AND ${modelUsageObservation.model} IN (${modelStatsModelIdSql})
+          AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
           AND ${modelUsageObservation.category} IN (
             ${TOKEN_CATEGORY_INPUT},
             ${TOKEN_CATEGORY_OUTPUT},
@@ -292,8 +287,7 @@ async function selectModelRankings(
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
   const modelExpr = modelStatModelExpression();
-  const currentModelStatsModelIdSql = getModelStatsModelIdSql();
-  const previousModelStatsModelIdSql = getModelStatsModelIdSql();
+  const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(window.start);
   const windowEndParam = utcTimestampParam(window.end);
   const previousStartParam = utcTimestampParam(previousStart);
@@ -306,22 +300,22 @@ async function selectModelRankings(
       SELECT
         ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
+        COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
+        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
       FROM ${modelStat}
       WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
         AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
-        AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
       GROUP BY 1
     ),
     previous_period AS (
       SELECT
         ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
+        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS previous_total_tokens
       FROM ${modelStat}
       WHERE ${gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`)}
         AND ${lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`)}
-        AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
       GROUP BY 1
     )
     SELECT

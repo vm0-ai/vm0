@@ -11,6 +11,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import {
   and,
+  countDistinct,
   eq,
   gte,
   inArray,
@@ -893,7 +894,7 @@ async function queryCompletedRunCounts(
       agentName: sql`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`
         .mapWith(pgTextDecoder)
         .as("agent_name"),
-      runs: sql`COUNT(DISTINCT ${agentRuns.id})::int`
+      runs: sql`${countDistinct(agentRuns.id)}::int`
         .mapWith(pgIntegerDecoder)
         .as("runs"),
     })

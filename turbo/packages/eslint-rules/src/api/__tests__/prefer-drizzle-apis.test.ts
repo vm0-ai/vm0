@@ -28,12 +28,13 @@ const ruleTester = new RuleTester({
 
 const drizzlePreamble = `
   import { relations } from "drizzle-orm";
-  import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+  import { integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
   const users = pgTable("users", {
     id: integer("id").notNull(),
     name: text("name").notNull(),
     deletedAt: timestamp("deleted_at"),
+    tags: jsonb("tags").$type<string[]>().notNull(),
   });
   const usersRelations = relations(users, () => ({}));
   type DrizzleDatabase =
@@ -60,8 +61,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`1 + \${users.id} = \${value}\`;
         sql\`\${users.id} = \${value} + 1\`;
         sql\`\${gte(users.deletedAt, sql\`\${"2026-01-01"}::timestamp\`)}\`;
-        sql\`MAX(\${users.id}) FILTER (WHERE \${users.id} > 0)\`;
+        sql\`MAX(\${users.id} + 1) FILTER (WHERE \${users.id} > 0)\`;
+        sql\`MAX(\${users.id}) OVER (ORDER BY id)\`;
         sql\`MAX(\${fragment})\`;
+        sql\`SUM(\${users.id})\`;
+        sql\`SELECT MIN(\${users.id}) FROM \${users}\`;
         sql\`\${users.id}\`;
       `,
     },
@@ -85,6 +89,48 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           where: (fields, operators) =>
             operators.sql\`length(\${fields.name}) > 0\`,
         });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        const ids = [1, 2];
+        const subquery = sql\`SELECT \${users.id} FROM \${users}\`;
+        const arbitraryJoin = sql.join([subquery], sql\`, \`);
+        const transformedList = sql.join(
+          ids.map((id) => sql\`\${id + 1}\`),
+          sql\`, \`,
+        );
+        let mutableList = sql.join(
+          ids.map((id) => sql\`\${id}\`),
+          sql\`, \`,
+        );
+        function listWithArgument(values: number[]) {
+          return sql.join(
+            values.map((value) => sql\`\${value}\`),
+            sql\`, \`,
+          );
+        }
+        function concrete(value: SQL): SQL {
+          return value;
+        }
+        const condition = eq(users.id, 1);
+        sql\`\${users.id} LIKE \${1}\`;
+        sql\`\${users.id} IN (\${subquery})\`;
+        sql\`\${users.id} IN (\${arbitraryJoin})\`;
+        sql\`\${users.id} IN (\${transformedList})\`;
+        sql\`\${users.id} IN (\${mutableList})\`;
+        sql\`\${users.id} IN (\${listWithArgument(ids)})\`;
+        sql\`\${users.name} NOT LIKE \${"prefix%"}\`;
+        sql\`\${users.name} ILIKE \${"prefix%"}\`;
+        sql\`\${users.id} NOT IN (\${mutableList})\`;
+        sql\`SELECT \${users.id} DESC\`;
+        sql\`ORDER BY \${users.id} DESCENDING\`;
+        concrete(sql\`\${condition} AND \${condition}\`);
+        sql\`\${condition} AND NOT \${condition}\`;
+        sql\`\${users.name} @> \${sql\`jsonb_build_array('tag')\`}\`;
+        sql\`\${condition} @> \${sql\`jsonb_build_array('tag')\`}\`;
+        void mutableList;
       `,
     },
   ],
@@ -202,6 +248,90 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "isNotNull" } },
         { messageId: "typedApi", data: { helper: "max" } },
       ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        const names = ["one", "two"];
+        const nameList = sql.join(
+          names.map((name) => sql\`\${name}\`),
+          sql\`, \`,
+        );
+        function nameSqlList() {
+          return sql.join(
+            names.map((name) => sql\`\${name}\`),
+            sql\`, \`,
+          );
+        }
+        function optional(value: SQL | undefined): SQL | undefined {
+          return value;
+        }
+        const condition = eq(users.id, 1);
+        const jsonArray = sql\`jsonb_build_array(\${"tag"})\`;
+        sql\`\${users.name} LIKE \${"prefix%"} ESCAPE '\\\\'\`;
+        sql\`\${users.name} IN (\${nameList})\`;
+        sql\`\${users.name} IN (\${nameSqlList()})\`;
+        sql\`ORDER BY \${users.name} ASC, \${users.id} DESC NULLS FIRST\`;
+        sql\`COALESCE(SUM(\${users.id}), 0)\`;
+        sql\`COUNT(\${users.id}) FILTER (WHERE \${condition})::int\`;
+        sql\`MAX(\${users.deletedAt}) FILTER (WHERE \${condition})\`;
+        sql\`SELECT COUNT(\${users.id}), COUNT(DISTINCT \${users.name}), MAX(\${users.id}) FROM \${users}\`;
+        optional(sql\`(\${condition} AND \${condition}) OR \${condition}\`);
+        sql\`\${users.tags} @> \${jsonArray}\`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "like" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "asc" } },
+        { messageId: "typedApi", data: { helper: "desc" } },
+        { messageId: "typedApi", data: { helper: "sum" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "max" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "countDistinct" } },
+        { messageId: "typedApi", data: { helper: "max" } },
+        { messageId: "typedApi", data: { helper: "or" } },
+        { messageId: "typedApi", data: { helper: "arrayContains" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql as query, type SQLWrapper } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const names = ["one", "two"];
+        const nameList = drizzle.sql.join(
+          names.map((name) => drizzle.sql\`\${name}\`),
+          drizzle.sql\`, \`,
+        );
+        query\`\${users.name} LIKE \${"prefix%"}\`;
+        drizzle.sql\`\${users.name} IN (\${nameList})\`;
+        drizzle.sql\`ORDER BY \${users.name} ASC, COALESCE(SUM(\${users.id}), 0)\`;
+        function contains<T extends typeof users.tags>(column: T, value: SQLWrapper) {
+          query\`\${column} @> \${value}\`;
+        }
+        void contains;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "like" } },
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "asc" } },
+        { messageId: "typedApi", data: { helper: "sum" } },
+        { messageId: "typedApi", data: { helper: "arrayContains" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${fields.name} LIKE \${"prefix%"}\`,
+        });
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${operators.eq(fields.id, 1)} AND \${operators.isNotNull(fields.name)}\`,
+        });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "like" } }],
     },
   ],
 });

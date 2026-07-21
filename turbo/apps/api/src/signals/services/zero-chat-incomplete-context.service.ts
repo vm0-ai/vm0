@@ -1,6 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -94,9 +94,9 @@ async function selectIncompleteRoundFrontier(
             )
           )
         ORDER BY
-          ${chatMessages.createdAt} DESC,
-          ${chatMessages.sequenceNumber} DESC NULLS FIRST,
-          ${chatMessages.id} DESC
+          ${desc(chatMessages.createdAt)},
+          ${desc(chatMessages.sequenceNumber)} NULLS FIRST,
+          ${desc(chatMessages.id)}
         LIMIT 1
       ) AS candidate
       WHERE incomplete_frontier.depth < ${INCOMPLETE_ROUND_LIMIT + 1}
