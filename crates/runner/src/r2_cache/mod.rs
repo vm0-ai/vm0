@@ -55,10 +55,9 @@
 //!
 //! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
 //! deploy playbook runs after every release). Default TTL is 7 days. Each
-//! host attempts the same scan independently over the legacy rootfs prefix
-//! (`runner-images/`) and the shared template prefix (`runner-templates/`).
-//! Request cost for a full pass scales with scanned prefixes and pagination:
-//! at least one LIST per prefix, one additional LIST per extra page, and one
+//! host attempts the same scan independently over the shared template prefix
+//! (`runner-templates/`). Request cost for a full pass scales with pagination:
+//! at least one LIST, one additional LIST per extra page, and one
 //! batched DELETE for each page that contains expired objects. `DeleteObjects`
 //! is idempotent for already-absent keys, so concurrent fleet execution is
 //! safe; per-host deleted-count and freed-byte logs are best-effort and are
