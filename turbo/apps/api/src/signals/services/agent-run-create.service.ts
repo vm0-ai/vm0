@@ -39,14 +39,10 @@ import {
   type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import {
-  getFirewallExecutionMetadata,
-  isFirewallExecutionMetadataConnectorType,
-  loadFirewallPermissionIndex,
-  type FirewallExecutionMetadata,
-  type FirewallExecutionMetadataConnectorType,
-  type FirewallPermissionIndex,
-} from "@vm0/connectors/firewall-metadata/server";
+import type {
+  ConnectorServerFirewallExecutionMetadata,
+  ConnectorServerFirewallPermissionIndex,
+} from "./connector-server-firewall-catalog.service";
 import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
@@ -3531,22 +3527,30 @@ function allAllowPolicyForPermissions(
   };
 }
 
-async function loadRequiredFirewallPermissionIndex(
-  type: string,
-): Promise<FirewallPermissionIndex> {
-  const index = await loadFirewallPermissionIndex(type);
+async function loadRequiredFirewallPermissionIndex(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly connectorRef: string;
+}): Promise<ConnectorServerFirewallPermissionIndex> {
+  const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
+    args.connectorRef,
+  );
   if (!index) {
-    throw new Error(`Missing firewall permission metadata: ${type}`);
+    throw new Error(
+      `Missing connector server firewall permission metadata: ${args.connectorRef}`,
+    );
   }
   return index;
 }
 
 function getRequiredFirewallExecutionMetadata(
-  type: FirewallExecutionMetadataConnectorType,
-): FirewallExecutionMetadata {
-  const metadata = getFirewallExecutionMetadata(type);
+  snapshot: ConnectorRuntimeSnapshot,
+  connectorRef: string,
+): ConnectorServerFirewallExecutionMetadata {
+  const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorRef);
   if (!metadata) {
-    throw new Error(`Missing firewall execution metadata: ${type}`);
+    throw new Error(
+      `Missing connector server firewall execution metadata: ${connectorRef}`,
+    );
   }
   return metadata;
 }
@@ -3605,15 +3609,15 @@ function baseUrlValidationAuth(
 }
 
 function builtinFirewallEntryForMetadata(
-  metadata: FirewallExecutionMetadata,
+  metadata: ConnectorServerFirewallExecutionMetadata,
   vars: Record<string, string> | undefined,
 ): ExecutionFirewallEntry {
   if (metadata.baseUrlVarNames.length === 0) {
-    return { kind: "builtin", name: metadata.type };
+    return { kind: "builtin", name: metadata.connectorRef };
   }
 
   const validationFirewall: Firewall = {
-    name: metadata.type,
+    name: metadata.connectorRef,
     apis: metadata.baseUrlTemplates.map((template) => {
       return {
         base: template.base,
@@ -3629,7 +3633,7 @@ function builtinFirewallEntryForMetadata(
     [validationFirewall],
     vars,
   );
-  return { kind: "builtin", name: metadata.type, baseUrlVars };
+  return { kind: "builtin", name: metadata.connectorRef, baseUrlVars };
 }
 
 function inlineFirewallEntry(
@@ -3720,8 +3724,8 @@ function modelProviderPermissionManifest(
 }
 
 interface BuiltinConnectorManifestSource {
-  readonly metadata: FirewallExecutionMetadata;
-  readonly permissionIndex: FirewallPermissionIndex;
+  readonly metadata: ConnectorServerFirewallExecutionMetadata;
+  readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
 }
 
 function applyBuiltinConnectorMetadataPolicies(
@@ -3735,7 +3739,7 @@ function applyBuiltinConnectorMetadataPolicies(
   const billableFirewalls: string[] = [];
 
   for (const source of sources) {
-    const name = source.metadata.type;
+    const name = source.metadata.connectorRef;
     const permissionNames = [...source.permissionIndex.permissionNames];
     const defaultPolicy = defaultFirewallPolicyForPermissionIndex(
       source.permissionIndex,
@@ -3773,6 +3777,7 @@ function applyBuiltinConnectorMetadataPolicies(
 }
 
 async function buildPermissionManifest(args: {
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -3783,13 +3788,13 @@ async function buildPermissionManifest(args: {
 }): Promise<PermissionManifest | undefined> {
   const connectorTypes =
     args.connectorTypes ??
-    Object.keys(args.permissionPolicies ?? {}).filter(
-      isFirewallExecutionMetadataConnectorType,
-    );
+    Object.keys(args.permissionPolicies ?? {}).filter((connectorRef) => {
+      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+    });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const builtinConnectorTypes = connectorTypes.filter(
-    isFirewallExecutionMetadataConnectorType,
-  );
+  const builtinConnectorTypes = connectorTypes.filter((connectorRef) => {
+    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+  });
 
   const builtinSources = await measureApiDispatchTiming(
     args.timing,
@@ -3798,9 +3803,14 @@ async function buildPermissionManifest(args: {
     async () => {
       return await Promise.all(
         builtinConnectorTypes.map(async (type) => {
-          const metadata = getRequiredFirewallExecutionMetadata(type);
-          const permissionIndex =
-            await loadRequiredFirewallPermissionIndex(type);
+          const metadata = getRequiredFirewallExecutionMetadata(
+            args.connectorCatalogSnapshot,
+            type,
+          );
+          const permissionIndex = await loadRequiredFirewallPermissionIndex({
+            snapshot: args.connectorCatalogSnapshot,
+            connectorRef: type,
+          });
           return { metadata, permissionIndex };
         }),
       );
@@ -6336,6 +6346,7 @@ function validateRunEnvironmentReferences(args: {
 }
 
 async function buildPreparedPermissionManifest(args: {
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
@@ -6344,6 +6355,7 @@ async function buildPreparedPermissionManifest(args: {
 }): Promise<PermissionManifest | undefined | CreateRunErrorResult> {
   const result = await settle(
     buildPermissionManifest({
+      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       modelProvider: args.modelProvider,
       permissionPolicies: args.body.permissionPolicies,
       vars: args.body.vars,
@@ -6658,13 +6670,14 @@ async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly bodyContext: PreparedRunBodyContext;
 }): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
+  const connectorCatalogSnapshot = await connectorCatalogSnapshotForRun(args);
   args.signal.throwIfAborted();
   const connectorScope = connectorScopeForRuntimeSnapshot(
     args.connectorScope,
@@ -6728,6 +6741,7 @@ async function prepareRunRuntimeContext(args: {
     "nested",
     async () => {
       return await buildPreparedPermissionManifest({
+        connectorCatalogSnapshot,
         body,
         modelProvider,
         storedConnectorMetadataContext,
@@ -6782,6 +6796,16 @@ async function prepareRunRuntimeContext(args: {
   };
 }
 
+async function connectorCatalogSnapshotForRun(args: {
+  readonly db: Db;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+}): Promise<ConnectorRuntimeSnapshot> {
+  return (
+    args.preloadedConnectorCatalogSnapshot ??
+    (await loadConnectorRuntimeSnapshot(args.db))
+  );
+}
+
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
@@ -6814,13 +6838,24 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
-function prepareRunContext(
-  db: Db,
-  args: CreateAgentRunArgs,
-  timing: ApiDispatchTimingCollector,
-  signal: AbortSignal,
-  preloadedFeatureSwitchContext: FeatureSwitchContext | undefined,
-): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
+function prepareRunContext(input: {
+  readonly db: Db;
+  readonly args: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
+  readonly preloadedConnectorCatalogSnapshot:
+    | ConnectorRuntimeSnapshot
+    | undefined;
+}): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
+  const {
+    db,
+    args,
+    timing,
+    signal,
+    preloadedFeatureSwitchContext,
+    preloadedConnectorCatalogSnapshot,
+  } = input;
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
       const initialBody = initialRunBody(args);
@@ -6851,6 +6886,7 @@ function prepareRunContext(
         db,
         createArgs: args,
         connectorScope: bodyContext.connectorScope,
+        preloadedConnectorCatalogSnapshot,
         timing,
         signal,
         bodyContext,
@@ -7459,6 +7495,7 @@ interface PrepareAgentRunArgs {
   readonly timing: ApiDispatchTimingCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
 }
 
 interface CompleteAgentRunArgs {
@@ -7510,13 +7547,15 @@ export const prepareAgentRun$ = command(
       "top_level",
       async () => {
         return await get(
-          prepareRunContext(
+          prepareRunContext({
             db,
             args,
             timing,
             signal,
-            input.preloadedFeatureSwitchContext,
-          ),
+            preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
+            preloadedConnectorCatalogSnapshot:
+              input.preloadedConnectorCatalogSnapshot,
+          }),
         );
       },
     );

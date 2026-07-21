@@ -7488,7 +7488,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
-      [FeatureSwitchKey.ConnectorActionCallback]: true,
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
@@ -7783,7 +7782,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("keeps goal tools allowed with globally enabled callbacks", async () => {
+  it("keeps goal tools allowed with callback guidance", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -7808,7 +7807,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero web-search --help",
     );
     expect(claim.appendSystemPrompt ?? "").toContain("--callback-prompt");
-    expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
