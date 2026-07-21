@@ -44,9 +44,8 @@ setup_file() {
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$ARTIFACT_NAME" .
     cd - >/dev/null
 }
 

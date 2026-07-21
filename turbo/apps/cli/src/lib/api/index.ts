@@ -27,12 +27,7 @@ export {
 export { getSession, getCheckpoint } from "./domains/sessions";
 
 // Domain modules - Storages
-export {
-  prepareStorage,
-  commitStorage,
-  getStorageDownload,
-  listStorages,
-} from "./domains/storages";
+export { prepareStorage, commitStorage } from "./domains/storages";
 
 // Domain modules - Registry Resources
 export { getRegistryResourceDownload } from "./domains/registry-resources";

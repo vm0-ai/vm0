@@ -61,9 +61,8 @@ create_artifact() {
     local name="$1"
     mkdir -p "$TEST_DIR/$name"
     cd "$TEST_DIR/$name"
-    $VM0_CLI artifact init --name "$name" >/dev/null 2>&1
     echo "test" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$name" .
 }
 
 # Helper to set up a test connector with a known token via API
