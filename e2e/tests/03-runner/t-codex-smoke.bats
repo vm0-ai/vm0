@@ -54,8 +54,7 @@ teardown_file() {
 }
 
 @test "t-codex-smoke-1: basic codex run renders codex markers" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        "echo from codex"
+    run run_compose_fixture "$AGENT_NAME" "echo from codex"
 
     assert_success
     # init event from thread.started
@@ -64,6 +63,5 @@ teardown_file() {
     assert_output --partial "● echo from codex"
     # result event from turn.completed
     assert_output --partial "◆ Codex Completed"
-    # run lifecycle marker
-    assert_output --partial "Session:"
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 }

@@ -6,7 +6,7 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, sql } from "drizzle-orm";
+import { eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import {
@@ -111,15 +111,15 @@ export function visibleChatMessageCondition() {
     )
     AND NOT (
       ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.revokesMessageId} IS NOT NULL
-      AND ${chatMessages.content} IS NULL
-      AND ${chatMessages.error} IS NULL
+      AND ${isNull(chatMessages.runId)}
+      AND ${isNotNull(chatMessages.revokesMessageId)}
+      AND ${isNull(chatMessages.content)}
+      AND ${isNull(chatMessages.error)}
     )
     AND NOT (
       ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.interruptsRunId} IS NOT NULL
+      AND ${isNull(chatMessages.runId)}
+      AND ${isNotNull(chatMessages.interruptsRunId)}
     )`;
 }
 

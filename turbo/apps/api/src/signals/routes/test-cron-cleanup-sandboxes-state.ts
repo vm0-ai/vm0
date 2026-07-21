@@ -210,7 +210,7 @@ async function deleteRunForAction(
       sql`${inArray(chatThreads.id, runThreadIds)} AND NOT EXISTS (
         SELECT 1
         FROM ${chatMessages}
-        WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
+        WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
       )`,
     );
     signal.throwIfAborted();
