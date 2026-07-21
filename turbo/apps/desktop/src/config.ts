@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import desktopIdentities from "./desktop-identities.json";
+import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 
 const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
 const DESKTOP_RUNTIME_CONFIG_FILE = "desktop-runtime-config.json";
@@ -96,7 +97,10 @@ function environmentForPlatformUrl(
   if (!hasExplicitUrl || platformUrl.hostname === "app.vm0.ai") {
     return "production";
   }
-  if (platformUrl.hostname === "staging-app.vm6.ai") {
+  if (
+    platformUrl.hostname === "staging-app.omby.ai" ||
+    platformUrl.hostname === "staging-app.vm6.ai"
+  ) {
     return "staging";
   }
   return "development";
@@ -137,10 +141,7 @@ function deriveCompanionUrl(platformUrl: URL, target: "api" | "www"): URL {
       url.port = target === "www" ? "3000" : "3001";
     }
   } else {
-    url.hostname = url.hostname.replace(
-      /(^|-)(api|app|platform|www)\./,
-      `$1${target}.`,
-    );
+    url.hostname = rewriteDesktopServiceHostname(url.hostname, target);
   }
   url.pathname = "/";
   url.search = "";

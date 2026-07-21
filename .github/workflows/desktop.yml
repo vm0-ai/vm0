@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/desktop.yml"
+      - ".github/scripts/resolve-app-preview-url.sh"
       - "turbo/apps/desktop/**"
       - "turbo/package.json"
       - "turbo/pnpm-lock.yaml"
@@ -15,6 +16,7 @@ on:
       - main
     paths:
       - ".github/workflows/desktop.yml"
+      - ".github/scripts/resolve-app-preview-url.sh"
       - "turbo/apps/desktop/**"
       - "turbo/package.json"
       - "turbo/pnpm-lock.yaml"
@@ -77,14 +79,14 @@ jobs:
       - name: Resolve PR preview desktop URL
         id: preview
         if: github.event_name == 'pull_request'
+        env:
+          PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
+          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
         run: |
-          preview_domain="${{ vars.PREVIEW_DOMAIN }}"
-          if [ -z "$preview_domain" ]; then
-            echo "::error::PREVIEW_DOMAIN is required to build the PR preview desktop artifact"
-            exit 1
-          fi
-
-          platform_url="https://pr-${{ github.event.pull_request.number }}-app.${preview_domain}"
+          platform_url="$(bash ../.github/scripts/resolve-app-preview-url.sh \
+            "pr-${{ github.event.pull_request.number }}" \
+            "$PREVIEW_DOMAIN" \
+            "$CF_PAGES_PREVIEW_DOMAIN")"
           echo "platform-url=${platform_url}" >> "$GITHUB_OUTPUT"
           echo "PR preview desktop URL: ${platform_url}"
 
