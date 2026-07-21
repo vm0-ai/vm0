@@ -30,7 +30,11 @@ _UsageFlushPhase = Literal["running", "draining", "closed"]
 # Keep this in sync with usage/counters.py and the Rust wait path in
 # crates/runner/src/proxy/flush.rs plus crates/runner/src/cmd/start/mod.rs.
 RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
-_usage_flush_requested = threading.Event()
+# The signal handler must not use a lock-backed flag: it can re-enter the main
+# thread while shutdown is consuming a request. CPython Boolean assignment is
+# sufficient for this level-triggered flag, just as Event.is_set() was an
+# unlocked read; the owner lock below still serializes flush work.
+_usage_flush_requested: bool = False
 _usage_flush_signal_lock = threading.Lock()
 # Running workers own requests under the lock. During shutdown, drain_and_close()
 # changes the phase before waiting for that lock and becomes the sole draining owner.
@@ -49,10 +53,12 @@ def handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
     only records that work is needed and lets the background worker perform
     file I/O, usage flushing, and JSONL flushing.
     """
+    global _usage_flush_requested
+
     del signum
     if _usage_flush_phase == "closed":
         return
-    _usage_flush_requested.set()
+    _usage_flush_requested = True
     _start_usage_flush_worker()
 
 
@@ -67,7 +73,7 @@ def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -
         if not acquired:
             raise AssertionError("runner usage flush worker did not stop")
         try:
-            if not _usage_flush_requested.is_set():
+            if not _usage_flush_requested:
                 return
         finally:
             _usage_flush_signal_lock.release()
@@ -75,14 +81,14 @@ def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -
 
 
 def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id, _usage_flush_phase
+    global _last_jsonl_flush_request_id, _usage_flush_phase, _usage_flush_requested
 
     acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
     if not acquired:
         raise AssertionError("runner usage flush worker did not stop")
     try:
         _usage_flush_phase = "running"
-        _usage_flush_requested.clear()
+        _usage_flush_requested = False
         _last_jsonl_flush_request_id = None
     finally:
         _usage_flush_signal_lock.release()
@@ -115,22 +121,24 @@ def _start_usage_flush_worker() -> None:
 def _run_usage_flush_worker() -> None:
     """Drain coalesced runner flush requests under the worker lock.
 
-    The event can be set again while a flush is running. Loop until no request
-    is pending. After releasing the lock, restart for a running-phase signal;
-    draining-phase requests belong to ``drain_and_close()``.
+    The request flag can be set again while a flush is running. Loop until no
+    request is pending. After releasing the lock, restart for a running-phase
+    signal; draining-phase requests belong to ``drain_and_close()``.
     """
     try:
         _drain_runner_usage_flush_requests()
     finally:
         _usage_flush_signal_lock.release()
-        if _usage_flush_requested.is_set():
+        if _usage_flush_requested:
             _start_usage_flush_worker()
 
 
 def _drain_runner_usage_flush_requests() -> None:
     """Drain coalesced runner requests while the caller owns the signal lock."""
-    while _usage_flush_requested.is_set():
-        _usage_flush_requested.clear()
+    global _usage_flush_requested
+
+    while _usage_flush_requested:
+        _usage_flush_requested = False
         _flush_usage_for_runner_request()
         _flush_jsonl_for_runner_request()
 
@@ -249,6 +257,6 @@ def drain_and_close() -> None:
             _drain_runner_usage_flush_requests()
         finally:
             # Close request admission while still owning the lock, then consume
-            # any event recorded immediately before this cutoff.
+            # any request recorded immediately before this cutoff.
             _usage_flush_phase = "closed"
             _drain_runner_usage_flush_requests()
