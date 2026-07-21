@@ -35,8 +35,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null

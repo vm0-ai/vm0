@@ -67,9 +67,8 @@ teardown() {
     echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test content" > test.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Step 2: Run agent with a simple command

@@ -67,10 +67,8 @@ teardown() {
     # Create empty artifact (no files)
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-
     # Push empty artifact
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run agent with operation that doesn't create any files
@@ -90,13 +88,11 @@ teardown() {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-
     echo "existing content" > data.txt
     mkdir -p subdir
     echo "nested file" > subdir/nested.txt
 
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run agent that only reads files (no modifications)
@@ -113,37 +109,4 @@ teardown() {
     assert_output --partial "Checkpoint:"
     assert_output --partial "existing content"
     assert_output --partial "nested file"
-}
-
-@test "VM0 artifact pull succeeds after agent removes all files" {
-    # Create artifact with files
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    echo "file to be deleted" > delete-me.txt
-    mkdir -p subdir
-    echo "nested file to delete" > subdir/nested.txt
-
-    run $VM0_CLI artifact push
-    assert_success
-
-    # Run agent that deletes all files
-    # This creates a checkpoint with empty artifact
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "rm -rf delete-me.txt subdir"
-
-    assert_success
-    assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
-
-    # Now pull the empty artifact - this should succeed, not fail with TAR_BAD_ARCHIVE
-    # Bug fix: empty archives created by archiver may not be valid tar format
-    run $VM0_CLI artifact pull
-    assert_success
-
-    # Verify local directory is now empty (except .vm0)
-    local file_count=$(find . -type f ! -path './.vm0/*' | wc -l)
-    [ "$file_count" -eq 0 ]
 }

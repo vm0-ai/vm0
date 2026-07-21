@@ -25,8 +25,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create inline config with unique agent name
