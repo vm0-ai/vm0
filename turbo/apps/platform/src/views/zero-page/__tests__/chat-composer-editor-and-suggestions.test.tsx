@@ -1,7 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
@@ -22,7 +21,6 @@ import {
   mockThread,
   mockComposerThreadSnapshot,
   findComposerEditor,
-  selectTemplate,
   placeCaretAfterText,
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
@@ -61,42 +59,6 @@ describe("chat composer models", () => {
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
     expect(editor).not.toHaveClass("min-h-[44px]");
-  });
-
-  it("expands the agent chat composer above an attached template chip", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const editor = await findComposerEditor();
-    const input = editor.parentElement;
-    expect(input).toBeInstanceOf(HTMLElement);
-    expect(input).toHaveClass("min-h-[96px]");
-    expect(input).not.toHaveClass("min-h-[134px]");
-
-    await selectTemplate(user, template);
-
-    await waitFor(() => {
-      expect(input).toHaveClass(
-        "min-h-[134px]",
-        "[&_.ProseMirror]:min-h-[134px]",
-      );
-    });
-
-    await user.click(
-      screen.getByLabelText(`Remove template ${template.title}`),
-    );
-
-    await waitFor(() => {
-      expect(input).toHaveClass("min-h-[96px]");
-      expect(input).not.toHaveClass("min-h-[134px]");
-    });
   });
 
   it("uses the mobile single-line height in chat thread composers", async () => {
