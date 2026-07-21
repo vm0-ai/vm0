@@ -78,15 +78,6 @@ export const testSlackStateResponseSchema = z.object({
       promptPreview: z.string().nullable(),
     }),
   ),
-  artifact_storage: z
-    .object({
-      id: z.string(),
-      headVersionId: z.string().nullable(),
-      s3Prefix: z.string(),
-      versionId: z.string().nullable(),
-      versionS3Key: z.string().nullable(),
-    })
-    .nullable(),
   org_metadata: z
     .object({
       orgId: z.string(),
@@ -135,7 +126,6 @@ export const testSlackStateContract = c.router({
       team_id: z.string().optional(),
       empty_team_id: z.literal("1").optional(),
       org_id: z.string().optional(),
-      user_id: z.string().optional(),
     }),
     responses: {
       200: testSlackStateResponseSchema,

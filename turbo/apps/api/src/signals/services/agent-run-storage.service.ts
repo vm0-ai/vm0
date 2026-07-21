@@ -1289,15 +1289,6 @@ function ensureArtifactStorage(
   });
 }
 
-export function ensureUserArtifactStorage(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly name: string;
-}): Computed<Promise<void>> {
-  return ensureArtifactStorage(args);
-}
-
 function resolveLatestVersion(
   index: StorageIndex,
   lookup: StorageLookup,

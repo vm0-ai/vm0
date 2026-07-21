@@ -4,7 +4,6 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { gzipSync } from "node:zlib";
 
 import { command, computed, type Computed } from "ccstate";
 import {
@@ -18,7 +17,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
@@ -28,9 +26,8 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
-import { now, nowDate } from "../external/time";
+import { now } from "../external/time";
 import { publishUserSignal } from "../external/realtime";
-import { putS3Object } from "../external/s3";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   sendAgentPhoneMessage,
@@ -50,7 +47,6 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
 } from "./agentphone-shared.service";
-import { newStorageS3Location } from "./storage-s3-prefix.utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -60,7 +56,6 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
@@ -313,111 +308,6 @@ export function buildAgentPhoneConnectUrl(params: {
   });
   return `${env("APP_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
 }
-
-function createEmptyTarGz(): Buffer {
-  return gzipSync(Buffer.alloc(1024, 0));
-}
-
-export const ensureAgentPhoneArtifactStorage$ = command(
-  async (
-    { get, set },
-    args: { readonly orgId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    const location = newStorageS3Location(args.orgId);
-    const [storage] = await writeDb
-      .insert(storages)
-      .values({
-        id: location.storageId,
-        name: "artifact",
-        type: "artifact",
-        userId: args.userId,
-        s3Prefix: location.s3Prefix,
-        size: 0,
-        fileCount: 0,
-        orgId: args.orgId,
-      })
-      .onConflictDoNothing()
-      .returning();
-    signal.throwIfAborted();
-
-    const [currentStorage] = storage
-      ? [storage]
-      : await writeDb
-          .select()
-          .from(storages)
-          .where(
-            and(
-              eq(storages.orgId, args.orgId),
-              eq(storages.userId, args.userId),
-              eq(storages.name, "artifact"),
-              eq(storages.type, "artifact"),
-            ),
-          )
-          .limit(1);
-    signal.throwIfAborted();
-
-    if (!currentStorage || currentStorage.headVersionId) {
-      return;
-    }
-
-    const versionId = computeContentHashFromHashes(currentStorage.id, []);
-    const s3Key = `${currentStorage.s3Prefix}/${versionId}`;
-    const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-    const archiveBuffer = createEmptyTarGz();
-
-    await Promise.all([
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/manifest.json`,
-          JSON.stringify({ files: [] }),
-          "application/json",
-        ),
-      ),
-      get(
-        putS3Object(
-          bucketName,
-          `${s3Key}/archive.tar.gz`,
-          archiveBuffer,
-          "application/gzip",
-        ),
-      ),
-    ]);
-    signal.throwIfAborted();
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: versionId,
-          storageId: currentStorage.id,
-          s3Key,
-          size: 0,
-          archiveSize: archiveBuffer.length,
-          fileCount: 0,
-          message: "Initial empty artifact (auto-created)",
-          createdBy: "user",
-        })
-        .onConflictDoUpdate({
-          target: storageVersions.id,
-          set: { archiveSize: archiveBuffer.length },
-        });
-
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: versionId,
-          size: 0,
-          fileCount: 0,
-          updatedAt: nowDate(),
-        })
-        .where(eq(storages.id, currentStorage.id));
-    });
-    signal.throwIfAborted();
-  },
-);
 
 export async function linkAgentPhoneUserToVm0User(
   db: Db,
