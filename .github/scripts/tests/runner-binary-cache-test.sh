@@ -191,32 +191,92 @@ EXPECTED_REPOSITORY=vm0-ai/vm0 \
 EXPECTED_WORKFLOW_PATH=.github/workflows/runner-image.yml \
   "$CACHE" manifest-validate >/dev/null
 
+assert_reusable_manifest_fails() {
+  local name=$1 manifest=$2
+  assert_fails "$name" \
+    env MANIFEST_PATH="$manifest" \
+    EXPECTED_TARGET="$target" \
+    EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+    EXPECTED_REPOSITORY=vm0-ai/vm0 \
+    EXPECTED_WORKFLOW_PATH=.github/workflows/runner-image.yml \
+    "$CACHE" manifest-validate
+}
+
 jq '.extra = true' "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-extra.json"
-assert_fails "reusable manifest rejects unknown fields" \
-  env MANIFEST_PATH="${TMPDIR}/manifest-extra.json" \
-  EXPECTED_TARGET="$target" \
-  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  EXPECTED_REPOSITORY=vm0-ai/vm0 \
-  "$CACHE" manifest-validate
+assert_reusable_manifest_fails \
+  "reusable manifest rejects unknown fields" \
+  "${TMPDIR}/manifest-extra.json"
+
+wrong_target=x86_64-unknown-linux-musl
+jq --arg target "$wrong_target" '
+  .target = $target |
+  .object.key = ("runner-binaries/" + $target + "/" + .runner.sha256 + ".zst")
+' "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-target.json"
+assert_reusable_manifest_fails \
+  "reusable manifest binds the requested target" \
+  "${TMPDIR}/manifest-wrong-target.json"
+
+wrong_digest=$(printf '0%.0s' {1..64})
+jq --arg digest "$wrong_digest" '.binaryInputDigest = $digest' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-digest.json"
+assert_reusable_manifest_fails \
+  "reusable manifest binds the requested input digest" \
+  "${TMPDIR}/manifest-wrong-digest.json"
+
+jq '.toolchainImage = "ghcr.io/untrusted/toolchain:latest"' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-toolchain.json"
+assert_reusable_manifest_fails \
+  "reusable manifest binds the immutable toolchain" \
+  "${TMPDIR}/manifest-wrong-toolchain.json"
+
+jq '.runner.sizeBytes = 0' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-invalid-runner-size.json"
+assert_reusable_manifest_fails \
+  "reusable manifest rejects an invalid runner size" \
+  "${TMPDIR}/manifest-invalid-runner-size.json"
+
+jq '.runner.sha256 = "invalid"' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-invalid-runner-sha.json"
+assert_reusable_manifest_fails \
+  "reusable manifest rejects an invalid runner sha" \
+  "${TMPDIR}/manifest-invalid-runner-sha.json"
+
+jq '.object.sizeBytes = 0' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-invalid-object-size.json"
+assert_reusable_manifest_fails \
+  "reusable manifest rejects an invalid object size" \
+  "${TMPDIR}/manifest-invalid-object-size.json"
+
+jq '.object.compression = "gzip"' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-compression.json"
+assert_reusable_manifest_fails \
+  "reusable manifest rejects unsupported compression" \
+  "${TMPDIR}/manifest-wrong-compression.json"
+
+jq '.producer.repository = "untrusted/repository"' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-repository.json"
+assert_reusable_manifest_fails \
+  "reusable manifest binds the producer repository" \
+  "${TMPDIR}/manifest-wrong-repository.json"
+
+jq '.producer.workflowPath = ".github/workflows/untrusted.yml"' \
+  "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-workflow.json"
+assert_reusable_manifest_fails \
+  "reusable manifest binds the producer workflow" \
+  "${TMPDIR}/manifest-wrong-workflow.json"
 
 first_guest="${RUNNER_GUEST_BINARIES[0]}"
 jq --arg guest "$first_guest" 'del(.guests[$guest])' \
   "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-missing-guest.json"
-assert_fails "reusable manifest requires complete guests" \
-  env MANIFEST_PATH="${TMPDIR}/manifest-missing-guest.json" \
-  EXPECTED_TARGET="$target" \
-  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  EXPECTED_REPOSITORY=vm0-ai/vm0 \
-  "$CACHE" manifest-validate
+assert_reusable_manifest_fails \
+  "reusable manifest requires complete guests" \
+  "${TMPDIR}/manifest-missing-guest.json"
 
 jq '.object.key = "runner-binaries/wrong.zst"' \
   "${TMPDIR}/published/manifest.json" > "${TMPDIR}/manifest-wrong-key.json"
-assert_fails "reusable manifest binds the R2 key" \
-  env MANIFEST_PATH="${TMPDIR}/manifest-wrong-key.json" \
-  EXPECTED_TARGET="$target" \
-  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  EXPECTED_REPOSITORY=vm0-ai/vm0 \
-  "$CACHE" manifest-validate
+assert_reusable_manifest_fails \
+  "reusable manifest binds the R2 key" \
+  "${TMPDIR}/manifest-wrong-key.json"
 
 existing_out=$(run_publish "${TMPDIR}/existing")
 assert_contains "$existing_out" "published=true"
@@ -277,6 +337,7 @@ jq --arg head "$pr_head" '
   .producer.headSha = $head |
   .producer.prNumber = 123
 ' "${TMPDIR}/published/manifest.json" > "$pr_manifest"
+jq '.producer.runId = 999' "$main_manifest" > "${TMPDIR}/untrusted-manifest.json"
 
 conflict_sha=$(printf 'e%.0s' {1..64})
 jq --arg sha "$conflict_sha" '
@@ -310,6 +371,9 @@ if [ "$1" = "api" ]; then
       failed)
         printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
         ;;
+      untrusted)
+        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
       empty)
         printf '[{"artifacts":[]}]\n'
         ;;
@@ -337,7 +401,9 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
     esac
   done
   mkdir -p "$output_dir"
-  if [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "conflict" ]; then
+  if [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "untrusted" ]; then
+    cp "${GH_FIXTURES}/untrusted-manifest.json" "${output_dir}/manifest.json"
+  elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "conflict" ]; then
     cp "${GH_FIXTURES}/conflict-manifest.json" "${output_dir}/manifest.json"
   elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "guest-conflict" ]; then
     cp "${GH_FIXTURES}/guest-conflict-manifest.json" "${output_dir}/manifest.json"
@@ -407,6 +473,10 @@ assert_contains "$api_failure" "shadow-reason=artifact-api-unavailable"
 failed_candidate=$(run_shadow pull_request failed "${TMPDIR}/shadow-failed")
 assert_contains "$failed_candidate" "shadow-outcome=miss"
 assert_contains "$failed_candidate" "shadow-reason=no-trusted-candidate"
+
+untrusted_candidate=$(run_shadow pull_request untrusted "${TMPDIR}/shadow-untrusted")
+assert_contains "$untrusted_candidate" "shadow-outcome=miss"
+assert_contains "$untrusted_candidate" "shadow-reason=no-trusted-candidate"
 
 empty_candidate=$(run_shadow pull_request empty "${TMPDIR}/shadow-empty")
 assert_contains "$empty_candidate" "shadow-outcome=miss"
