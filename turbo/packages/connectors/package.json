@@ -64,6 +64,10 @@
       "import": "./src/firewall-metadata/runner-runtime.ts",
       "types": "./src/firewall-metadata/runner-runtime.ts"
     },
+    "./firewall-metadata/runner-runtime-catalog": {
+      "import": "./src/firewall-metadata/runner-runtime-catalog.ts",
+      "types": "./src/firewall-metadata/runner-runtime-catalog.ts"
+    },
     "./firewalls": null,
     "./firewalls/*": null,
     "./auth-providers": {
