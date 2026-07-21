@@ -1,4 +1,13 @@
-import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  isNotNull,
+  lt,
+  max,
+  sql,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 
@@ -132,7 +141,7 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
       sql`MAX(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} THEN ${usageEvent.provider} ELSE NULL END)`
         .mapWith(nullableTextDecoder)
         .as("model"),
-    userId: sql`MAX(${usageEvent.userId})`.mapWith(pgTextDecoder).as("user_id"),
+    userId: max(usageEvent.userId).mapWith(pgTextDecoder).as("user_id"),
   } satisfies Record<keyof UsageRunTotalsRow, unknown>;
 
   return db
@@ -197,7 +206,7 @@ function usageEventTokenSum(categories: readonly string[], alias: string) {
     .as(alias);
 }
 
-function coalesceRunTotal(column: unknown, alias: string) {
+function coalesceRunTotal(column: SQLWrapper, alias: string) {
   return sql`COALESCE(${column}, 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);

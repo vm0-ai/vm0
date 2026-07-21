@@ -180,6 +180,8 @@ export default [
       "api/no-new-promise": "error",
       "api/no-sql-raw": "error",
       "api/no-store-in-params": "error",
+      "api/no-unsafe-sql-interpolation": "error",
+      "api/prefer-drizzle-apis": "error",
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",

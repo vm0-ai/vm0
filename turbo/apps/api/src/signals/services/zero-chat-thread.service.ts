@@ -830,7 +830,7 @@ export function zeroChatThreadUnreads(args: {
           isNotNull(lastRunFinish.id),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
@@ -870,7 +870,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
           isNotNull(lastRunFinish.id),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
@@ -1047,15 +1047,15 @@ function artifactCallerVisibilityConditions(args: {
   readonly orgId: string;
 }): SQL[] {
   return [
-    sql`${agentRuns.orgId} = ${args.orgId}`,
-    sql`${chatThreads.userId} = ${args.userId}`,
-    sql`${agentComposes.orgId} = ${args.orgId}`,
+    eq(agentRuns.orgId, args.orgId),
+    eq(chatThreads.userId, args.userId),
+    eq(agentComposes.orgId, args.orgId),
   ];
 }
 
 function artifactFileVisibilityConditions(): SQL[] {
   return [
-    sql`${runUploadedFiles.url} IS NOT NULL`,
+    isNotNull(runUploadedFiles.url),
     sql`(
       NOT EXISTS (
         SELECT 1
@@ -1491,7 +1491,7 @@ async function artifactUrlIsVisible(
 ): Promise<boolean> {
   const conditions = [
     ...artifactVisibilityConditions(args),
-    sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
+    eq(runUploadedFiles.url, args.artifactUrl),
   ];
   const rows = await executeRawRows(
     db,

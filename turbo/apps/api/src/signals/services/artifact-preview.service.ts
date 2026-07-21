@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
@@ -106,7 +106,7 @@ async function extractVideoPoster(
 
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
-    sql`${runUploadedFiles.url} IS NOT NULL`,
+    isNotNull(runUploadedFiles.url),
     sql`jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'`,
     sql`${runUploadedFiles.contentType} LIKE 'video/%'`,
     sql`${runUploadedFiles.previewImageUrl} IS NULL`,

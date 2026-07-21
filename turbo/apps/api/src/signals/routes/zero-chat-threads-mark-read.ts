@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -66,10 +66,10 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       and(
         eq(chatThreads.id, params.id),
         eq(chatThreads.userId, auth.userId),
-        sql`${latestRunFinishAt} IS NOT NULL`,
+        isNotNull(latestRunFinishAt),
         or(
           isNull(chatThreads.lastReadAt),
-          sql`${latestRunFinishAt} > ${chatThreads.lastReadAt}`,
+          gt(latestRunFinishAt, chatThreads.lastReadAt),
         )!,
       ),
     )

@@ -9,17 +9,22 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
-  SymbolFlags,
   TypeFlags,
-  type Declaration,
   type Node,
-  type Signature,
   type Symbol as TypeScriptSymbol,
   type Type,
   type TypeChecker,
   type VariableDeclaration,
 } from "typescript";
 
+import {
+  isDrizzleDeclaration,
+  isDrizzleSqlTag as isDrizzleSqlTagExpression,
+  isDrizzleSymbol,
+  isDrizzleWrapperType,
+  isNamedDrizzleSignature,
+  resolvedSymbol,
+} from "../drizzle.ts";
 import { createRule } from "../utils.ts";
 
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
@@ -74,44 +79,6 @@ function propertyName(node: TSESTree.Property): string | null {
   return null;
 }
 
-function isDrizzleDeclaration(node: Declaration): boolean {
-  const sourcePath = node.getSourceFile().fileName.replaceAll("\\", "/");
-  return sourcePath.includes("/node_modules/drizzle-orm/");
-}
-
-function isNamedDrizzleSignature(signature: Signature, name: string): boolean {
-  const declaration = signature.declaration;
-  return (
-    declaration !== undefined &&
-    "name" in declaration &&
-    declaration.name?.getText() === name &&
-    isDrizzleDeclaration(declaration)
-  );
-}
-
-function resolvedSymbol(
-  checker: TypeChecker,
-  symbol: TypeScriptSymbol | undefined,
-): TypeScriptSymbol | undefined {
-  if (symbol === undefined) {
-    return undefined;
-  }
-  return (symbol.flags & SymbolFlags.Alias) === 0
-    ? symbol
-    : checker.getAliasedSymbol(symbol);
-}
-
-function isDrizzleSymbol(
-  checker: TypeChecker,
-  symbol: TypeScriptSymbol | undefined,
-): boolean {
-  return (
-    resolvedSymbol(checker, symbol)?.declarations?.some(
-      isDrizzleDeclaration,
-    ) === true
-  );
-}
-
 function propertyType(
   checker: TypeChecker,
   type: Type,
@@ -161,7 +128,7 @@ function isUntrustedOutput(type: Type): boolean {
 }
 
 function isDrizzleWrapper(checker: TypeChecker, type: Type): boolean {
-  return isDrizzleSymbol(checker, checker.getPropertyOfType(type, "getSQL"));
+  return isDrizzleWrapperType(checker, type);
 }
 
 function hasUntrustedSqlMetadata(
@@ -497,26 +464,7 @@ export const requireSqlResultMapping = createRule({
     }
 
     function isDrizzleSqlTag(node: TSESTree.Expression): boolean {
-      let symbol: TypeScriptSymbol | undefined;
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        symbol = resolvedSymbol(checker, symbolAt(node));
-      } else if (
-        node.type === AST_NODE_TYPES.MemberExpression &&
-        resolvedMemberName(node) === "sql"
-      ) {
-        symbol = resolvedSymbol(checker, symbolAt(node.property));
-      }
-      if (symbol?.getName() === "sql" && isDrizzleSymbol(checker, symbol)) {
-        return true;
-      }
-
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      return checker
-        .getTypeAtLocation(tsNode)
-        .getCallSignatures()
-        .some((signature) => {
-          return isNamedDrizzleSignature(signature, "sql");
-        });
+      return isDrizzleSqlTagExpression(checker, services, node);
     }
 
     function nodeContainsUntrustedSql(node: TSESTree.Node): boolean {

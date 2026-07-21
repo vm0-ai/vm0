@@ -27,6 +27,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  max,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -777,7 +778,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+      lastEventAt: max(chatMessages.createdAt).mapWith(
         nullableDriverValueDecoder(chatMessages.createdAt),
       ),
     })

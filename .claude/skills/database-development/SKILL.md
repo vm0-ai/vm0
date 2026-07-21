@@ -143,6 +143,21 @@ returned fields independently of `.set({...})`. Likewise, raw SQL passed to
 `insert(...).select(...)` is the write source rather than a returned field; only
 a subsequent `returning(...)` introduces a result-mapping boundary.
 
+Use typed operators such as `eq`, `gt`, `isNull`, and `isNotNull` instead of an
+equivalent SQL tag. They preserve the schema relationship between a column and
+its bound value. Likewise, use `max(column)` or `min(column)` for the exact
+aggregate form when the helper preserves the required decoder and nullability
+contract. Keep an existing outer `.mapWith(...)` when it owns a stricter or more
+specific contract than the helper's inferred result.
+
+Every remaining SQL-tag interpolation must have one unambiguous static role.
+Do not interpolate `any`, `unknown`, a value that can be `undefined`, an array or
+tuple directly, or a union that mixes an ordinary bound value with an SQL
+wrapper. Narrow optional values before constructing SQL. Use `sql.empty()` for
+an intentionally empty fragment, `sql.param(...)` when an array or other value
+must be one driver parameter, and `sql.join(...)` when composing SQL fragments.
+Keep bound values and SQL wrappers as distinct types across helper boundaries.
+
 ### Raw Execute Rows
 
 Prefer structured Drizzle selections whenever they can express the query.
