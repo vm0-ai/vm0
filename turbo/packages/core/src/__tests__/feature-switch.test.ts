@@ -15,6 +15,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorActionCallback, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -194,6 +197,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ConnectorActionCallback]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerInlinePromptItems]).toBe(
