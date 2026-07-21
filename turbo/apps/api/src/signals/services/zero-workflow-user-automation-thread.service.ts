@@ -31,7 +31,7 @@ export async function loadWorkflowUserAutomationThreadId(
   return thread?.chatThreadId ?? null;
 }
 
-async function createAutomationChatThread(
+export async function createAutomationChatThread(
   db: Db,
   args: {
     readonly userId: string;

@@ -250,6 +250,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:

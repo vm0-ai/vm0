@@ -23,6 +23,10 @@ import {
   handleChatInternalCallbackWithoutCcstate,
 } from "./internal-chat-run-callback.service";
 import {
+  handleMorningBriefEmailInternalCallback,
+  handleMorningBriefEmailInternalCallback$,
+} from "./internal-morning-brief-run-callback.service";
+import {
   handleGithubIssuesInternalCallback$,
   handleGithubIssuesInternalCallbackWithoutCcstate,
 } from "./internal-github-issues-run-callback.service";
@@ -159,6 +163,13 @@ const dispatchInternalCallback$ = command(
       case "github:issues": {
         return await set(
           handleGithubIssuesInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "morning-brief:email": {
+        return await set(
+          handleMorningBriefEmailInternalCallback$,
           input.envelope,
           signal,
         );
@@ -506,6 +517,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "github:issues": {
       return await handleGithubIssuesInternalCallbackWithoutCcstate(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "morning-brief:email": {
+      return await handleMorningBriefEmailInternalCallback(
         input.db,
         callbackEnvelope(input),
       );
