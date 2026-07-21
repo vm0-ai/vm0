@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { rewritePreviewAppFallbackUrl } from "./onboarding-handoff-url";
 
 const previewAppOrigin = "https://pr-22231-app.omby.ai";
-const previewOnboardingOrigin = "https://pr-22231-www.vm6.ai";
+const previewOnboardingOrigin = "https://pr-22231-www.omby.ai";
 
 test("rewrites the standing app handoff to a cross-domain preview app", () => {
   const rewrittenUrl = rewritePreviewAppFallbackUrl(
@@ -23,7 +23,7 @@ test("preserves the same-domain preview handoff", () => {
   const rewrittenUrl = rewritePreviewAppFallbackUrl(
     new URL("https://staging-app.vm6.ai/prompt"),
     "https://pr-22231-app.vm6.ai",
-    previewOnboardingOrigin,
+    "https://pr-22231-www.vm6.ai",
   );
 
   assert.equal(rewrittenUrl, "https://pr-22231-app.vm6.ai/prompt");

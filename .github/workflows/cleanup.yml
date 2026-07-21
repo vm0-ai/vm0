@@ -34,6 +34,58 @@ jobs:
             "$CF_PAGES_PROJECT_NAME" \
             "pr-${PR_NUMBER}-app.${CF_PAGES_PREVIEW_DOMAIN}"
 
+  cleanup-onboarding-www:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: provision-onboarding-www-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Delete Cloudflare WWW Worker Route and Worker
+        env:
+          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
+          hostname="pr-${PR_NUMBER}-www.${CF_PAGES_PREVIEW_DOMAIN}"
+          worker_name="vm0-www-pr-${PR_NUMBER}-runtime"
+          bash .github/scripts/manage-cloudflare-worker-route.sh \
+            delete \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "${hostname}/api/*" \
+            "$worker_name"
+          bash .github/scripts/delete-cloudflare-worker.sh \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$worker_name"
+
+      - name: Delete Cloudflare WWW Pages domain and DNS
+        env:
+          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WWW_PAGES_PROJECT_NAME: ${{ vars.CF_WWW_PAGES_PROJECT_NAME || 'okou-www' }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
+          hostname="pr-${PR_NUMBER}-www.${CF_PAGES_PREVIEW_DOMAIN}"
+          bash .github/scripts/manage-okou-pages-domain.sh \
+            delete \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "$WWW_PAGES_PROJECT_NAME" \
+            "$hostname"
+
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"

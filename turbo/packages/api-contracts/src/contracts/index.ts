@@ -284,6 +284,14 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
+  zeroMorningBriefContract,
+  type ZeroMorningBriefContract,
+} from "./zero-morning-brief";
+export {
+  emailMorningBriefUnsubscribeContract,
+  type EmailMorningBriefUnsubscribeContract,
+} from "./email-morning-brief-unsubscribe";
+export {
   connectorsTypeCallbackContract,
   type ConnectorsTypeCallbackContract,
 } from "./connectors-type-callback";
@@ -454,6 +462,7 @@ export {
   cronCleanupSandboxesContract,
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
+  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,

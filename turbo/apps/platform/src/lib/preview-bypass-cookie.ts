@@ -4,7 +4,7 @@ const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 const PREVIEW_COOKIE_ROOT_DOMAIN = "vm6.ai";
 const OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
 const APP_SERVICE_SUFFIX = "-app";
-const BYPASS_TARGET_SERVICE_SUFFIXES = ["-api", "-www"] as const;
+const BYPASS_TARGET_SERVICE_SUFFIX = "-api";
 
 interface PreviewBypassCookieLocation {
   readonly hostname: string;
@@ -39,9 +39,7 @@ function isCorrespondingPreviewService(
   }
   const prefix = source.slice(0, -APP_SERVICE_SUFFIX.length);
   const target = hostnameBeforeRoot(targetHostname, PREVIEW_COOKIE_ROOT_DOMAIN);
-  return BYPASS_TARGET_SERVICE_SUFFIXES.some((suffix) => {
-    return target === `${prefix}${suffix}`;
-  });
+  return target === `${prefix}${BYPASS_TARGET_SERVICE_SUFFIX}`;
 }
 
 function cookieValue(cookieHeader: string, name: string): string | null {
@@ -92,6 +90,7 @@ export function appendPreviewBypassToUrl(
   location: PreviewBypassCookieLocation,
   cookieHeader: string,
 ): void {
+  url.searchParams.delete(VERCEL_PROTECTION_BYPASS_NAME);
   const bypass = previewBypassForTarget(url, location, cookieHeader);
   if (bypass) {
     url.searchParams.set(VERCEL_PROTECTION_BYPASS_NAME, bypass);

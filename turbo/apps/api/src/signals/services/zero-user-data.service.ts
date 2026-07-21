@@ -28,6 +28,7 @@ import { nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
 import { isValidTimeZone } from "../utils";
 
 interface UserScopedQuery {
@@ -74,6 +75,7 @@ export function userPreferences({
         timezone: orgMembersMetadata.timezone,
         pinnedAgentIds: orgMembersMetadata.pinnedAgentIds,
         sendMode: orgMembersMetadata.sendMode,
+        morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
       })
@@ -91,6 +93,7 @@ export function userPreferences({
         timezone: null,
         pinnedAgentIds: [],
         sendMode: "enter",
+        morningBriefEnabled: false,
         captureNetworkBodiesRemaining: 0,
       };
     }
@@ -101,6 +104,7 @@ export function userPreferences({
         toStringArray(row.pinnedAgentIds),
       ),
       sendMode: parseSendMode(row.sendMode),
+      morningBriefEnabled: row.morningBriefEnabled,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -179,6 +183,10 @@ export const updateUserPreferences$ = command(
         preferences.sendMode !== undefined
           ? preferences.sendMode
           : existing.sendMode,
+      morningBriefEnabled:
+        preferences.morningBriefEnabled !== undefined
+          ? preferences.morningBriefEnabled
+          : existing.morningBriefEnabled,
       captureNetworkBodiesRemaining:
         preferences.captureNetworkBodiesRemaining !== undefined
           ? preferences.captureNetworkBodiesRemaining
@@ -195,6 +203,7 @@ export const updateUserPreferences$ = command(
         timezone: merged.timezone,
         pinnedAgentIds: merged.pinnedAgentIds,
         sendMode: merged.sendMode,
+        morningBriefEnabled: merged.morningBriefEnabled,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,
@@ -211,6 +220,9 @@ export const updateUserPreferences$ = command(
           ...(preferences.sendMode !== undefined && {
             sendMode: preferences.sendMode,
           }),
+          ...(preferences.morningBriefEnabled !== undefined && {
+            morningBriefEnabled: preferences.morningBriefEnabled,
+          }),
           ...(preferences.captureNetworkBodiesRemaining !== undefined && {
             captureNetworkBodiesRemaining:
               preferences.captureNetworkBodiesRemaining,
@@ -219,6 +231,20 @@ export const updateUserPreferences$ = command(
         },
       });
     signal.throwIfAborted();
+
+    if (
+      preferences.timezone !== undefined ||
+      preferences.morningBriefEnabled !== undefined
+    ) {
+      await syncMorningBriefSchedule(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+        timezone: merged.timezone,
+        enabled: merged.morningBriefEnabled,
+        currentTime: updatedAt,
+      });
+      signal.throwIfAborted();
+    }
 
     return { ok: true, data: merged };
   },
