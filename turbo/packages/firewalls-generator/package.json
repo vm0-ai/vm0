@@ -280,6 +280,7 @@
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:together": "tsx src/index.ts together",
+    "generate:topvisor": "tsx src/index.ts topvisor",
     "generate:tripo": "tsx src/index.ts tripo",
     "generate:twenty": "tsx src/index.ts twenty",
     "generate:twilio": "tsx src/index.ts twilio",
