@@ -566,8 +566,6 @@ export {
   getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
-  isModelProviderFrameworkFeatureSwitched,
-  isModelProviderFrameworkSwitchEnabled,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,
@@ -596,7 +594,6 @@ export {
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  shouldInlineModelProviderFirewall,
   // VM0 managed provider
   VM0_ORG_SLUG,
   VM0_MODEL_TO_PROVIDER,
