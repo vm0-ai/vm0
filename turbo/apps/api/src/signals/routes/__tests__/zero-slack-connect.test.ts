@@ -10,9 +10,9 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   deleteSlackConnectOrg$,
-  findArtifactStorage$,
   findSlackOrgConnection$,
   findSlackOrgInstallation$,
   seedSlackConnectOrg$,
@@ -22,6 +22,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const storages = createStoragesBddApi(context);
 const SLACK_CONNECT_PATH = "/api/zero/integrations/slack/connect";
 
 function userIdsFromClerkListArgs(args: unknown): readonly string[] {
@@ -360,7 +361,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     expect(response.body.role).toBe("admin");
   });
 
-  it("creates artifact storage with an initial empty version after connect", async () => {
+  it("does not provision artifact storage after connect", async () => {
     const fixture = await track(
       store.set(seedSlackConnectOrg$, {}, context.signal),
     );
@@ -377,44 +378,17 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
       [200],
     );
-    await flushWaitUntilForTest();
-
-    const artifactStorage = await store.set(
-      findArtifactStorage$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-
-    expect(artifactStorage).toMatchObject({
-      s3Prefix: expect.stringMatching(
-        new RegExp(
-          `^${fixture.orgId}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
-        ),
+    await expect(
+      storages.listStorages(
+        {
+          userId: fixture.userId,
+          orgId: fixture.orgId,
+          orgRole: "org:admin",
+          email: `${fixture.userId}@example.test`,
+        },
+        "artifact",
       ),
-      headVersionId: expect.any(String),
-      versionId: expect.any(String),
-    });
-    expect(artifactStorage?.versionS3Key).toBe(
-      `${artifactStorage?.s3Prefix}/${artifactStorage?.versionId}`,
-    );
-    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: expect.objectContaining({
-          Bucket: "test-user-storages",
-          Key: `${artifactStorage?.versionS3Key}/manifest.json`,
-          ContentType: "application/json",
-        }),
-      }),
-    );
-    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: expect.objectContaining({
-          Bucket: "test-user-storages",
-          Key: `${artifactStorage?.versionS3Key}/archive.tar.gz`,
-          ContentType: "application/gzip",
-        }),
-      }),
-    );
+    ).resolves.toStrictEqual([]);
   });
 
   it("sends an ephemeral Slack confirmation when channel context is provided", async () => {

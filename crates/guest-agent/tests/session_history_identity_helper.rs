@@ -9,8 +9,7 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
-    SESSION_HISTORY_SIDECAR_MAX_BYTES, SessionHistorySidecarExportMetadata,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SessionHistorySidecarExportMetadata,
     SessionHistorySidecarRepresentation,
 };
 #[cfg(target_os = "linux")]
@@ -306,18 +305,16 @@ fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
 }
 
 #[test]
-fn export_session_history_sidecar_reports_verified_unavailable_for_oversized_raw() -> TestResult {
+fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_reading() -> TestResult
+{
     let dir = tempfile::tempdir()?;
-    let history_size = SESSION_HISTORY_SIDECAR_MAX_BYTES + 1;
-    let history_path = dir.path().join("oversized-history.jsonl");
-    let history_file = std::fs::File::create(&history_path)?;
-    history_file.set_len(history_size)?;
+    let history_path = dir.path().join("missing-oversized-history.jsonl");
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
         "a".repeat(64),
         FinalSessionHistoryRefKind::Blob,
-        sha256_zero_bytes(history_size)?,
-        history_size,
+        "b".repeat(64),
+        RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         history_path.to_string_lossy(),
     )?;
     let metadata_path = write_metadata(dir.path(), "oversized-identity.json", &identity)?;
@@ -327,7 +324,7 @@ fn export_session_history_sidecar_reports_verified_unavailable_for_oversized_raw
 
     assert_eq!(
         output.status.code(),
-        Some(SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE),
         "stdout={}, stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -357,37 +354,6 @@ fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
     assert_eq!(
         output.status.code(),
         Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ),
-        "stdout={}, stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(!export_path.exists());
-    Ok(())
-}
-
-#[test]
-fn export_session_history_sidecar_rejects_oversized_mismatch_before_unavailable() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let history_size = SESSION_HISTORY_SIDECAR_MAX_BYTES + 1;
-    let history_path = dir.path().join("oversized-mismatched-history.jsonl");
-    let history_file = std::fs::File::create(&history_path)?;
-    history_file.set_len(history_size)?;
-    let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
-        FinalSessionHistoryRefKind::Blob,
-        "b".repeat(64),
-        history_size,
-        history_path.to_string_lossy(),
-    )?;
-    let metadata_path = write_metadata(dir.path(), "oversized-mismatch-identity.json", &identity)?;
-    let export_path = dir.path().join("oversized-mismatch-sidecar");
-
-    let output = run_export_helper(&metadata_path, &export_path)?;
-
-    assert_eq!(
-        output.status.code(),
-        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH),
         "stdout={}, stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -451,18 +417,6 @@ fn expectation_args(
 
 fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
-}
-
-fn sha256_zero_bytes(mut size: u64) -> TestResult<String> {
-    let mut hasher = Sha256::new();
-    let zeroes = [0u8; 8192];
-    let chunk_size = u64::try_from(zeroes.len())?;
-    while size >= chunk_size {
-        hasher.update(zeroes);
-        size -= chunk_size;
-    }
-    hasher.update(vec![0u8; usize::try_from(size)?]);
-    Ok(hex::encode(hasher.finalize()))
 }
 
 fn run_helper(case: &VerifyCase) -> Result<Output, std::io::Error> {

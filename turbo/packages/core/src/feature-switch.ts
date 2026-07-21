@@ -223,6 +223,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.CanonicalSlackIngress]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Route newly admitted per-user Slack threads through canonical chat ingress.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
     description:

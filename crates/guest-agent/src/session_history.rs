@@ -127,16 +127,11 @@ pub(crate) enum SessionHistoryCheckpointSource {
 
 pub(crate) struct PreparedSessionHistorySidecar {
     pub(crate) digest: SessionHistoryDigest,
-    source: PreparedSessionHistorySidecarSource,
-}
-
-pub(crate) enum PreparedSessionHistorySidecarSource {
-    Exportable(SessionHistoryCheckpointSource),
-    RawTooLarge,
+    source: SessionHistoryCheckpointSource,
 }
 
 impl PreparedSessionHistorySidecar {
-    pub(crate) fn into_source(self) -> PreparedSessionHistorySidecarSource {
+    pub(crate) fn into_source(self) -> SessionHistoryCheckpointSource {
         self.source
     }
 }
@@ -185,28 +180,26 @@ pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
 pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
     payload: &str,
     max_decoded_bytes: u64,
-    max_sidecar_bytes: u64,
+    max_encoded_bytes: u64,
 ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
     match resolve_session_history_source(payload)? {
         ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
-            if session.encoded_len()? <= max_sidecar_bytes {
-                let encoded = session.into_zstd_bytes(max_sidecar_bytes)?;
+            if session.encoded_len()? <= max_encoded_bytes {
+                let encoded = session.into_zstd_bytes(max_encoded_bytes)?;
                 let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
                 Ok(PreparedSessionHistorySidecar {
                     digest,
-                    source: PreparedSessionHistorySidecarSource::Exportable(
-                        SessionHistoryCheckpointSource::CodexZstd { encoded },
-                    ),
+                    source: SessionHistoryCheckpointSource::CodexZstd { encoded },
                 })
             } else {
                 ResolvedSessionHistorySource::Codex(session)
                     .open_decoded_reader()?
-                    .prepare_sidecar(max_decoded_bytes, max_sidecar_bytes)
+                    .prepare_sidecar(max_decoded_bytes)
             }
         }
         source => source
             .open_decoded_reader()?
-            .prepare_sidecar(max_decoded_bytes, max_sidecar_bytes),
+            .prepare_sidecar(max_decoded_bytes),
     }
 }
 
@@ -755,19 +748,16 @@ impl DecodedSessionHistoryReader {
     fn prepare_sidecar(
         self,
         max_decoded_bytes: u64,
-        max_sidecar_bytes: u64,
     ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
         match self {
-            Self::Plain { path, reader } => prepare_session_history_sidecar_reader(
-                reader,
-                max_decoded_bytes,
-                max_sidecar_bytes,
-                |error| read_history_error(&path, error),
-            ),
+            Self::Plain { path, reader } => {
+                prepare_session_history_sidecar_reader(reader, max_decoded_bytes, |error| {
+                    read_history_error(&path, error)
+                })
+            }
             Self::Zstd(reader) => prepare_session_history_sidecar_reader(
                 reader,
                 max_decoded_bytes,
-                max_sidecar_bytes,
                 zstd_session_history_error,
             ),
         }
@@ -857,12 +847,11 @@ fn digest_zstd_session_history_bytes(
 fn prepare_session_history_sidecar_reader(
     mut reader: impl Read,
     max_decoded_bytes: u64,
-    max_sidecar_bytes: u64,
     map_error: impl Fn(io::Error) -> AgentError,
 ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
     let mut hasher = Sha256::new();
     let mut size_bytes = 0u64;
-    let mut raw_bytes = Some(Vec::new());
+    let mut raw_bytes = Vec::new();
     let mut buffer = [0u8; 8192];
 
     loop {
@@ -884,27 +873,15 @@ fn prepare_session_history_sidecar_reader(
             )))
         })?;
         hasher.update(chunk);
-        if size_bytes <= max_sidecar_bytes {
-            if let Some(raw_bytes) = raw_bytes.as_mut() {
-                raw_bytes.extend_from_slice(chunk);
-            }
-        } else {
-            raw_bytes = None;
-        }
+        raw_bytes.extend_from_slice(chunk);
     }
 
-    let source = match raw_bytes {
-        Some(raw_bytes) => PreparedSessionHistorySidecarSource::Exportable(
-            SessionHistoryCheckpointSource::Decoded(raw_bytes),
-        ),
-        None => PreparedSessionHistorySidecarSource::RawTooLarge,
-    };
     Ok(PreparedSessionHistorySidecar {
         digest: SessionHistoryDigest {
             size_bytes,
             sha256_hex: hex::encode(hasher.finalize()),
         },
-        source,
+        source: SessionHistoryCheckpointSource::Decoded(raw_bytes),
     })
 }
 
@@ -1025,7 +1002,7 @@ mod tests {
         let history = br#"{"type":"session_meta","timestamp":"2026-07-02T10:00:00Z"}"#;
         let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
-        std::fs::write(path, compressed).unwrap();
+        std::fs::write(path, &compressed).unwrap();
         let payload = codex_marker_payload(&sessions_dir, thread_id);
 
         let bytes =
@@ -1070,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn sidecar_preparation_handles_raw_export_boundaries() {
+    fn sidecar_preparation_enforces_raw_decoded_limit() {
         let dir = tempfile::tempdir().unwrap();
         let history = b"abcde";
         let path = write_history_file(&dir, "history.jsonl", history);
@@ -1082,40 +1059,16 @@ mod tests {
         )
         .unwrap();
         match prepared.into_source() {
-            PreparedSessionHistorySidecarSource::Exportable(
-                SessionHistoryCheckpointSource::Decoded(bytes),
-            ) => assert_eq!(bytes, history),
-            PreparedSessionHistorySidecarSource::Exportable(
-                SessionHistoryCheckpointSource::CodexZstd { .. },
-            ) => {
+            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
                 panic!("literal history must use the raw representation")
             }
-            PreparedSessionHistorySidecarSource::RawTooLarge => {
-                panic!("literal history at the export limit must remain exportable")
-            }
         }
-
-        let prepared = prepare_session_history_sidecar_from_payload_bounded(
-            path.to_str().unwrap(),
-            history.len() as u64,
-            (history.len() - 1) as u64,
-        )
-        .unwrap();
-
-        assert_eq!(prepared.digest.size_bytes, history.len() as u64);
-        assert_eq!(
-            prepared.digest.sha256_hex,
-            hex::encode(Sha256::digest(history))
-        );
-        assert!(matches!(
-            prepared.into_source(),
-            PreparedSessionHistorySidecarSource::RawTooLarge
-        ));
 
         let result = prepare_session_history_sidecar_from_payload_bounded(
             path.to_str().unwrap(),
             (history.len() - 1) as u64,
-            (history.len() - 1) as u64,
+            history.len() as u64,
         );
         assert!(matches!(
             result,
@@ -1124,7 +1077,7 @@ mod tests {
     }
 
     #[test]
-    fn sidecar_preparation_falls_back_to_raw_when_codex_zstd_exceeds_export_limit() {
+    fn sidecar_preparation_handles_codex_zstd_encoded_limit_and_raw_fallback() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("07").join("02");
@@ -1134,8 +1087,23 @@ mod tests {
         let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
         assert!(compressed.len() > history.len());
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
-        std::fs::write(path, compressed).unwrap();
+        std::fs::write(path, &compressed).unwrap();
         let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let prepared = prepare_session_history_sidecar_from_payload_bounded(
+            &payload,
+            history.len() as u64,
+            compressed.len() as u64,
+        )
+        .unwrap();
+        match prepared.into_source() {
+            SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+                assert_eq!(encoded, compressed)
+            }
+            SessionHistoryCheckpointSource::Decoded(_) => {
+                panic!("encoded body at the export limit must retain native zstd")
+            }
+        }
 
         let prepared = prepare_session_history_sidecar_from_payload_bounded(
             &payload,
@@ -1150,16 +1118,9 @@ mod tests {
             hex::encode(Sha256::digest(history))
         );
         match prepared.into_source() {
-            PreparedSessionHistorySidecarSource::Exportable(
-                SessionHistoryCheckpointSource::Decoded(bytes),
-            ) => assert_eq!(bytes, history),
-            PreparedSessionHistorySidecarSource::Exportable(
-                SessionHistoryCheckpointSource::CodexZstd { .. },
-            ) => {
+            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
                 panic!("encoded body above the export limit must fall back to raw")
-            }
-            PreparedSessionHistorySidecarSource::RawTooLarge => {
-                panic!("decoded body within the export limit must remain exportable")
             }
         }
     }
