@@ -2,6 +2,7 @@ import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { nowDate } from "../lib/time";
 
 interface HistoricalDeviceCodeFixture {
   readonly code: string;
@@ -15,7 +16,7 @@ interface HistoricalDeviceCodeFixture {
 export async function seedHistoricalBb0DeviceCode(
   fixture: HistoricalDeviceCodeFixture,
 ): Promise<void> {
-  const timestamp = new Date();
+  const timestamp = nowDate();
   await db().insert(deviceCodes).values({
     code: fixture.code,
     purpose: "bb0",

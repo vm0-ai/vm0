@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -161,25 +161,24 @@ describe("AUTH-02: CLI device purpose isolation", () => {
       code: deviceCode,
       expiresAt: new Date(now() + DEVICE_CODE_EXPIRY_MS),
     });
-
-    try {
-      const exchange = await authDevice.requestCliToken(deviceCode, [400]);
-      expectOAuthError(exchange.body);
-      expect(exchange.body).toStrictEqual({
-        error: "invalid_request",
-        error_description: "Invalid device code",
-      });
-
-      const approval = await authDevice.requestCliApproval(
-        bdd.user(),
-        { device_code: deviceCode },
-        [400],
-      );
-      expectCliApprovalError(approval.body);
-      expect(approval.body.error).toBe("Invalid or expired device code");
-    } finally {
+    onTestFinished(async () => {
       await deleteHistoricalBb0DeviceCode(deviceCode);
-    }
+    });
+
+    const exchange = await authDevice.requestCliToken(deviceCode, [400]);
+    expectOAuthError(exchange.body);
+    expect(exchange.body).toStrictEqual({
+      error: "invalid_request",
+      error_description: "Invalid device code",
+    });
+
+    const approval = await authDevice.requestCliApproval(
+      bdd.user(),
+      { device_code: deviceCode },
+      [400],
+    );
+    expectCliApprovalError(approval.body);
+    expect(approval.body.error).toBe("Invalid or expired device code");
   });
 });
 
