@@ -676,7 +676,7 @@ describe("run resume command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       // Should show logs command
-      expect(logCalls).toContain("vm0 logs");
+      expect(logCalls).toContain("zero logs");
       // Should show continue command with new session
       expect(logCalls).toContain("vm0 run continue");
       expect(logCalls).toContain("session-123");

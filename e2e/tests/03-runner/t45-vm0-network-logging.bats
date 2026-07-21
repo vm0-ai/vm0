@@ -36,8 +36,7 @@ EOF
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 }
 

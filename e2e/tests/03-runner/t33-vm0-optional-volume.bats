@@ -20,8 +20,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$CLAUDE_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Unique name for the optional volume that will NOT exist
@@ -96,9 +95,8 @@ EOF
     # Create artifact (required for run)
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
     cd - >/dev/null
 
@@ -120,8 +118,7 @@ EOF
     mkdir -p "$TEST_DIR/$REQUIRED_VOLUME_NAME"
     cd "$TEST_DIR/$REQUIRED_VOLUME_NAME"
     echo "required-data-content" > required.txt
-    $VM0_CLI volume init --name "$REQUIRED_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$REQUIRED_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create config with both required and optional volumes
@@ -156,9 +153,8 @@ EOF
     export ARTIFACT_NAME_MIXED="e2e-art-mixed-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME_MIXED"
     cd "$TEST_DIR/$ARTIFACT_NAME_MIXED"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME_MIXED" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME_MIXED" .
     assert_success
     cd - >/dev/null
 

@@ -164,7 +164,7 @@ When the user reads sessions, checkpoints, logs, network logs, and run detail en
 Then owned resources are returned.
 Then missing, cross-user, cross-org, unauthorized, malformed id, and pagination cases return the expected responses.
 
-Coverage: `agent-sessions-id`, `agent-checkpoints-id`, `zero-runs-by-id`, `agent-runs-read`, `zero-run-network-logs`, `zero-logs-list`, `zero-logs-get-by-id`, `zero-logs-search`, `logs-search`.
+Coverage: `agent-sessions-id`, `agent-checkpoints-id`, `zero-runs-by-id`, `agent-runs-read`, `zero-run-network-logs`, `zero-logs-list`, `zero-logs-get-by-id`, `zero-logs-search`.
 
 ### CHAT-01: Chat thread lifecycle
 
@@ -338,7 +338,7 @@ When they create, list, search, download, unsubscribe, report, or check status
 Then the corresponding GET/list/status responses or external provider mock states expose the user-visible result.
 Then auth, invalid payload, cross-org, provider failure, malformed archive, missing resource, and disabled feature cases return expected responses.
 
-Coverage: `zero-logs-*`, `logs-search`, `zero-email`, `email-unsubscribe`, `zero-developer-support`, `zero-report-error`, `zero-workflows`, `zero-feature-switches`, `health`, `health-auth-probe`, `user-export`.
+Coverage: `zero-logs-*`, `zero-email`, `email-unsubscribe`, `zero-developer-support`, `zero-report-error`, `zero-workflows`, `zero-feature-switches`, `health`, `health-auth-probe`, `user-export`.
 
 ### OPS-02: Platform, compatibility, and instrumentation
 
@@ -535,7 +535,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 
 | `storages-write.test.ts`, `storages.test.ts` | FILE-01 STOR-01..04 in `storages.bdd.test.ts`; write-side 413/mismatch/dedup statements now owned by WHCB-09 in `webhooks-callbacks.bdd.test.ts`; ambiguous-prefix arm listed as unreachable API candidate below | targeted STOR-01..04 + docs exception |
 | `cli-auth.test.ts` | AUTH-02 CLI-A..E and CLI-TEST-A..F chains in `cli-auth.bdd.test.ts` | same |
-| `logs-search.test.ts`, `model-stats.test.ts`, `user-export.test.ts` | OPS-01/RUN-04 LS, BILL-02 MS (sole owner of the aggregate-model-stats cron), and OPS-01 UE chains in `ops-logs.bdd.test.ts` | same |
+| `model-stats.test.ts`, `user-export.test.ts` | BILL-02 MS (sole owner of the aggregate-model-stats cron) and OPS-01 UE chains in `ops-logs.bdd.test.ts` | same |
 | `zero-chat-messages.test.ts` | CHAT-02/RUN-01/CHAIN-CHAT/FILE-03 chains CM-A..P in `chat-messages.bdd.test.ts` | same |
 | `zero-runs-create.test.ts` (remaining vm0-managed-key, agent-provider-pin, custom-skill-volume, and nested automation-agent DB-seeded arms deleted and listed below) | RUN-01/02 chains in `run-lifecycle.bdd.test.ts` | targeted RUN-01/02 + docs exception |
 

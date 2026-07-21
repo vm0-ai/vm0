@@ -10,13 +10,16 @@
 //! `Path::join`, and a bare `..` segment escapes once the kernel resolves
 //! it.
 //!
-//! Unlike `group` and `profile`, runner directory names are not persisted
-//! in `runner.yaml` (only the resolved `RunnerConfig.base_dir: PathBuf`
-//! is). Validation therefore happens once at the CLI boundary in
-//! `runner config`; there is no config-load checkpoint to mirror.
+//! `runner config --runner-dirname` validates the directory name before
+//! resolving it into `RunnerConfig.base_dir`. Only that resolved path is
+//! persisted in `runner.yaml`, so config loading has no original name to
+//! revalidate.
 //!
-//! No matching server-side schema exists — runner directory names are
-//! purely a runner-local concern.
+//! Independently supplied or discovered systemd service suffixes have a
+//! separate lifecycle: `RunnerServiceUnit::from_suffix` validates each suffix
+//! when constructing the service identity.
+//!
+//! Neither input has a matching server-side schema; both are runner-local.
 
 use crate::error::{RunnerError, RunnerResult};
 

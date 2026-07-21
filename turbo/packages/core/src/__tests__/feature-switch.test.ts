@@ -138,9 +138,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
-    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
@@ -174,9 +171,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
