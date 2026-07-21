@@ -13,7 +13,7 @@ The stable facade covers:
   :mod:`usage.providers.connectors`.
 - Lifecycle coordination primitives for buffering and flushing usage events,
   tracking in-flight flows, and publishing runner-visible pending snapshots
-  during flush and shutdown.
+  used by the runner's usage-flush and shutdown protocol.
 
 Current production consumers of this package facade are ``mitm_addon.py``,
 ``response_streaming.py``, ``runner_flush_lifecycle.py``, and ``terminal_usage.py``.
