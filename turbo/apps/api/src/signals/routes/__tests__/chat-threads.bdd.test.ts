@@ -1950,6 +1950,166 @@ describe("CHAT-01 chat search", () => {
       "discount is 50% today",
     );
   }, 60_000);
+
+  it("associates batched context windows across matches and threads", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agentA = await bdd.createAgent(owner, {
+      displayName: "Batched search agent A",
+    });
+    const agentB = await bdd.createAgent(owner, {
+      displayName: "Batched search agent B",
+    });
+    const marker = `batched-${randomUUID()}`;
+    const alphaPrompt = `${marker} needle alpha`;
+    const betaPrompt = `${marker} needle beta`;
+    const gammaPrompt = `${marker} needle gamma`;
+    const sharedPrompt = `${marker} shared bridge`;
+
+    const threadA = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: `${marker} first anchor`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+      prompt: alphaPrompt,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+      prompt: sharedPrompt,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+      prompt: betaPrompt,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+      prompt: `${marker} final anchor`,
+    });
+
+    const threadB = await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      prompt: `${marker} second anchor`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
+      prompt: gammaPrompt,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
+      prompt: `${marker} second tail`,
+    });
+
+    const contextual = await chat.searchChat(owner, `${marker} needle`, {
+      limit: 3,
+      before: 2,
+      after: 2,
+    });
+    expect(contextual.hasMore).toBeFalsy();
+    expect(
+      contextual.results
+        .map((result) => {
+          return result.matchedMessage.content;
+        })
+        .sort(),
+    ).toStrictEqual([alphaPrompt, betaPrompt, gammaPrompt].sort());
+
+    const matchesByContent = new Map(
+      contextual.results.map((result) => {
+        return [result.matchedMessage.content, result] as const;
+      }),
+    );
+    const alpha = matchesByContent.get(alphaPrompt);
+    const beta = matchesByContent.get(betaPrompt);
+    const gamma = matchesByContent.get(gammaPrompt);
+    if (!alpha || !beta || !gamma) {
+      throw new Error("Expected all batched chat-search matches");
+    }
+    expect(alpha.chatThreadId).toBe(threadA);
+    expect(beta.chatThreadId).toBe(threadA);
+    expect(gamma.chatThreadId).toBe(threadB);
+
+    for (const match of contextual.results) {
+      expect(match.contextBefore).toHaveLength(2);
+      expect(match.contextAfter).toHaveLength(2);
+      expect(
+        [...match.contextBefore, ...match.contextAfter].every((message) => {
+          return message.chatThreadId === match.chatThreadId;
+        }),
+      ).toBeTruthy();
+      expect(
+        [...match.contextBefore, ...match.contextAfter].some((message) => {
+          return message.messageId === match.matchedMessage.messageId;
+        }),
+      ).toBeFalsy();
+
+      const matchedAt = Date.parse(match.matchedMessage.createdAt);
+      const beforeTimes = match.contextBefore.map((message) => {
+        return Date.parse(message.createdAt);
+      });
+      const afterTimes = match.contextAfter.map((message) => {
+        return Date.parse(message.createdAt);
+      });
+      expect(
+        beforeTimes.every((createdAt) => {
+          return createdAt < matchedAt;
+        }),
+      ).toBeTruthy();
+      expect(
+        afterTimes.every((createdAt) => {
+          return createdAt > matchedAt;
+        }),
+      ).toBeTruthy();
+      expect(
+        [...beforeTimes].sort((left, right) => {
+          return left - right;
+        }),
+      ).toStrictEqual(beforeTimes);
+      expect(
+        [...afterTimes].sort((left, right) => {
+          return left - right;
+        }),
+      ).toStrictEqual(afterTimes);
+    }
+
+    const sharedAfterAlpha = alpha.contextAfter.filter((message) => {
+      return message.content === sharedPrompt;
+    });
+    const sharedBeforeBeta = beta.contextBefore.filter((message) => {
+      return message.content === sharedPrompt;
+    });
+    // The revoked queue-first duplicate stays hidden, while the visible row
+    // remains associated with both overlapping windows.
+    expect(sharedAfterAlpha).toHaveLength(1);
+    expect(sharedBeforeBeta).toHaveLength(1);
+    expect(sharedAfterAlpha[0]?.messageId).toBe(sharedBeforeBeta[0]?.messageId);
+
+    const beforeOnly = await chat.searchChat(owner, `${marker} needle`, {
+      limit: 3,
+      before: 1,
+      after: 0,
+    });
+    for (const match of beforeOnly.results) {
+      expect(match.contextBefore).toHaveLength(1);
+      expect(match.contextAfter).toStrictEqual([]);
+    }
+
+    const afterOnly = await chat.searchChat(owner, `${marker} needle`, {
+      limit: 3,
+      before: 0,
+      after: 1,
+    });
+    for (const match of afterOnly.results) {
+      expect(match.contextBefore).toStrictEqual([]);
+      expect(match.contextAfter).toHaveLength(1);
+    }
+  }, 60_000);
 });
 
 describe("CHAT-03 thread artifacts and google drive status", () => {

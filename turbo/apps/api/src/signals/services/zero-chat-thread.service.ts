@@ -75,7 +75,7 @@ import {
   pgTextDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
-import { type Db, db$, writeDb$ } from "../external/db";
+import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
   insertAssistantEventMessages$,
@@ -109,14 +109,6 @@ function chatMessageOrderSequenceSql() {
     WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
-}
-
-function matchedMessageCreatedAtSql(messageId: string) {
-  return sql`(
-    SELECT ${matchedChatMessage.createdAt}
-    FROM ${chatMessages} AS matched_chat_message
-    WHERE ${matchedChatMessage.id} = ${messageId}
-  )`;
 }
 
 type ChatMessageRow = {
@@ -192,6 +184,11 @@ type ChatSearchMessageRow = {
   readonly sequenceNumber: number | null;
   readonly runId: string | null;
 };
+
+interface ChatSearchContext {
+  readonly before: ChatSearchMessage[];
+  readonly after: ChatSearchMessage[];
+}
 
 type ChatThreadRow = {
   readonly id: string;
@@ -1605,6 +1602,132 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   };
 }
 
+function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
+  return sql`unnest(${sql.param([...messageIds])}::uuid[])
+    WITH ORDINALITY AS chat_search_matches(message_id, result_ordinality)`;
+}
+
+function chatSearchContextSideQuery(
+  db: ReadonlyDb,
+  args: {
+    readonly isBefore: boolean;
+    readonly limit: number;
+  },
+) {
+  return db
+    .select({
+      isBefore: sql`${args.isBefore}::boolean`
+        .mapWith(pgBooleanDecoder)
+        .as("is_before"),
+      ...searchMessageColumns,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, matchedChatMessage.chatThreadId),
+        args.isBefore
+          ? lt(chatMessages.createdAt, matchedChatMessage.createdAt)
+          : gt(chatMessages.createdAt, matchedChatMessage.createdAt),
+        isNotNull(chatMessages.content),
+        visibleChatMessageCondition(),
+        excludeGoalMarkerCondition(),
+      ),
+    )
+    .orderBy(
+      args.isBefore
+        ? desc(chatMessages.createdAt)
+        : asc(chatMessages.createdAt),
+    )
+    .limit(args.limit);
+}
+
+async function loadChatSearchContexts(
+  db: ReadonlyDb,
+  args: {
+    readonly matches: readonly ChatSearchMessageRow[];
+    readonly before: number;
+    readonly after: number;
+  },
+): Promise<ReadonlyMap<string, ChatSearchContext>> {
+  const contextsByMessageId = new Map<string, ChatSearchContext>(
+    args.matches.map((match): readonly [string, ChatSearchContext] => {
+      return [match.messageId, { before: [], after: [] }];
+    }),
+  );
+  if (args.matches.length === 0 || (args.before === 0 && args.after === 0)) {
+    return contextsByMessageId;
+  }
+
+  const contextQuery =
+    args.before > 0
+      ? args.after > 0
+        ? chatSearchContextSideQuery(db, {
+            isBefore: true,
+            limit: args.before,
+          }).unionAll(
+            chatSearchContextSideQuery(db, {
+              isBefore: false,
+              limit: args.after,
+            }),
+          )
+        : chatSearchContextSideQuery(db, {
+            isBefore: true,
+            limit: args.before,
+          })
+      : chatSearchContextSideQuery(db, {
+          isBefore: false,
+          limit: args.after,
+        });
+
+  const context = contextQuery.as("chat_search_context");
+  const resultOrdinality = sql`chat_search_matches.result_ordinality::integer`
+    .mapWith(pgIntegerDecoder)
+    .as("result_ordinality");
+  const rows = await db
+    .select({
+      resultOrdinality,
+      matchedMessageId: matchedChatMessage.id,
+      isBefore: context.isBefore,
+      messageId: context.messageId,
+      chatThreadId: context.chatThreadId,
+      role: context.role,
+      content: context.content,
+      createdAt: context.createdAt,
+      sequenceNumber: context.sequenceNumber,
+      runId: context.runId,
+    })
+    .from(
+      chatSearchMatchesTable(
+        args.matches.map((match) => {
+          return match.messageId;
+        }),
+      ),
+    )
+    .innerJoin(
+      matchedChatMessage,
+      sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
+    )
+    .innerJoinLateral(context, sql`true`)
+    .orderBy(resultOrdinality, asc(context.createdAt));
+
+  for (const row of rows) {
+    const matchedContext = contextsByMessageId.get(row.matchedMessageId);
+    if (!matchedContext) {
+      throw new Error(
+        "chat search context returned an unknown matched message",
+      );
+    }
+    const message = toChatSearchMessage(row);
+    if (row.isBefore) {
+      matchedContext.before.push(message);
+    } else {
+      matchedContext.after.push(message);
+    }
+  }
+
+  return contextsByMessageId;
+}
+
 export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -1659,58 +1782,24 @@ export function zeroChatSearch(args: {
     const hasMore = matches.length > args.limit;
     const truncated = hasMore ? matches.slice(0, args.limit) : matches;
 
-    const results = await Promise.all(
-      truncated.map(async (match): Promise<ChatSearchResult> => {
-        // Keep the comparison inside Postgres so timestamp microseconds are
-        // not lost when the match is round-tripped through JavaScript Date.
-        const matchedCreatedAt = matchedMessageCreatedAtSql(match.messageId);
-        const [contextBeforeRows, contextAfterRows] = await Promise.all([
-          args.before > 0
-            ? db
-                .select(searchMessageColumns)
-                .from(chatMessages)
-                .where(
-                  and(
-                    eq(chatMessages.chatThreadId, match.chatThreadId),
-                    lt(chatMessages.createdAt, matchedCreatedAt),
-                    isNotNull(chatMessages.content),
-                    visibleChatMessageCondition(),
-                    excludeGoalMarkerCondition(),
-                  ),
-                )
-                .orderBy(desc(chatMessages.createdAt))
-                .limit(args.before)
-            : Promise.resolve([] as ChatSearchMessageRow[]),
-          args.after > 0
-            ? db
-                .select(searchMessageColumns)
-                .from(chatMessages)
-                .where(
-                  and(
-                    eq(chatMessages.chatThreadId, match.chatThreadId),
-                    gt(chatMessages.createdAt, matchedCreatedAt),
-                    isNotNull(chatMessages.content),
-                    visibleChatMessageCondition(),
-                    excludeGoalMarkerCondition(),
-                  ),
-                )
-                .orderBy(asc(chatMessages.createdAt))
-                .limit(args.after)
-            : Promise.resolve([] as ChatSearchMessageRow[]),
-        ]);
-
-        return {
-          chatThreadId: match.chatThreadId,
-          agentName: match.agentName,
-          matchedMessage: toChatSearchMessage(match),
-          contextBefore: contextBeforeRows
-            .slice()
-            .reverse()
-            .map(toChatSearchMessage),
-          contextAfter: contextAfterRows.map(toChatSearchMessage),
-        };
-      }),
-    );
+    const contextsByMessageId = await loadChatSearchContexts(db, {
+      matches: truncated,
+      before: args.before,
+      after: args.after,
+    });
+    const results = truncated.map((match): ChatSearchResult => {
+      const context = contextsByMessageId.get(match.messageId);
+      if (!context) {
+        throw new Error("chat search context is missing a matched message");
+      }
+      return {
+        chatThreadId: match.chatThreadId,
+        agentName: match.agentName,
+        matchedMessage: toChatSearchMessage(match),
+        contextBefore: context.before,
+        contextAfter: context.after,
+      };
+    });
 
     return { results, hasMore };
   });
