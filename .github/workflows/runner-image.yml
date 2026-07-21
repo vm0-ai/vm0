@@ -263,6 +263,9 @@ jobs:
           workspaces: crates -> target
           shared-key: ${{ matrix.cacheSuffix }}-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
+          # sccache provides compiler artifact reuse without restoring the
+          # multi-gigabyte cross-compilation target directory.
+          cache-targets: false
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
