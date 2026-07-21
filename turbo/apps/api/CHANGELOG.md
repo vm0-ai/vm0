@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.290.0](https://github.com/vm0-ai/vm0/compare/api-v1.289.0...api-v1.290.0) (2026-07-21)
+
+
+### Features
+
+* enable connector action callbacks for all users ([#22259](https://github.com/vm0-ai/vm0/issues/22259)) ([6814796](https://github.com/vm0-ai/vm0/commit/68147969deb3c57ae57a820360f4db5bee087021))
+
+
+### Bug Fixes
+
+* derive cloudflare app preview urls in cli and desktop ([#22253](https://github.com/vm0-ai/vm0/issues/22253)) ([b61b678](https://github.com/vm0-ai/vm0/commit/b61b678b2af53393738dbad794a2a41dd8731601))
+* **runner:** prevent claim rejection rediscovery loops ([#22250](https://github.com/vm0-ai/vm0/issues/22250)) ([068c509](https://github.com/vm0-ai/vm0/commit/068c509eb9b9e864fb4665c1bc8450a3d9bfbd37))
+
+
+### Refactoring
+
+* prepare workflow queue identifier contract ([#22260](https://github.com/vm0-ai/vm0/issues/22260)) ([50f4f7f](https://github.com/vm0-ai/vm0/commit/50f4f7f7b5b65601ee08586a7a8398498a4475b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.1
+    * @vm0/connectors bumped to 1.173.1
+    * @vm0/core bumped to 8.444.0
+    * @vm0/db bumped to 1.122.1
+
 ## [1.289.0](https://github.com/vm0-ai/vm0/compare/api-v1.288.0...api-v1.289.0) (2026-07-20)
 
 

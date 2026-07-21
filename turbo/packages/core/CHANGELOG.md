@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.444.0](https://github.com/vm0-ai/vm0/compare/core-v8.443.1...core-v8.444.0) (2026-07-21)
+
+
+### Features
+
+* enable connector action callbacks for all users ([#22259](https://github.com/vm0-ai/vm0/issues/22259)) ([6814796](https://github.com/vm0-ai/vm0/commit/68147969deb3c57ae57a820360f4db5bee087021))
+
+
+### Bug Fixes
+
+* disable meta ads connector ([#22262](https://github.com/vm0-ai/vm0/issues/22262)) ([b78dbd9](https://github.com/vm0-ai/vm0/commit/b78dbd96dcf4eeea9e7dff0735a4521535610ada))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.1
+    * @vm0/connectors bumped to 1.173.1
+
 ## [8.443.1](https://github.com/vm0-ai/vm0/compare/core-v8.443.0...core-v8.443.1) (2026-07-20)
 
 
