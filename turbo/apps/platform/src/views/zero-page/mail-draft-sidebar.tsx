@@ -71,6 +71,22 @@ function DetailField({
   );
 }
 
+function formatAttachmentSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB"] as const;
+  let value = bytes / 1024;
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!;
+    if (value < 1024 || i === units.length - 1) {
+      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+    }
+    value = value / 1024;
+  }
+  return `${bytes} B`;
+}
+
 function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
@@ -105,7 +121,7 @@ function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
               return (
                 <div
                   key={`${attachment.filename}-${attachment.contentType}-${attachment.size}`}
-                  className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-3 py-2.5"
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
                     <IconPaperclip size={15} />
@@ -115,8 +131,7 @@ function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
                       {attachment.filename}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {attachment.contentType} ·{" "}
-                      {attachment.size.toLocaleString()} bytes
+                      {formatAttachmentSize(attachment.size)}
                     </span>
                   </span>
                 </div>
@@ -124,15 +139,6 @@ function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
             })}
           </div>
         </div>
-      ) : null}
-      {draft.replyTo ? (
-        <DetailField label="Reply-to" value={draft.replyTo} />
-      ) : null}
-      {draft.inReplyTo ? (
-        <DetailField label="In-reply-to" value={draft.inReplyTo} />
-      ) : null}
-      {draft.references.length > 0 ? (
-        <DetailField label="References" value={draft.references.join(" ")} />
       ) : null}
     </div>
   );
