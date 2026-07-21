@@ -58,11 +58,13 @@ function selectTextRangeForInlineFeedback(element: HTMLElement): void {
 }
 
 function selectTextForInlineFeedback(element: HTMLElement): void {
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   selectTextRangeForInlineFeedback(element);
   document.dispatchEvent(new Event("selectionchange"));
+  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
-// The selection toolbar reads selectionchange in a deferred macrotask
+// The selection toolbar reads the completed selection in a deferred macrotask
 // (delay(0)), and the composer applies its own deferred
 // DOM/selection sync after paste. vi.waitFor drives its retries from
 // macrotask timers, so requiring one failed check lets those earlier-queued
@@ -86,6 +88,7 @@ function selectTextAcrossElementsForInlineFeedback(
   if (!(startNode instanceof Text) || !(endNode instanceof Text)) {
     throw new Error("Selection endpoints must be text nodes");
   }
+  startElement.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   const range = document.createRange();
   range.setStart(startNode, 0);
   range.setEnd(endNode, endNode.textContent?.length ?? 0);
@@ -113,6 +116,7 @@ function selectTextAcrossElementsForInlineFeedback(
   selection.removeAllRanges();
   selection.addRange(range);
   document.dispatchEvent(new Event("selectionchange"));
+  endElement.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
 function buttonByText(text: string): HTMLElement {
@@ -705,6 +709,54 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain("补充具体日期");
   });
 
+  it("waits until mouseup before showing the inline feedback toolbar", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-mouse-selection-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-mouse-selection",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-mouse-selection-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-mouse-selection",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    assistantReplyElement.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true }),
+    );
+    selectTextRangeForInlineFeedback(assistantReplyElement);
+    document.dispatchEvent(new Event("selectionchange"));
+    await waitForDeferredSelectionCapture();
+
+    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+
+    assistantReplyElement.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+  });
+
   it("shows the inline feedback toolbar when double-click selection settles after mouseup", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
 
@@ -736,8 +788,12 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
 
-    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    assistantReplyElement.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true }),
+    );
+    assistantReplyElement.dispatchEvent(
+      new MouseEvent("mouseup", { bubbles: true }),
+    );
     await waitForDeferredSelectionCapture();
 
     selectTextRangeForInlineFeedback(assistantReplyElement);

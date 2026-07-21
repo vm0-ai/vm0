@@ -498,16 +498,41 @@ function createDocumentSelectionListeners({
 }) {
   const deferredCaptureSignal$ = resetSignal();
   return command(({ set }, doc: Document, signal: AbortSignal) => {
-    // Read the selection one macrotask after selectionchange. Rescheduling
-    // aborts the previous read, coalescing event bursts into one capture.
+    let mouseSelectionInProgress = false;
+    // Read the selection one macrotask after the interaction settles.
+    // Rescheduling aborts the previous read, coalescing event bursts into one
+    // capture.
     const captureDeferred = async () => {
       await delay(0, { signal: set(deferredCaptureSignal$, signal) });
       set(captureSelection$);
     };
     doc.addEventListener(
+      "mousedown",
+      (event) => {
+        mouseSelectionInProgress =
+          event.button === 0 &&
+          event.target instanceof Node &&
+          closestAssistantBubble(event.target) !== null;
+      },
+      { capture: true, signal },
+    );
+    doc.addEventListener(
+      "mouseup",
+      onDomEventFn(async () => {
+        if (!mouseSelectionInProgress) {
+          return;
+        }
+        mouseSelectionInProgress = false;
+        await captureDeferred();
+      }),
+      { signal },
+    );
+    doc.addEventListener(
       "selectionchange",
       onDomEventFn(async () => {
-        await captureDeferred();
+        if (!mouseSelectionInProgress) {
+          await captureDeferred();
+        }
       }),
       { signal },
     );
