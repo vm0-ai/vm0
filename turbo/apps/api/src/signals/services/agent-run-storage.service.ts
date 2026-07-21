@@ -130,7 +130,7 @@ interface StorageResolution {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
-  readonly archiveSize: number | null;
+  readonly archiveSize: number;
   readonly fileCount: number;
   readonly resolvedOrgId: string;
 }
@@ -154,7 +154,7 @@ interface StorageIndexEntry {
   readonly headVersion: {
     readonly id: string;
     readonly s3Key: string;
-    readonly archiveSize: number | null;
+    readonly archiveSize: number;
     readonly fileCount: number;
   } | null;
 }
@@ -1111,7 +1111,10 @@ async function loadStorageIndex(
       storageId: row.storageId,
       headVersionId: row.headVersionId,
       headVersion:
-        row.versionId && row.s3Key && row.fileCount !== null
+        row.versionId &&
+        row.s3Key &&
+        row.archiveSize !== null &&
+        row.fileCount !== null
           ? {
               id: row.versionId,
               s3Key: row.s3Key,
@@ -1569,9 +1572,7 @@ function storageArchiveKey(resolved: StorageResolution): string {
 }
 
 function knownArchiveSize(resolved: StorageResolution): number | undefined {
-  return resolved.archiveSize !== null &&
-    Number.isSafeInteger(resolved.archiveSize) &&
-    resolved.archiveSize > 0
+  return Number.isSafeInteger(resolved.archiveSize) && resolved.archiveSize > 0
     ? resolved.archiveSize
     : undefined;
 }
