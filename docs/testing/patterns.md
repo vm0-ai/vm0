@@ -9,11 +9,6 @@ API endpoints live in `apps/api` and are tested through the Hono app with
 [api-testing.md](./api-testing.md) for the full route-test pattern — file
 layout, fixtures, mocking rules, and service-level exceptions.
 
-Frontend apps do not host API route handlers or thin proxy route handlers.
-Frontend-side tests therefore cover only routing compatibility — exact Vercel
-rewrite entries, service-worker handling of API and navigation requests, and
-security headers around proxied paths.
-
 ---
 
 ## Pattern 2: Pure Function Tests
