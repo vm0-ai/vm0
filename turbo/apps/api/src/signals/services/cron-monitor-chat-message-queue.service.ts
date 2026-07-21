@@ -16,9 +16,9 @@ import {
 import { writeDb$ } from "../external/db";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 
-export const ORPHANED_CHAT_MESSAGE_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
+const ORPHANED_CHAT_MESSAGE_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
 
-export class OrphanedQueuedChatMessagesError extends Error {
+class OrphanedQueuedChatMessagesError extends Error {
   readonly code = ORPHANED_CHAT_MESSAGE_ERROR_CODE;
 
   constructor(readonly orphanedMessages: number) {
