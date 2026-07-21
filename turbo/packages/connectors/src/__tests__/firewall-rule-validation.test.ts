@@ -470,6 +470,56 @@ describe("builtin firewall base overlap guard", () => {
       firewallName: "nintendo-switch-parental-controls",
     });
   });
+
+  it("uses the generated Meta Ads permissionless API for unknown endpoints", async () => {
+    const metaAds = await loadRequiredConnectorFirewall("meta-ads");
+    const unknownDenyPolicy = {
+      "meta-ads": {
+        allow: ["page-token-ads-posts"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "deny" as const,
+      },
+    };
+
+    expect(
+      matchFirewallRequestDecision(
+        [metaAds],
+        "GET",
+        "https://graph.facebook.com/v22.0/me",
+      ),
+    ).toMatchObject({ kind: "allow", firewallName: "meta-ads" });
+    expect(
+      matchFirewallRequestDecision(
+        [metaAds],
+        "POST",
+        "https://graph.facebook.com/v22.0/",
+      ),
+    ).toMatchObject({ kind: "allow", firewallName: "meta-ads" });
+    expect(
+      matchFirewallRequestDecision(
+        [metaAds],
+        "GET",
+        "https://graph.facebook.com/v22.0/123/ads_posts",
+      ),
+    ).toMatchObject({
+      kind: "allow",
+      firewallName: "meta-ads",
+      permission: "page-token-ads-posts",
+    });
+    expect(
+      matchFirewallRequestDecision(
+        [metaAds],
+        "GET",
+        "https://graph.facebook.com/v22.0/me",
+        unknownDenyPolicy,
+      ),
+    ).toMatchObject({
+      kind: "block",
+      firewallName: "meta-ads",
+      reason: "unknown_endpoint",
+    });
+  });
 });
 
 describe("known endpoint-scoped firewall bases", () => {
