@@ -94,13 +94,6 @@ state, service-worker behavior, or rollout compatibility:
 gh api repos/vm0-ai/vm0/contents/docs/deployment-compatibility.md --jq '.content' | base64 -d
 ```
 
-Fetch the CLI design rules for `turbo/apps/cli` commands or user-visible CLI
-behavior:
-
-```bash
-gh api repos/vm0-ai/vm0/contents/docs/cli-design-guideline.md --jq '.content' | base64 -d
-```
-
 Fetch the chat-card rules when the PR recognizes, registers, stores, or renders
 chat cards or their resource signals:
 
@@ -124,27 +117,12 @@ architecture-specific workflow logic:
 gh api repos/vm0-ai/vm0/contents/docs/runner-multi-architecture.md --jq '.content' | base64 -d
 ```
 
-Fetch the resource model when the PR changes org scoping, resource ownership,
-resource resolution, private resources, or cross-org execution:
-
-```bash
-gh api repos/vm0-ai/vm0/contents/docs/resource-model.md --jq '.content' | base64 -d
-```
-
 Fetch the React commit analysis guide when a PR claims to improve React
 performance, changes subscription breadth or equality, or adds performance
 measurements:
 
 ```bash
 gh api repos/vm0-ai/vm0/contents/docs/react-commit.md --jq '.content' | base64 -d
-```
-
-Fetch the architecture document when the PR changes the compute, storage, or
-orchestration model rather than only an implementation detail within an
-existing boundary:
-
-```bash
-gh api repos/vm0-ai/vm0/contents/docs/architecture.md --jq '.content' | base64 -d
 ```
 
 #### Testing Practice Routing
@@ -221,8 +199,6 @@ Review the diff for:
 
 - Check the changed code against every practice document selected in Step 4
 - Cite the relevant practice document and rule for each practice-based finding
-- Treat architecture and resource-model documents as domain constraints; assign
-  P0/P1 only when the diff violates an invariant or creates a concrete defect
 
 **Testing Coverage**
 
@@ -364,12 +340,9 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 - React effects and ccstate commands: https://github.com/vm0-ai/vm0/blob/main/docs/effect.md
 - React and ccstate cache practices: https://github.com/vm0-ai/vm0/blob/main/docs/cache.md
 - Deployment compatibility: https://github.com/vm0-ai/vm0/blob/main/docs/deployment-compatibility.md
-- CLI design: https://github.com/vm0-ai/vm0/blob/main/docs/cli-design-guideline.md
 - Chat cards: https://github.com/vm0-ai/vm0/blob/main/docs/chat-cards.md
 - Signed model usage pricing protocol: https://github.com/vm0-ai/vm0/blob/main/docs/model-usage-pricing-protocol.md
 - Runner multi-architecture contract: https://github.com/vm0-ai/vm0/blob/main/docs/runner-multi-architecture.md
-- Resource model: https://github.com/vm0-ai/vm0/blob/main/docs/resource-model.md
 - React commit analysis: https://github.com/vm0-ai/vm0/blob/main/docs/react-commit.md
-- Architecture: https://github.com/vm0-ai/vm0/blob/main/docs/architecture.md
 - ccstate practices: https://github.com/vm0-ai/vm0/blob/main/.claude/skills/ccstate/SKILL.md
 - Feature switches: https://github.com/vm0-ai/vm0/blob/main/turbo/packages/core/src/feature-switch-key.ts

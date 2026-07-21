@@ -275,13 +275,6 @@ Use API calls for setup and verification. Do not create API test state by
 writing database rows, importing DB schemas, importing route handlers, or calling
 internal services.
 
-### Frontend Route Compatibility
-
-Frontend apps do not host API route handlers, so all endpoint behavior is
-tested in `apps/api` (see [api-testing.md](./testing/api-testing.md)).
-Frontend-side tests cover only routing compatibility: explicit Vercel rewrites,
-service-worker behavior, and security headers around proxied paths.
-
 ### Platform UI
 
 Test through the same initialization flow as production:
@@ -313,15 +306,14 @@ care about.
 
 ### App-Specific Guides
 
-| App                          | Guide                                                    |
-| ---------------------------- | -------------------------------------------------------- |
-| CLI commands                 | [cli-testing.md](./testing/cli-testing.md)               |
-| CLI E2E (BATS)               | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
-| API routes                   | [api-testing.md](./testing/api-testing.md)               |
-| Frontend route compatibility | [api-testing.md](./testing/api-testing.md)               |
-| App UI                       | [app-testing.md](./testing/app-testing.md)               |
-| Desktop app                  | [desktop-testing.md](./testing/desktop-testing.md)       |
-| Rust crates                  | [rust-testing.md](./testing/rust-testing.md)             |
-| Python addon                 | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
+| App            | Guide                                                    |
+| -------------- | -------------------------------------------------------- |
+| CLI commands   | [cli-testing.md](./testing/cli-testing.md)               |
+| CLI E2E (BATS) | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
+| API routes     | [api-testing.md](./testing/api-testing.md)               |
+| App UI         | [app-testing.md](./testing/app-testing.md)               |
+| Desktop app    | [desktop-testing.md](./testing/desktop-testing.md)       |
+| Rust crates    | [rust-testing.md](./testing/rust-testing.md)             |
+| Python addon   | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
 
 For general code quality rules (no `any`, no lint suppressions, etc.), see [bad-smell.md](./bad-smell.md).

@@ -5,7 +5,7 @@ This guide defines the integration-test boundaries for
 points, keep internal code real, and mock only external system boundaries.
 
 Desktop has more than one entry point. It is an Electron app, a renderer UI, a
-preload bridge, a companion CLI/daemon, and a native macOS helper. Tests should
+preload bridge, and a native macOS helper. Tests should
 choose the smallest entry point that matches the behavior being protected.
 
 ## Entry Points
@@ -62,32 +62,6 @@ Useful assertions include:
 - Subscribe and unsubscribe attach and detach the expected channels.
 - Change notifications are sent only to live windows.
 
-### CLI And Daemon
-
-The `vm0-computer` CLI should be tested by executing the built CLI, not by
-importing parser or formatter internals.
-
-Use this boundary for behavior in:
-
-- `src/vm0-computer.ts`
-- `src/computer-use-native.ts`
-
-Follow the existing pattern in `src/computer-use-native.test.ts`:
-
-- Build `dist/vm0-computer.js`.
-- Execute it with `execFile`.
-- Use real temp directories for daemon sockets, request logs, screenshots, and
-  app-state output.
-- Use fake helper executables to observe the native-helper protocol.
-
-Good CLI/daemon integration cases include:
-
-- `daemon start`, `daemon status`, and `daemon stop`.
-- Command failure when the daemon is unavailable.
-- Argument mapping for commands such as `click`, `type-text`, `press-key`, and
-  foreground recovery options.
-- Screenshot and app-state output written to the filesystem.
-
 ### Native Helper Protocol
 
 The JavaScript native backend should be tested at the helper process protocol
@@ -126,7 +100,6 @@ Desktop tests should keep real:
 
 - Desktop source modules.
 - The filesystem, using temp directories.
-- CLI/daemon process execution when testing `vm0-computer`.
 - Channel constants, URL policy, payload validation, state machines, and bridge
   wiring.
 
