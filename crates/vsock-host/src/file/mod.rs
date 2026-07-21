@@ -5,7 +5,7 @@ mod write;
 use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
 
 use shell_quote::quote_shell_arg;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
@@ -23,8 +23,9 @@ pub(crate) struct FileWritePathLocks {
 }
 
 struct FileWritePathLockEntry {
-    lock: Weak<RwLock<()>>,
-    users: usize,
+    lock: Arc<RwLock<()>>,
+    // Includes operations waiting to acquire the lock as well as guard holders.
+    reservations: usize,
 }
 
 struct FileWritePathLockReservation<'a> {
@@ -80,21 +81,17 @@ impl FileWritePathLocks {
 
     fn reserve(&self, path: PathBuf) -> FileWritePathLockReservation<'_> {
         let mut entries = self.entries.lock().unwrap_or_else(|err| err.into_inner());
-        let lock = entries.get_mut(&path).and_then(|entry| {
-            entry.lock.upgrade().inspect(|_| {
-                assert_ne!(entry.users, usize::MAX);
-                entry.users += 1;
-            })
-        });
-        let lock = if let Some(lock) = lock {
-            lock
+        let lock = if let Some(entry) = entries.get_mut(&path) {
+            assert_ne!(entry.reservations, usize::MAX);
+            entry.reservations += 1;
+            Arc::clone(&entry.lock)
         } else {
             let lock = Arc::new(RwLock::new(()));
             entries.insert(
                 path.clone(),
                 FileWritePathLockEntry {
-                    lock: Arc::downgrade(&lock),
-                    users: 1,
+                    lock: Arc::clone(&lock),
+                    reservations: 1,
                 },
             );
             lock
@@ -121,6 +118,8 @@ impl<'a> FileWritePathGuard<'a> {
 
 impl Drop for FileWritePathGuard<'_> {
     fn drop(&mut self) {
+        // Release destination ownership before the reservation can remove its
+        // registry entry and allow a new lock for the same path to be created.
         match self.guard.take() {
             Some(FileWritePathGuardKind::Shared(guard)) => drop(guard),
             Some(FileWritePathGuardKind::Exclusive(guard)) => drop(guard),
@@ -137,13 +136,12 @@ impl Drop for FileWritePathLockReservation<'_> {
             .entries
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        let reservation_lock = Arc::downgrade(&self.lock);
         let remove = if let Some(entry) = entries.get_mut(&self.path)
-            && Weak::ptr_eq(&entry.lock, &reservation_lock)
+            && Arc::ptr_eq(&entry.lock, &self.lock)
         {
-            assert!(entry.users > 0);
-            entry.users -= 1;
-            entry.users == 0
+            assert!(entry.reservations > 0);
+            entry.reservations -= 1;
+            entry.reservations == 0
         } else {
             false
         };
