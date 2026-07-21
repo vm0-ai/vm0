@@ -505,9 +505,7 @@ function renderTemplate(template: EmailTemplate): string {
               const title = item.url
                 ? `<a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`
                 : escapeHtml(item.title);
-              const detail = item.detail
-                ? ` — ${escapeHtml(item.detail)}`
-                : "";
+              const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
               return `<li>${title}${detail}</li>`;
             })
             .join("");

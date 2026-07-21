@@ -12,8 +12,9 @@ import { onDomEventFn } from "../../../../signals/utils.ts";
 
 export function MorningBriefSettings() {
   const preferences = useLastResolved(userPreferences$);
-  const [updateLoadable, updatePreference] =
-    useLoadableSet(updateUserPreference$);
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateUserPreference$,
+  );
   const pageSignal = useGet(pageSignal$);
 
   const loading = updateLoadable.state === "loading";

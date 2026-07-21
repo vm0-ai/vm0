@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { Db } from "../external/db";
+import { settle } from "../utils";
 import { nowDate } from "../external/time";
 import {
   connectorCredentialRuntimeValueRef,
@@ -25,17 +26,24 @@ export const MORNING_BRIEF_CONNECTOR_REFS = [
   "gmail",
   "google-calendar",
 ] as const;
-export type MorningBriefConnectorRef =
+type MorningBriefConnectorRef =
   (typeof MORNING_BRIEF_CONNECTOR_REFS)[number];
 
-const CONNECTOR_TOKEN_ENVIRONMENT_NAMES: Record<
-  MorningBriefConnectorRef,
-  string
-> = {
-  github: "GH_TOKEN",
-  gmail: "GMAIL_TOKEN",
-  "google-calendar": "GOOGLE_CALENDAR_TOKEN",
-};
+function connectorTokenEnvironmentName(
+  connectorRef: MorningBriefConnectorRef,
+): string {
+  switch (connectorRef) {
+    case "github": {
+      return "GH_TOKEN";
+    }
+    case "gmail": {
+      return "GMAIL_TOKEN";
+    }
+    case "google-calendar": {
+      return "GOOGLE_CALENDAR_TOKEN";
+    }
+  }
+}
 
 interface ConnectorAccess {
   readonly accessToken: string;
@@ -53,7 +61,7 @@ async function resolveMorningBriefConnectorAccess(args: {
   readonly connectorRef: MorningBriefConnectorRef;
   readonly signal: AbortSignal;
 }): Promise<ConnectorAccessResult> {
-  const environmentName = CONNECTOR_TOKEN_ENVIRONMENT_NAMES[args.connectorRef];
+  const environmentName = connectorTokenEnvironmentName(args.connectorRef);
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
   args.signal.throwIfAborted();
@@ -182,9 +190,7 @@ const githubSearchItemSchema = z.object({
   state: z.string(),
   updated_at: z.string(),
   draft: z.boolean().optional(),
-  pull_request: z
-    .object({ merged_at: z.string().nullable() })
-    .optional(),
+  pull_request: z.object({ merged_at: z.string().nullable() }).optional(),
   repository_url: z.string(),
 });
 
@@ -288,7 +294,7 @@ const gmailMessageSchema = z.object({
     .optional(),
 });
 
-export interface MorningBriefGmailMessage {
+interface MorningBriefGmailMessage {
   readonly id: string;
   readonly threadId: string;
   readonly labels: readonly string[];
@@ -528,19 +534,22 @@ export interface MorningBriefInput {
 async function collectSource<T>(
   collect: () => Promise<T>,
 ): Promise<MorningBriefSource<T>> {
-  try {
-    return { ok: true, data: await collect() };
-  } catch (error) {
-    // Partial-failure policy: the brief still goes out with the failed
-    // source annotated, so one flaky upstream API never blocks the email.
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+  // Partial-failure policy: the brief still goes out with the failed
+  // source annotated, so one flaky upstream API never blocks the email.
+  const result = await settle(collect());
+  if (result.ok) {
+    return { ok: true, data: result.value };
   }
+  return {
+    ok: false,
+    error:
+      result.error instanceof Error
+        ? result.error.message
+        : String(result.error),
+  };
 }
 
-export interface CollectMorningBriefInputArgs {
+interface CollectMorningBriefInputArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -596,7 +605,10 @@ export async function collectMorningBriefInput(
     briefDate: args.briefDate,
     timezone: args.timezone,
     generatedAt: args.until.toISOString(),
-    window: { since: args.since.toISOString(), until: args.until.toISOString() },
+    window: {
+      since: args.since.toISOString(),
+      until: args.until.toISOString(),
+    },
     sources: { github, gmail, calendar },
   };
 }

@@ -21,6 +21,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { settle } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
@@ -38,7 +39,10 @@ import {
   postRunUserMessage,
   resolveRunChatThreadModelPin,
 } from "./zero-chat-run-message.service";
-import { resolveModelFirstProviderAdmission } from "./zero-model-selection.service";
+import {
+  resolveModelFirstProviderAdmission,
+  type ModelFirstPin,
+} from "./zero-model-selection.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -51,7 +55,7 @@ const LOOKBACK_CAP_MS = 72 * 60 * 60 * 1000;
 const SIGNED_URL_TTL_SECONDS = 30 * 60;
 const MORNING_BRIEF_THREAD_TITLE = "Morning Brief";
 
-export interface ExecuteMorningBriefsResult {
+interface ExecuteMorningBriefsResult {
   readonly executed: number;
   readonly skipped: number;
 }
@@ -70,7 +74,7 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-export function morningBriefStorageKey(
+function morningBriefStorageKey(
   orgId: string,
   userId: string,
   briefDate: string,
@@ -232,61 +236,83 @@ function allSourcesFailed(input: MorningBriefInput): boolean {
   );
 }
 
-const processDueMorningBrief$ = command(
+interface ClaimedMorningBrief {
+  readonly row: DueMorningBriefRow;
+  readonly timezone: string;
+  readonly briefDate: string;
+  readonly deliveryId: string;
+  readonly currentTime: Date;
+}
+
+/** Feature, connector, and once-per-local-date gates; claims the delivery row. */
+async function admitMorningBriefDelivery(
+  db: Db,
+  row: DueMorningBriefRow,
+  currentTime: Date,
+  signal: AbortSignal,
+): Promise<ClaimedMorningBrief | null> {
+  const timezone = row.timezone;
+  if (!timezone || !row.enabled) {
+    return null;
+  }
+
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    row.orgId,
+    row.userId,
+  );
+  signal.throwIfAborted();
+  if (!isFeatureEnabled(FeatureSwitchKey.MorningBrief, featureSwitchContext)) {
+    return null;
+  }
+
+  const connected = await connectedMorningBriefConnectors(
+    db,
+    row.orgId,
+    row.userId,
+  );
+  signal.throwIfAborted();
+  if (connected.length === 0) {
+    return null;
+  }
+
+  const briefDate = morningBriefLocalDate(timezone, currentTime);
+  const [delivery] = await db
+    .insert(morningBriefDeliveries)
+    .values({
+      orgId: row.orgId,
+      userId: row.userId,
+      briefDate,
+      status: "collecting",
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .onConflictDoNothing()
+    .returning({ id: morningBriefDeliveries.id });
+  signal.throwIfAborted();
+  if (!delivery) {
+    // A delivery for this local date already exists; nothing to do.
+    return null;
+  }
+
+  return { row, timezone, briefDate, deliveryId: delivery.id, currentTime };
+}
+
+interface StagedMorningBriefInput {
+  readonly inputKey: string;
+  readonly outputKey: string;
+  readonly inputUrl: string;
+  readonly outputUrl: string;
+}
+
+const stageMorningBriefInput$ = command(
   async (
     { get, set },
-    args: {
-      readonly row: DueMorningBriefRow;
-      readonly currentTime: Date;
-      readonly apiStartTime: number;
-    },
+    claimed: ClaimedMorningBrief,
     signal: AbortSignal,
-  ): Promise<"executed" | "skipped"> => {
+  ): Promise<StagedMorningBriefInput | null> => {
+    const { row, timezone, briefDate, currentTime } = claimed;
     const db = set(writeDb$);
-    const { row, currentTime } = args;
-    const timezone = row.timezone;
-    if (!timezone || !row.enabled) {
-      return "skipped";
-    }
-
-    const featureSwitchContext = await loadUserFeatureSwitchContext(
-      db,
-      row.orgId,
-      row.userId,
-    );
-    signal.throwIfAborted();
-    if (!isFeatureEnabled(FeatureSwitchKey.MorningBrief, featureSwitchContext)) {
-      return "skipped";
-    }
-
-    const connected = await connectedMorningBriefConnectors(
-      db,
-      row.orgId,
-      row.userId,
-    );
-    signal.throwIfAborted();
-    if (connected.length === 0) {
-      return "skipped";
-    }
-
-    const briefDate = morningBriefLocalDate(timezone, currentTime);
-    const [delivery] = await db
-      .insert(morningBriefDeliveries)
-      .values({
-        orgId: row.orgId,
-        userId: row.userId,
-        briefDate,
-        status: "collecting",
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      })
-      .onConflictDoNothing()
-      .returning({ id: morningBriefDeliveries.id });
-    signal.throwIfAborted();
-    if (!delivery) {
-      // A delivery for this local date already exists; nothing to do.
-      return "skipped";
-    }
 
     const sinceFloor = new Date(currentTime.getTime() - LOOKBACK_CAP_MS);
     const since =
@@ -312,11 +338,12 @@ const processDueMorningBrief$ = command(
     if (allSourcesFailed(input)) {
       await markDeliveryFailed(
         db,
-        delivery.id,
+        claimed.deliveryId,
         "All connector sources failed",
         currentTime,
       );
-      return "skipped";
+      signal.throwIfAborted();
+      return null;
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -339,6 +366,7 @@ const processDueMorningBrief$ = command(
     const inputUrl = await get(
       generatePresignedGetUrl(bucket, inputKey, SIGNED_URL_TTL_SECONDS),
     );
+    signal.throwIfAborted();
     const outputUrl = await get(
       generatePresignedPutUrl(
         bucket,
@@ -349,72 +377,173 @@ const processDueMorningBrief$ = command(
     );
     signal.throwIfAborted();
 
+    return { inputKey, outputKey, inputUrl, outputUrl };
+  },
+);
+
+async function ensureMorningBriefChatThread(
+  db: Db,
+  claimed: ClaimedMorningBrief,
+  agentId: string,
+): Promise<string> {
+  const { row, currentTime } = claimed;
+  if (row.chatThreadId) {
+    return row.chatThreadId;
+  }
+  const chatThreadId = await createAutomationChatThread(db, {
+    userId: row.userId,
+    orgId: row.orgId,
+    agentId,
+    title: MORNING_BRIEF_THREAD_TITLE,
+    currentTime,
+  });
+  await db
+    .update(morningBriefSchedules)
+    .set({ chatThreadId, updatedAt: currentTime })
+    .where(
+      and(
+        eq(morningBriefSchedules.orgId, row.orgId),
+        eq(morningBriefSchedules.userId, row.userId),
+      ),
+    );
+  return chatThreadId;
+}
+
+interface MorningBriefModelContext {
+  readonly modelPin: ModelFirstPin;
+  readonly effectiveModelProvider: string | null | undefined;
+}
+
+async function resolveMorningBriefModelContext(
+  db: Db,
+  claimed: ClaimedMorningBrief,
+  chatThreadId: string,
+): Promise<MorningBriefModelContext | null> {
+  const { row, deliveryId, currentTime } = claimed;
+  const modelPin = await resolveRunChatThreadModelPin({
+    db,
+    orgId: row.orgId,
+    userId: row.userId,
+    threadId: chatThreadId,
+  });
+  if ("status" in modelPin) {
+    // Credit / provider admission problems skip silently by design; the
+    // schedule already points at tomorrow 7:00.
+    await markDeliveryFailed(
+      db,
+      deliveryId,
+      modelPin.body.error.message,
+      currentTime,
+    );
+    return null;
+  }
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db,
+    orgId: row.orgId,
+    userId: row.userId,
+    modelPin,
+    requestedModelProvider: undefined,
+  });
+  if (providerAdmission.error) {
+    await markDeliveryFailed(
+      db,
+      deliveryId,
+      providerAdmission.error.body.error.message,
+      currentTime,
+    );
+    return null;
+  }
+  return {
+    modelPin,
+    effectiveModelProvider: providerAdmission.effectiveModelProvider,
+  };
+}
+
+async function recordMorningBriefRunStart(
+  db: Db,
+  args: {
+    readonly claimed: ClaimedMorningBrief;
+    readonly staged: StagedMorningBriefInput;
+    readonly model: MorningBriefModelContext;
+    readonly chatThreadId: string;
+    readonly runId: string;
+    readonly runStatus: string;
+    readonly prompt: string;
+  },
+): Promise<void> {
+  const { claimed, staged, model } = args;
+  await postRunUserMessage({
+    db,
+    threadId: args.chatThreadId,
+    userId: claimed.row.userId,
+    runId: args.runId,
+    prompt: args.prompt,
+    appendQueueMarker: args.runStatus === "queued",
+  });
+
+  await db
+    .update(zeroRuns)
+    .set({
+      modelProvider: model.effectiveModelProvider,
+      modelProviderId: model.modelPin.modelProviderId,
+      modelProviderCredentialScope: model.modelPin.modelProviderCredentialScope,
+      selectedModel: model.modelPin.selectedModel,
+    })
+    .where(eq(zeroRuns.id, args.runId));
+
+  await db
+    .update(morningBriefDeliveries)
+    .set({
+      status: "running",
+      runId: args.runId,
+      inputKey: staged.inputKey,
+      outputKey: staged.outputKey,
+      updatedAt: claimed.currentTime,
+    })
+    .where(eq(morningBriefDeliveries.id, claimed.deliveryId));
+}
+
+const startMorningBriefRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly claimed: ClaimedMorningBrief;
+      readonly staged: StagedMorningBriefInput;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<"executed" | "skipped"> => {
+    const db = set(writeDb$);
+    const { claimed, staged } = args;
+    const { row, timezone, briefDate, deliveryId, currentTime } = claimed;
+
     const agentId = await resolveDefaultAgent(db, row.orgId);
     signal.throwIfAborted();
     if (!agentId) {
       await markDeliveryFailed(
         db,
-        delivery.id,
+        deliveryId,
         "No default agent configured",
         currentTime,
       );
-      return "skipped";
-    }
-
-    let chatThreadId = row.chatThreadId;
-    if (!chatThreadId) {
-      chatThreadId = await createAutomationChatThread(db, {
-        userId: row.userId,
-        orgId: row.orgId,
-        agentId,
-        title: MORNING_BRIEF_THREAD_TITLE,
-        currentTime,
-      });
-      await db
-        .update(morningBriefSchedules)
-        .set({ chatThreadId, updatedAt: currentTime })
-        .where(
-          and(
-            eq(morningBriefSchedules.orgId, row.orgId),
-            eq(morningBriefSchedules.userId, row.userId),
-          ),
-        );
       signal.throwIfAborted();
-    }
-
-    const modelPin = await resolveRunChatThreadModelPin({
-      db,
-      orgId: row.orgId,
-      userId: row.userId,
-      threadId: chatThreadId,
-    });
-    signal.throwIfAborted();
-    if ("status" in modelPin) {
-      // Credit / provider admission problems skip silently by design; the
-      // schedule already points at tomorrow 7:00.
-      await markDeliveryFailed(
-        db,
-        delivery.id,
-        modelPin.body.error.message,
-        currentTime,
-      );
       return "skipped";
     }
-    const providerAdmission = await resolveModelFirstProviderAdmission({
+
+    const chatThreadId = await ensureMorningBriefChatThread(
       db,
-      orgId: row.orgId,
-      userId: row.userId,
-      modelPin,
-      requestedModelProvider: undefined,
-    });
+      claimed,
+      agentId,
+    );
     signal.throwIfAborted();
-    if (providerAdmission.error) {
-      await markDeliveryFailed(
-        db,
-        delivery.id,
-        providerAdmission.error.body.error.message,
-        currentTime,
-      );
+
+    const model = await resolveMorningBriefModelContext(
+      db,
+      claimed,
+      chatThreadId,
+    );
+    signal.throwIfAborted();
+    if (!model) {
       return "skipped";
     }
 
@@ -427,7 +556,7 @@ const processDueMorningBrief$ = command(
       {
         internalKind: "morning-brief:email",
         secret: generateCallbackSecret(),
-        payload: { deliveryId: delivery.id },
+        payload: { deliveryId },
       },
       {
         internalKind: "chat",
@@ -448,22 +577,22 @@ const processDueMorningBrief$ = command(
         body: {
           prompt,
           agentId,
-          ...(providerAdmission.effectiveModelProvider
-            ? { modelProvider: providerAdmission.effectiveModelProvider }
+          ...(model.effectiveModelProvider
+            ? { modelProvider: model.effectiveModelProvider }
             : {}),
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-schedule",
         chatThreadId,
-        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderId: model.modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
+          model.modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: model.modelPin.selectedModel ?? undefined,
         appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
           briefDate,
           timezone,
-          inputUrl,
-          outputUrl,
+          inputUrl: staged.inputUrl,
+          outputUrl: staged.outputUrl,
         }),
         callbacks,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -475,46 +604,60 @@ const processDueMorningBrief$ = command(
     if (result.status !== 201) {
       await markDeliveryFailed(
         db,
-        delivery.id,
+        deliveryId,
         result.body.error.message,
         currentTime,
       );
+      signal.throwIfAborted();
       return "skipped";
     }
 
-    await postRunUserMessage({
-      db,
-      threadId: chatThreadId,
-      userId: row.userId,
+    await recordMorningBriefRunStart(db, {
+      claimed,
+      staged,
+      model,
+      chatThreadId,
       runId: result.body.runId,
+      runStatus: result.body.status,
       prompt,
-      appendQueueMarker: result.body.status === "queued",
     });
     signal.throwIfAborted();
 
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-
-    await db
-      .update(morningBriefDeliveries)
-      .set({
-        status: "running",
-        runId: result.body.runId,
-        inputKey,
-        outputKey,
-        updatedAt: currentTime,
-      })
-      .where(eq(morningBriefDeliveries.id, delivery.id));
-    signal.throwIfAborted();
-
     return "executed";
+  },
+);
+
+const processDueMorningBrief$ = command(
+  async (
+    { set },
+    args: {
+      readonly row: DueMorningBriefRow;
+      readonly currentTime: Date;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<"executed" | "skipped"> => {
+    const db = set(writeDb$);
+    const claimed = await admitMorningBriefDelivery(
+      db,
+      args.row,
+      args.currentTime,
+      signal,
+    );
+    if (!claimed) {
+      return "skipped";
+    }
+
+    const staged = await set(stageMorningBriefInput$, claimed, signal);
+    if (!staged) {
+      return "skipped";
+    }
+
+    return await set(
+      startMorningBriefRun$,
+      { claimed, staged, apiStartTime: args.apiStartTime },
+      signal,
+    );
   },
 );
 
@@ -575,32 +718,36 @@ export const executeDueMorningBriefs$ = command(
             skipped += 1;
             continue;
           }
-          try {
-            const outcome = await set(
+          const outcome = await settle(
+            set(
               processDueMorningBrief$,
               { row, currentTime, apiStartTime: args.apiStartTime },
               signal,
-            );
-            if (outcome === "executed") {
-              executed += 1;
-            } else {
-              skipped += 1;
-            }
-          } catch (error) {
+            ),
+            signal,
+          );
+          if (outcome.ok && outcome.value === "executed") {
+            executed += 1;
+          } else {
+            skipped += 1;
+          }
+          if (!outcome.ok) {
             // One member's failure must not stop the batch; the claim already
             // moved their schedule to tomorrow.
-            signal.throwIfAborted();
-            skipped += 1;
             log.error("morning brief processing failed", {
               orgId: row.orgId,
               userId: row.userId,
-              error: error instanceof Error ? error.message : String(error),
+              error:
+                outcome.error instanceof Error
+                  ? outcome.error.message
+                  : String(outcome.error),
             });
           }
         }
       },
     );
     await Promise.all(workers);
+    signal.throwIfAborted();
 
     return { executed, skipped };
   },

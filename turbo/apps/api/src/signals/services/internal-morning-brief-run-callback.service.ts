@@ -13,6 +13,7 @@ import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { downloadS3BufferWithMaxBytes } from "../external/s3";
 import { nowDate } from "../external/time";
+import { safeJsonParse, safeUrlParse, settle } from "../utils";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
@@ -67,24 +68,25 @@ const morningBriefOutputSchema = z.object({
 
 type MorningBriefOutput = z.output<typeof morningBriefOutputSchema>;
 
-const SOURCE_LINK_HOSTS = new Set([
-  "github.com",
-  "mail.google.com",
-  "calendar.google.com",
-]);
+function isAllowedSourceHost(hostname: string): boolean {
+  return (
+    hostname === "github.com" ||
+    hostname === "mail.google.com" ||
+    hostname === "calendar.google.com"
+  );
+}
 
 /** Only https links straight into Gmail, Calendar, or GitHub survive. */
 function sanitizeSourceUrl(url: string | undefined): string | undefined {
   if (!url) {
     return undefined;
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  if (parsed.protocol !== "https:" || !SOURCE_LINK_HOSTS.has(parsed.hostname)) {
+  const parsed = safeUrlParse(url);
+  if (
+    !parsed ||
+    parsed.protocol !== "https:" ||
+    !isAllowedSourceHost(parsed.hostname)
+  ) {
     return undefined;
   }
   return url;
@@ -116,78 +118,53 @@ async function markDelivery(
     .where(eq(morningBriefDeliveries.id, deliveryId));
 }
 
-export async function handleMorningBriefEmailInternalCallback(
+type DeliveryRow = typeof morningBriefDeliveries.$inferSelect;
+
+async function loadValidatedMorningBriefOutput(
   db: Db,
-  envelope: InternalRunCallbackEnvelope,
-): Promise<InternalRunCallbackDispatchResult> {
-  if (envelope.status === "progress") {
-    return { success: true, skipped: true };
-  }
-
-  const payload = callbackPayloadSchema.safeParse(envelope.payload);
-  if (!payload.success) {
-    return { success: false, error: "Invalid morning brief callback payload" };
-  }
-  const deliveryId = payload.data.deliveryId;
-
-  const [delivery] = await db
-    .select()
-    .from(morningBriefDeliveries)
-    .where(eq(morningBriefDeliveries.id, deliveryId))
-    .limit(1);
-  if (!delivery) {
-    return { success: false, error: "Morning brief delivery not found" };
-  }
-  // Idempotency guard: retried callbacks after a terminal state are no-ops.
-  if (delivery.status !== "running" && delivery.status !== "collecting") {
-    return { success: true, skipped: true };
-  }
-
-  if (envelope.status === "failed") {
-    // Silent by design: no failure email, tomorrow's schedule tries again.
-    await markDelivery(
-      db,
-      deliveryId,
-      "failed",
-      envelope.error ?? "Run failed",
-    );
-    return { success: true };
-  }
-
+  delivery: DeliveryRow,
+): Promise<MorningBriefOutput | null> {
   if (!delivery.outputKey) {
-    await markDelivery(db, deliveryId, "failed", "Missing output key");
-    return { success: true };
+    await markDelivery(db, delivery.id, "failed", "Missing output key");
+    return null;
   }
-
   const store = createStore();
-  let output: MorningBriefOutput;
-  try {
-    const buffer = await store.get(
+  const downloaded = await settle(
+    store.get(
       downloadS3BufferWithMaxBytes(
         env("R2_USER_STORAGES_BUCKET_NAME"),
         delivery.outputKey,
         MAX_OUTPUT_BYTES,
       ),
-    );
-    output = morningBriefOutputSchema.parse(JSON.parse(buffer.toString("utf8")));
-  } catch (error) {
-    // Missing or invalid output.json: no email and no automatic rerun.
+    ),
+  );
+  if (!downloaded.ok) {
+    // Missing output.json: no email and no automatic rerun.
+    await markDelivery(db, delivery.id, "failed", "Missing brief output");
+    return null;
+  }
+  const parsed = morningBriefOutputSchema.safeParse(
+    safeJsonParse(downloaded.value.toString("utf8")),
+  );
+  if (!parsed.success) {
+    // Invalid output.json: no email and no automatic rerun.
     await markDelivery(
       db,
-      deliveryId,
+      delivery.id,
       "failed",
-      `Invalid brief output: ${error instanceof Error ? error.message : String(error)}`,
+      `Invalid brief output: ${parsed.error.message}`,
     );
-    return { success: true };
+    return null;
   }
+  return parsed.data;
+}
 
-  const clerk = store.get(clerk$);
-  const userEmail = await getUserEmail(db, clerk, delivery.userId);
-  if (!userEmail) {
-    await markDelivery(db, deliveryId, "failed", "No verified user email");
-    return { success: true };
-  }
-
+async function enqueueMorningBriefEmail(
+  db: Db,
+  delivery: DeliveryRow,
+  output: MorningBriefOutput,
+  userEmail: string,
+): Promise<void> {
   const [schedule] = await db
     .select({ chatThreadId: morningBriefSchedules.chatThreadId })
     .from(morningBriefSchedules)
@@ -239,6 +216,59 @@ export async function handleMorningBriefEmailInternalCallback(
     status: "pending",
     attempts: 0,
   });
+}
+
+export async function handleMorningBriefEmailInternalCallback(
+  db: Db,
+  envelope: InternalRunCallbackEnvelope,
+): Promise<InternalRunCallbackDispatchResult> {
+  if (envelope.status === "progress") {
+    return { success: true, skipped: true };
+  }
+
+  const payload = callbackPayloadSchema.safeParse(envelope.payload);
+  if (!payload.success) {
+    return { success: false, error: "Invalid morning brief callback payload" };
+  }
+  const deliveryId = payload.data.deliveryId;
+
+  const [delivery] = await db
+    .select()
+    .from(morningBriefDeliveries)
+    .where(eq(morningBriefDeliveries.id, deliveryId))
+    .limit(1);
+  if (!delivery) {
+    return { success: false, error: "Morning brief delivery not found" };
+  }
+  // Idempotency guard: retried callbacks after a terminal state are no-ops.
+  if (delivery.status !== "running" && delivery.status !== "collecting") {
+    return { success: true, skipped: true };
+  }
+
+  if (envelope.status === "failed") {
+    // Silent by design: no failure email, tomorrow's schedule tries again.
+    await markDelivery(
+      db,
+      deliveryId,
+      "failed",
+      envelope.error ?? "Run failed",
+    );
+    return { success: true };
+  }
+
+  const output = await loadValidatedMorningBriefOutput(db, delivery);
+  if (!output) {
+    return { success: true };
+  }
+
+  const clerk = createStore().get(clerk$);
+  const userEmail = await getUserEmail(db, clerk, delivery.userId);
+  if (!userEmail) {
+    await markDelivery(db, deliveryId, "failed", "No verified user email");
+    return { success: true };
+  }
+
+  await enqueueMorningBriefEmail(db, delivery, output, userEmail);
 
   await markDelivery(db, deliveryId, "emailed");
   const successAt = nowDate();
@@ -252,7 +282,7 @@ export async function handleMorningBriefEmailInternalCallback(
       ),
     );
 
-  log.info("morning brief email enqueued", {
+  log.debug("morning brief email enqueued", {
     deliveryId,
     orgId: delivery.orgId,
   });
