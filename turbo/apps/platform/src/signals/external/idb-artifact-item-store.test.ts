@@ -42,6 +42,10 @@ interface IndexedRow {
   readonly value: ArtifactItem;
 }
 
+type LegacyArtifactItem = Omit<ArtifactItem, "size"> & {
+  readonly isFavorited?: boolean;
+};
+
 class MemoryCursor implements FakeCursor {
   private position = 0;
 
@@ -130,7 +134,7 @@ class MemoryArtifactDb {
   private readonly rows = new Map<string, ArtifactItem>();
   private syncState: unknown;
 
-  seedLegacyItem(item: Omit<ArtifactItem, "size">): void {
+  seedLegacyItem(item: LegacyArtifactItem): void {
     this.rows.set(item.artifactItemId, item as ArtifactItem);
   }
 
@@ -274,11 +278,11 @@ describe("artifact item IndexedDB cache reads", () => {
     ]);
   });
 
-  it("normalizes legacy cached artifact items without a size", async () => {
+  it("normalizes legacy cached artifact items", async () => {
     const { db, stores } = setupStores();
     const { size, ...legacy } = artifact(1);
     expect(size).toBeGreaterThan(0);
-    db.seedLegacyItem(legacy);
+    db.seedLegacyItem({ ...legacy, isFavorited: true });
 
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
       { ...legacy, size: 0 },
@@ -287,7 +291,7 @@ describe("artifact item IndexedDB cache reads", () => {
 
   it("removes favorite state from legacy cached artifact items", async () => {
     const { db, stores } = setupStores();
-    const legacy = artifact(1, { isFavorited: true });
+    const legacy = { ...artifact(1), isFavorited: true };
     db.seedLegacyItem(legacy);
 
     const cached = await stores.readStore.readRecent();
@@ -321,7 +325,7 @@ describe("artifact item IndexedDB cache reads", () => {
 
   it("does not persist artifact favorite state", async () => {
     const { stores } = setupStores();
-    const favorited = artifact(1, { isFavorited: true });
+    const favorited = { ...artifact(1), isFavorited: true };
 
     await stores.writeStore.upsertItems([favorited]);
 
