@@ -55,24 +55,34 @@ out=$(run_clean EVENT_NAME=pull_request PR_NUMBER=123 HEAD_REF=feature HEAD_SHA=
 assert_contains "$out" "release-skip=false"
 assert_contains "$out" "job-ref=pr-123"
 assert_contains "$out" "head-sha=abc"
+assert_contains "$out" "pr-number=123"
+assert_contains "$out" "pr-head-ref=feature"
 
 out=$(run_clean EVENT_NAME=pull_request PR_NUMBER=123 HEAD_REF=release-please--branches--main HEAD_SHA=abc "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=true"
 assert_contains "$out" "skip-reason=release-please-pr"
 assert_contains "$out" "job-ref="
+assert_contains "$out" "pr-number=123"
+assert_contains "$out" "pr-head-ref=release-please--branches--main"
 
 out=$(run_clean EVENT_NAME=merge_group MQ_HEAD_REF=refs/heads/gh-readonly-queue/main/pr-456-abc MOCK_PR_BRANCH=feature HEAD_SHA=def "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=false"
 assert_contains "$out" "job-ref=pr-456"
+assert_contains "$out" "pr-number=456"
+assert_contains "$out" "pr-head-ref=feature"
 
 out=$(run_clean EVENT_NAME=merge_group MQ_HEAD_REF=refs/heads/gh-readonly-queue/main/pr-456-abc MOCK_PR_BRANCH=release-please--branches--main HEAD_SHA=def "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=true"
 assert_contains "$out" "skip-reason=release-please-merge-queue"
 assert_contains "$out" "job-ref="
+assert_contains "$out" "pr-number=456"
+assert_contains "$out" "pr-head-ref=release-please--branches--main"
 
 out=$(run_clean EVENT_NAME=push COMMIT_MSG='regular commit' HEAD_SHA=ghi "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=false"
 assert_contains "$out" "job-ref=staging-ghi"
+assert_contains "$out" "pr-number="
+assert_contains "$out" "pr-head-ref="
 
 out=$(run_clean EVENT_NAME=push COMMIT_MSG='chore: release 1.2.3' HEAD_SHA=ghi "$CONTEXT" resolve)
 assert_contains "$out" "release-skip=true"

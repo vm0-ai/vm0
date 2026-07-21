@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
-. "${SCRIPT_DIR}/runner-guest-binaries.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 require_env() {
   local name=$1
@@ -17,13 +17,16 @@ require_env JOB_REF
 require_env HEAD_SHA
 require_env METAL_HOSTS
 require_env METAL_USER
+JOB_REF=${JOB_REF:-}
+HEAD_SHA=${HEAD_SHA:-}
 
 TARGET_TRIPLE="${TARGET_TRIPLE-aarch64-unknown-linux-musl}"
 PROFILE="${PROFILE:-vm0/default}"
 MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
-TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
+CARGO_TARGET_DIR="${REPO_ROOT}/crates/target"
+TARGET_DIR="${CARGO_TARGET_DIR}/${TARGET_TRIPLE}/ci"
 DERIVED_EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
 if [ "${EXPECTED_REMOTE_ARCH+x}" = "x" ]; then
   if [ -z "$EXPECTED_REMOTE_ARCH" ]; then
@@ -59,36 +62,18 @@ done
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
-runner_guest_binaries_load
-guest_cargo_args=()
-guest_env=()
-for index in "${!RUNNER_GUEST_PACKAGES[@]}"; do
-  guest_cargo_args+=("-p" "${RUNNER_GUEST_PACKAGES[$index]}")
-  guest_env+=("${RUNNER_GUEST_PATH_ENVS[$index]}=target/$TARGET_TRIPLE/ci/${RUNNER_GUEST_BINARIES[$index]}")
-done
+FRESH_METADATA_PATH="${FRESH_METADATA_PATH:-runner-binary-fresh/metadata.json}"
+if [[ "$FRESH_METADATA_PATH" != /* ]]; then
+  FRESH_METADATA_PATH="${REPO_ROOT}/${FRESH_METADATA_PATH}"
+fi
+TARGET_TRIPLE="$TARGET_TRIPLE" \
+CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE="${RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE:-}" \
+RUNNER_BINARY_METADATA_PATH="$FRESH_METADATA_PATH" \
+  "${REPO_ROOT}/.github/runner-binary-build/build.sh" build
 
-echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
-(
-  cd crates
-  cargo build --profile ci --target "$TARGET_TRIPLE" "${guest_cargo_args[@]}"
-)
-
-echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
-(
-  cd crates
-  env "${guest_env[@]}" cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
-)
-
-sha_file() {
-  sha256sum "$1" | awk '{print $1}'
-}
-
-runner_sha=$(sha_file "${TARGET_DIR}/runner")
-guest_sha_json=$(jq -n '{}')
-for binary in "${RUNNER_GUEST_BINARIES[@]}"; do
-  guest_sha=$(sha_file "crates/target/${TARGET_TRIPLE}/ci/${binary}")
-  guest_sha_json=$(jq -c --arg binary "$binary" --arg sha "$guest_sha" '. + {($binary): $sha}' <<<"$guest_sha_json")
-done
+runner_sha=$(jq -r '.runnerSha256' "$FRESH_METADATA_PATH")
+guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
 
 prepare_host() {
   local host=$1
