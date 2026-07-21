@@ -44,7 +44,7 @@ async function openMakePage(): Promise<void> {
   detachedSetupPage({ context, path: "/onboarding/make" });
   await expect(
     screen.findByRole("heading", {
-      name: "What do you want to make first?",
+      name: "What do you want to make first",
     }),
   ).resolves.toBeInTheDocument();
 }
@@ -53,10 +53,12 @@ async function openGithubWorkflowRun(): Promise<void> {
   mockOnboardingNeeded();
   detachedSetupPage({
     context,
-    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=engineering-github-progress-weekly",
+    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=auto-merge-github-prs",
   });
   await expect(
-    screen.findByRole("heading", { name: "GitHub progress weekly" }),
+    screen.findByRole("heading", {
+      name: "Connect your tools and customize your workflow",
+    }),
   ).resolves.toBeInTheDocument();
 }
 
@@ -65,29 +67,53 @@ function chooseMakeOption(name: string): void {
   click(buttonByText("Continue"));
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryButtonByText(text);
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`Button not found for ${text}`);
   }
   return button;
 }
 
-function queryButtonByText(text: string): HTMLElement | null {
+function queryButtonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement | null {
   return (
-    queryAllByRoleFast("button").find((candidate) => {
+    queryAllByRoleFast("button", container).find((candidate) => {
       return candidate.textContent?.includes(text) ?? false;
     }) ?? null
   );
 }
 
-function chooseTemplate(title: string): void {
-  const titleElement = screen.getByText(title);
-  const button = titleElement.closest("button");
+function buttonsByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement[] {
+  return queryAllByRoleFast("button", container).filter((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+}
+
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = buttonsByAriaLabel(label, container)[0];
   if (!button) {
-    throw new Error(`Template card not found for ${title}`);
+    throw new Error(`Button not found for aria-label ${label}`);
   }
-  click(button);
+  return button;
+}
+
+function chooseTemplate(
+  title: string,
+  kind: "presentation" | "illustration" | "video",
+): void {
+  click(buttonByAriaLabel(`Select ${title} ${kind} template`));
   click(buttonByText("Continue"));
 }
 
@@ -98,33 +124,49 @@ describe("onboarding flow", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "What kind of work should Zero start with?",
+        name: "What do you work on?",
       }),
     ).resolves.toBeInTheDocument();
-    click(buttonByText("Engineering"));
+    click(buttonByText("Engineer"));
 
     await expect(
       screen.findByRole("heading", {
-        name: "Choose a workflow for engineering",
+        name: "Engineer workflows",
       }),
     ).resolves.toBeInTheDocument();
-    click(screen.getByRole("radio", { name: /Daily standup report/u }));
+    const workflowButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate
+        .getAttribute("aria-label")
+        ?.startsWith("Auto-merge GitHub PRs");
+    });
+    expect(workflowButton).toHaveAttribute("aria-pressed", "true");
+
+    const previewButton = buttonsByAriaLabel("Preview workflow details")[0];
+    if (!previewButton) {
+      throw new Error("Expected workflow preview button");
+    }
+    click(previewButton);
+    const preview = await screen.findByRole("dialog", {
+      name: "Auto-merge GitHub PRs",
+    });
+    expect(within(preview).getByText("How it works")).toBeVisible();
+    click(buttonByText("Select this template", preview));
     click(buttonByText("Continue"));
 
     await expect(
-      screen.findByRole("heading", { name: "Daily standup report" }),
+      screen.findByRole("heading", {
+        name: "Connect your tools and customize your workflow",
+      }),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByRole("heading", {
-        name: "Connect the tools for this run",
-      }),
+      screen.getByRole("heading", { name: "Auto-merge GitHub PRs" }),
     ).toBeInTheDocument();
     expect(pathname()).toBe("/onboarding/workflow-run");
     expect(context.store.get(searchParams$).get("category")).toBe(
       "engineering",
     );
-    expect(context.store.get(searchParams$).get("workflow")).toContain(
-      "daily-standup-report",
+    expect(context.store.get(searchParams$).get("workflow")).toBe(
+      "auto-merge-github-prs",
     );
   });
 
@@ -181,8 +223,15 @@ describe("onboarding flow", () => {
 
     await openGithubWorkflowRun();
 
-    await expect(screen.findByText("Connected")).resolves.toBeInTheDocument();
-    expect(queryButtonByText("Connect")).toBeNull();
+    const githubLabel = await screen.findByText(
+      "Connect the GitHub to continue the workflow",
+    );
+    const githubRow = githubLabel.parentElement?.parentElement;
+    if (!githubRow) {
+      throw new Error("Expected GitHub connector row");
+    }
+    expect(within(githubRow).getByText("Connected")).toBeInTheDocument();
+    expect(queryButtonByText("Connect", githubRow)).toBeNull();
   });
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
@@ -241,17 +290,31 @@ describe("onboarding flow", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "Choose a presentation style",
+        name: "Pick a presentation template to start from",
       }),
     ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title);
+    const templateButton = buttonByAriaLabel(
+      `Select ${template.title} presentation template`,
+    );
+    expect(templateButton).toHaveAttribute("aria-pressed", "true");
+
+    click(buttonByAriaLabel(`View ${template.title} presentation`));
+    const preview = await screen.findByRole("dialog", {
+      name: template.title,
+    });
+    click(buttonByAriaLabel("Show next slide", preview));
+    expect(
+      within(preview).getByAltText(`${template.title} slide 2`),
+    ).toBeVisible();
+    click(buttonByText("Select this template", preview));
+    click(buttonByText("Continue"));
 
     await expect(
-      screen.findByRole("heading", { name: template.title }),
+      screen.findByRole("heading", { name: "Fulfil your presentation" }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe("/onboarding/presentation-run");
     expect(
-      screen.getByLabelText("Presentation brief (optional)"),
+      screen.getByLabelText("Presentation content and instruction"),
     ).toBeVisible();
     expect(context.store.get(searchParams$).get("template")).toBe(
       template.slug,
@@ -273,13 +336,18 @@ describe("onboarding flow", () => {
     chooseMakeOption("Generate images");
 
     await expect(
-      screen.findByRole("heading", { name: "Choose an illustration style" }),
+      screen.findByRole("heading", {
+        name: "Pick an illustration template to start from",
+      }),
     ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title);
+    chooseTemplate(template.title, "illustration");
 
     await expect(
-      screen.findByRole("heading", { name: template.title }),
+      screen.findByRole("heading", {
+        name: "Select one automation you would like to have a try",
+      }),
     ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom illustration scene")).toBeVisible();
     click(buttonByText("Run now"));
 
     await waitFor(() => {
@@ -308,15 +376,17 @@ describe("onboarding flow", () => {
     chooseMakeOption("Video production");
 
     await expect(
-      screen.findByRole("heading", { name: "Choose a video style" }),
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
     ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title);
+    chooseTemplate(template.title, "video");
 
     await expect(
-      screen.findByRole("heading", { name: template.title }),
+      screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
     const videoBrief = "A twenty-second launch film for a travel camera.";
-    await fill(screen.getByLabelText("Video brief (optional)"), videoBrief);
+    await fill(screen.getByLabelText("Custom video prompt"), videoBrief);
     const upgradeButton = await waitFor(() => {
       return buttonByText("Upgrade Pro to run");
     });
@@ -384,7 +454,9 @@ describe("onboarding flow", () => {
     });
 
     await expect(
-      screen.findByRole("heading", { name: "Choose an illustration style" }),
+      screen.findByRole("heading", {
+        name: "Pick an illustration template to start from",
+      }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe("/onboarding/image-template");
   });
@@ -407,8 +479,8 @@ describe("onboarding flow", () => {
     });
 
     await expect(
-      screen.findByRole("heading", { name: template.title }),
+      screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Video brief (optional)")).toHaveValue(note);
+    expect(screen.getByLabelText("Custom video prompt")).toHaveValue(note);
   });
 });

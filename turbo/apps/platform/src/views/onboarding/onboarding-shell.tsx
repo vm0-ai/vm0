@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
+import { IconLoader2 } from "@tabler/icons-react";
 import {
-  IconArrowLeft,
-  IconArrowRight,
-  IconLoader2,
-} from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
 import { AccountDropdown } from "../zero-page/zero-sidebar.tsx";
 import { SettingsDialog } from "../zero-page/components/settings/settings-dialog.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
@@ -14,9 +14,6 @@ import {
   closeSettingsModal$,
   settingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
-
-const ZERO_ONBOARDING_IMAGE =
-  "https://static.vm0.io/web/assets/onboarding/2026-07-15/zero-animated-192.webp";
 
 function OnboardingAccount({ collapsed }: { readonly collapsed: boolean }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
@@ -38,17 +35,18 @@ function OnboardingProgress({
 }) {
   return (
     <div
-      className="grid h-1.5 w-full grid-flow-col gap-1.5"
+      className="flex h-1 w-full gap-1.5"
       aria-label={`Step ${current} of ${total}`}
     >
       {Array.from({ length: total }, (_, index) => {
         return (
           <span
             key={index}
+            data-testid="onboarding-progress-step"
             className={
               index < current
-                ? "rounded-sm bg-primary"
-                : "rounded-sm bg-[hsl(var(--gray-200))]"
+                ? "flex-1 rounded-full bg-foreground"
+                : "flex-1 rounded-full bg-muted"
             }
           />
         );
@@ -71,30 +69,84 @@ export function OnboardingFooter({
   readonly busy?: boolean;
 }) {
   return (
-    <div className="flex w-full items-center justify-between gap-3">
+    <div className="flex w-full items-center justify-between gap-3 pl-16 sm:pl-0">
       {onBack ? (
-        <Button type="button" variant="ghost" onClick={onBack}>
-          <IconArrowLeft aria-hidden="true" />
+        <button
+          type="button"
+          className="h-10 border-0 bg-transparent px-0 text-sm font-medium text-primary hover:text-[hsl(var(--primary-800))]"
+          onClick={onBack}
+        >
           Back
-        </Button>
+        </button>
       ) : (
         <span />
       )}
-      <Button
+      <button
         type="button"
         onClick={onPrimary}
         disabled={primaryDisabled || busy}
         aria-busy={busy}
-        className="min-w-28"
+        className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white hover:bg-[hsl(var(--primary-800))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
       >
         {busy ? (
-          <IconLoader2 className="animate-spin" aria-hidden="true" />
-        ) : (
-          <IconArrowRight aria-hidden="true" />
-        )}
+          <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
+        ) : null}
         {primaryLabel}
-      </Button>
+      </button>
     </div>
+  );
+}
+
+export function OnboardingDialog({
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+}: {
+  readonly title: string;
+  readonly description?: string;
+  readonly children: ReactNode;
+  readonly footer?: ReactNode;
+  readonly onClose: () => void;
+}) {
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        overlayClassName="bg-black/45 backdrop-blur-sm dark:bg-black/45"
+        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6"
+      >
+        <header className="shrink-0 pr-9">
+          <div className="min-w-0">
+            <DialogTitle className="text-lg font-semibold leading-6">
+              {title}
+            </DialogTitle>
+            {description ? (
+              <DialogDescription className="mt-1 text-sm leading-5 text-muted-foreground">
+                {description}
+              </DialogDescription>
+            ) : (
+              <DialogDescription className="sr-only">
+                {title} preview
+              </DialogDescription>
+            )}
+          </div>
+        </header>
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto">{children}</div>
+        {footer ? (
+          <footer className="mt-5 flex shrink-0 justify-end gap-2">
+            {footer}
+          </footer>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -105,7 +157,6 @@ export function OnboardingShell({
   description,
   children,
   footer,
-  preview,
 }: {
   readonly currentStep: number;
   readonly totalSteps: number;
@@ -119,7 +170,7 @@ export function OnboardingShell({
   const closeSettings = useSet(closeSettingsModal$);
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background text-foreground">
+    <div className="zero-app zero-viewport-shell relative w-full bg-background text-foreground">
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={(open) => {
@@ -128,64 +179,34 @@ export function OnboardingShell({
           }
         }}
       />
-      <aside className="zero-nav hidden h-full w-[300px] shrink-0 flex-col border-r border-border bg-[hsl(var(--gray-50))] p-5 md:flex">
-        <div className="shrink-0 p-1">
-          <VM0Logo />
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-5 text-center">
-          {preview ?? (
-            <img
-              src={ZERO_ONBOARDING_IMAGE}
-              alt="Zero"
-              width={144}
-              height={144}
-              className="h-36 w-36 object-contain"
-            />
-          )}
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium">Your first run with Zero</p>
-            <p className="text-xs leading-5 text-muted-foreground">
-              Pick a starting point and launch it in your workspace.
-            </p>
-          </div>
-        </div>
-        <div className="shrink-0">
-          <OnboardingAccount collapsed={false} />
-        </div>
-      </aside>
+      <div className="fixed bottom-6 left-4 z-20 hidden w-60 sm:block">
+        <OnboardingAccount collapsed={false} />
+      </div>
+      <div className="fixed bottom-8 left-6 z-20 sm:hidden">
+        <OnboardingAccount collapsed />
+      </div>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 md:hidden">
-          <VM0Logo />
-          <OnboardingAccount collapsed />
-        </header>
-        <div className="mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col px-4 sm:px-8">
-          <div className="shrink-0 pt-5 sm:pt-8">
-            <OnboardingProgress current={currentStep} total={totalSteps} />
-          </div>
-          <main
-            key={`${currentStep}-${title}`}
-            className="min-h-0 flex-1 overflow-y-auto py-7 sm:py-10"
-          >
-            <div className="mx-auto w-full max-w-[820px]">
-              <header className="mb-7">
-                <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                  Step {currentStep} of {totalSteps}
-                </p>
-                <h1 className="text-2xl font-semibold leading-8 sm:text-3xl sm:leading-10">
-                  {title}
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  {description}
-                </p>
-              </header>
-              {children}
-            </div>
-          </main>
-          <footer className="shrink-0 border-t border-border py-4 sm:py-5">
-            {footer}
-          </footer>
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-[750px] flex-col">
+        <div className="shrink-0 px-5 pb-4 pt-[72px] sm:px-10 lg:pt-8">
+          <OnboardingProgress current={currentStep} total={totalSteps} />
         </div>
+        <main
+          key={`${currentStep}-${title}`}
+          className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-[50px] [scrollbar-width:none] sm:px-10 [&::-webkit-scrollbar]:hidden"
+        >
+          <header>
+            <h1 className="text-2xl font-semibold leading-[1.25]">{title}</h1>
+            {description ? (
+              <p className="mb-6 mt-2 text-sm leading-[1.625] text-muted-foreground">
+                {description}
+              </p>
+            ) : null}
+          </header>
+          {children}
+        </main>
+        <footer className="shrink-0 border-t border-border/40 px-5 py-5 sm:px-10">
+          {footer}
+        </footer>
       </section>
     </div>
   );

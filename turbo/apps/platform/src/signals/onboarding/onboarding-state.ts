@@ -32,6 +32,13 @@ export interface OnboardingDraft {
   readonly prompt: string;
 }
 
+interface OnboardingUiState {
+  readonly workflowPreviewId: string | null;
+  readonly presentationPreviewSlug: string | null;
+  readonly presentationSlideIndex: number;
+  readonly imageVariantBySlug: Readonly<Record<string, number>>;
+}
+
 type OnboardingDraftUpdate = Partial<{
   -readonly [Key in keyof OnboardingDraft]: OnboardingDraft[Key];
 }>;
@@ -52,10 +59,26 @@ function emptyOnboardingDraft(): OnboardingDraft {
   };
 }
 
+function emptyOnboardingUiState(): OnboardingUiState {
+  return {
+    workflowPreviewId: null,
+    presentationPreviewSlug: null,
+    presentationSlideIndex: 0,
+    imageVariantBySlug: {},
+  };
+}
+
 const internalOnboardingDraft$ = state<OnboardingDraft>(emptyOnboardingDraft());
+const internalOnboardingUi$ = state<OnboardingUiState>(
+  emptyOnboardingUiState(),
+);
 
 export const onboardingDraft$ = computed((get) => {
   return get(internalOnboardingDraft$);
+});
+
+export const onboardingUi$ = computed((get) => {
+  return get(internalOnboardingUi$);
 });
 
 export const updateOnboardingDraft$ = command(
@@ -68,6 +91,32 @@ export const updateOnboardingDraft$ = command(
 
 export const resetOnboardingDraft$ = command(({ set }) => {
   set(internalOnboardingDraft$, emptyOnboardingDraft());
+});
+
+export const updateOnboardingUi$ = command(
+  ({ set }, patch: Partial<OnboardingUiState>) => {
+    set(internalOnboardingUi$, (current) => {
+      return { ...current, ...patch };
+    });
+  },
+);
+
+export const setOnboardingImageVariant$ = command(
+  ({ set }, slug: string, index: number) => {
+    set(internalOnboardingUi$, (current) => {
+      return {
+        ...current,
+        imageVariantBySlug: {
+          ...current.imageVariantBySlug,
+          [slug]: index,
+        },
+      };
+    });
+  },
+);
+
+export const resetOnboardingUi$ = command(({ set }) => {
+  set(internalOnboardingUi$, emptyOnboardingUiState());
 });
 
 function onboardingChoice(value: string | null): OnboardingChoice | null {
@@ -85,6 +134,7 @@ function onboardingChoice(value: string | null): OnboardingChoice | null {
 
 export const hydrateOnboardingRoute$ = command(
   ({ get, set }, step: OnboardingRouteStep, searchParams: URLSearchParams) => {
+    set(resetOnboardingUi$);
     const choice = onboardingChoice(searchParams.get("choice"));
     if (step === "make" && !choice) {
       set(resetOnboardingDraft$);

@@ -1,6 +1,11 @@
+import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { IconLoader2, IconPlugConnected } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import { IconCircleCheck, IconLoader2 } from "@tabler/icons-react";
+import { Button, cn } from "@vm0/ui";
+import {
+  getStaticConnectorIconMetadata,
+  isStaticConnectorIconType,
+} from "@vm0/connectors/static-connector-icons";
 import {
   connectorCatalogRefSchema,
   type ConnectorCatalogRef,
@@ -22,11 +27,33 @@ import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.
 import { ConnectModal } from "../zero-page/components/settings/add-connection-dialog.tsx";
 import { launchConnectorConnect } from "../zero-page/components/settings/launch-connector-connect.ts";
 
+type ConnectorSetupVariant = "workflow" | "prompt";
+
 function connectorRefs(values: readonly string[]): ConnectorCatalogRef[] {
   return values.flatMap((value) => {
     const parsed = connectorCatalogRefSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
+}
+
+export function OnboardingConnectorIcon({
+  connectorId,
+  size = 22,
+}: {
+  readonly connectorId: string;
+  readonly size?: number;
+}) {
+  const icon = isStaticConnectorIconType(connectorId)
+    ? getStaticConnectorIconMetadata(connectorId)
+    : undefined;
+  return <ConnectorIcon icon={icon} size={size} />;
+}
+
+function promptHelpText(helpText: string | undefined): string {
+  return (helpText ?? "Connect this account to continue")
+    .replace(/^Connect your \w+ account to /u, "")
+    .replace(/^Connect your Google account to /u, "")
+    .replace(/^Connect /u, "");
 }
 
 function OnboardingConnectorRow({
@@ -35,6 +62,7 @@ function OnboardingConnectorRow({
   connected,
   connecting,
   loading,
+  variant,
   onConnect,
 }: {
   readonly connectorRef: ConnectorCatalogRef;
@@ -42,26 +70,39 @@ function OnboardingConnectorRow({
   readonly connected: boolean;
   readonly connecting: boolean;
   readonly loading: boolean;
+  readonly variant: ConnectorSetupVariant;
   readonly onConnect: (item: ConnectorTypeWithStatus) => void;
 }) {
+  const label = item?.label ?? connectorRef;
   return (
-    <div className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-100))]">
-        <ConnectorIcon icon={item?.icon} size={22} />
-      </div>
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-3",
+        variant === "workflow"
+          ? "border-b border-border/40 py-[18px] last:border-b-0"
+          : "rounded-xl border border-border px-4 py-3.5 sm:px-5 sm:py-4",
+      )}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
+        <OnboardingConnectorIcon connectorId={connectorRef} />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          {item?.label ?? connectorRef}
-        </p>
-        <p className="truncate text-xs text-muted-foreground">
-          {connected
-            ? "Connected to your account"
-            : (item?.helpText ?? "Connection required")}
-        </p>
+        {variant === "workflow" ? (
+          <p className="truncate text-sm leading-5 text-muted-foreground">
+            Connect the {label} to continue the workflow
+          </p>
+        ) : (
+          <>
+            <p className="truncate text-sm font-medium">{label}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {promptHelpText(item?.helpText)}
+            </p>
+          </>
+        )}
       </div>
       {connected ? (
-        <span className="inline-flex h-8 items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
+          <IconCircleCheck size={16} aria-hidden="true" />
           Connected
         </span>
       ) : (
@@ -69,6 +110,7 @@ function OnboardingConnectorRow({
           type="button"
           variant="outline"
           size="sm"
+          className="h-9 shrink-0 rounded-[10px] px-4 text-sm"
           disabled={loading || !item || connecting}
           onClick={() => {
             if (item) {
@@ -88,8 +130,12 @@ function OnboardingConnectorRow({
 
 export function OnboardingConnectorSetup({
   connectorIds,
+  variant = "workflow",
+  children,
 }: {
   readonly connectorIds: readonly string[];
+  readonly variant?: ConnectorSetupVariant;
+  readonly children?: ReactNode;
 }) {
   const refs = connectorRefs(connectorIds);
   const pageSignal = useGet(pageSignal$);
@@ -103,7 +149,7 @@ export function OnboardingConnectorSetup({
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const justConnectedTypes = useGet(justConnectedTypes$);
 
-  if (refs.length === 0) {
+  if (refs.length === 0 && children === undefined) {
     return null;
   }
 
@@ -114,17 +160,14 @@ export function OnboardingConnectorSetup({
   const loading = connectorTypesLoadable.state === "loading";
 
   return (
-    <section className="mt-7 border-t border-border pt-6">
-      <div className="mb-4 flex items-center gap-2">
-        <IconPlugConnected
-          size={18}
-          stroke={1.6}
-          className="text-muted-foreground"
-          aria-hidden="true"
-        />
-        <h2 className="text-sm font-medium">Connect the tools for this run</h2>
-      </div>
-      <div className="divide-y divide-border rounded-lg border border-border">
+    <>
+      <section
+        className={cn(
+          variant === "workflow"
+            ? "mt-5 rounded-3xl border border-border bg-background px-6 pb-6"
+            : "mt-6 flex flex-col gap-3",
+        )}
+      >
         {refs.map((connectorRef) => {
           const item = connectorTypes.find((candidate) => {
             return candidate.type === connectorRef;
@@ -144,6 +187,7 @@ export function OnboardingConnectorSetup({
               connected={connected}
               connecting={connecting}
               loading={loading}
+              variant={variant}
               onConnect={(connector) => {
                 launchConnectorConnect({
                   connector,
@@ -173,7 +217,8 @@ export function OnboardingConnectorSetup({
             />
           );
         })}
-      </div>
+        {children}
+      </section>
       {connectType ? (
         <ConnectModal
           onClose={() => {
@@ -181,6 +226,6 @@ export function OnboardingConnectorSetup({
           }}
         />
       ) : null}
-    </section>
+    </>
   );
 }

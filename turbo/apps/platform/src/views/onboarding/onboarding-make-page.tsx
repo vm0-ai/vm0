@@ -73,29 +73,27 @@ function PromptOnboarding() {
     <OnboardingShell
       currentStep={1}
       totalSteps={1}
-      title="Start your first task"
-      description="Review the request, connect any tools it needs, and send it to Zero."
+      title="Try this prompt"
+      description="Tweak it below or run it as-is. Zero takes it from here. Your tools stay sandboxed and nothing leaves your workspace."
       footer={
         <OnboardingFooter
           onPrimary={handleRun}
-          primaryLabel="Run now"
+          primaryLabel="Next"
           primaryDisabled={!draft.prompt.trim()}
           busy={completeLoadable.state === "loading"}
         />
       }
     >
-      <label className="block text-sm font-medium" htmlFor="onboarding-prompt">
-        Request
-      </label>
+      <OnboardingConnectorSetup connectorIds={connectors} variant="prompt" />
       <textarea
         id="onboarding-prompt"
+        aria-label="Onboarding prompt"
         value={draft.prompt}
         onChange={(event) => {
           setDraft({ prompt: event.target.value });
         }}
-        className="mt-2 min-h-36 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+        className="mt-6 min-h-28 w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-[1.625] outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
       />
-      <OnboardingConnectorSetup connectorIds={connectors} />
     </OnboardingShell>
   );
 }
@@ -135,12 +133,12 @@ export function OnboardingMakePage() {
     <OnboardingShell
       currentStep={1}
       totalSteps={3}
-      title="What do you want to make first?"
-      description="Pick a starting point. Everything else stays available after onboarding."
+      title="What do you want to make first"
+      description="Pick a starting point, you can do everything else later."
       footer={
         <OnboardingFooter
           onPrimary={handleContinue}
-          primaryLabel={draft.choice === "explore" ? "Open VM0" : "Continue"}
+          primaryLabel="Continue"
           primaryDisabled={!draft.choice}
           busy={completeLoadable.state === "loading"}
         />
@@ -163,11 +161,9 @@ export function OnboardingMakePage() {
                 setDraft({ choice: option.id });
               }}
               className={cn(
-                "flex min-h-24 items-center gap-4 rounded-lg border bg-background p-4 text-left transition-colors",
-                "hover:border-[hsl(var(--gray-500))] hover:bg-[hsl(var(--gray-50))]",
-                selected
-                  ? "border-primary ring-2 ring-primary/15"
-                  : "border-border",
+                "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-sm transition-colors sm:px-6 sm:py-[15px]",
+                "hover:border-primary/55",
+                selected ? "border-primary" : "border-border",
                 option.id === "workflow" && "sm:col-span-2",
               )}
             >
@@ -176,13 +172,13 @@ export function OnboardingMakePage() {
                 alt=""
                 width={48}
                 height={48}
-                className="h-12 w-12 shrink-0 object-contain"
+                className="h-10 w-10 shrink-0 object-contain"
               />
               <span className="min-w-0">
                 <span className="block text-sm font-medium">
                   {option.title}
                 </span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                <span className="mt-0.5 block text-sm leading-5 text-muted-foreground">
                   {option.description}
                 </span>
               </span>

@@ -1,7 +1,9 @@
+import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  r2ImageTransformUrl,
   VIDEO_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
@@ -10,6 +12,8 @@ import {
   type OnboardingDraft,
 } from "../../signals/onboarding/onboarding-state.ts";
 import { ROUTES, type RoutePath } from "../../signals/route-paths.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { onboardingVideoPrompt } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingRunAction } from "./onboarding-run-action.tsx";
 import { OnboardingShell } from "./onboarding-shell.tsx";
@@ -29,7 +33,6 @@ type TemplateRunMedia =
 
 interface TemplateRunConfig {
   readonly title: string;
-  readonly description: string;
   readonly prompt: string;
   readonly note: string;
   readonly noteLabel: string;
@@ -59,19 +62,17 @@ function presentationRunConfig(
     return null;
   }
   return {
-    title: item.title,
-    description: "Add the subject and any facts the deck should include.",
+    title: "Fulfil your presentation",
     prompt: withNote(item.prompt, "Additional content and instruction", note),
     note,
-    noteLabel: "Presentation brief (optional)",
-    notePlaceholder:
-      "e.g. A product launch deck for an analytics platform, aimed at operations leaders.",
+    noteLabel: "Presentation content and instruction",
+    notePlaceholder: "Add your presentation's content and instruction",
     templateSlug: item.slug,
     templateId: `presentation-template:${item.slug}`,
     backPath: ROUTES.onboardingPresentationTemplate,
     media: {
       kind: "presentation",
-      imageUrl: item.cardPreviewImage ?? item.previewImage,
+      imageUrl: item.previewImages[0] ?? item.previewImage,
     },
     requiresPaidPlan: false,
   };
@@ -89,19 +90,18 @@ function imageRunConfig(
   }
   const basePrompt = `Generate an illustration in the ${item.title} style.`;
   return {
-    title: item.title,
-    description: "Describe the subject, composition, and details to include.",
+    title: "Select one automation you would like to have a try",
     prompt: withNote(basePrompt, "Scene", note),
     note,
-    noteLabel: "Scene (optional)",
+    noteLabel: "Custom illustration scene",
     notePlaceholder:
-      "e.g. A small creative team planning a launch around a sunlit studio table.",
+      "Add your custom scene to remix with your own illustration",
     templateSlug: item.slug,
     templateId: `illustration-template:${item.slug}`,
     backPath: ROUTES.onboardingImageTemplate,
     media: {
       kind: "image",
-      imageUrl: item.cardPreviewImage ?? item.previewImage,
+      imageUrl: item.previewImage,
     },
     requiresPaidPlan: false,
   };
@@ -117,15 +117,16 @@ function videoRunConfig(
   if (!item) {
     return null;
   }
-  const basePrompt = `Create a ${item.title} video. ${item.description}`;
   return {
-    title: item.title,
-    description: "Add the story, product, or moment the video should capture.",
-    prompt: withNote(basePrompt, "Additional direction", note),
+    title: "Customize your video",
+    prompt: withNote(
+      onboardingVideoPrompt(item.slug),
+      "Additional direction",
+      note,
+    ),
     note,
-    noteLabel: "Video brief (optional)",
-    notePlaceholder:
-      "e.g. A 20-second launch film for a compact travel camera, ending on the product name.",
+    noteLabel: "Custom video prompt",
+    notePlaceholder: "Add your custom prompt to remix with your own video",
     templateSlug: item.slug,
     templateId: item.id,
     backPath: ROUTES.onboardingVideoTemplate,
@@ -154,28 +155,71 @@ function templateRunConfig(
   return videoRunConfig(draft.videoTemplateSlug, draft.videoNote);
 }
 
+function playVideo(event: SyntheticEvent<HTMLElement>): void {
+  const video = event.currentTarget.querySelector("video");
+  if (video) {
+    detach(video.play(), Reason.DomCallback);
+  }
+}
+
+function resetVideo(event: SyntheticEvent<HTMLElement>): void {
+  const video = event.currentTarget.querySelector("video");
+  if (video) {
+    video.pause();
+    video.currentTime = 0;
+  }
+}
+
 function TemplateRunPreview({ media }: { readonly media: TemplateRunMedia }) {
   if (media.kind === "video") {
     return (
-      <video
-        src={media.videoUrl}
-        poster={media.imageUrl}
-        autoPlay
-        muted
-        loop
-        playsInline
-        className="aspect-video w-full rounded-lg bg-black object-cover"
-      />
+      <section
+        aria-label="Video template preview"
+        tabIndex={0}
+        className="mt-6 h-[200px] w-full max-w-[350px] overflow-hidden rounded-3xl border border-border bg-background shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        onFocus={playVideo}
+        onBlur={resetVideo}
+        onMouseEnter={playVideo}
+        onMouseLeave={resetVideo}
+      >
+        <video
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster={media.imageUrl}
+          className="h-full w-full object-cover"
+        >
+          <source src={media.videoUrl} type="video/webm; codecs=vp9" />
+        </video>
+      </section>
+    );
+  }
+  if (media.kind === "presentation") {
+    return (
+      <section
+        aria-label="Presentation template preview"
+        className="mt-6 h-[136px] w-[242px] overflow-hidden rounded-3xl border border-border bg-muted shadow-sm"
+      >
+        <img
+          src={r2ImageTransformUrl(media.imageUrl, { width: 484 })}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      </section>
     );
   }
   return (
-    <div className="flex max-h-[420px] min-h-56 items-center justify-center overflow-hidden rounded-lg bg-[hsl(var(--gray-100))] p-3">
+    <section
+      aria-label="Illustration template preview"
+      className="mt-5 h-[225px] w-[167px] overflow-hidden rounded-3xl bg-muted"
+    >
       <img
-        src={media.imageUrl}
+        src={r2ImageTransformUrl(media.imageUrl, { width: 334 })}
         alt=""
-        className="max-h-[390px] max-w-full object-contain"
+        className="h-full w-full object-cover"
       />
-    </div>
+    </section>
   );
 }
 
@@ -214,14 +258,7 @@ function OnboardingTemplateRunPage({
       currentStep={3}
       totalSteps={3}
       title={config.title}
-      description={config.description}
-      preview={
-        <img
-          src={config.media.imageUrl}
-          alt=""
-          className="max-h-48 w-full rounded-lg object-contain"
-        />
-      }
+      description=""
       footer={
         <OnboardingRunAction
           prompt={config.prompt}
@@ -234,21 +271,21 @@ function OnboardingTemplateRunPage({
       }
     >
       <TemplateRunPreview media={config.media} />
-      <label
-        className="mt-6 block text-sm font-medium"
-        htmlFor={`${kind}-note`}
-      >
-        {config.noteLabel}
-      </label>
-      <textarea
-        id={`${kind}-note`}
-        value={config.note}
-        onChange={(event) => {
-          setNote(event.target.value);
-        }}
-        placeholder={config.notePlaceholder}
-        className="mt-2 min-h-28 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
-      />
+      <div className="mt-6 flex w-full flex-col rounded-3xl border border-border bg-background px-6 pb-6">
+        <label className="sr-only" htmlFor={`${kind}-note`}>
+          {config.noteLabel}
+        </label>
+        <textarea
+          id={`${kind}-note`}
+          value={config.note}
+          onChange={(event) => {
+            setNote(event.target.value);
+          }}
+          placeholder={config.notePlaceholder}
+          rows={5}
+          className="mt-[18px] min-h-32 w-full resize-y rounded-xl border border-border bg-background p-3 text-sm leading-5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+        />
+      </div>
     </OnboardingShell>
   );
 }
