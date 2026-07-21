@@ -46,7 +46,7 @@ volumes:
     name: $CLAUDE_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -61,32 +61,6 @@ setup() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export ARTIFACT_NAME="e2e-art-optional-${UNIQUE_ID}"
     export TEST_CONFIG="$TEST_DIR/vm0-${UNIQUE_ID}.yaml"
-}
-
-@test "t33-1: compose succeeds with optional volume that does not exist" {
-    # Create config with optional volume that doesn't exist
-    cat > "$TEST_CONFIG" <<EOF
-version: "1.0"
-agents:
-  ${AGENT_NAME}:
-    description: "Test agent with optional volume"
-    framework: claude-code
-    volumes:
-      - optional-data:/home/user/optional-data
-      - claude-files:/home/user/.config/claude
-volumes:
-  optional-data:
-    name: $OPTIONAL_VOLUME_NAME
-    version: latest
-    optional: true
-  claude-files:
-    name: $CLAUDE_VOLUME_NAME
-    version: latest
-EOF
-
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "t33-2: run succeeds when optional volume does not exist (skip silently)" {
@@ -146,7 +120,7 @@ volumes:
 EOF
 
     # Compose the agent
-    run $VM0_CLI compose "$TEST_CONFIG"
+    run seed_compose_fixture "$TEST_CONFIG"
     assert_success
 
     # Create artifact

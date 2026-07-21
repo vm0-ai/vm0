@@ -51,7 +51,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose vm0.yaml
+    seed_compose_fixture vm0.yaml
 }
 
 teardown_file() {
@@ -124,7 +124,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
     run $VM0_CLI run "$OVERRIDE_AGENT_NAME" \
         --verbose \

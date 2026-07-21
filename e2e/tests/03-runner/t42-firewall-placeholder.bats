@@ -220,7 +220,7 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-multi"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify env vars from both firewall configs are set to placeholder values.
@@ -416,7 +416,7 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-auto"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
@@ -462,7 +462,7 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-webhook"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify:

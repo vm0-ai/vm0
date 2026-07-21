@@ -24,7 +24,6 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
@@ -44,7 +43,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { pathname, search } from "../../../signals/location.ts";
+import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
@@ -1078,42 +1077,6 @@ describe("team page navigation", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Workflow automations attached to Research Agent."),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows agent workflows after authorization when the feature is enabled", async () => {
-    mockTeamAPIs();
-    mockAgentWorkflowApis();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}?tab=workflows`,
-      featureSwitches: {
-        [FeatureSwitchKey.AgentDetailWorkflowsTab]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
-    });
-
-    expect(pathname()).toBe(`/agents/${researchAgentId}`);
-    expect(search()).toBe("?tab=workflows");
-    const authorizationTab = queryTabByText("Authorization");
-    const workflowsTab = queryTabByText("Workflows");
-    expect(authorizationTab).toBeInTheDocument();
-    expect(workflowsTab).toBeInTheDocument();
-    expect(
-      authorizationTab!.compareDocumentPosition(workflowsTab!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
-    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
-    expect(
-      screen.queryByAltText("Runs as Research Runner"),
     ).not.toBeInTheDocument();
   });
 

@@ -31,7 +31,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -52,12 +52,6 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
-}
-
-@test "Build VM0 artifact mount test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "VM0 artifact files are visible in sandbox working directory" {

@@ -46,26 +46,49 @@ struct SandboxOp {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    encoding: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_raw_size_bucket: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_encoded_size_bucket: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_compression_ratio_bucket: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_ref_seen_recently: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_ref_download_inflight: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_content_length_state: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_content_encoding_state: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_transfer_encoding_state: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_download_source: Option<String>,
+    #[serde(flatten)]
+    session_history: Option<SessionHistoryTelemetryFields>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct SessionHistoryTelemetryFields {
+    encoding: &'static str,
+    #[serde(rename = "session_history_raw_size_bucket")]
+    raw_size_bucket: &'static str,
+    #[serde(rename = "session_history_encoded_size_bucket")]
+    encoded_size_bucket: &'static str,
+    #[serde(rename = "session_history_compression_ratio_bucket")]
+    compression_ratio_bucket: &'static str,
+    #[serde(
+        rename = "session_history_ref_seen_recently",
+        skip_serializing_if = "Option::is_none"
+    )]
+    ref_seen_recently: Option<&'static str>,
+    #[serde(
+        rename = "session_history_ref_download_inflight",
+        skip_serializing_if = "Option::is_none"
+    )]
+    ref_download_inflight: Option<&'static str>,
+    #[serde(
+        rename = "session_history_content_length_state",
+        skip_serializing_if = "Option::is_none"
+    )]
+    content_length_state: Option<&'static str>,
+    #[serde(
+        rename = "session_history_content_encoding_state",
+        skip_serializing_if = "Option::is_none"
+    )]
+    content_encoding_state: Option<&'static str>,
+    #[serde(
+        rename = "session_history_transfer_encoding_state",
+        skip_serializing_if = "Option::is_none"
+    )]
+    transfer_encoding_state: Option<&'static str>,
+    #[serde(
+        rename = "session_history_download_source",
+        skip_serializing_if = "Option::is_none"
+    )]
+    download_source: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -194,6 +217,61 @@ impl SessionHistoryTelemetryMetadata {
     }
 }
 
+impl From<SessionHistoryTelemetryMetadata> for SessionHistoryTelemetryFields {
+    fn from(metadata: SessionHistoryTelemetryMetadata) -> Self {
+        let cache_probe = metadata.cache_probe();
+        let response = metadata.response();
+        Self {
+            encoding: metadata.encoding(),
+            raw_size_bucket: metadata.raw_size_bucket(),
+            encoded_size_bucket: metadata.encoded_size_bucket(),
+            compression_ratio_bucket: metadata.compression_ratio_bucket(),
+            ref_seen_recently: cache_probe
+                .map(SessionHistoryCacheProbeMetadata::seen_recently_value),
+            ref_download_inflight: cache_probe
+                .map(SessionHistoryCacheProbeMetadata::download_inflight_value),
+            content_length_state: response
+                .map(SessionHistoryResponseTelemetryMetadata::content_length_value),
+            content_encoding_state: response
+                .map(SessionHistoryResponseTelemetryMetadata::content_encoding_value),
+            transfer_encoding_state: response
+                .map(SessionHistoryResponseTelemetryMetadata::transfer_encoding_value),
+            download_source: metadata.download_source(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl SessionHistoryTelemetryFields {
+    pub(crate) const fn encoding(self) -> &'static str {
+        self.encoding
+    }
+
+    pub(crate) const fn raw_size_bucket(self) -> &'static str {
+        self.raw_size_bucket
+    }
+
+    pub(crate) const fn encoded_size_bucket(self) -> &'static str {
+        self.encoded_size_bucket
+    }
+
+    pub(crate) const fn compression_ratio_bucket(self) -> &'static str {
+        self.compression_ratio_bucket
+    }
+
+    pub(crate) const fn ref_seen_recently(self) -> Option<&'static str> {
+        self.ref_seen_recently
+    }
+
+    pub(crate) const fn ref_download_inflight(self) -> Option<&'static str> {
+        self.ref_download_inflight
+    }
+
+    pub(crate) const fn download_source(self) -> Option<&'static str> {
+        self.download_source
+    }
+}
+
 impl SessionHistoryCacheProbeMetadata {
     pub(crate) const fn new(seen_recently: bool, download_inflight: bool) -> Self {
         Self {
@@ -307,7 +385,7 @@ impl JobTelemetry {
         success: bool,
         error: Option<&str>,
     ) {
-        self.record_inner(action_type, duration, success, error, None, None);
+        self.record_inner(action_type, duration, success, error, None);
     }
 
     /// Record a timed operation with low-cardinality session-history transport
@@ -320,14 +398,7 @@ impl JobTelemetry {
         error: Option<&str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.record_inner(
-            action_type,
-            duration,
-            success,
-            error,
-            metadata.map(SessionHistoryTelemetryMetadata::encoding),
-            metadata,
-        );
+        self.record_inner(action_type, duration, success, error, metadata);
     }
 
     pub(crate) fn reporter(&self) -> SandboxOpReporter {
@@ -344,17 +415,10 @@ impl JobTelemetry {
         duration: Duration,
         success: bool,
         error: Option<&str>,
-        encoding: Option<&'static str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.pending_ops.push(sandbox_op(
-            action_type,
-            duration,
-            success,
-            error,
-            encoding,
-            metadata,
-        ));
+        self.pending_ops
+            .push(sandbox_op(action_type, duration, success, error, metadata));
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
         }
@@ -420,16 +484,7 @@ impl JobTelemetry {
                 action_type: op.action_type.clone(),
                 success: op.success,
                 error: op.error.clone(),
-                encoding: op.encoding.clone(),
-                raw_size_bucket: op.session_history_raw_size_bucket.clone(),
-                encoded_size_bucket: op.session_history_encoded_size_bucket.clone(),
-                compression_ratio_bucket: op.session_history_compression_ratio_bucket.clone(),
-                ref_seen_recently: op.session_history_ref_seen_recently.clone(),
-                ref_download_inflight: op.session_history_ref_download_inflight.clone(),
-                content_length_state: op.session_history_content_length_state.clone(),
-                content_encoding_state: op.session_history_content_encoding_state.clone(),
-                transfer_encoding_state: op.session_history_transfer_encoding_state.clone(),
-                download_source: op.session_history_download_source.clone(),
+                session_history: op.session_history,
             })
             .collect()
     }
@@ -502,7 +557,6 @@ impl SandboxOpReporter {
                     record.success,
                     record.error,
                     None,
-                    None,
                 )
             })
             .collect();
@@ -516,16 +570,7 @@ pub(crate) struct SessionHistoryTelemetrySnapshot {
     pub(crate) action_type: String,
     pub(crate) success: bool,
     pub(crate) error: Option<String>,
-    pub(crate) encoding: Option<String>,
-    pub(crate) raw_size_bucket: Option<String>,
-    pub(crate) encoded_size_bucket: Option<String>,
-    pub(crate) compression_ratio_bucket: Option<String>,
-    pub(crate) ref_seen_recently: Option<String>,
-    pub(crate) ref_download_inflight: Option<String>,
-    pub(crate) content_length_state: Option<String>,
-    pub(crate) content_encoding_state: Option<String>,
-    pub(crate) transfer_encoding_state: Option<String>,
-    pub(crate) download_source: Option<String>,
+    pub(crate) session_history: Option<SessionHistoryTelemetryFields>,
 }
 
 fn sandbox_op(
@@ -533,45 +578,15 @@ fn sandbox_op(
     duration: Duration,
     success: bool,
     error: Option<&str>,
-    encoding: Option<&'static str>,
     metadata: Option<SessionHistoryTelemetryMetadata>,
 ) -> SandboxOp {
-    let cache_probe = metadata.and_then(SessionHistoryTelemetryMetadata::cache_probe);
-    let response = metadata.and_then(SessionHistoryTelemetryMetadata::response);
     SandboxOp {
         ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         action_type: action_type.to_string(),
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
-        encoding: encoding.map(String::from),
-        session_history_raw_size_bucket: metadata
-            .map(SessionHistoryTelemetryMetadata::raw_size_bucket)
-            .map(String::from),
-        session_history_encoded_size_bucket: metadata
-            .map(SessionHistoryTelemetryMetadata::encoded_size_bucket)
-            .map(String::from),
-        session_history_compression_ratio_bucket: metadata
-            .map(SessionHistoryTelemetryMetadata::compression_ratio_bucket)
-            .map(String::from),
-        session_history_ref_seen_recently: cache_probe
-            .map(SessionHistoryCacheProbeMetadata::seen_recently_value)
-            .map(String::from),
-        session_history_ref_download_inflight: cache_probe
-            .map(SessionHistoryCacheProbeMetadata::download_inflight_value)
-            .map(String::from),
-        session_history_content_length_state: response
-            .map(SessionHistoryResponseTelemetryMetadata::content_length_value)
-            .map(String::from),
-        session_history_content_encoding_state: response
-            .map(SessionHistoryResponseTelemetryMetadata::content_encoding_value)
-            .map(String::from),
-        session_history_transfer_encoding_state: response
-            .map(SessionHistoryResponseTelemetryMetadata::transfer_encoding_value)
-            .map(String::from),
-        session_history_download_source: metadata
-            .and_then(SessionHistoryTelemetryMetadata::download_source)
-            .map(String::from),
+        session_history: metadata.map(SessionHistoryTelemetryFields::from),
     }
 }
 
@@ -761,30 +776,25 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_op_serializes_correctly() {
+    fn sandbox_op_omits_optional_fields_without_session_history() {
         let op = SandboxOp {
             ts: "2026-01-15T10:00:00+00:00".to_string(),
             action_type: "vm_create".to_string(),
             duration_ms: 1500,
             success: true,
             error: None,
-            encoding: None,
-            session_history_raw_size_bucket: None,
-            session_history_encoded_size_bucket: None,
-            session_history_compression_ratio_bucket: None,
-            session_history_ref_seen_recently: None,
-            session_history_ref_download_inflight: None,
-            session_history_content_length_state: None,
-            session_history_content_encoding_state: None,
-            session_history_transfer_encoding_state: None,
-            session_history_download_source: None,
+            session_history: None,
         };
         let json = serde_json::to_value(&op).unwrap();
-        assert_eq!(json["ts"], "2026-01-15T10:00:00+00:00");
-        assert_eq!(json["action_type"], "vm_create");
-        assert_eq!(json["duration_ms"], 1500);
-        assert_eq!(json["success"], true);
-        assert!(json.get("error").is_none()); // omitted when None
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "ts": "2026-01-15T10:00:00+00:00",
+                "action_type": "vm_create",
+                "duration_ms": 1500,
+                "success": true,
+            })
+        );
     }
 
     #[test]
@@ -873,7 +883,22 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_payload_uses_camel_case() {
+    fn telemetry_payload_flattens_session_history_fields() {
+        let metadata = SessionHistoryTelemetryMetadata {
+            encoding: "gzip",
+            raw_size_bucket: "64_256_kib",
+            encoded_size_bucket: "lt_64_kib",
+            compression_ratio_bucket: "lt_0_25",
+            download_source: Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint),
+            cache_probe: None,
+            response: None,
+        }
+        .with_cache_probe(SessionHistoryCacheProbeMetadata::new(true, false))
+        .with_response(SessionHistoryResponseTelemetryMetadata::new(
+            SessionHistoryContentLengthState::MatchesExpected,
+            SessionHistoryContentEncodingState::Absent,
+            SessionHistoryTransferEncodingState::Absent,
+        ));
         let payload = TelemetryPayload {
             run_id: "abc-123".to_string(),
             sandbox_operations: vec![SandboxOp {
@@ -882,57 +907,31 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 error: None,
-                encoding: Some("gzip".to_string()),
-                session_history_raw_size_bucket: Some("64_256_kib".to_string()),
-                session_history_encoded_size_bucket: Some("lt_64_kib".to_string()),
-                session_history_compression_ratio_bucket: Some("lt_0_25".to_string()),
-                session_history_ref_seen_recently: Some("true".to_string()),
-                session_history_ref_download_inflight: Some("false".to_string()),
-                session_history_content_length_state: Some("matches_expected".to_string()),
-                session_history_content_encoding_state: Some("absent".to_string()),
-                session_history_transfer_encoding_state: Some("absent".to_string()),
-                session_history_download_source: Some("configured_public_endpoint".to_string()),
+                session_history: Some(metadata.into()),
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();
-        assert!(json.get("runId").is_some());
-        assert!(json.get("sandboxOperations").is_some());
-        assert_eq!(json["sandboxOperations"][0]["encoding"], "gzip");
         assert_eq!(
-            json["sandboxOperations"][0]["session_history_raw_size_bucket"],
-            "64_256_kib"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_encoded_size_bucket"],
-            "lt_64_kib"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_compression_ratio_bucket"],
-            "lt_0_25"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_ref_seen_recently"],
-            "true"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_ref_download_inflight"],
-            "false"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_content_length_state"],
-            "matches_expected"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_content_encoding_state"],
-            "absent"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_transfer_encoding_state"],
-            "absent"
-        );
-        assert_eq!(
-            json["sandboxOperations"][0]["session_history_download_source"],
-            "configured_public_endpoint"
+            json,
+            serde_json::json!({
+                "runId": "abc-123",
+                "sandboxOperations": [{
+                    "ts": "2026-01-15T10:00:00+00:00",
+                    "action_type": "test",
+                    "duration_ms": 100,
+                    "success": true,
+                    "encoding": "gzip",
+                    "session_history_raw_size_bucket": "64_256_kib",
+                    "session_history_encoded_size_bucket": "lt_64_kib",
+                    "session_history_compression_ratio_bucket": "lt_0_25",
+                    "session_history_ref_seen_recently": "true",
+                    "session_history_ref_download_inflight": "false",
+                    "session_history_content_length_state": "matches_expected",
+                    "session_history_content_encoding_state": "absent",
+                    "session_history_transfer_encoding_state": "absent",
+                    "session_history_download_source": "configured_public_endpoint",
+                }],
+            })
         );
     }
 
@@ -1003,16 +1002,7 @@ mod tests {
                 action_type: "session_history_download".to_string(),
                 success: true,
                 error: None,
-                encoding: Some("gzip".to_string()),
-                raw_size_bucket: Some("64_256_kib".to_string()),
-                encoded_size_bucket: Some("lt_64_kib".to_string()),
-                compression_ratio_bucket: Some("lt_0_25".to_string()),
-                ref_seen_recently: Some("false".to_string()),
-                ref_download_inflight: Some("true".to_string()),
-                content_length_state: Some("matches_expected".to_string()),
-                content_encoding_state: Some("absent".to_string()),
-                transfer_encoding_state: Some("chunked".to_string()),
-                download_source: Some("configured_public_endpoint".to_string()),
+                session_history: Some(metadata.into()),
             }]
         );
     }
@@ -1033,11 +1023,22 @@ mod tests {
             Duration::from_millis(5),
             true,
             None,
-            Some("gzip"),
             Some(metadata),
         );
-        let json = serde_json::to_value(&op).unwrap();
-        assert!(json.get("session_history_download_source").is_none());
+        let mut json = serde_json::to_value(&op).unwrap();
+        assert!(json.as_object_mut().unwrap().remove("ts").is_some());
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "action_type": "session_history_download",
+                "duration_ms": 5,
+                "success": true,
+                "encoding": "gzip",
+                "session_history_raw_size_bucket": "64_256_kib",
+                "session_history_encoded_size_bucket": "lt_64_kib",
+                "session_history_compression_ratio_bucket": "lt_0_25",
+            })
+        );
     }
 
     #[test]
