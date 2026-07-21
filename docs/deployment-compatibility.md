@@ -199,6 +199,28 @@ For persisted state changes:
 - Test that new writes do not break the previous deployed reader during the
   rollout window, or document why the old reader cannot observe the new data.
 
+### Connector credential ownership contraction
+
+The final connector credential ownership contraction may run only after every
+active and rollback-eligible API version writes a positive storage version,
+and assigns each connector credential to its stable connector id. Drain older
+API instances that lack either guarantee, then require the protected production
+readiness counts to be zero before applying the migration.
+
+The contraction reruns its immutable reconciliation and validates aggregate
+invariant counts in the same transaction as the hard constraints. An unresolved
+row aborts the migration without retaining reconciliation changes; remediate
+the data and retry. After success, connector storage versions are required,
+connector credential ownership is exact, and deleting a connector cascades to
+its owned secrets and variables so cleanup remains atomic across every deletion
+path. Application disconnect and replacement flows still delete owned
+credentials explicitly; the cascade is the final data-integrity guarantee, not
+a replacement for domain cleanup or provider revocation.
+
+After contraction, do not roll back directly to an API version that lacks the
+required write guarantees. Recovery must roll forward or restore the nullable
+schema before promoting that older API.
+
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion
 criteria after the old version is gone.

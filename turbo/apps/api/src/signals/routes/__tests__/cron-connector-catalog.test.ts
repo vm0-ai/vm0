@@ -39,15 +39,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
-import {
-  readConnectorCredentialStorageState,
-  seedConnectorStorageRow,
-  seedLegacyConnectorSecret,
-  seedLegacyConnectorVariable,
-  setConnectorCredentialStorageState,
-  setConnectorSecretOwner,
-  setConnectorVariableOwner,
-} from "./helpers/connector-credential-storage-state";
+import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   awsVerificationCode,
@@ -1190,79 +1182,16 @@ describe("connector catalog cron authentication and initial state", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
-  it("reports aggregate-only connector credential readiness", async () => {
+  it("reports zero final connector credential invariant violations", async () => {
     configureSource();
-    const actor = bdd.user();
-    const orgId = actor.orgId ?? "";
-    const connectorId = await seedConnectorStorageRow(context, {
-      authMethod: "oauth",
-      connectorRef: "test-oauth",
-      orgId,
-      storageVersion: 1,
-      userId: actor.userId,
-    });
-    await setConnectorCredentialStorageState(context, {
-      connectorRef: "test-oauth",
-      orgId,
-      storageVersion: null,
-      userId: actor.userId,
-    });
-    const suffix = randomUUID().replaceAll("-", "").toUpperCase();
-    const secretName = `UNRESOLVED_SECRET_${suffix}`;
-    const variableName = `UNRESOLVED_VARIABLE_${suffix}`;
-    await seedLegacyConnectorSecret(context, {
-      description: "private readiness description",
-      encryptedValue: "private readiness secret",
-      name: secretName,
-      orgId,
-      userId: actor.userId,
-    });
-    await seedLegacyConnectorVariable(context, {
-      name: variableName,
-      orgId,
-      userId: actor.userId,
-      value: "private readiness variable",
-    });
-    onTestFinished(async () => {
-      await setConnectorSecretOwner(context, {
-        connectorId,
-        name: secretName,
-        orgId,
-        userId: actor.userId,
-      });
-      await setConnectorVariableOwner(context, {
-        connectorId,
-        name: variableName,
-        orgId,
-        userId: actor.userId,
-      });
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        "test-oauth",
-        [204, 404],
-      );
-    });
 
     const response = await readStatus();
-    expect(response.body.credentialStorage).toMatchObject({
-      missingConnectorVersions: expect.any(Number),
-      unownedConnectorSecrets: expect.any(Number),
-      unownedConnectorVariables: expect.any(Number),
-      unresolvedBridgeCredentials: expect.any(Number),
+    expect(response.body.credentialStorage).toStrictEqual({
+      missingConnectorVersions: 0,
+      unownedConnectorSecrets: 0,
+      unownedConnectorVariables: 0,
+      unresolvedBridgeCredentials: 0,
     });
-    expect(
-      response.body.credentialStorage.missingConnectorVersions,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      response.body.credentialStorage.unownedConnectorSecrets,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      response.body.credentialStorage.unownedConnectorVariables,
-    ).toBeGreaterThanOrEqual(1);
-    const serialized = JSON.stringify(response.body.credentialStorage);
-    expect(serialized).not.toContain(secretName);
-    expect(serialized).not.toContain(variableName);
-    expect(serialized).not.toContain(actor.userId);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 });
@@ -1646,13 +1575,6 @@ describe("connector catalog valid lifecycle", () => {
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
     const actor = bdd.user();
-    await seedLegacyConnectorSecret(context, {
-      description: "unresolved optional external state",
-      encryptedValue: "unresolved-optional-value",
-      name: optionalSecretName,
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
     onTestFinished(async () => {
       await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
     });
@@ -1695,20 +1617,7 @@ describe("connector catalog valid lifecycle", () => {
       userId: actor.userId,
       secretNames: [optionalSecretName],
     });
-    expect(storageState.secrets).toStrictEqual([
-      {
-        connector_id: null,
-        description: "unresolved optional external state",
-        encrypted_value: "unresolved-optional-value",
-        name: optionalSecretName,
-      },
-    ]);
-    await setConnectorSecretOwner(context, {
-      connectorId: connected.id,
-      name: optionalSecretName,
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
+    expect(storageState.secrets).toStrictEqual([]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
