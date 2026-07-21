@@ -204,7 +204,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
           switches: {
             [FeatureSwitchKey.AgentUnreadIndicators]: true,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
-            [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -216,11 +215,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeTruthy();
     expect(
       ownerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
-    ).toBeTruthy();
-    expect(
-      ownerUpdate.body.switches[
-        FeatureSwitchKey.MobileUnreadChatThreadShortcuts
-      ],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -234,9 +228,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
-    expect(
-      peerRead.body.switches[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
-    ).toBeUndefined();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
     const outsiderRead = await accept(
@@ -248,11 +239,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeUndefined();
     expect(
       outsiderRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
-    ).toBeUndefined();
-    expect(
-      outsiderRead.body.switches[
-        FeatureSwitchKey.MobileUnreadChatThreadShortcuts
-      ],
     ).toBeUndefined();
 
     const peerUpdate = await accept(
@@ -273,11 +259,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       peerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeFalsy();
-    expect(
-      peerUpdate.body.switches[
-        FeatureSwitchKey.MobileUnreadChatThreadShortcuts
-      ],
-    ).toBeUndefined();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
     const ownerReadAfterPeerUpdate = await accept(
@@ -294,11 +275,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
         FeatureSwitchKey.ChatThreadUnifiedSearch
       ],
     ).toBeFalsy();
-    expect(
-      ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.MobileUnreadChatThreadShortcuts
-      ],
-    ).toBeTruthy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.Dummy],
     ).toBeFalsy();
@@ -319,11 +295,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       peerReadAfterDelete.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch
-      ],
-    ).toBeUndefined();
-    expect(
-      peerReadAfterDelete.body.switches[
-        FeatureSwitchKey.MobileUnreadChatThreadShortcuts
       ],
     ).toBeUndefined();
     expect(
