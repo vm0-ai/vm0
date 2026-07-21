@@ -1337,7 +1337,7 @@ function resolveLatestVersion(
 async function resolveExactVersion(
   db: Db,
   storage: StorageIndexEntry,
-  resolvedOrgId: string,
+  lookup: StorageLookup,
   version: string,
 ): Promise<StorageResolution | null> {
   const [match] = await db
@@ -1354,6 +1354,10 @@ async function resolveExactVersion(
       and(
         eq(storageVersions.storageId, storage.storageId),
         eq(storageVersions.id, version),
+        eq(storages.orgId, lookup.orgId),
+        eq(storages.userId, lookup.userId),
+        eq(storages.name, lookup.name),
+        eq(storages.type, lookup.type),
       ),
     )
     .limit(1);
@@ -1365,7 +1369,7 @@ async function resolveExactVersion(
         s3Key: match.s3Key,
         archiveSize: match.archiveSize,
         fileCount: match.fileCount,
-        resolvedOrgId,
+        resolvedOrgId: lookup.orgId,
       }
     : null;
 }
@@ -1383,12 +1387,7 @@ async function resolvePinnedVersion(
     throw new Error(`Storage "${lookup.name}" not found in database`);
   }
 
-  const exactMatch = await resolveExactVersion(
-    db,
-    storage,
-    lookup.orgId,
-    version,
-  );
+  const exactMatch = await resolveExactVersion(db, storage, lookup, version);
   if (exactMatch) {
     return exactMatch;
   }
@@ -1611,12 +1610,7 @@ async function resolveConnectorSkillStorageInput(args: {
   if (!storage) {
     throw connectorSkillRegistrationError();
   }
-  const resolved = await resolveExactVersion(
-    args.db,
-    storage,
-    SYSTEM_ORG_ID,
-    version,
-  );
+  const resolved = await resolveExactVersion(args.db, storage, lookup, version);
   if (!resolved) {
     throw connectorSkillRegistrationError();
   }
