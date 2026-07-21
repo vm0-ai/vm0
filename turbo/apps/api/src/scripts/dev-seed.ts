@@ -148,6 +148,9 @@ function buildStorageSeedSql(
   systemOrgId: string,
   volumeOrgUserId: string,
 ): string {
+  // This fixture captured the legacy system-skill writer's encoded archive
+  // length as versionSize. Preserve the historical size value while also
+  // populating the final archive-size metadata for the same shared object.
   return `
   INSERT INTO storages (
     id, org_id, user_id, name, type, s3_prefix, size, file_count, updated_at
@@ -166,11 +169,11 @@ function buildStorageSeedSql(
     (excluded.s3_prefix, excluded.size, excluded.file_count);
 
   INSERT INTO storage_versions (
-    id, storage_id, s3_key, size, file_count, message, created_by
+    id, storage_id, s3_key, size, archive_size, file_count, message, created_by
   )
   SELECT
     volume."versionHash", storage.id, volume."s3Key", volume."versionSize",
-    volume."versionFileCount", volume.message, 'system'
+    volume."versionSize", volume."versionFileCount", volume.message, 'system'
   FROM dev_seed_skill_volumes AS volume
   JOIN storages AS storage
     ON storage.org_id = ${systemOrgId}
@@ -181,6 +184,7 @@ function buildStorageSeedSql(
     storage_id = excluded.storage_id,
     s3_key = excluded.s3_key,
     size = excluded.size,
+    archive_size = excluded.archive_size,
     file_count = excluded.file_count,
     message = excluded.message,
     created_by = excluded.created_by
@@ -188,6 +192,7 @@ function buildStorageSeedSql(
     storage_versions.storage_id,
     storage_versions.s3_key,
     storage_versions.size,
+    storage_versions.archive_size,
     storage_versions.file_count,
     storage_versions.message,
     storage_versions.created_by
@@ -195,6 +200,7 @@ function buildStorageSeedSql(
     excluded.storage_id,
     excluded.s3_key,
     excluded.size,
+    excluded.archive_size,
     excluded.file_count,
     excluded.message,
     excluded.created_by
