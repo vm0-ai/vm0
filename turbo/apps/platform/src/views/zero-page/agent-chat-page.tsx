@@ -9,13 +9,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import {
-  IconArrowUpRight,
-  IconChevronRight,
-  IconLoader2,
-  IconPin,
-  IconUserPlus,
-} from "@tabler/icons-react";
+import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -41,8 +35,6 @@ import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import {
   replaceWorkflowPromptDraftTarget$,
@@ -91,7 +83,6 @@ import { updateUserModelPreference$ } from "../../signals/external/user-model-pr
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
-import { currentAgentUnreadChatThreads$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 
 function getTagline(
   agentName: string,
@@ -360,58 +351,6 @@ function IdeasUseCasesButton() {
         <IconArrowUpRight size={14} stroke={2} />
       </div>
     </button>
-  );
-}
-
-function MobileUnreadThreadShortcuts() {
-  const features = useGet(featureSwitch$);
-  const enabled =
-    features[FeatureSwitchKey.MobileUnreadChatThreadShortcuts] ?? false;
-  const unreadThreads = useLastResolved(currentAgentUnreadChatThreads$) ?? [];
-
-  if (!enabled || unreadThreads.length === 0) {
-    return null;
-  }
-
-  return (
-    <section
-      className="md:hidden flex flex-col gap-2"
-      aria-label="Unread chats"
-    >
-      <div className="zero-card divide-y divide-border/60 overflow-hidden">
-        {unreadThreads.map((thread) => {
-          return (
-            <Link
-              key={thread.id}
-              pathname="/chats/:threadId"
-              options={{ pathParams: { threadId: thread.id } }}
-              className="flex min-h-12 items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold leading-5 text-foreground">
-                  {thread.title ?? "New chat"}
-                </span>
-              </span>
-              {thread.hasActiveRun ? (
-                <IconLoader2
-                  size={14}
-                  stroke={1.8}
-                  className="shrink-0 animate-spin text-primary"
-                  aria-label="Running"
-                />
-              ) : (
-                <IconChevronRight
-                  size={16}
-                  stroke={1.8}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-              )}
-            </Link>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -759,8 +698,6 @@ export function AgentChatPage() {
             onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
             onConfirm={workflowPrompt.onConfirmReplaceDraft}
           />
-
-          <MobileUnreadThreadShortcuts />
 
           <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
         </div>
