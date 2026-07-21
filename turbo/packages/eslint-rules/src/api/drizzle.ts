@@ -127,3 +127,19 @@ export function isDrizzleColumnType(
   const brandType = propertyType(checker, metadataType, "brand", location);
   return brandType?.isStringLiteral() === true && brandType.value === "Column";
 }
+
+export function isDrizzleArrayColumnType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  if (!isDrizzleColumnType(checker, type, location)) {
+    return false;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return false;
+  }
+  const dataType = propertyType(checker, metadataType, "data", location);
+  return dataType !== undefined && checker.isArrayType(dataType);
+}
