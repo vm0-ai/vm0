@@ -64,6 +64,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_teams_entrypoint_gap"
   | "api_dispatch_pre_create_zero_teams_create_run"
   | "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap"
+  | "api_dispatch_pre_create_zero_workflow_automation_queue_admission"
   | "api_dispatch_pre_create_zero_workflow_automation_check_active_run"
   | "api_dispatch_pre_create_zero_workflow_automation_check_target_access"
   | "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context"
