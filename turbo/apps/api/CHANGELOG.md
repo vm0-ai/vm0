@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.295.0](https://github.com/vm0-ai/vm0/compare/api-v1.294.0...api-v1.295.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Refactoring
+
+* **artifacts:** remove favorites from artifact synchronization ([#22381](https://github.com/vm0-ai/vm0/issues/22381)) ([7d5f43a](https://github.com/vm0-ai/vm0/commit/7d5f43a87c7493ce1037765da86c12d925d24d7a))
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+* stop provisioning channel artifact storages ([#22393](https://github.com/vm0-ai/vm0/issues/22393)) ([fd2a259](https://github.com/vm0-ai/vm0/commit/fd2a259acbad18a82933876482f330171dac8d62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+    * @vm0/db bumped to 1.124.0
+
 ## [1.294.0](https://github.com/vm0-ai/vm0/compare/api-v1.293.0...api-v1.294.0) (2026-07-21)
 
 

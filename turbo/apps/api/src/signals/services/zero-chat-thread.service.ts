@@ -172,7 +172,6 @@ const artifactListSqlRowSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string().nullable(),
   agent_avatar_url: z.string().nullable(),
-  is_favorited: z.boolean(),
 });
 type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 
@@ -1118,7 +1117,6 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
-    isFavorited: row.is_favorited,
     ...(artifactKind ? { artifactKind } : {}),
   };
 }
@@ -1304,8 +1302,7 @@ async function listChangedArtifacts(args: {
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
         COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-        ${zeroAgents.avatarUrl} AS agent_avatar_url,
-        (${isNotNull(userArtifactFavorites.artifactUrl)}) AS is_favorited
+        ${zeroAgents.avatarUrl} AS agent_avatar_url
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
         ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
@@ -1328,10 +1325,6 @@ async function listChangedArtifacts(args: {
         ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
         ON ${eq(zeroAgents.id, agentComposes.id)}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${eq(userArtifactFavorites.orgId, args.query.orgId)}
-        AND ${eq(userArtifactFavorites.userId, args.query.userId)}
-        AND ${eq(userArtifactFavorites.artifactUrl, runUploadedFiles.url)}
       ORDER BY changed_artifact_ids.effective_updated_at ASC,
         changed_artifact_ids.row_id ASC
     `,
@@ -1377,8 +1370,7 @@ async function listArtifactHistory(args: {
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        (${isNotNull(userArtifactFavorites.artifactUrl)}) AS is_favorited
+        ) AS cursor_created_at
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
         ON ${eq(agentRuns.id, runUploadedFiles.runId)}
@@ -1399,10 +1391,6 @@ async function listArtifactHistory(args: {
         ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
         ON ${eq(zeroAgents.id, agentComposes.id)}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${eq(userArtifactFavorites.orgId, args.query.orgId)}
-        AND ${eq(userArtifactFavorites.userId, args.query.userId)}
-        AND ${eq(userArtifactFavorites.artifactUrl, runUploadedFiles.url)}
       WHERE ${sql.join(conditions, sql` AND `)}
       ${keysetClause}
     ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
@@ -1543,40 +1531,6 @@ async function artifactUrlIsVisible(
   return rows[0]?.visible === true;
 }
 
-async function touchArtifactFavoriteChange(
-  db: Pick<Db, "execute">,
-  args: ArtifactFavoriteArgs,
-): Promise<void> {
-  await db.execute(sql`
-    UPDATE ${runUploadedFiles}
-    SET updated_at = clock_timestamp()
-    WHERE ${eq(runUploadedFiles.url, args.artifactUrl)}
-      AND EXISTS (
-        SELECT 1
-        FROM ${agentRuns}
-        INNER JOIN ${zeroRuns}
-          ON ${eq(zeroRuns.id, agentRuns.id)}
-        INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-              ORDER BY ${chatMessages.createdAt} ASC
-              LIMIT 1
-            )
-          )
-        INNER JOIN ${agentComposes}
-          ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-        WHERE ${eq(agentRuns.id, runUploadedFiles.runId)}
-          AND ${eq(agentRuns.orgId, args.orgId)}
-          AND ${eq(chatThreads.userId, args.userId)}
-          AND ${eq(agentComposes.orgId, args.orgId)}
-      )
-  `);
-}
-
 export const favoriteArtifact$ = command(
   async (
     { set },
@@ -1589,7 +1543,7 @@ export const favoriteArtifact$ = command(
         return false;
       }
 
-      const inserted = await tx
+      await tx
         .insert(userArtifactFavorites)
         .values({
           orgId: args.orgId,
@@ -1602,11 +1556,7 @@ export const favoriteArtifact$ = command(
             userArtifactFavorites.userId,
             userArtifactFavorites.artifactUrl,
           ],
-        })
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (inserted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
+        });
       return true;
     });
     signal.throwIfAborted();
@@ -1621,21 +1571,15 @@ export const unfavoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db.transaction(async (tx) => {
-      const deleted = await tx
-        .delete(userArtifactFavorites)
-        .where(
-          and(
-            eq(userArtifactFavorites.orgId, args.orgId),
-            eq(userArtifactFavorites.userId, args.userId),
-            eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-          ),
-        )
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (deleted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
-    });
+    await db
+      .delete(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+        ),
+      );
     signal.throwIfAborted();
   },
 );

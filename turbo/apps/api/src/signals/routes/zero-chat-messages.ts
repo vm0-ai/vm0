@@ -760,7 +760,7 @@ async function latestSessionForThread(
     // never resumes an automated one. The 'web' filter (before .limit) is
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
-    // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
+    // (zero-goal-continuation.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
     .where(
       and(
@@ -3297,7 +3297,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-export const sendNormalMessage$ = command(
+const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,

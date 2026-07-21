@@ -207,7 +207,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("https://staging-app.omby.ai/");
 
     expect(config.environment).toBe("staging");
-    expect(config.webUrl.toString()).toBe("https://staging-www.vm6.ai/");
+    expect(config.webUrl.toString()).toBe("https://staging-www.omby.ai/");
     expect(config.identity).toMatchObject({
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
@@ -217,7 +217,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.allowedAppOrigins.has("https://staging-app.omby.ai")).toBe(
       true,
     );
-    expect(config.allowedAppOrigins.has("https://staging-www.vm6.ai")).toBe(
+    expect(config.allowedAppOrigins.has("https://staging-www.omby.ai")).toBe(
       true,
     );
     expect(config.allowedAppOrigins.has("https://staging-api.vm6.ai")).toBe(
@@ -257,7 +257,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("https://pr-123-app.omby.ai/");
 
     expect(config.environment).toBe("development");
-    expect(config.webUrl.toString()).toBe("https://pr-123-www.vm6.ai/");
+    expect(config.webUrl.toString()).toBe("https://pr-123-www.omby.ai/");
     expect(config.identity).toMatchObject({
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
@@ -266,7 +266,7 @@ describe("resolveDesktopConfig", () => {
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
       "https://pr-123-api.vm6.ai",
       "https://pr-123-app.omby.ai",
-      "https://pr-123-www.vm6.ai",
+      "https://pr-123-www.omby.ai",
     ]);
   });
 

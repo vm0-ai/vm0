@@ -113,7 +113,9 @@ case "$action" in
     if [[ "$domain_status" != "active" && "$verification_status" != "active" ]]; then
       upsert_cname "${project_name}.pages.dev"
 
-      for _ in {1..30}; do
+      # A newly-created Pages custom domain can take longer than a minute to
+      # publish ownership verification even after its CNAME is visible.
+      for _ in {1..90}; do
         domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
         verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
         if [[ "$verification_status" == "active" ]]; then

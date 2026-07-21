@@ -13,11 +13,11 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 /*
 helper gap:
 - AUTH-02 device, desktop, sandbox, zero, realtime, and run-scoped token flows
-  need a dedicated token helper; this file covers the public API key token flow
-  end to end through create, use, list, and revoke.
+  need a dedicated token helper; this file covers the CLI PAT flow end to end
+  through device authorization and use.
 - AUTH-03 built-in/user connector and push subscription flows need their own
-  domain helpers; this file covers user-owned API keys, secrets, variables,
-  preferences, and org custom connector safe metadata.
+  domain helpers; this file covers user-owned secrets, variables, preferences,
+  and org custom connector safe metadata.
 - ORG-01 logo upload/delete needs a multipart org-logo helper.
 - AGENT-02 has no default-agent GET route; assertions use onboarding status as
   the visible read model for the selected default agent.
@@ -196,56 +196,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
   });
 });
 
-describe("AUTH-02 and AUTH-03", () => {
-  it("issues a CLI API key, exposes safe metadata, authorizes API use, and revokes it", async () => {
-    const admin = api.user();
-    await onboardAdmin(admin, { slug: slug("bdd-key") });
-
-    const created = await api.createApiKey(admin, {
-      name: "BDD CLI token",
-      expiresInDays: 7,
-    });
-    expect(created.token).toContain(".");
-    expect(created.tokenPrefix.length).toBeGreaterThan(4);
-
-    const listed = await api.listApiKeys(admin);
-    const metadata = listed.apiKeys.find((key) => {
-      return key.id === created.id;
-    });
-    expect(metadata).toBeDefined();
-    if (!metadata) {
-      throw new Error("created API key was not listed");
-    }
-    expect(metadata.name).toBe("BDD CLI token");
-    expect("token" in metadata).toBeFalsy();
-
-    const tokenMe = await api.requestReadMeWithBearer(
-      created.token,
-      admin,
-      [200],
-    );
-    expect(tokenMe.body).toStrictEqual({
-      userId: admin.userId,
-      email: admin.email,
-    });
-
-    await api.deleteApiKey(admin, created.id);
-    const afterDelete = await api.listApiKeys(admin);
-    expect(
-      afterDelete.apiKeys.some((key) => {
-        return key.id === created.id;
-      }),
-    ).toBeFalsy();
-
-    const revoked = await api.requestReadMeWithBearer(
-      created.token,
-      admin,
-      [401],
-    );
-    expectApiError(revoked.body);
-    expect(revoked.body.error.code).toBe("UNAUTHORIZED");
-  });
-
+describe("AUTH-03", () => {
   it("manages user-owned secrets, variables, and preferences through safe visible reads", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-config") });

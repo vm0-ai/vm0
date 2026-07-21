@@ -135,6 +135,28 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
     }),
   }),
   z.object({
+    template: z.literal("morning-brief"),
+    props: z.object({
+      dateLabel: z.string(),
+      preheader: z.string(),
+      headline: z.string().optional(),
+      sections: z.array(
+        z.object({
+          title: z.string(),
+          items: z.array(
+            z.object({
+              title: z.string(),
+              detail: z.string().optional(),
+              url: z.string().optional(),
+            }),
+          ),
+        }),
+      ),
+      continueUrl: z.string(),
+      manageUrl: z.string(),
+    }),
+  }),
+  z.object({
     template: z.literal("credit-low-balance"),
     props: z.object({
       orgName: z.string(),
@@ -474,6 +496,36 @@ function renderTemplate(template: EmailTemplate): string {
       )}">Download bundle</a></p><p>Expires ${escapeHtml(
         template.props.expiresAt,
       )}</p></main>`;
+    }
+    case "morning-brief": {
+      const sections = template.props.sections
+        .map((section) => {
+          const items = section.items
+            .map((item) => {
+              const title = item.url
+                ? `<a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`
+                : escapeHtml(item.title);
+              const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
+              return `<li>${title}${detail}</li>`;
+            })
+            .join("");
+          return `<h2>${escapeHtml(section.title)}</h2><ul>${items}</ul>`;
+        })
+        .join("");
+      const headline = template.props.headline
+        ? `<p>${escapeHtml(template.props.headline)}</p>`
+        : "";
+      // Hidden preheader keeps inbox previews generic; details only render
+      // once the email is opened.
+      return `<main><div style="display:none;max-height:0;overflow:hidden">${escapeHtml(
+        template.props.preheader,
+      )}</div><h1>Morning Briefing - ${escapeHtml(
+        template.props.dateLabel,
+      )}</h1>${headline}${sections}<p><a href="${escapeHtml(
+        template.props.continueUrl,
+      )}">Continue in Zero</a></p><p><a href="${escapeHtml(
+        template.props.manageUrl,
+      )}">Turn off Morning Brief</a></p></main>`;
     }
     case "credit-low-balance": {
       const remainingCredits =

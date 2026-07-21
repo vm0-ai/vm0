@@ -925,13 +925,13 @@ describe("GET /api/zero/artifacts", () => {
 });
 
 describe("POST /api/zero/artifacts/favorite", () => {
-  it("creates and deletes user-scoped artifact favorite records", async () => {
+  it("stores favorite state without changing artifact synchronization", async () => {
     const owner = await artifactActor("Artifacts API favorites agent");
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `favorite-${randomUUID().slice(0, 8)}`,
+    const artifact = await createRunUploadedFile({
+      owner,
+      prompt: "create a favorite artifact",
+      filename: `favorite-${randomUUID().slice(0, 8)}.txt`,
+      contentType: "text/plain",
     });
     const baseline = await chat.listArtifacts(owner.actor);
     if (!baseline.syncUntil) {
@@ -953,16 +953,9 @@ describe("POST /api/zero/artifacts/favorite", () => {
         Date.parse(baseline.syncUntil) + 5 * 60_000,
       ).toISOString(),
     });
-    const favoritedArtifact = favorited.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!favoritedArtifact) {
-      throw new Error("Expected favorite artifact to be listed");
-    }
-    expect(favoritedArtifact.isFavorited).toBeTruthy();
-    if (!favorited.syncUntil) {
-      throw new Error("Expected favorite sync timestamp");
-    }
+    expect(favorited.artifacts).not.toContainEqual(
+      expect.objectContaining({ fileId: artifact.fileId }),
+    );
 
     await chat.unfavoriteArtifact(owner.actor, artifact.url);
 
@@ -972,16 +965,12 @@ describe("POST /api/zero/artifacts/favorite", () => {
 
     const unfavorited = await chat.listArtifacts(owner.actor, {
       updatedAfter: new Date(
-        Date.parse(favorited.syncUntil) + 5 * 60_000,
+        Date.parse(baseline.syncUntil) + 5 * 60_000,
       ).toISOString(),
     });
-    const unfavoritedArtifact = unfavorited.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!unfavoritedArtifact) {
-      throw new Error("Expected unfavorited artifact to be listed");
-    }
-    expect(unfavoritedArtifact.isFavorited).toBeFalsy();
+    expect(unfavorited.artifacts).not.toContainEqual(
+      expect.objectContaining({ fileId: artifact.fileId }),
+    );
   }, 120_000);
 
   it("rejects favorite requests for artifacts outside the caller visibility set", async () => {

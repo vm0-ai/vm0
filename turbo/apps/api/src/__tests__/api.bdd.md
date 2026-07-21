@@ -63,11 +63,11 @@ Then accepted capabilities succeed.
 Then missing, expired, mismatched, or revoked capabilities return unauthorized or forbidden.
 Then follow-up token list/status APIs show only safe token metadata.
 
-Coverage: `cli-auth`, `device-token`, `desktop-auth`, `zero-api-keys`, `zero-api-keys-delete`, `zero-realtime-token`, auth token service exception cases.
+Coverage: `cli-auth`, `desktop-auth`, `zero-realtime-token`, auth token service exception cases.
 
 ### AUTH-03: User-owned configuration
 
-Given an authenticated user manages API keys, secrets, variables, preferences, connectors, and push subscriptions through APIs
+Given an authenticated user manages secrets, variables, preferences, connectors, and push subscriptions through APIs
 When the user creates, lists, updates, and deletes those resources
 Then follow-up GET/list routes expose safe metadata and never raw secret values.
 Then invalid names, duplicate names, unsupported scopes, and cross-user access are rejected.
@@ -173,7 +173,7 @@ When they list, read, rename, patch, pin, unpin, mark read, update model selecti
 Then thread GET/list/search responses expose the expected thread state.
 Then missing, malformed, cross-user, cross-org, and deleted threads are hidden or rejected.
 
-Coverage: `zero-chat-threads`, `chat-threads-v1`, `zero-chat-threads-create`, `zero-chat-threads-list`, `zero-chat-threads-rename`, `zero-chat-threads-patch`, `zero-chat-threads-pin`, `zero-chat-threads-unpin`, `zero-chat-threads-mark-read`, `zero-chat-threads-model-selection`, `zero-chat-search`, `zero-chat-threads-delete`, `zero-chat-threads-github-prs`.
+Coverage: `zero-chat-threads`, `zero-chat-threads-create`, `zero-chat-threads-list`, `zero-chat-threads-rename`, `zero-chat-threads-patch`, `zero-chat-threads-pin`, `zero-chat-threads-unpin`, `zero-chat-threads-mark-read`, `zero-chat-threads-model-selection`, `zero-chat-search`, `zero-chat-threads-delete`, `zero-chat-threads-github-prs`.
 
 ### CHAT-02: Chat messages and callbacks
 
@@ -282,7 +282,7 @@ When external providers succeed, fail, time out, or return usage metadata
 Then generation status, file/artifact, billing, and usage APIs expose the final visible state.
 Then unauthorized tokens, missing capability, unsupported options, missing pricing, insufficient credits, active-generation limits, and provider failures return expected responses.
 
-Coverage: `zero-image-io-generate`, `zero-video-io-generate`, `zero-voice-io-post`, `zero-voice-io-quota`, `audio-transcriptions-v1`, `zero-built-in-generation`, `webhooks-built-in-generations`.
+Coverage: `zero-image-io-generate`, `zero-video-io-generate`, `zero-voice-io-post`, `zero-voice-io-quota`, `zero-built-in-generation`, `webhooks-built-in-generations`.
 
 ### FILE-03: Desktop computer-use runtime
 
@@ -523,8 +523,6 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `github-oauth.test.ts`, `integrations-github-{get,patch,delete,label-listeners}.test.ts`, `internal-callbacks-github-issues.test.ts` | INT-03/CONN-02/HOOK-01 chains G1-G6 in `github-integration.bdd.test.ts` | same |
 | `internal-callbacks-slack-org.test.ts` | INT-01/HOOK-01 Slack org callback chains in `integrations.bdd.test.ts` | same |
 | `zero-integrations-agentphone-link.test.ts`, `zero-integrations-agentphone-routes.test.ts` | INT-03 AgentPhone chains AP-A..AP-M1 in `agentphone.bdd.test.ts` | same |
-| `audio-transcriptions-v1.test.ts` | FILE-02 MEDIA-A/MEDIA-B in `billing-usage-media.bdd.test.ts` | same |
-
 | `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains, now routed through `cron-execute-workflow-automations` | same |
 | `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` | Workflow schedule dispatch chains in `zero-workflow-automation-scheduler.test.ts`; current log filtering in `run-reads.bdd.test.ts`; current cron route is `cron-execute-workflow-automations` | same |
 | `zero-chat-threads.test.ts` (re-deleted after the #17323 soft-state removal), `zero-chat-messages.test.ts`/`zero-slack-events.test.ts` (re-deleted after the #17338 vm0-key test-only delta) | CHAT-01/02/03 detail and message chains in `chat-threads.bdd.test.ts`, `chat-files.bdd.test.ts`, and `chat-messages.bdd.test.ts`; vm0-managed-key behavior asserted through runner claim/firewall-auth production read surfaces in `run-lifecycle.bdd.test.ts`/`integrations.bdd.test.ts` | same |
@@ -541,10 +539,10 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 
 | `agent-run-callback.service.test.ts`, `internal-event-consumers.test.ts`, `internal-event-consumers-telegram-typing.test.ts`; `internal-callbacks-automation.test.ts` remains alive | Agent callback typed dispatch and legacy URL non-inference coverage in `agent-run-callback.service.test.ts`, Workflow Automation callback coverage in `internal-callbacks-automation.test.ts`, CHAT-02 codex/thread-less extensions, WHCB-04 axiom consumer cases, and the INT-02 typing chain across `webhooks-callbacks.bdd.test.ts` and `integrations.bdd.test.ts` | same |
 
-| `zero-chat-threads{,-create,-list,-delete,-patch,-mark-read,-messages,-model-selection}.test.ts`, `zero-chat-search.test.ts`, `zero-chat-threads-github-prs.test.ts`, `zero-chat-threads-artifacts.test.ts`, `zero-chat-threads-artifacts-sync.test.ts`, `chat-threads-v1.test.ts` | CHAT-01/03 chains in `chat-threads.bdd.test.ts`, the CHAT-01 mutation chain in `chat-files.bdd.test.ts`, and the CHAT-02 queued-attachment case in `chat-messages.bdd.test.ts`; legacy artifact-row sync arms listed below | targeted CHAT-03 + docs exception |
+| `zero-chat-threads{,-create,-list,-delete,-patch,-mark-read,-messages,-model-selection}.test.ts`, `zero-chat-search.test.ts`, `zero-chat-threads-github-prs.test.ts`, `zero-chat-threads-artifacts.test.ts`, `zero-chat-threads-artifacts-sync.test.ts` | CHAT-01/03 chains in `chat-threads.bdd.test.ts`, the CHAT-01 mutation chain in `chat-files.bdd.test.ts`, and the CHAT-02 queued-attachment case in `chat-messages.bdd.test.ts`; legacy artifact-row sync arms listed below | targeted CHAT-03 + docs exception |
 | 9 compose legacy files (`agent-composes-*`, `zero-composes-*`) | COMPOSE-01 chains in `composes.bdd.test.ts` plus the lifecycle chain in `auth-org-agents.bdd.test.ts` | same |
 | 9 org/team legacy files (`zero-org*`, `zero-team`, `zero-default-agent`) | ORG-01/02/03, TEAM-01, AGENT-02 chains ORG-LOGO-A..ORG-TOKEN-G in `org-team.bdd.test.ts` | same |
-| 13 user-config legacy files (`zero-secrets*`, `zero-variables*`, `zero-api-keys*`, `zero-user-*`, `zero-push-subscriptions`, `auth-me`, `health-auth-probe`) | AUTH-01/03 batches UC-A..D in `user-config.bdd.test.ts` | same |
+| user-config legacy files (`zero-secrets*`, `zero-variables*`, `zero-user-*`, `zero-push-subscriptions`, `auth-me`, `health-auth-probe`) | AUTH-01/03 batches UC-A..D in `user-config.bdd.test.ts` | same |
 | 14 run-read legacy files plus the deleted DB-seeded `agent-runs-create.test.ts` and `agent-run-telemetry.test.ts` remnants | RUN-03/04 read chains and RUN-01/02 resume/admission chains in `run-reads.bdd.test.ts` | targeted RUN-03/04 + docs exception |
 | `webhooks-agent-checkpoints.test.ts`, `webhooks-agent-storage.test.ts`, `webhooks-agent-health-usage-telemetry.test.ts`, `webhooks-agent-firewall-auth.test.ts`, `webhooks-agent-complete.test.ts` | CHAIN-RUN/RUN-03 chains in `run-lifecycle.bdd.test.ts`, WHCB-05/06/09 in `webhooks-callbacks.bdd.test.ts`, FW-2/3/4/8/9/10 in `webhooks-agent-firewall-auth.bdd.test.ts`; firewall and priced-usage inconsistent-state arms listed below | targeted webhook BDD + docs exception |
 
@@ -587,8 +585,6 @@ coverage gap is acceptable once listed:
 - `zero-github-footer.service.ts` `resolveOrgDefaultModelProviderSelectedModel` (query, find predicate, and fallback arms): same argument as the Slack variant above — the query filters `model_providers` on `is_default = true`, and no production write path sets that column. Reachable only through historical data; the surrounding footer rendering is covered by the GitHub completed-delivery chain.
 - `internal-callbacks-github-issues.ts:417-421` (pending-installation 400): requires a `github_installations` row with NULL `installationId`; every production write path inserts `status: "active"` with the remote id, and nothing nulls the column.
 - `run-uploaded-files.service.ts:48` (`isRunUploadedFileSource` falsy-source arm in `sourceForRun`): requires a runId whose `agent_runs` row exists without its `zero_runs` row, but the only production insert creates both in one transaction with a NOT NULL `trigger_source`; every enum value is truthy. The legacy agentphone test reached it only by DB-seeding an `agent_runs` row alone. The `.some → false` fallback arm stays covered through the `"webhook"` automation source.
-- `audio-transcriptions-v1.ts` free-quota 402 (lines 95, 256-257): requires `org_metadata.tier = 'free'`, but no public write path produces that tier — onboarding defaults to `pro-suspend`, Stripe webhooks and downgrade routes only write `pro`/`team`/`pro-suspend`. The daily-rate and daily-duration gates are covered through the API.
-
 - `desktop-auth.service.ts:90-92` (`createDesktopAuthHandoffCode` insert-returning-empty throw) and `routes/desktop-auth.ts:117` (rethrow of non-handoff consume errors): defensive arms requiring a mid-request DB failure; uncovered on main's own suite as well.
 - `zero-host.service.ts:230-235` (`jsonObjectText` brace extraction): only runs when model output parses to literal JSON `null` (`safeJsonParse` returns `undefined` on failure, short-circuiting the guard); uncovered at baseline too.
 

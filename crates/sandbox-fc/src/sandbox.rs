@@ -896,6 +896,81 @@ impl FirecrackerSandbox {
         )
     }
 
+    /// Spawn a prepared Firecracker command and adopt it into the sandbox runtime.
+    ///
+    /// Callers retain boot-mode-specific command arguments. Once spawning succeeds,
+    /// this method installs runtime ownership before any later fallible operation;
+    /// [`Sandbox::start`] remains responsible for cleanup when startup fails.
+    async fn spawn_and_wait_for_api(
+        &mut self,
+        mut command: tokio::process::Command,
+        api_sock: &Path,
+        runtime_cancel: CancellationToken,
+        boot_mode: &str,
+    ) -> sandbox::Result<ApiClient> {
+        let child = command
+            .current_dir(self.sandbox_paths.workspace())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| SandboxError::Start {
+                message: format!(
+                    "spawn firecracker: {e} (boot_mode={boot_mode}, api_sock={})",
+                    api_sock.display()
+                ),
+            })?;
+
+        self.process_group_pid = child.id();
+        self.runtime.set_process(monitor_process(
+            &self.id,
+            child,
+            Arc::clone(&self.state),
+            Arc::clone(&self.state_publish_lock),
+            self.state_tx.clone(),
+            Arc::clone(&self.guest),
+            runtime_cancel,
+        ));
+
+        let client = ApiClient::new(api_sock).map_err(|e| SandboxError::Start {
+            message: format!(
+                "create API client: {e} (boot_mode={boot_mode}, api_sock={})",
+                api_sock.display()
+            ),
+        })?;
+        tokio::select! {
+            result = client.wait_for_ready(API_READY_TIMEOUT) => {
+                result.map_err(|e| {
+                    let sock_dir_exists_after = api_sock.parent().is_some_and(Path::exists);
+                    SandboxError::Start {
+                        message: format!(
+                            "API not ready: {e} (boot_mode={boot_mode}, api_sock={}, sock_dir_exists_after={sock_dir_exists_after})",
+                            api_sock.display()
+                        ),
+                    }
+                })?;
+                set_private_runtime_socket_mode(api_sock).map_err(|e| SandboxError::Start {
+                    message: format!(
+                        "restrict API socket permissions: {e} (boot_mode={boot_mode}, api_sock={})",
+                        api_sock.display()
+                    ),
+                })?;
+            }
+            state = wait_for_process_exit(self.state_tx.subscribe()) => {
+                return Err(SandboxError::Start {
+                    message: format!(
+                        "firecracker process exited before API became ready (boot_mode={boot_mode}, state={state}, api_sock={})",
+                        api_sock.display()
+                    ),
+                });
+            }
+        }
+
+        Ok(client)
+    }
+
     /// Start using a fresh boot with `--config-file --api-sock`.
     async fn start_fresh(
         &mut self,
@@ -915,63 +990,19 @@ impl FirecrackerSandbox {
 
         let api_sock = self.sock_paths.api_sock();
 
-        let child = tokio::process::Command::new("ip")
+        let mut command = tokio::process::Command::new("ip");
+        command
             .args(["netns", "exec"])
             .arg(self.network.name())
             .arg(&self.factory_config.binary_path)
             .args(["--config-file"])
             .arg(self.sandbox_paths.config())
             .args(["--api-sock"])
-            .arg(&api_sock)
-            .current_dir(self.sandbox_paths.workspace())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| SandboxError::Start {
-                message: format!("spawn firecracker: {e}"),
-            })?;
+            .arg(&api_sock);
 
-        self.process_group_pid = child.id();
-        self.runtime.set_process(monitor_process(
-            &self.id,
-            child,
-            Arc::clone(&self.state),
-            Arc::clone(&self.state_publish_lock),
-            self.state_tx.clone(),
-            Arc::clone(&self.guest),
-            runtime_cancel,
-        ));
-
-        // Wait for API socket readiness so the balloon controller can connect.
-        let client = ApiClient::new(&api_sock).map_err(|e| SandboxError::Start {
-            message: format!("create API client: {e}"),
-        })?;
-        tokio::select! {
-            result = client.wait_for_ready(API_READY_TIMEOUT) => {
-                result.map_err(|e| {
-                    SandboxError::Start {
-                        message: format!(
-                            "API not ready: {e} (api_sock={})",
-                            api_sock.display()
-                        ),
-                    }
-                })?;
-                set_private_runtime_socket_mode(&api_sock).map_err(|e| SandboxError::Start {
-                    message: format!("restrict API socket permissions: {e}"),
-                })?;
-            }
-            state = wait_for_process_exit(self.state_tx.subscribe()) => {
-                return Err(SandboxError::Start {
-                    message: format!(
-                        "firecracker process exited before API became ready (state={state}, api_sock={})",
-                        api_sock.display()
-                    ),
-                });
-            }
-        }
+        let client = self
+            .spawn_and_wait_for_api(command, &api_sock, runtime_cancel, "fresh boot")
+            .await?;
 
         info!(id = %self.id, "firecracker started (fresh boot)");
         Ok(client)
@@ -1043,7 +1074,10 @@ impl FirecrackerSandbox {
         //
         // `umount` clears any stale mount inherited from the parent
         // namespace (e.g. from a crashed snapshot creation).
-        let child = tokio::process::Command::new("unshare")
+        let snapshot_str = snapshot.snapshot_path.display().to_string();
+        let memory_str = snapshot.memory_path.display().to_string();
+        let mut command = tokio::process::Command::new("unshare");
+        command
             .args(UNSHARE_MOUNT_ARGS)
             .args(["bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
@@ -1054,61 +1088,12 @@ impl FirecrackerSandbox {
             .arg(&snapshot.workspace_drive_bind_path) // $6
             .arg(self.network.name()) // $7
             .arg(&self.factory_config.binary_path) // $8
-            .arg(&api_sock) // $9
-            .current_dir(self.sandbox_paths.workspace())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| SandboxError::Start {
-                message: format!("spawn firecracker: {e}"),
-            })?;
+            .arg(&api_sock); // $9
 
-        self.process_group_pid = child.id();
-        self.runtime.set_process(monitor_process(
-            &self.id,
-            child,
-            Arc::clone(&self.state),
-            Arc::clone(&self.state_publish_lock),
-            self.state_tx.clone(),
-            Arc::clone(&self.guest),
-            runtime_cancel,
-        ));
+        let client = self
+            .spawn_and_wait_for_api(command, &api_sock, runtime_cancel, "snapshot restore")
+            .await?;
 
-        // Wait for Firecracker API to be ready, but bail early if the
-        // process crashes before the socket appears.
-        let client = ApiClient::new(&api_sock).map_err(|e| SandboxError::Start {
-            message: format!("create API client: {e}"),
-        })?;
-        tokio::select! {
-            result = client.wait_for_ready(API_READY_TIMEOUT) => {
-                result.map_err(|e| {
-                    let sock_dir_after = sock_dir.exists();
-                    SandboxError::Start {
-                        message: format!(
-                            "API not ready: {e} (api_sock={}, sock_dir_exists_after={sock_dir_after})",
-                            api_sock.display()
-                        ),
-                    }
-                })?;
-                set_private_runtime_socket_mode(&api_sock).map_err(|e| SandboxError::Start {
-                    message: format!("restrict API socket permissions: {e}"),
-                })?;
-            }
-            state = wait_for_process_exit(self.state_tx.subscribe()) => {
-                return Err(SandboxError::Start {
-                    message: format!(
-                        "firecracker process exited before API became ready (state={state}, api_sock={})",
-                        api_sock.display()
-                    ),
-                });
-            }
-        }
-
-        let snapshot_str = snapshot.snapshot_path.display().to_string();
-        let memory_str = snapshot.memory_path.display().to_string();
         load_snapshot_and_apply_rate_limits(
             &client,
             &snapshot_str,
