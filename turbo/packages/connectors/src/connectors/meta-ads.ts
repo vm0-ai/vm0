@@ -1,4 +1,5 @@
 import type { ConnectorConfig } from "../connector-config";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const metaAds = {
   "meta-ads": {
@@ -8,6 +9,7 @@ export const metaAds = {
       "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.MetaAdsConnector,
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Facebook to grant access to Ads Manager.",

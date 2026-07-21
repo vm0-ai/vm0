@@ -2656,10 +2656,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Meta Ads OAuth", () => {
-    expect(getAvailableConnectorAuthMethodIds("meta-ads", {})).toStrictEqual([
-      "oauth",
-    ]);
+  it("exposes Meta Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("meta-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("meta-ads", {
+        [FeatureSwitchKey.MetaAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Microsoft OAuth connectors", () => {
