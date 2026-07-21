@@ -470,6 +470,6 @@ describe("zero search --source chat", () => {
     ).rejects.toThrow();
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("Not authenticated");
+    expect(errors).toContain("Authentication failed");
   });
 });
