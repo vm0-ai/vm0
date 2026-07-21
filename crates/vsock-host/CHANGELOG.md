@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.62](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.61...vsock-host-v0.17.62) (2026-07-20)
+
+
+### Performance Improvements
+
+* **vsock-host:** copy exec output outside state lock ([#22235](https://github.com/vm0-ai/vm0/issues/22235)) ([52d56d0](https://github.com/vm0-ai/vm0/commit/52d56d014042c9b8cd42dfa23d7a90a77d88562a))
+
 ## [0.17.61](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.60...vsock-host-v0.17.61) (2026-07-20)
 
 ## [0.17.60](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.59...vsock-host-v0.17.60) (2026-07-19)

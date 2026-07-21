@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.289.0](https://github.com/vm0-ai/vm0/compare/api-v1.288.0...api-v1.289.0) (2026-07-20)
+
+
+### Features
+
+* **api:** activate connector credential ownership ([#22212](https://github.com/vm0-ai/vm0/issues/22212)) ([54af3e2](https://github.com/vm0-ai/vm0/commit/54af3e2fb9b890901c03efe8d6abb45e59e6b927))
+
+
+### Refactoring
+
+* **api:** enforce structured sql result mapping ([#22197](https://github.com/vm0-ai/vm0/issues/22197)) ([a2df783](https://github.com/vm0-ai/vm0/commit/a2df7831713e1ed80ede73e811412f0adf981752))
+* **api:** remove blanket raw sql lint ratchet ([#22242](https://github.com/vm0-ai/vm0/issues/22242)) ([3fdb739](https://github.com/vm0-ai/vm0/commit/3fdb739c635088c1185ab9a143f8e865f5271fdc))
+* **api:** replace raw sql predicates with drizzle operators in nine services ([#22237](https://github.com/vm0-ai/vm0/issues/22237)) ([c3b4612](https://github.com/vm0-ai/vm0/commit/c3b46127ab70b747935b69b4c26bef6220998b35)), closes [#22106](https://github.com/vm0-ai/vm0/issues/22106)
+* reduce fallback slop in slack oauth ([#22254](https://github.com/vm0-ai/vm0/issues/22254)) ([7c4ed68](https://github.com/vm0-ai/vm0/commit/7c4ed680d790bd9f7c07a2920931518f8505404c))
+
+
+### Performance Improvements
+
+* **api:** reduce zero bootstrap snapshot cost ([#22214](https://github.com/vm0-ai/vm0/issues/22214)) ([bfc03ff](https://github.com/vm0-ai/vm0/commit/bfc03ff0070ad96ab9a3c259f6c322e73e4c9748))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.0
+    * @vm0/core bumped to 8.443.1
+    * @vm0/db bumped to 1.122.0
+
 ## [1.288.0](https://github.com/vm0-ai/vm0/compare/api-v1.287.0...api-v1.288.0) (2026-07-20)
 
 
