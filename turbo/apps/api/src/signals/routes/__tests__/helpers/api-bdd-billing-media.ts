@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
-import { audioTranscriptionsV1Contract } from "@vm0/api-contracts/contracts/audio-transcriptions-v1";
 import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
@@ -610,37 +609,6 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({ context })(zeroVoiceIoSttContract);
       return await accept(
         client.post({ headers: authenticate(actor), body: formData }),
-        statuses,
-      );
-    },
-
-    async requestAudioTranscriptionV1(
-      actor: ApiTestUser,
-      statuses: readonly (200 | 400 | 401 | 402 | 403 | 413 | 429 | 500)[],
-    ) {
-      const client = setupApp({ context })(audioTranscriptionsV1Contract);
-      return await accept(
-        client.transcribe({
-          headers: authenticate(actor),
-          body: new Blob([new Uint8Array([0, 0])]),
-        }),
-        statuses,
-      );
-    },
-
-    async requestAudioTranscriptionV1WithBearer(
-      token: string,
-      body: Blob,
-      statuses: readonly (200 | 400 | 401 | 402 | 403 | 413 | 429 | 500)[],
-      contentType = body.type,
-    ) {
-      const client = setupApp({ context })(audioTranscriptionsV1Contract);
-      return await accept(
-        client.transcribe({
-          headers: { authorization: `Bearer ${token}` },
-          extraHeaders: contentType ? { "content-type": contentType } : {},
-          body,
-        }),
         statuses,
       );
     },

@@ -11,11 +11,9 @@ import { agentRunsReadRoutes } from "./routes/agent-runs-read";
 import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
-import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
-import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronArtifactPreviewRoutes } from "./routes/cron-artifact-preview";
@@ -37,7 +35,6 @@ import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-u
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
-import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
@@ -72,7 +69,6 @@ import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
-import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
 import { zeroArtifactsRoutes } from "./routes/zero-artifacts";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
@@ -264,14 +260,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
-  ...deviceTokenRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
   ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...zeroAgentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
-  ...zeroApiKeysRoutes,
   ...zeroArtifactsRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
@@ -400,8 +394,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,
   ...zeroUsageRunsRoutes,
-  ...chatThreadsV1Routes,
-  ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,

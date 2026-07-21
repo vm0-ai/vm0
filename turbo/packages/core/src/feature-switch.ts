@@ -307,13 +307,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
 
-  [FeatureSwitchKey.ApiKeys]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:

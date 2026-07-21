@@ -1,9 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
 import type {
-  ApiKeyListResponse,
-  ApiKeyItem,
-} from "@vm0/api-contracts/contracts/api-keys";
-import type {
   SendMode,
   UpdateUserPreferencesRequest,
   UserPreferencesResponse,
@@ -23,11 +19,10 @@ import type {
   VariableListResponse,
   VariableResponse,
 } from "@vm0/api-contracts/contracts/variables";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
@@ -35,8 +30,6 @@ import { encryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
 import { isValidTimeZone } from "../utils";
-
-const API_KEY_PREFIX_LENGTH = 12;
 
 interface UserScopedQuery {
   readonly orgId: string;
@@ -69,46 +62,6 @@ function parseSecretType(value: string): SecretType {
     return value;
   }
   throw new Error(`Unexpected secret type: ${value}`);
-}
-
-function apiKeyItem(row: {
-  readonly id: string;
-  readonly name: string;
-  readonly token: string;
-  readonly createdAt: Date;
-  readonly expiresAt: Date;
-  readonly lastUsedAt: Date | null;
-}): ApiKeyItem {
-  return {
-    id: row.id,
-    name: row.name,
-    tokenPrefix: `${row.token.slice(0, API_KEY_PREFIX_LENGTH)}\u2026`,
-    createdAt: row.createdAt.toISOString(),
-    expiresAt: row.expiresAt.toISOString(),
-    lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
-  };
-}
-
-export function userApiKeys(
-  userId: string,
-): Computed<Promise<ApiKeyListResponse>> {
-  return computed(async (get): Promise<ApiKeyListResponse> => {
-    const db = get(db$);
-    const rows = await db
-      .select({
-        id: cliTokens.id,
-        name: cliTokens.name,
-        token: cliTokens.token,
-        createdAt: cliTokens.createdAt,
-        expiresAt: cliTokens.expiresAt,
-        lastUsedAt: cliTokens.lastUsedAt,
-      })
-      .from(cliTokens)
-      .where(eq(cliTokens.userId, userId))
-      .orderBy(desc(cliTokens.createdAt));
-
-    return { apiKeys: rows.map(apiKeyItem) };
-  });
 }
 
 export function userPreferences({

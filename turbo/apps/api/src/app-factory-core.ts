@@ -612,7 +612,7 @@ export function createAppWithRoutes({
   });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
-  // route template (e.g. `GET /api/v1/chat-threads/:threadId`). Child spans
+  // route template (e.g. `GET /api/zero/chat-threads/:threadId`). Child spans
   // (db queries, outbound fetches) parent to it via standard context
   // propagation; correlate them to a route by their `trace_id`, not by
   // copying `http.route` onto each child span.

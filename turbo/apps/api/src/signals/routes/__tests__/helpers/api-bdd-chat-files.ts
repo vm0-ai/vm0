@@ -31,11 +31,6 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  chatThreadV1GetContract,
-  chatThreadV1MessagesContract,
-  chatThreadV1SendContract,
-} from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import {
@@ -68,7 +63,6 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { chatThreadsV1Routes } from "../../chat-threads-v1";
 import { storagesCommitRoutes } from "../../storages-commit";
 import { storagesDownloadRoutes } from "../../storages-download";
 import { storagesListRoutes } from "../../storages-list";
@@ -246,7 +240,6 @@ const chatFilesRoutes = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatMessagesRoutes,
-  ...chatThreadsV1Routes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsHtmlDomEditSnapshotRoutes,
@@ -343,18 +336,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function chatSearchClient() {
     return chatFilesApp(context)(chatSearchContract);
-  }
-
-  function threadV1Client() {
-    return chatFilesApp(context)(chatThreadV1GetContract);
-  }
-
-  function threadV1MessagesClient() {
-    return chatFilesApp(context)(chatThreadV1MessagesContract);
-  }
-
-  function threadV1SendClient() {
-    return chatFilesApp(context)(chatThreadV1SendContract);
   }
 
   /**
@@ -1647,68 +1628,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestV1Thread(
-      authorization: string | undefined,
-      threadId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1Client().get({
-          headers: bearerAuth(authorization),
-          params: { threadId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1ThreadMessages(
-      authorization: string | undefined,
-      threadId: string,
-      query: {
-        readonly sinceId?: string;
-        readonly beforeId?: string;
-        readonly limit?: number;
-      },
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1MessagesClient().list({
-          headers: bearerAuth(authorization),
-          params: { threadId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1Send(
-      authorization: string | undefined,
-      body: { readonly prompt: string; readonly threadId: string },
-      statuses: readonly (201 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      return await accept(
-        threadV1SendClient().send({
-          headers: bearerAuth(authorization),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1SendUnchecked(
-      authorization: string,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1SendClient().send({
-          headers: bearerAuth(authorization),
-          body: body as { prompt: string; threadId: string },
-        }),
-        statuses,
-      );
     },
 
     expectApiError(body: unknown): asserts body is ApiErrorResponse {
