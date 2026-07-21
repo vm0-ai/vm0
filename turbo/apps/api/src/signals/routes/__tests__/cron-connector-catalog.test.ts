@@ -3647,6 +3647,22 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
 
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "environment",
+          environmentName: "TEST_OAUTH_DEVICE_TOKEN",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toStrictEqual({
+      outcome: "unknown-environment",
+    });
+
     const allFiltered = buildRelease({
       version: "2026-07-15.all-filtered",
       connectorRef: "future-auth",

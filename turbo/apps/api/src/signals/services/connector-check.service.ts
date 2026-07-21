@@ -670,10 +670,14 @@ function connectorEnvironmentBindings(
   if (!connector) {
     return [];
   }
-  return [...connector.methods.values()].flatMap((runtimeMethod) => {
-    return connectorAuthMethodRuntimeMetadata(runtimeMethod.method)
-      .runtimeBindings;
-  });
+  return [...connector.methods.values()]
+    .filter((runtimeMethod) => {
+      return runtimeMethod.executable;
+    })
+    .flatMap((runtimeMethod) => {
+      return connectorAuthMethodRuntimeMetadata(runtimeMethod.method)
+        .runtimeBindings;
+    });
 }
 
 function environmentValueRefs(
