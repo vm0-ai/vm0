@@ -1231,6 +1231,7 @@ const storageArchiveSizeFixture = {
   orgId: "archive-finalization-org",
   userId: "archive-finalization-user",
   composeId: "30000000-0000-4000-8000-000000000001",
+  composeVersionId: "3".repeat(64),
   sessionId: "30000000-0000-4000-8000-000000000002",
   runId: "30000000-0000-4000-8000-000000000003",
   conversationId: "30000000-0000-4000-8000-000000000004",
@@ -1570,6 +1571,57 @@ async function seedActiveQueueStorageArchiveSizeReference(
   );
 }
 
+async function seedComposeStorageArchiveSizeReference(
+  client: Client,
+): Promise<void> {
+  const fixture = storageArchiveSizeFixture;
+  const content = {
+    version: "1",
+    agents: {
+      test: {
+        framework: "claude-code",
+        volumes: ["broken:/workspace"],
+      },
+    },
+    volumes: {
+      broken: {
+        name: "broken-volume",
+        version: fixture.headCandidateId.slice(0, 12),
+      },
+    },
+  };
+  await client.query(
+    `
+      INSERT INTO "agent_compose_versions"
+        ("id", "compose_id", "content", "created_by")
+      VALUES ($1, $2, $3::jsonb, $4)
+    `,
+    [
+      fixture.composeVersionId,
+      fixture.composeId,
+      JSON.stringify(content),
+      fixture.userId,
+    ],
+  );
+  await client.query(
+    `UPDATE "agent_composes" SET "head_version_id" = $1 WHERE "id" = $2`,
+    [fixture.composeVersionId, fixture.composeId],
+  );
+}
+
+async function removeComposeStorageArchiveSizeReference(
+  client: Client,
+): Promise<void> {
+  const fixture = storageArchiveSizeFixture;
+  await client.query(
+    `UPDATE "agent_composes" SET "head_version_id" = NULL WHERE "id" = $1`,
+    [fixture.composeId],
+  );
+  await client.query(`DELETE FROM "agent_compose_versions" WHERE "id" = $1`, [
+    fixture.composeVersionId,
+  ]);
+}
+
 async function expectStorageArchiveSizeConstraintRejected(
   client: Client,
   args: {
@@ -1644,6 +1696,14 @@ async function validateStorageArchiveSizeFinalization(): Promise<void> {
       await client.query(`DELETE FROM "runner_job_queue" WHERE "run_id" = $1`, [
         fixture.runId,
       ]);
+
+      await seedComposeStorageArchiveSizeReference(client);
+      await expectStorageArchiveSizeFinalizationRejected(
+        client,
+        "compose volume reference",
+      );
+      await assertStorageArchiveSizeFinalizationRolledBack(client);
+      await removeComposeStorageArchiveSizeReference(client);
 
       await applyMigrationsUpToInTransaction(
         client,

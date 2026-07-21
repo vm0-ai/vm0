@@ -11,6 +11,7 @@ IN ACCESS EXCLUSIVE MODE;
 -- versions. Blocking writes keeps the reference classification stable until
 -- the candidate deletes commit.
 LOCK TABLE
+  "agent_compose_versions",
   "agent_sessions",
   "agent_runs",
   "checkpoints",
@@ -114,6 +115,54 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       'storage archive-size finalization found a cross-storage HEAD reference';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "vm0_storage_archive_size_candidates" AS candidate
+    INNER JOIN "agent_compose_versions" AS compose_version
+      ON TRUE
+    CROSS JOIN LATERAL jsonb_each(
+      CASE
+        WHEN jsonb_typeof(compose_version."content" -> 'volumes') = 'object'
+          THEN compose_version."content" -> 'volumes'
+        ELSE '{}'::jsonb
+      END
+    ) AS volume(key, value)
+    WHERE candidate."storage_type" = 'volume'
+      AND candidate."storage_name" = volume.value ->> 'name'
+      AND NULLIF(volume.value ->> 'version', '') IS NOT NULL
+      AND left(
+        candidate."id",
+        length(volume.value ->> 'version')
+      ) = lower(volume.value ->> 'version')
+  ) THEN
+    RAISE EXCEPTION
+      'storage archive-size finalization found a compose volume reference';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "vm0_storage_archive_size_candidates" AS candidate
+    INNER JOIN "agent_compose_versions" AS compose_version
+      ON TRUE
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(compose_version."content" -> 'artifacts') = 'array'
+          THEN compose_version."content" -> 'artifacts'
+        ELSE '[]'::jsonb
+      END
+    ) AS artifact(value)
+    WHERE candidate."storage_type" = 'artifact'
+      AND candidate."storage_name" = artifact.value ->> 'name'
+      AND NULLIF(artifact.value ->> 'version', '') IS NOT NULL
+      AND left(
+        candidate."id",
+        length(artifact.value ->> 'version')
+      ) = lower(artifact.value ->> 'version')
+  ) THEN
+    RAISE EXCEPTION
+      'storage archive-size finalization found a compose artifact reference';
   END IF;
 
   IF EXISTS (
