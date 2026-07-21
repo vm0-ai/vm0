@@ -47,31 +47,18 @@
 //! Image size limit: `PART_SIZE * 10000 ≈ 160 GiB` (S3 multipart hard limit).
 //! Current images are well under 30 GiB; revisit if `PART_SIZE` decreases.
 //!
-//! ## R2-side cleanup
+//! ## R2 object lifecycle
 //!
-//! Completed objects are **never deleted on upload**. Each template cache version
-//! bump or template build script change produces a new template hash and
-//! orphans the previous object.
+//! Completed template objects are retained and expired by the bucket's
+//! externally managed lifecycle rule for the `runner-templates/` prefix. The
+//! configured retention window is 7 days. `runner gc` only cleans host-local
+//! state and never lists or deletes R2 objects.
 //!
-//! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
-//! deploy playbook runs after every release). Default TTL is 7 days. Each
-//! host attempts the same scan independently over the shared template prefix
-//! (`runner-templates/`). Request cost for a full pass scales with pagination:
-//! at least one LIST, one additional LIST per extra page, and one
-//! batched DELETE for each page that contains expired objects. `DeleteObjects`
-//! is idempotent for already-absent keys, so concurrent fleet execution is
-//! safe; per-host deleted-count and freed-byte logs are best-effort and are
-//! not fleet-unique when hosts race on the same keys.
-//!
-//! R2's default 7-day lifecycle rule only cleans abandoned multipart
-//! segments, **not** completed objects — which is why we need our own scan.
-//!
-//! **Clock skew caveat**: `gc_older_than` uses local `SystemTime::now()` to
-//! compute the cutoff. If the host clock drifts ahead of R2 server time by
-//! more than the TTL, GC over-deletes (worst case: wipes everything older
-//! than `now_local - keep_days`, even objects that were just uploaded by
-//! peers with correct clocks). Mitigation: keep NTP healthy. A clock behind
-//! R2 is the safe direction (under-deletes, no data loss).
+//! Lifecycle expiration is asynchronous, so objects can remain visible after
+//! their expiration date. A missing object is a normal cache miss: normal builds
+//! rebuild and upload the template, while cache warming recreates it before the
+//! staged build. Cleanup of incomplete multipart uploads is governed by a
+//! separate bucket lifecycle setting.
 //!
 //! ## Cancellation safety
 //!
@@ -131,7 +118,6 @@ use aws_sdk_s3::error::SdkError;
 mod archive;
 mod config;
 mod download;
-mod gc;
 mod keys;
 mod multipart;
 mod upload;

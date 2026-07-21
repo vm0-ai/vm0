@@ -28,6 +28,7 @@ import {
   isNull,
   lt,
   notInArray,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -440,14 +441,14 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       ...(snapshotOrder === undefined
         ? {}
         : {
-            setWhere: sql`
-              ${isNull(runnerState.heartbeatGeneration)}
-              OR ${lt(runnerState.heartbeatGeneration, snapshotOrder.generation)}
-              OR (
-                ${eq(runnerState.heartbeatGeneration, snapshotOrder.generation)}
-                AND ${lt(runnerState.heartbeatSequence, snapshotOrder.sequence)}
-              )
-            `,
+            setWhere: or(
+              isNull(runnerState.heartbeatGeneration),
+              lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
+              and(
+                eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
+                lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
+              ),
+            ),
           }),
     });
   signal.throwIfAborted();

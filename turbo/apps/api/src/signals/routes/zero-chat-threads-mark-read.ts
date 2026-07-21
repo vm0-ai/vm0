@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -19,7 +19,7 @@ function latestRunFinishCreatedAtSql() {
     FROM ${chatMessages}
     WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
       AND ${isNotNull(chatMessages.runLifecycleEvent)}
-    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
+    ORDER BY ${desc(chatMessages.createdAt)}, ${desc(chatMessages.id)}
     LIMIT 1
   )`;
 }

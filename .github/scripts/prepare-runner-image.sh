@@ -178,12 +178,7 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  if ! ssh "$remote" sudo \
-    R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
-    R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
-    R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
-    R2_USER_STORAGES_BUCKET_NAME="${R2_USER_STORAGES_BUCKET_NAME:-}" \
-    "${BIN_DIR}/runner" gc --keep-latest 6; then
+  if ! ssh "$remote" sudo "${BIN_DIR}/runner" gc --keep-latest 6; then
     return 1
   fi
 

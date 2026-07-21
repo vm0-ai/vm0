@@ -2,6 +2,7 @@ import {
   and,
   eq,
   gte,
+  inArray,
   isNotNull,
   lt,
   max,
@@ -195,13 +196,7 @@ export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
 }
 
 function usageEventTokenSum(categories: readonly string[], alias: string) {
-  const list = sql.join(
-    categories.map((category) => {
-      return sql`${category}`;
-    }),
-    sql`, `,
-  );
-  return sql`COALESCE(SUM(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} AND ${usageEvent.category} IN (${list}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+  return sql`COALESCE(SUM(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} AND ${inArray(usageEvent.category, categories)} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

@@ -297,12 +297,6 @@ async function touchRecentlyUsedCacheRows(
   const orderedCacheKeys = [...cacheKeys].sort((left, right) => {
     return left.localeCompare(right);
   });
-  const cacheKeySql = sql.join(
-    orderedCacheKeys.map((cacheKey) => {
-      return sql`${cacheKey}`;
-    }),
-    sql`, `,
-  );
   const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
   const touchCutoffTimestamp = timestampWithoutTimeZone(touchCutoff(issuedAt));
   await db.execute(sql`
@@ -310,7 +304,7 @@ async function touchRecentlyUsedCacheRows(
       SELECT ${systemStoragePresignedUrlCache.cacheKey}
       FROM ${systemStoragePresignedUrlCache}
       WHERE
-        ${systemStoragePresignedUrlCache.cacheKey} IN (${cacheKeySql})
+        ${inArray(systemStoragePresignedUrlCache.cacheKey, orderedCacheKeys)}
         AND ${lte(systemStoragePresignedUrlCache.lastRequestedAt, sql`${touchCutoffTimestamp}::timestamp`)}
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
