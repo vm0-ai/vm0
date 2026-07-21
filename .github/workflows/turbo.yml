@@ -1137,12 +1137,12 @@ jobs:
   # Build the canonical Cloudflare app artifact independently of Vercel, then
   # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
   # the provider preview but do not receive a custom preview domain.
-  build-app-cf:
+  deploy-app:
     needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: build-app-cf-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1507,7 +1507,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, build-app-cf]
+    needs: [prepare, deploy-api, deploy-app]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1519,7 +1519,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
-      needs.build-app-cf.result == 'success'
+      needs.deploy-app.result == 'success'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1560,7 +1560,7 @@ jobs:
       - prepare
       - alias-onboarding-www
       - deploy-api
-      - build-app-cf
+      - deploy-app
       - deploy-stripe-listener
     if: |
       always() &&
@@ -1574,7 +1574,7 @@ jobs:
       ) &&
       needs.deploy-api.result == 'success' &&
       (github.event_name == 'push' || needs.alias-onboarding-www.result == 'success') &&
-      needs.build-app-cf.result == 'success' &&
+      needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
       - uses: actions/checkout@v7
@@ -2586,7 +2586,7 @@ jobs:
       - test-other
       - alias-onboarding-www
       - deploy-api
-      - build-app-cf
+      - deploy-app
       - deploy-stripe-listener
       - build-cli
       - build-e2b-template
@@ -2675,7 +2675,7 @@ jobs:
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "alias-onboarding-www" "${{ needs.alias-onboarding-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
-          check_result "build-app-cf" "${{ needs.build-app-cf.result }}" "$CF_APP_SKIP_ALLOWED"
+          check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
