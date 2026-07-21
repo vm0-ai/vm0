@@ -5,6 +5,7 @@
 In the CLI app (`turbo/apps/cli`), only write **CLI Command Integration Tests**. Test commands via `command.parseAsync()` with MSW mocking the Web API.
 
 **Integration boundary:**
+
 - **Entry point**: Commander.js command action (`command.parseAsync()`)
 - **Mock (external)**: Web API via MSW, third-party packages (`ably`)
 - **Real (internal)**: All CLI code, filesystem, config, validators, domain logic
@@ -39,6 +40,7 @@ src/commands/
 ```
 
 **Naming Convention:**
+
 - Test file name = Command file name (e.g., `init.ts` → `init.test.ts`)
 - For single-file commands, use `index.test.ts`
 - Each test file focuses on one subcommand's complete behavior
@@ -222,7 +224,9 @@ Console output IS the CLI user interface. Asserting on it is testing behavior.
 
 ```typescript
 const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-const mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+const mockConsoleError = vi
+  .spyOn(console, "error")
+  .mockImplementation(() => {});
 
 // After command execution
 expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -286,6 +290,7 @@ it("should create files with --name flag", async () => {
 Use `prompts.inject()` - the library's native testing feature - to simulate user responses. This is NOT mocking; it's using the official testing API provided by the `prompts` library.
 
 **Prerequisites**:
+
 1. Import prompts at top of file: `import prompts from "prompts"`
 2. Enable TTY mode (usually done in test file's `beforeEach`)
 3. Inject ALL prompt responses in the order they will be asked
@@ -322,6 +327,7 @@ beforeEach(() => {
 ```
 
 **Key Points**:
+
 - Use static import: `import prompts from "prompts"`
 - Inject ALL responses in prompt order - missing values will cause prompts to hang or return undefined
 - `prompts.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
@@ -347,7 +353,10 @@ Only test at command integration level. Do not write separate unit tests for int
 // CLI Command Integration Tests that exercise internal modules
 describe("compose command", () => {
   it("should reject invalid YAML", async () => {
-    await fs.writeFile(path.join(tempDir, "vm0.yaml"), "invalid: yaml: content:");
+    await fs.writeFile(
+      path.join(tempDir, "vm0.yaml"),
+      "invalid: yaml: content:",
+    );
 
     await expect(async () => {
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
@@ -417,117 +426,13 @@ it("should handle API error", async () => {
 
 ---
 
-## MSW Handler Organization
-
-When testing commands that call multiple API endpoints, organize handlers in dedicated files.
-
-### Directory Structure
-
-```
-src/mocks/
-├── server.ts           # MSW server setup
-├── handlers/
-│   ├── index.ts        # Exports all handler arrays
-│   ├── api-handlers.ts # General API handlers
-│   ├── schedule-handlers.ts  # Schedule-specific handlers
-│   └── npm-registry-handlers.ts
-```
-
-### Creating Reusable Handlers
-
-```typescript
-// src/mocks/handlers/schedule-handlers.ts
-import { http, HttpResponse } from "msw";
-
-/**
- * Default MSW handlers for schedule API endpoints.
- * Individual tests can override using server.use().
- */
-export const scheduleHandlers = [
-  // GET /api/agent/schedules
-  http.get("http://localhost:3000/api/agent/schedules", () => {
-    return HttpResponse.json({ schedules: [] });
-  }),
-
-  // POST /api/agent/schedules
-  http.post("http://localhost:3000/api/agent/schedules", () => {
-    return HttpResponse.json({
-      created: true,
-      schedule: { id: "schedule-123", name: "test-schedule" },
-    }, { status: 201 });
-  }),
-
-  // DELETE /api/agent/schedules/:name
-  http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
-    return new HttpResponse(null, { status: 204 });
-  }),
-];
-```
-
-### Registering Handlers
-
-```typescript
-// src/mocks/handlers/index.ts
-import { apiHandlers } from "./api-handlers";
-import { scheduleHandlers } from "./schedule-handlers";
-
-export const handlers = [...apiHandlers, ...scheduleHandlers];
-```
-
-### Overriding in Tests
-
-Default handlers provide baseline responses. Override for specific test scenarios:
-
-```typescript
-// Test-specific override
-it("should handle schedule not found", async () => {
-  server.use(
-    http.get("http://localhost:3000/api/agent/schedules", () => {
-      return HttpResponse.json({ schedules: [] }); // Empty list
-    }),
-  );
-  // ... test assertions
-});
-```
-
-### Helper Functions for Tests
-
-Create helper functions to generate consistent mock data:
-
-```typescript
-// In test file
-function createMockSchedule(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "schedule-1",
-    composeName: "test-agent",
-    name: "test-agent-schedule",
-    cronExpression: "0 9 * * *",
-    enabled: true,
-    ...overrides,
-  };
-}
-
-it("should display schedule details", async () => {
-  const schedule = createMockSchedule({ timezone: "America/New_York" });
-
-  server.use(
-    http.get("http://localhost:3000/api/agent/schedules", () => {
-      return HttpResponse.json({ schedules: [schedule] });
-    }),
-  );
-  // ...
-});
-```
-
----
-
 ## Comparison: Web vs CLI Testing
 
-| Aspect | Web | CLI |
-|--------|-----|-----|
-| **Entry Point** | API route handler | `command.parseAsync()` |
-| **External (Mock)** | Clerk, AWS | Web API (MSW), Ably |
+| Aspect              | Web                | CLI                            |
+| ------------------- | ------------------ | ------------------------------ |
+| **Entry Point**     | API route handler  | `command.parseAsync()`         |
+| **External (Mock)** | Clerk, AWS         | Web API (MSW), Ably            |
 | **Internal (Real)** | Database, services | Filesystem, config, validators |
-| **State Storage** | Database | Filesystem (temp dirs) |
-| **User Interface** | HTTP response | Console output + exit codes |
-| **Auth Setup** | Mock Clerk | `vi.stubEnv("VM0_TOKEN", ...)` |
+| **State Storage**   | Database           | Filesystem (temp dirs)         |
+| **User Interface**  | HTTP response      | Console output + exit codes    |
+| **Auth Setup**      | Mock Clerk         | `vi.stubEnv("VM0_TOKEN", ...)` |
