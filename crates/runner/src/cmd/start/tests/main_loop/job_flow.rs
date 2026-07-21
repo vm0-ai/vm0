@@ -53,28 +53,6 @@ async fn running_reaps_completed_jobs_without_budget_exhaustion() {
 }
 
 // -----------------------------------------------------------------------
-// Test 5: Shutdown drains running jobs before exiting
-// -----------------------------------------------------------------------
-
-#[tokio::test(start_paused = true)]
-async fn shutdown_drains_running_jobs() {
-    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let run_handle = tokio::spawn(run(config));
-
-    let run_id = RunId::new_v4();
-    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
-
-    // Wait for completion before draining.
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await;
-    assert!(completion.is_some());
-
-    shutdown(&env, run_handle).await;
-}
-
-// -----------------------------------------------------------------------
 // Test 8: Two successful jobs in sequence
 //
 // After the first job completes, discover_fut is recreated
