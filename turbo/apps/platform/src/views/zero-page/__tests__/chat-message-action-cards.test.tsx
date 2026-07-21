@@ -623,7 +623,7 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: isoFromNowMs(60 * 60 * 1000),
+            expiresAt: isoFromNowMs(30 * 60 * 1000),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -679,12 +679,18 @@ describe("chat message action cards", () => {
         within(createCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(createCard).queryByText("Expires in less than 1 hour"),
+    ).not.toBeInTheDocument();
     await confirmPermissionAction(user, writeCard);
     await waitFor(() => {
       expect(
         within(writeCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(writeCard).queryByText("Expires in less than 1 hour"),
+    ).not.toBeInTheDocument();
 
     expect(capturedPermissionGrantBodies).toStrictEqual([
       {
