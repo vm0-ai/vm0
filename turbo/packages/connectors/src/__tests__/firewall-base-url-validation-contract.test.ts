@@ -18,9 +18,16 @@ const baseUrlValidationCaseSchema = z.object({
   expectedCanonicalBase: z.string().optional(),
 });
 
+const hostnamePolicyCaseSchema = z.object({
+  name: z.string(),
+  hostname: z.string(),
+  expectedCanonicalHostname: z.string(),
+});
+
 const contractSchema = z
   .object({
     hostnamePolicy: z.literal(FIREWALL_HOSTNAME_POLICY_VERSION),
+    hostnamePolicyCases: z.array(hostnamePolicyCaseSchema).min(1),
     baseUrlValidationCases: z.array(baseUrlValidationCaseSchema).min(1),
   })
   .superRefine((contract, ctx) => {
@@ -34,6 +41,18 @@ const contractSchema = z
         });
       }
       seenNames.add(testCase.name);
+    }
+
+    const seenHostnamePolicyNames = new Set<string>();
+    for (const [index, testCase] of contract.hostnamePolicyCases.entries()) {
+      if (seenHostnamePolicyNames.has(testCase.name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["hostnamePolicyCases", index, "name"],
+          message: `duplicate case name "${testCase.name}"`,
+        });
+      }
+      seenHostnamePolicyNames.add(testCase.name);
     }
   });
 
@@ -76,6 +95,16 @@ describe("firewall base URL validation contract", () => {
   for (const testCase of contract.baseUrlValidationCases) {
     it(testCase.name, () => {
       assertValidationResult(testCase);
+    });
+  }
+});
+
+describe("firewall hostname policy contract", () => {
+  for (const testCase of contract.hostnamePolicyCases) {
+    it(testCase.name, () => {
+      expect(
+        canonicalizeFirewallBaseUrl(`https://${testCase.hostname}`, "contract"),
+      ).toBe(`https://${testCase.expectedCanonicalHostname}`);
     });
   }
 });

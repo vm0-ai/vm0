@@ -186,6 +186,12 @@ targets, and untrusted request authorities. The fixed backend policy must emit
 only canonical ASCII identities accepted unchanged by draining old runners; a
 policy upgrade requires deliberate compatibility analysis before deployment.
 
+The hostname policy CI gate runs focused shared vectors inside the exact
+checksum-pinned standalone mitmdump artifacts for both runner architectures.
+Any policy or artifact upgrade must keep those vectors passing on x86_64 and
+aarch64; the regular Python 3.12 addon suite does not replace this production
+runtime check.
+
 A fully dynamic secret-backed `auth.base` remains runner-validated because the
 existing auth request has no policy/capability marker that can distinguish old
 and new runs. Changing that path requires an explicit backward-compatible

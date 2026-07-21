@@ -66,6 +66,7 @@ jobs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-test-inputs-changed: ${{ steps.detect.outputs.mitm-addon-test-inputs-changed }}
       mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
+      firewall-hostname-policy-contract-changed: ${{ steps.detect.outputs.firewall-hostname-policy-contract-changed }}
       api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
@@ -124,6 +125,14 @@ jobs:
             echo "any-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # This contract crosses the TypeScript policy and exact runner
+          # artifact boundary without forcing unrelated crate jobs to run.
+          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx '(\.github/scripts/firewall-hostname-policy-contract\.sh|\.github/workflows/crates\.yml|crates/runner/src/deps\.rs|crates/runner/mitm-addon/scripts/firewall_hostname_policy_contract_probe\.py|crates/runner/mitm-addon/src/host_normalization\.py|turbo/pnpm-lock\.yaml|turbo/packages/connectors/package\.json|turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract\.(json|test\.ts)|turbo/packages/connectors/src/firewall-hostname-policy\.ts|turbo/packages/connectors/src/firewall-types\.ts)'; then
+            echo "firewall-hostname-policy-contract-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "firewall-hostname-policy-contract-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # The api-contracts Rust bindings are generated from selected
@@ -479,6 +488,27 @@ jobs:
           cd crates/runner/mitm-addon
           pip install ".[test]"
           python -m pytest tests/ -v
+
+  firewall-hostname-policy-contract:
+    name: Firewall hostname policy (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    needs: [detect]
+    if: needs.detect.outputs.firewall-hostname-policy-contract-changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify policy with pinned mitmdump
+        shell: bash
+        run: .github/scripts/firewall-hostname-policy-contract.sh
 
   nbd-cow-test:
     runs-on: ubuntu-latest
@@ -915,6 +945,7 @@ jobs:
       - coverage
       - api-contracts-rust-bindings
       - mitm-addon-test
+      - firewall-hostname-policy-contract
       - runner-host-groups
       - runner-build
       - runner-image-architecture-manifest
@@ -963,6 +994,7 @@ jobs:
           check_result "coverage" "${{ needs.coverage.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
+          check_result "firewall-hostname-policy-contract" "${{ needs.firewall-hostname-policy-contract.result }}" "true"
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"

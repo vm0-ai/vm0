@@ -1,5 +1,17 @@
 {
   "hostnamePolicy": "vm0-uts46-16.0-v1",
+  "hostnamePolicyCases": [
+    {
+      "name": "unicode 16 host has canonical ascii identity",
+      "hostname": "𑎀.example",
+      "expectedCanonicalHostname": "xn--pq1d.example"
+    },
+    {
+      "name": "unicode 16 a-label keeps the same identity",
+      "hostname": "xn--pq1d.example",
+      "expectedCanonicalHostname": "xn--pq1d.example"
+    }
+  ],
   "baseUrlValidationCases": [
     {
       "category": "valid",
