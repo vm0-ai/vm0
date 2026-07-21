@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.444.2](https://github.com/vm0-ai/vm0/compare/core-v8.444.1...core-v8.444.2) (2026-07-21)
+
+
+### Refactoring
+
+* **platform:** remove disabled composer inline experiments ([#22299](https://github.com/vm0-ai/vm0/issues/22299)) ([cf84abc](https://github.com/vm0-ai/vm0/commit/cf84abc999b388d627aee71addf49778dbae45e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+
 ## [8.444.1](https://github.com/vm0-ai/vm0/compare/core-v8.444.0...core-v8.444.1) (2026-07-21)
 
 

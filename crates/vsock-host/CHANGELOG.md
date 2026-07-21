@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.63](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.62...vsock-host-v0.17.63) (2026-07-21)
+
+
+### Bug Fixes
+
+* **vsock-host:** isolate chunked private writes ([#22315](https://github.com/vm0-ai/vm0/issues/22315)) ([b1a3fd9](https://github.com/vm0-ai/vm0/commit/b1a3fd93e19bab2a09a2f227a0d7012072465dfc))
+
 ## [0.17.62](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.61...vsock-host-v0.17.62) (2026-07-20)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.18...guest-agent-v0.53.19) (2026-07-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** batch queued event delivery ([#22320](https://github.com/vm0-ai/vm0/issues/22320)) ([39dd251](https://github.com/vm0-ai/vm0/commit/39dd251f3b4c688a4550cc3ec15373672d3120d5))
+
 ## [0.53.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.17...guest-agent-v0.53.18) (2026-07-21)
 
 
