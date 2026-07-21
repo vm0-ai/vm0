@@ -6,7 +6,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 
 export interface WorkflowQueueSignals {
   readonly queue$: Computed<Promise<WorkflowQueueResponse | null>>;
@@ -24,7 +23,6 @@ export function createWorkflowQueueSignals(
   threadId: string,
 ): WorkflowQueueSignals {
   const reloadVersion$ = state(0);
-  const lastPendingCount$ = state(0);
 
   const reload$ = command(({ set }) => {
     set(reloadVersion$, (version) => {
@@ -93,17 +91,8 @@ export function createWorkflowQueueSignals(
   const handleChanged$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       set(reload$);
-      const queue = await get(queue$);
+      await get(queue$);
       signal.throwIfAborted();
-      if (!queue) {
-        return false;
-      }
-      const pending = queue.pending.length;
-      const previous = get(lastPendingCount$);
-      set(lastPendingCount$, pending);
-      if (previous === 0 && pending > 0) {
-        set(openHeaderAutomationSidebar$, threadId);
-      }
       return false;
     },
   );

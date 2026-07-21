@@ -71,7 +71,6 @@ const artifactItemSchema = z.object({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
-  isFavorited: z.boolean().optional(),
 });
 
 /**
