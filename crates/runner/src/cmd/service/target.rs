@@ -13,7 +13,7 @@ pub(crate) struct RunnerServiceUnit {
 }
 
 impl RunnerServiceUnit {
-    /// Build a validated runner systemd unit identity from the user-supplied suffix.
+    /// Build a validated runner systemd unit identity from a suffix.
     ///
     /// Validates the suffix with [`crate::runner_dirname::validate_name`] so
     /// that runner directory names and service name suffixes follow the same

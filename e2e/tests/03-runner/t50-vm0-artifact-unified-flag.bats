@@ -59,9 +59,8 @@ teardown() {
     # Step 1: Create and push artifact with known content
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "unified-flag-content" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Step 2: Run agent using unified --artifact flag (name only = latest)
@@ -78,17 +77,16 @@ teardown() {
     # Step 1: Push version 1
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "version-1-content" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+    VERSION1="$output"
     echo "# Version 1 ID: $VERSION1"
     [ -n "$VERSION1" ]
 
     # Step 2: Push version 2 (becomes HEAD)
     echo "version-2-head" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
     echo "# HEAD version pushed"
 
