@@ -108,7 +108,7 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
+    /// `--r2-keep-days 0` would wipe even just-uploaded templates. Verify the
     /// clap range validator rejects it (catches a regression if the
     /// `value_parser` annotation is dropped).
     #[derive(Parser)]
