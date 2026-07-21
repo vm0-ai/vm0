@@ -242,7 +242,7 @@ export function PinnedAgentListSection({
         <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
           Pinned agents
         </span>
-        <div className="flex items-start gap-1 overflow-x-auto pb-1">
+        <div className="grid grid-cols-4 items-start gap-1 pb-1">
           {pinnedAgentsLoadable.state === "hasData" &&
             displayedPinnedAgents.map((agent) => {
               const isPrimarySelected =
@@ -250,32 +250,42 @@ export function PinnedAgentListSection({
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const hasUnreadIndicator =
                 agentUnreadIndicatorsEnabled && hasUnread;
+              const isPinned = pinnedAgentIds.has(agent.id);
+              const isDefaultAgent = agent.id === defaultAgentId;
               return (
-                <Link
-                  key={agent.id}
-                  pathname="/agents/:agentId/chat"
-                  options={{ pathParams: { agentId: agent.id } }}
-                  data-testid="pinned-agent-card"
-                  className={`group flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
-                    isPrimarySelected
-                      ? "bg-gray-200 text-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <span className="relative">
-                    <AgentAvatarImg
-                      name={agent.id}
-                      alt={agent.displayName ?? agent.id}
-                      className="h-9 w-9 rounded-full object-cover object-top"
-                    />
-                    {hasUnreadIndicator && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
-                    )}
-                  </span>
-                  <span className="w-full truncate text-center text-[11px] leading-tight">
-                    {agent.displayName ?? agent.id}
-                  </span>
-                </Link>
+                <div key={agent.id} className="group relative min-w-0">
+                  <Link
+                    pathname="/agents/:agentId/chat"
+                    options={{ pathParams: { agentId: agent.id } }}
+                    data-testid="pinned-agent-card"
+                    className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+                      isPrimarySelected
+                        ? "bg-gray-200 text-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <span className="relative">
+                      <AgentAvatarImg
+                        name={agent.id}
+                        alt={agent.displayName ?? agent.id}
+                        className="h-9 w-9 rounded-full object-cover object-top"
+                      />
+                      {hasUnreadIndicator && (
+                        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
+                      )}
+                    </span>
+                    <span className="w-full truncate text-center text-[11px] leading-tight">
+                      {agent.displayName ?? agent.id}
+                    </span>
+                  </Link>
+                  <PinnedAgentSideDecorator
+                    agentId={agent.id}
+                    isDefaultAgent={isDefaultAgent}
+                    isPinned={isPinned}
+                    isPrimarySelected={isPrimarySelected}
+                    hasUnread={hasUnreadIndicator}
+                  />
+                </div>
               );
             })}
           <button
@@ -284,7 +294,7 @@ export function PinnedAgentListSection({
               openAgentListDialog();
             }}
             aria-label="Open a conversation"
-            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <IconPlus size={16} stroke={2} />

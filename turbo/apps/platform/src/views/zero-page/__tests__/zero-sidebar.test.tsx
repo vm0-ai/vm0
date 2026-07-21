@@ -2316,6 +2316,70 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides the chat list column on agent detail pages", async () => {
+    prepareAgentTeam();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${RESEARCH_AGENT_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  });
+
+  it("keeps agent actions on horizontal pinned cards", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: [RESEARCH_AGENT_ID] });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.AgentUnreadIndicators]: true,
+      },
+    });
+
+    const list = await waitFor(() => {
+      const current = screen.getByTestId("chat-list-column");
+      expect(
+        within(current).getAllByTestId("pinned-agent-card").length,
+      ).toBeGreaterThan(1);
+      return current;
+    });
+    const card = within(list)
+      .getAllByTestId("pinned-agent-card")
+      .find((candidate) => {
+        return candidate.textContent?.includes("Research Agent");
+      });
+    if (!card) {
+      throw new Error("Research Agent pinned card not found");
+    }
+    const cardContainer = card.parentElement;
+    if (!(cardContainer instanceof HTMLElement)) {
+      throw new Error("Pinned agent card container not found");
+    }
+
+    click(within(cardContainer).getByLabelText("Open agent menu"));
+
+    expect(menuItemByText("Unpin")).toBeInTheDocument();
+    expect(menuItemByText("Mark all read")).toBeInTheDocument();
+  });
+
   it("keeps the single-column sidebar when the three-column flag is off", async () => {
     prepareDefaultAgent();
 

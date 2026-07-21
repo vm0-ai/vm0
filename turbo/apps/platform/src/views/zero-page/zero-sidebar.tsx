@@ -572,10 +572,12 @@ function CollapsedManageNav({
 }
 
 function ExpandedSidebarSections() {
+  const activeId = useGet(activeRoute$);
+
   return (
     <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
-      <ChatThreadsSectionWithKey />
+      {activeId !== "agentDetail" && <ChatThreadsSectionWithKey />}
     </div>
   );
 }
@@ -774,7 +776,7 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`text-[10px] leading-none ${
+        className={`text-[9px] leading-none ${
           isActive
             ? "font-semibold text-sidebar-foreground"
             : "text-sidebar-foreground/60"
@@ -812,7 +814,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[76px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
+      className="zero-nav hidden md:flex h-full w-[60px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
@@ -927,10 +929,12 @@ function ChatListColumn() {
 }
 
 function ThreeColumnNav() {
+  const activeId = useGet(activeRoute$);
+
   return (
     <>
       <LabeledNavRail />
-      <ChatListColumn />
+      {activeId !== "agentDetail" && <ChatListColumn />}
       {/* Reuse the full sidebar as the mobile drawer only. */}
       <ExpandedSidebar mobileOnly />
     </>
