@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.291.0](https://github.com/vm0-ai/vm0/compare/api-v1.290.1...api-v1.291.0) (2026-07-21)
+
+
+### Features
+
+* support custom credits in atom grant invoices ([#22030](https://github.com/vm0-ai/vm0/issues/22030)) ([d80a7b0](https://github.com/vm0-ai/vm0/commit/d80a7b02bb25db892f60c51a6971482894c91ba8))
+
+
+### Refactoring
+
+* **api:** enforce connector credential ownership invariants ([#22266](https://github.com/vm0-ai/vm0/issues/22266)) ([df7bece](https://github.com/vm0-ai/vm0/commit/df7bece5c31b95007976a1b00118e271a8067554))
+
+
+### Performance Improvements
+
+* **api:** batch chat search context queries ([#22308](https://github.com/vm0-ai/vm0/issues/22308)) ([bbc97f7](https://github.com/vm0-ai/vm0/commit/bbc97f7fcbb0fb84922b0edb52bcc8b7ac515391))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+    * @vm0/core bumped to 8.444.2
+    * @vm0/db bumped to 1.122.3
+
 ## [1.290.1](https://github.com/vm0-ai/vm0/compare/api-v1.290.0...api-v1.290.1) (2026-07-21)
 
 

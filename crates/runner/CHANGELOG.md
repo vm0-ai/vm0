@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.146.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.20...runner-rs-v0.146.21) (2026-07-21)
+
+
+### Documentation
+
+* **mitm-addon:** clarify usage buffer close contract ([#22288](https://github.com/vm0-ai/vm0/issues/22288)) ([3339719](https://github.com/vm0-ai/vm0/commit/3339719db4cd2471a30ee4627ac2c40c2642eb56))
+* **runner:** update storage cache gc documentation ([#22298](https://github.com/vm0-ai/vm0/issues/22298)) ([dfed3a1](https://github.com/vm0-ai/vm0/commit/dfed3a1ae354197bff6e3aad59d6873123aaf010))
+
+
+### Performance Improvements
+
+* **runner:** avoid duplicate live runner registry scans ([#22306](https://github.com/vm0-ai/vm0/issues/22306)) ([571db03](https://github.com/vm0-ai/vm0/commit/571db035fe34f358c539095e3e13de5ba922ee23))
+
 ## [0.146.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.19...runner-rs-v0.146.20) (2026-07-21)
 
 ## [0.146.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.18...runner-rs-v0.146.19) (2026-07-21)

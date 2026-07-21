@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.244.4](https://github.com/vm0-ai/vm0/compare/cli-v9.244.3...cli-v9.244.4) (2026-07-21)
+
+
+### Refactoring
+
+* remove vm0 info, upgrade, and init commands from @vm0/cli ([#22272](https://github.com/vm0-ai/vm0/issues/22272)) ([d9e5fc1](https://github.com/vm0-ai/vm0/commit/d9e5fc1c2e336b39f30d0be305e2ce1afd58235d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+    * @vm0/core bumped to 8.444.2
+
 ## [9.244.3](https://github.com/vm0-ai/vm0/compare/cli-v9.244.2...cli-v9.244.3) (2026-07-21)
 
 
