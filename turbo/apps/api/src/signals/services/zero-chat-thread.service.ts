@@ -1419,6 +1419,11 @@ interface ArtifactFavoriteArgs {
   readonly artifactUrl: string;
 }
 
+interface ArtifactFavoriteScope {
+  readonly userId: string;
+  readonly orgId: string;
+}
+
 export const zeroArtifacts$ = command(
   async (
     { set },
@@ -1453,6 +1458,29 @@ export const zeroArtifacts$ = command(
       cursor: cursor && "createdAt" in cursor ? cursor : null,
       syncUntil,
       signal,
+    });
+  },
+);
+
+export const artifactFavoriteUrls$ = command(
+  async (
+    { set },
+    args: ArtifactFavoriteScope,
+    signal: AbortSignal,
+  ): Promise<string[]> => {
+    const rows = await set(writeDb$)
+      .select({ artifactUrl: userArtifactFavorites.artifactUrl })
+      .from(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+        ),
+      )
+      .orderBy(asc(userArtifactFavorites.artifactUrl));
+    signal.throwIfAborted();
+    return rows.map((row) => {
+      return row.artifactUrl;
     });
   },
 );

@@ -388,6 +388,12 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
   });
 }
 
+function mockArtifactFavorites(artifactUrls: readonly string[]): void {
+  context.mocks.api(artifactsContract.listFavorites, ({ respond }) => {
+    return respond(200, { artifactUrls: [...artifactUrls] });
+  });
+}
+
 function mockScrollViewport(
   element: HTMLElement,
   initial: {
@@ -1252,6 +1258,25 @@ describe("artifacts page", () => {
     );
   });
 
+  it("keeps artifacts visible when favorite state fails to load", async () => {
+    setupTeam();
+    const scope = testAuthScope("favorites-unavailable");
+    mockArtifacts([createArtifact()]);
+    context.mocks.api(artifactsContract.listFavorites, ({ respond }) => {
+      return respond(403, {
+        error: { code: "FORBIDDEN", message: "Could not load favorites" },
+      });
+    });
+
+    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+
+    await screen.findByText("launch-plan.html");
+    expect(
+      screen.queryByLabelText("Show favorite artifacts"),
+    ).not.toBeInTheDocument();
+    expect(buttonByLabel("Add launch-plan.html to favorites")).toBeDisabled();
+  });
+
   it("favorites artifacts optimistically and filters favorites locally", async () => {
     setupTeam();
     const scope = testAuthScope("favorites");
@@ -1268,7 +1293,6 @@ describe("artifacts page", () => {
       fileId: "favorite-brief-file",
       filename: "favorite-brief.html",
       createdAt: "2026-01-02T00:00:00Z",
-      isFavorited: true,
       url: "https://artifacts.example.com/favorite-brief.html",
     });
     const archive = createArtifact({
@@ -1280,6 +1304,7 @@ describe("artifacts page", () => {
       url: "https://artifacts.example.com/archive.html",
     });
     mockArtifacts([launch, brief, archive]);
+    mockArtifactFavorites([brief.url]);
 
     let favoriteBody: { readonly artifactUrl: string } | undefined;
     context.mocks.api(artifactsContract.favorite, ({ body, respond }) => {
@@ -1478,6 +1503,7 @@ describe("artifacts page", () => {
       artifactItemId: "remote-run:file-1",
       runId: "remote-run",
       filename: "remote-summary.html",
+      isFavorited: true,
     });
     mockArtifacts([artifact]);
 
@@ -1489,6 +1515,11 @@ describe("artifacts page", () => {
         artifact.artifactItemId,
       ]);
     });
+    const db = await openChatIdb(scope.userId, scope.orgId);
+    const cached = await createArtifactItemCacheStores(
+      resolvedChatIdb(db),
+    ).readStore.readRecent({ limit: 10_000 });
+    expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
   it("normalizes older remote artifacts without a size", async () => {

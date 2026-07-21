@@ -223,9 +223,11 @@ describe("chat message action cards", () => {
           from: "sender@example.com",
           to: ["recipient@example.com"],
           cc: ["copy@example.com"],
-          bcc: [],
+          bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
+          replyTo: "reply-only@example.com",
+          inReplyTo: "<thread-message@example.com>",
           status: sent ? "sent" : "draft",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
@@ -237,7 +239,7 @@ describe("chat message action cards", () => {
                 sentAt: "2026-07-14T10:01:00.000Z",
               }
             : {}),
-          references: [],
+          references: ["<reference-message@example.com>"],
           attachments: [
             {
               filename: "report.pdf",
@@ -261,16 +263,18 @@ describe("chat message action cards", () => {
           from: "sender@example.com",
           to: ["recipient@example.com"],
           cc: ["copy@example.com"],
-          bcc: [],
+          bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
+          replyTo: "reply-only@example.com",
+          inReplyTo: "<thread-message@example.com>",
           status: "sent",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
           sentGmailMessageId: "gmail-sent-message-id",
-          references: [],
+          references: ["<reference-message@example.com>"],
           attachments: [
             {
               filename: "report.pdf",
@@ -344,8 +348,18 @@ describe("chat message action cards", () => {
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
     expect(within(sidebar).getByText("copy@example.com")).toBeInTheDocument();
+    expect(within(sidebar).getByText("hidden@example.com")).toBeInTheDocument();
     expect(within(sidebar).getByText("Mail body")).toBeInTheDocument();
     expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
+    expect(within(sidebar).getByText("242 KB")).toBeInTheDocument();
+    expect(within(sidebar).queryByText(/application\/pdf/u)).toBeNull();
+    expect(within(sidebar).queryByText("reply-only@example.com")).toBeNull();
+    expect(
+      within(sidebar).queryByText("<thread-message@example.com>"),
+    ).toBeNull();
+    expect(
+      within(sidebar).queryByText("<reference-message@example.com>"),
+    ).toBeNull();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
     expect(draftRequests).toBe(1);
     await user.click(await waitForButtonByText("Send", sidebar));
@@ -427,6 +441,8 @@ describe("chat message action cards", () => {
     await user.click(card);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(draftRequests).toBe(1);
+    expect(within(sidebar).queryByText("Cc")).toBeNull();
+    expect(within(sidebar).queryByText("Bcc")).toBeNull();
     await user.click(await waitForButtonByText("Delete", sidebar));
 
     await waitFor(() => {
