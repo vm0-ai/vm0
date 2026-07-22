@@ -1,6 +1,6 @@
 {
-  "id": "97f09e2f-41f3-4c18-8691-3d42946cd8e4",
-  "prevId": "fa88501b-1652-44ba-9274-a21ca2d53996",
+  "id": "53f9b040-6bfc-4486-88ab-0cbad7876e12",
+  "prevId": "97f09e2f-41f3-4c18-8691-3d42946cd8e4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -12098,6 +12098,13 @@
         },
         "can_buy_concurrency": {
           "name": "can_buy_concurrency",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "can_buy_credits": {
+          "name": "can_buy_credits",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

@@ -970,14 +970,7 @@ async function sendChatRunMessage(
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const chat = createChatFilesBddApi(context);
-  const sent = await chat.requestSendMessage(
-    actor,
-    {
-      ...body,
-      ...(body.threadId === undefined ? { model: "claude-sonnet-5" } : {}),
-    },
-    [201],
-  );
+  const sent = await chat.requestSendMessage(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -4765,7 +4758,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         [201],
       );
     }
-    const thread = await chat.createThread(actor, { agentId: agent.agentId });
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      model: "claude-sonnet-4-6",
+    });
     const sent = await chat.requestSendMessage(
       actor,
       {

@@ -10,7 +10,7 @@ UPDATE "org_plan_entitlements"
 SET "workflow_webhook_trigger_allowed" = true
 WHERE "plan_key" IN ('team', 'custom');
 --> statement-breakpoint
--- Keep pre-0640 API instances safe while they are still serving during the
+-- Keep pre-0642 API instances safe while they are still serving during the
 -- rollout. Those writers update plan_key but do not know about can_buy_credits.
 -- Remove this compatibility trigger after every serving API version includes
 -- can_buy_credits in its entitlement writes.
@@ -100,7 +100,7 @@ LEFT JOIN "org_plan_entitlements" AS entitlement
 WHERE entitlement."org_id" IS NULL
 ON CONFLICT ("org_id") DO NOTHING;
 --> statement-breakpoint
--- Some pre-0640 writers only create org_metadata because plan entitlements
+-- Some pre-0642 writers only create org_metadata because plan entitlements
 -- were not required by those code paths. Materialize the tier snapshot at the
 -- database boundary so an org created during the rolling deployment never
 -- reaches the new API without an entitlement row. A current writer can safely
