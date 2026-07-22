@@ -1,4 +1,4 @@
-"""Tests for model-provider WebSocket message retention and cleanup."""
+"""Tests for registered WebSocket message retention and cleanup."""
 
 import pytest
 from mitmproxy.flow import Error
@@ -183,7 +183,7 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
 
 class TestModelProviderWebSocketRetention:
-    """Retention tests without usage delivery."""
+    """Model retention tests without usage delivery."""
 
     def test_model_websocket_deferred_trim_keeps_latest_client_message(
         self,
@@ -212,13 +212,52 @@ class TestModelProviderWebSocketRetention:
         assert flow.websocket.messages == [latest_client]
         assert old_server not in flow.websocket.messages
 
-    def test_non_model_websocket_message_retention_is_unchanged(
+
+class TestRegisteredWebSocketRetention:
+    @pytest.mark.parametrize("from_client", [True, False])
+    def test_non_model_websocket_retention_is_bounded_during_sustained_traffic(
+        self,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+        from_client: bool,
+    ):
+        flow = real_flow(with_response=False, host="example.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        message_count = 32
+        message_size = 4096
+        total_bytes = 0
+        retained_bytes = 0
+
+        for index in range(message_count):
+            content = f"message-{index}".encode().ljust(message_size, b"x")
+            total_bytes += len(content)
+            latest = append_websocket_message(
+                flow,
+                from_client=from_client,
+                content=content,
+            )
+            assert flow.websocket is not None
+            messages_before_trim = list(flow.websocket.messages)
+
+            mitm_addon.websocket_message(flow)
+
+            assert flow.websocket.messages == messages_before_trim
+            assert len(deferred_websocket_trim_scheduler) == 1
+
+            run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+            assert flow.websocket.messages == [latest]
+            retained_bytes = sum(len(message.content) for message in flow.websocket.messages)
+            assert retained_bytes == len(content)
+
+        assert total_bytes == message_count * retained_bytes
+
+    def test_unregistered_websocket_retention_is_unchanged(
         self,
         real_flow,
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         first = append_websocket_message(flow, from_client=True, content=b"client")
         second = append_websocket_message(flow, from_client=False, content=b"server")
 
@@ -227,3 +266,44 @@ class TestModelProviderWebSocketRetention:
         assert deferred_websocket_trim_scheduler == []
         assert flow.websocket is not None
         assert flow.websocket.messages == [first, second]
+
+    def test_non_model_websocket_end_clears_final_retained_message(
+        self,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+    ):
+        flow = real_flow(with_response=False, host="example.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        append_websocket_message(flow, from_client=False, content=b"server")
+
+        mitm_addon.websocket_message(flow)
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        mitm_addon.websocket_end(flow)
+
+        assert flow.websocket is not None
+        assert flow.websocket.messages == []
+
+        run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+        assert flow.websocket.messages == []
+
+    def test_non_model_websocket_error_clears_final_retained_message(
+        self,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+    ):
+        flow = real_flow(with_response=False, host="example.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.error = Error("connection reset by peer")
+        append_websocket_message(flow, from_client=True, content=b"client")
+
+        mitm_addon.websocket_message(flow)
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        mitm_addon.error(flow)
+
+        assert flow.websocket is not None
+        assert flow.websocket.messages == []
+
+        run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+        assert flow.websocket.messages == []

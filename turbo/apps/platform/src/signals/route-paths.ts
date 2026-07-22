@@ -22,6 +22,7 @@ export const ROUTES = {
   connectors: "/connectors",
   customConnectorProposal: "/connectors/custom/proposal",
   computerUseAuthorize: "/computer-use/authorize/:requestToken",
+  connectorRedirecting: "/connectors/:type/redirecting",
   directedConnect: "/connectors/:type/connect",
   directedAuthorize: "/connectors/:type/authorize",
   settings: "/settings",
