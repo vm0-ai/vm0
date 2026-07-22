@@ -148,6 +148,9 @@ export const hostedSitePrepareResponseSchema = z.object({
   deploymentId: z.string().uuid(),
   publicSlug: z.string(),
   url: z.string().url(),
+  deploymentVersion: z.number().int().positive().optional(),
+  artifactUrl: z.string().url().optional(),
+  aliasUrl: z.string().url().optional(),
   uploads: z.array(hostedSiteUploadSchema),
 });
 
@@ -156,6 +159,11 @@ export const hostedSiteCompleteResponseSchema = z.object({
   deploymentId: z.string().uuid(),
   publicSlug: z.string(),
   url: z.string().url(),
+  deploymentVersion: z.number().int().positive().optional(),
+  artifactUrl: z.string().url().optional(),
+  aliasUrl: z.string().url().optional(),
+  isActive: z.boolean().optional(),
+  activeDeploymentVersion: z.number().int().positive().optional(),
   status: z.literal("ready"),
 });
 
@@ -164,9 +172,32 @@ export const hostedSiteFilesResponseSchema = z.object({
   deploymentId: z.string().uuid(),
   publicSlug: hostedSitePublicSlugSchema,
   url: z.string().url(),
+  deploymentVersion: z.number().int().positive().optional(),
+  artifactUrl: z.string().url().optional(),
+  aliasUrl: z.string().url().optional(),
   fileCount: z.number().int().nonnegative(),
   size: z.number().int().nonnegative(),
   files: z.array(hostedSiteDownloadFileSchema),
+});
+
+const hostedSiteDeploymentSummarySchema = z.object({
+  deploymentId: z.string().uuid(),
+  deploymentVersion: z.number().int().positive().nullable(),
+  artifactUrl: z.string().url().nullable(),
+  status: z.enum(["uploading", "ready", "failed", "deleted"]),
+  isActive: z.boolean(),
+  createdAt: z.string().datetime(),
+  readyAt: z.string().datetime().nullable(),
+});
+
+export const hostedSiteDeploymentsResponseSchema = z.object({
+  siteId: z.string().uuid(),
+  site: hostedSiteSlugSchema,
+  publicSlug: hostedSitePublicSlugSchema,
+  aliasUrl: z.string().url(),
+  activeDeploymentId: z.string().uuid().nullable(),
+  activeDeploymentVersion: z.number().int().positive().nullable(),
+  deployments: z.array(hostedSiteDeploymentSummarySchema),
 });
 
 export const zeroHostContract = c.router({
@@ -212,6 +243,9 @@ export const zeroHostContract = c.router({
     pathParams: z.object({
       publicSlug: hostedSitePublicSlugSchema,
     }),
+    query: z.object({
+      version: z.coerce.number().int().positive().optional(),
+    }),
     headers: authHeadersSchema,
     responses: {
       200: hostedSiteFilesResponseSchema,
@@ -223,6 +257,23 @@ export const zeroHostContract = c.router({
       500: apiErrorSchema,
     },
     summary: "List active hosted-site files for an owned site",
+  },
+  deployments: {
+    method: "GET",
+    path: "/api/zero/host/sites/:site/deployments",
+    pathParams: z.object({
+      site: hostedSiteSlugSchema,
+    }),
+    headers: authHeadersSchema,
+    responses: {
+      200: hostedSiteDeploymentsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List deployment versions for an owned hosted site",
   },
   redeployPresentationHtml: {
     method: "POST",
@@ -319,4 +370,7 @@ export type HostedSiteCompleteResponse = z.infer<
 >;
 export type HostedSiteFilesResponse = z.infer<
   typeof hostedSiteFilesResponseSchema
+>;
+export type HostedSiteDeploymentsResponse = z.infer<
+  typeof hostedSiteDeploymentsResponseSchema
 >;

@@ -27,6 +27,13 @@ describe("structured user messages", () => {
           },
           attachFiles: [
             {
+              id: "image-live",
+              filename: "reference.png",
+              url: "/f/test-user/image-live/reference.png",
+              contentType: "image/png",
+              size: 84,
+            },
+            {
               id: "file-live",
               filename: "renamed-report.pdf",
               url: "/f/test-user/file-live/renamed-report.pdf",
@@ -37,13 +44,6 @@ describe("structured user messages", () => {
           structuredPrompt: {
             version: 1,
             parts: [
-              { type: "text", text: "Start " },
-              {
-                type: "chat_thread",
-                threadId: referencedThreadId,
-                titleSnapshot: "Archived source",
-              },
-              { type: "text", text: " with " },
               {
                 type: "template",
                 titleSnapshot: "Archived deck",
@@ -52,7 +52,19 @@ describe("structured user messages", () => {
                   selection: { templateId: "retired-template" },
                 },
               },
-              { type: "text", text: " and " },
+              {
+                type: "file",
+                fileId: "image-live",
+                filenameSnapshot: "reference.png",
+                contentType: "image/png",
+              },
+              { type: "text", text: "Start " },
+              {
+                type: "chat_thread",
+                threadId: referencedThreadId,
+                titleSnapshot: "Archived source",
+              },
+              { type: "text", text: " with " },
               {
                 type: "file",
                 fileId: "file-live",
@@ -93,8 +105,8 @@ describe("structured user messages", () => {
       return element as HTMLElement;
     });
     expect(structuredMessage.textContent).toBe(
-      "Start Archived source with Presentation·Archived deck and " +
-        "PDForiginal-report.pdf, then TXTdeleted-notes.txt.\n" +
+      "Start Archived source with PDForiginal-report.pdf, then " +
+        "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
     expect(structuredMessage.querySelector("strong")).toBeNull();
@@ -103,9 +115,18 @@ describe("structured user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
+    const template = screen.getByLabelText("Message template Archived deck");
+    const image = screen.getByLabelText("Preview reference.png");
+    expect(template).toBeInTheDocument();
+    expect(image).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Message template Archived deck"),
-    ).toBeInTheDocument();
+      template.compareDocumentPosition(structuredMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      image.compareDocumentPosition(structuredMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       structuredMessage.querySelector(
         'button[aria-label="Download original-report.pdf"]',

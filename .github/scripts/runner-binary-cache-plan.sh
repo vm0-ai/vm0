@@ -201,7 +201,7 @@ emit "compile-matrix" "$miss_matrix"
 emit "hit-targets" "$hit_targets"
 emit "hit-count" "$hit_count"
 emit "miss-count" "$miss_count"
-emit "resolution-json" "$resolution_json"
+printf 'resolution-json=%s\n' "$resolution_json"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {

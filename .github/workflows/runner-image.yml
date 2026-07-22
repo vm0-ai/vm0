@@ -38,9 +38,7 @@ jobs:
       runner-host-groups-configured: ${{ steps.host-group-presence.outputs.configured }}
       runner-binary-compile-matrix: ${{ steps.binary-plan.outputs.compile-matrix }}
       runner-binary-hit-targets: ${{ steps.binary-plan.outputs.hit-targets }}
-      runner-binary-hit-count: ${{ steps.binary-plan.outputs.hit-count }}
       runner-binary-miss-count: ${{ steps.binary-plan.outputs.miss-count }}
-      runner-binary-resolution-json: ${{ steps.binary-plan.outputs.resolution-json }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -519,7 +517,6 @@ jobs:
 
       - name: Resolve reusable candidate in shadow mode
         id: shadow
-        if: steps.fresh.outcome == 'success'
         env:
           CURRENT_EVENT: ${{ github.event_name }}
           CURRENT_PR_HEAD_REF: ${{ needs.prepare.outputs.pr-head-ref }}
@@ -540,7 +537,6 @@ jobs:
 
       - name: Publish runner binary cache object
         id: publish
-        if: steps.fresh.outcome == 'success'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_DEFAULT_REGION: auto

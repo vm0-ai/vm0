@@ -4,6 +4,7 @@ import type {
   CodexServiceTier,
   GenerationTemplateRequest,
   PersistedAttachment,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 export interface ChatThreadRealtimeHandlers {
@@ -51,6 +52,7 @@ export interface AppendQueuedMessageArgs {
   runOptions?: ChatRunOptionsRequest;
   realAgentInPreview?: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
+  structuredPrompt?: UserMessageDocument;
   computerUseHostId?: string | null;
 }
 

@@ -18,6 +18,8 @@ interface ActiveSitePointer {
   readonly publicSlug: string;
   readonly siteId: string;
   readonly deploymentId: string;
+  readonly deploymentVersion?: number;
+  readonly artifactUrl?: string;
   readonly prefix: string;
   readonly manifestKey: string;
   readonly spaFallback: boolean;
@@ -54,6 +56,8 @@ const STATIC_ALLOWED_ORIGINS = new Set([
   "https://app.vm7.ai:8443",
 ]);
 const DEFAULT_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
+const IMMUTABLE_DEPLOYMENT_HOST_PATTERN =
+  /^dpl-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/u;
 
 function isSubdomainOf(hostname: string, domain: string): boolean {
   return hostname.endsWith(`.${domain}`) && hostname.length > domain.length + 1;
@@ -153,6 +157,10 @@ function defaultRobotsResponse(request: Request): Response {
 
 function activePointerKey(publicSlug: string): string {
   return `sites/${publicSlug}/active.json`;
+}
+
+function immutableDeploymentPointerKey(deploymentId: string): string {
+  return `sites/deployments/${deploymentId}.json`;
 }
 
 function siteSlugFromHost(hostname: string, hostDomain: string): string | null {
@@ -262,14 +270,25 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
     return new Response("Bad path", { status: 400 });
   }
 
-  const pointer = await readJson<ActiveSitePointer>(
-    env.HOSTED_SITES_BUCKET,
-    activePointerKey(publicSlug),
-  );
-  if (!pointer || pointer.publicSlug !== publicSlug) {
+  const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(publicSlug)?.[1];
+  let pointer = deploymentId
+    ? await readJson<ActiveSitePointer>(
+        env.HOSTED_SITES_BUCKET,
+        immutableDeploymentPointerKey(deploymentId),
+      )
+    : null;
+  if (pointer && pointer.deploymentId !== deploymentId) {
     return notFoundResponse();
   }
-
+  if (!pointer) {
+    pointer = await readJson<ActiveSitePointer>(
+      env.HOSTED_SITES_BUCKET,
+      activePointerKey(publicSlug),
+    );
+    if (!pointer || pointer.publicSlug !== publicSlug) {
+      return notFoundResponse();
+    }
+  }
   const manifest = await readJson<HostedSiteManifest>(
     env.HOSTED_SITES_BUCKET,
     pointer.manifestKey,

@@ -1404,6 +1404,8 @@ describe("zero artifact sidebar", () => {
       "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-apply.html?v=1";
     const restoredHtml =
       "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    const immutableArtifactUrl =
+      "https://dpl-dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a.sites.vm7.io";
     let redeployedHtml: string | null = null;
 
     context.mocks.api(
@@ -1436,6 +1438,11 @@ describe("zero artifact sidebar", () => {
         deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
         publicSlug: "resume-apply",
         url: body.url,
+        deploymentVersion: 2,
+        artifactUrl: immutableArtifactUrl,
+        aliasUrl: body.url,
+        isActive: true,
+        activeDeploymentVersion: 2,
         status: "ready",
       });
     });
@@ -1460,6 +1467,9 @@ describe("zero artifact sidebar", () => {
 
     await waitFor(() => {
       expect(redeployedHtml).toBe(restoredHtml);
+      expect(context.store.get(searchParams$).get("artifact")).toBe(
+        immutableArtifactUrl,
+      );
     });
   });
 

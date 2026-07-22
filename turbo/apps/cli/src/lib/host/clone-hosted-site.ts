@@ -17,6 +17,8 @@ interface CloneHostedSiteResult {
   readonly deploymentId: string;
   readonly publicSlug: string;
   readonly url: string;
+  readonly deploymentVersion?: number;
+  readonly artifactUrl?: string;
   readonly destination: string;
   readonly fileCount: number;
   readonly size: number;
@@ -25,6 +27,7 @@ interface CloneHostedSiteResult {
 interface CloneHostedSiteOptions {
   readonly site: string;
   readonly destination: string;
+  readonly version?: number;
   readonly onProgress?: (progress: CloneHostedSiteProgress) => void;
 }
 
@@ -122,7 +125,7 @@ export async function cloneHostedSite(
   }
 
   options.onProgress?.({ phase: "checking" });
-  const hostedSite = await getHostedSiteFiles(publicSlug);
+  const hostedSite = await getHostedSiteFiles(publicSlug, options.version);
 
   options.onProgress?.({
     phase: "creating",
@@ -140,6 +143,12 @@ export async function cloneHostedSite(
     deploymentId: hostedSite.deploymentId,
     publicSlug: hostedSite.publicSlug,
     url: hostedSite.url,
+    ...(hostedSite.deploymentVersion === undefined
+      ? {}
+      : { deploymentVersion: hostedSite.deploymentVersion }),
+    ...(hostedSite.artifactUrl === undefined
+      ? {}
+      : { artifactUrl: hostedSite.artifactUrl }),
     destination: options.destination,
     fileCount: hostedSite.fileCount,
     size: hostedSite.size,
