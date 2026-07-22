@@ -1252,6 +1252,8 @@ async function getTelegramPostRunStateForAction(
         internalKind: agentRunCallbacks.internalKind,
         payload: agentRunCallbacks.payload,
         status: agentRunCallbacks.status,
+        attempts: agentRunCallbacks.attempts,
+        lastError: agentRunCallbacks.lastError,
       })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run.id)),

@@ -3,6 +3,7 @@ import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
+import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -21,6 +22,7 @@ import {
 } from "./helpers/api-bdd-integrations";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
@@ -41,6 +43,7 @@ const chat = createChatFilesBddApi(context);
 const integrations = createBddIntegrationApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
+const callbackStore = createStore();
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;
 const TELEGRAM_OFFICIAL_WEBHOOK_SECRET = "telegram-official-bdd-secret";
@@ -222,6 +225,7 @@ async function completeSlackTriggeredRun(args: {
   readonly runId: string;
   readonly sandboxToken: string;
   readonly cliAgentType: string;
+  readonly assistantText?: string;
 }): Promise<void> {
   const sandboxHeaders = {
     authorization: `Bearer ${args.sandboxToken}`,
@@ -238,8 +242,31 @@ async function completeSlackTriggeredRun(args: {
     sandboxHeaders,
     [200],
   );
+  if (args.assistantText) {
+    await webhooks.requestAgentEvents(
+      {
+        runId: args.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: `msg_bdd_slack_${args.runId}`,
+              content: [{ type: "text", text: args.assistantText }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+  }
   await webhooks.requestAgentComplete(
-    { runId: args.runId, exitCode: 0 },
+    {
+      runId: args.runId,
+      exitCode: 0,
+      ...(args.assistantText ? { lastEventSequence: 0 } : {}),
+    },
     sandboxHeaders,
     [200],
   );
@@ -1376,12 +1403,63 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
 
+    context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
       cliAgentType: claim1.cliAgentType,
+      assistantText: "Canonical Slack answer one",
     });
     await flushWaitUntilForTest();
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: "Canonical Slack answer one",
+        }),
+      );
+    });
+    await expect
+      .poll(async () => {
+        const callbacks = await callbackStore.set(
+          readAgentRunCallbacks$,
+          {
+            orgId: featureSwitchActor.orgId,
+            userId: actor.userId,
+            prompt: "admit this event once",
+          },
+          context.signal,
+        );
+        const delivery = callbacks.find((callback) => {
+          return callback.internalKind === "slack:chat";
+        });
+        return delivery?.status;
+      })
+      .toBe("delivered");
+    const run1Delivery = (
+      await callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: featureSwitchActor.orgId,
+          userId: actor.userId,
+          prompt: "admit this event once",
+        },
+        context.signal,
+      )
+    ).find((callback) => {
+      return callback.internalKind === "slack:chat";
+    });
+    expect(run1Delivery).toMatchObject({
+      attempts: 1,
+      lastError: null,
+      payload: {
+        channelId,
+        threadTs,
+        chatMessageId: expect.any(String),
+      },
+    });
     const run1 = await runs.readRun(actor, run1Id);
     const slackSessionId = run1.result?.agentSessionId;
     if (!slackSessionId) {
@@ -1396,12 +1474,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const webClaim = await runs.claimRunnerJob(webRunId);
     expect(webClaim.resumeSession).toBeNull();
+    context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: webRunId,
       sandboxToken: webClaim.sandboxToken,
       cliAgentType: webClaim.cliAgentType,
+      assistantText: "Web answer stays off Slack",
     });
     await flushWaitUntilForTest();
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
     const webRun = await runs.readRun(actor, webRunId);
     const webSessionId = webRun.result?.agentSessionId;
     if (!webSessionId) {
@@ -1422,11 +1503,64 @@ describe("INT-01: Slack app deep webhook flows", () => {
         promptPreview: "stay canonical after the switch changes",
       }),
     );
+    context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
+      new Error("Slack delivery unavailable"),
+    );
     await completeSlackTriggeredRun({
       runId: run2Id,
       sandboxToken: claim2.sandboxToken,
       cliAgentType: claim2.cliAgentType,
+      assistantText: "Canonical Slack answer two",
     });
+    await flushWaitUntilForTest();
+    await expect
+      .poll(async () => {
+        const callbacks = await callbackStore.set(
+          readAgentRunCallbacks$,
+          {
+            orgId: featureSwitchActor.orgId,
+            userId: actor.userId,
+            prompt: "stay canonical after the switch changes",
+          },
+          context.signal,
+        );
+        const delivery = callbacks.find((callback) => {
+          return callback.internalKind === "slack:chat";
+        });
+        return delivery?.status;
+      })
+      .toBe("failed");
+    const run2Delivery = (
+      await callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: featureSwitchActor.orgId,
+          userId: actor.userId,
+          prompt: "stay canonical after the switch changes",
+        },
+        context.signal,
+      )
+    ).find((callback) => {
+      return callback.internalKind === "slack:chat";
+    });
+    expect(run2Delivery).toMatchObject({
+      attempts: 1,
+      lastError: "Slack delivery unavailable",
+    });
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
+    });
+    expect(
+      (await chat.listThreadMessages(actor, canonicalChatThreadId)).messages,
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: "Canonical Slack answer two",
+        }),
+      ]),
+    );
     const run2 = await runs.readRun(actor, run2Id);
     expect(run2.result?.agentSessionId).toBe(slackSessionId);
     expect(run2.result?.agentSessionId).not.toBe(webSessionId);

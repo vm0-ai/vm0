@@ -19,6 +19,8 @@ interface AgentRunCallbackSnapshot {
   readonly internalKind: string | null;
   readonly payload: unknown;
   readonly status: "pending" | "delivered" | "failed";
+  readonly attempts: number;
+  readonly lastError: string | null;
 }
 
 interface ReadAgentRunCallbacksOptions {
@@ -77,6 +79,15 @@ function agentRunCallbackSnapshot(
     internalKind,
     payload: "payload" in value ? value.payload : undefined,
     status,
+    attempts:
+      "attempts" in value && typeof value.attempts === "number"
+        ? value.attempts
+        : 0,
+    lastError:
+      "lastError" in value &&
+      (typeof value.lastError === "string" || value.lastError === null)
+        ? value.lastError
+        : null,
   };
 }
 

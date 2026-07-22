@@ -263,79 +263,61 @@ async function resolveModelLabel(args: {
   return model ? getModelDisplayName(model) : undefined;
 }
 
-async function resolveFooterText(args: {
+export async function resolveSlackAgentResponsePresentation(args: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
   readonly runId: string;
-  readonly payload: SlackOrgCallbackPayload;
-}): Promise<string | undefined> {
-  const [respondedBy, mentionerCount, modelLabel] = await Promise.all([
+  readonly agentId: string;
+  readonly replyToMention?: string;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
+}> {
+  const [respondedBy, modelLabel, overrides] = await Promise.all([
     resolveRespondedByLabel({
       db: args.db,
       orgId: args.orgId,
-      composeId: args.payload.agentId,
-    }),
-    countThreadMentioners({
-      db: args.db,
-      workspaceId: args.payload.workspaceId,
-      channelId: args.payload.channelId,
-      threadTs: args.payload.threadTs,
+      composeId: args.agentId,
     }),
     resolveModelLabel({
       db: args.db,
       orgId: args.orgId,
       runId: args.runId,
     }),
+    args.getFeatureOverrides(args.orgId, args.userId),
   ]);
+  args.signal.throwIfAborted();
 
   const parts: string[] = [];
   if (respondedBy) {
     parts.push(respondedBy);
   }
-  if (mentionerCount > 1) {
-    const replyTo = await resolveReplyToMention(
-      args.db,
-      args.payload.connectionId,
-    );
-    if (replyTo) {
-      parts.push(`Reply to ${replyTo}`);
-    }
+  if (args.replyToMention) {
+    parts.push(`Reply to ${args.replyToMention}`);
   }
   if (modelLabel) {
     parts.push(modelLabel);
   }
 
-  return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-async function resolveAuditLogsUrl(args: {
-  readonly runId: string;
-  readonly run: RunContext | undefined;
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  if (!args.run) {
-    return undefined;
-  }
-
-  const overrides = await args.getFeatureOverrides(
-    args.run.orgId,
-    args.run.userId,
-  );
-  args.signal.throwIfAborted();
   const typedOverrides =
     Object.keys(overrides).length > 0
       ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
       : undefined;
   const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
-    userId: args.run.userId,
-    orgId: args.run.orgId,
+    userId: args.userId,
+    orgId: args.orgId,
     overrides: typedOverrides,
   });
-  return enabled ? buildLogsUrl(args.runId) : undefined;
+  return {
+    logsUrl: enabled ? buildLogsUrl(args.runId) : undefined,
+    footerText: parts.length > 0 ? parts.join(" · ") : undefined,
+  };
 }
 
 async function saveOrgThreadSession(args: {
@@ -470,6 +452,42 @@ async function handleProgress(args: {
   return successResponse();
 }
 
+async function resolveLegacySlackAgentResponsePresentation(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: RunContext | undefined;
+  readonly payload: SlackOrgCallbackPayload;
+  readonly getFeatureOverrides: (
+    orgId: string,
+    userId: string,
+  ) => Promise<Record<string, boolean>>;
+  readonly signal: AbortSignal;
+}) {
+  if (!args.run) {
+    return { logsUrl: undefined, footerText: undefined };
+  }
+  const mentionerCount = await countThreadMentioners({
+    db: args.db,
+    workspaceId: args.payload.workspaceId,
+    channelId: args.payload.channelId,
+    threadTs: args.payload.threadTs,
+  });
+  const replyToMention =
+    mentionerCount > 1
+      ? await resolveReplyToMention(args.db, args.payload.connectionId)
+      : undefined;
+  return await resolveSlackAgentResponsePresentation({
+    db: args.db,
+    orgId: args.run.orgId,
+    userId: args.run.userId,
+    runId: args.runId,
+    agentId: args.payload.agentId,
+    replyToMention,
+    getFeatureOverrides: args.getFeatureOverrides,
+    signal: args.signal,
+  });
+}
+
 async function handleCompletion(args: {
   readonly db: Db;
   readonly runId: string;
@@ -526,13 +544,6 @@ async function handleCompletion(args: {
     run,
     signal: args.signal,
   });
-  const logsUrl = await resolveAuditLogsUrl({
-    runId: args.runId,
-    run,
-    getFeatureOverrides: args.getFeatureOverrides,
-    signal: args.signal,
-  });
-
   await saveOrgThreadSession({
     db: args.db,
     payload: args.payload,
@@ -541,14 +552,14 @@ async function handleCompletion(args: {
     signal: args.signal,
   });
 
-  const footerText = run
-    ? await resolveFooterText({
-        db: args.db,
-        orgId: run.orgId,
-        runId: args.runId,
-        payload: args.payload,
-      })
-    : undefined;
+  const presentation = await resolveLegacySlackAgentResponsePresentation({
+    db: args.db,
+    runId: args.runId,
+    run,
+    payload: args.payload,
+    getFeatureOverrides: args.getFeatureOverrides,
+    signal: args.signal,
+  });
   args.signal.throwIfAborted();
 
   const errorText =
@@ -573,7 +584,11 @@ async function handleCompletion(args: {
     responseText,
     {
       threadTs: args.payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, footerText),
+      blocks: buildAgentResponseMessage(
+        responseText,
+        presentation.logsUrl,
+        presentation.footerText,
+      ),
     },
   );
   args.signal.throwIfAborted();
