@@ -359,8 +359,9 @@ function setupTeam(): void {
 }
 
 function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
+  const artifactItemId = overrides.artifactItemId ?? "run-1:file-1";
   return {
-    artifactItemId: "run-1:file-1",
+    artifactItemId,
     threadId: SOURCE_THREAD_ID,
     runId: "run-1",
     fileId: "file-1",
@@ -371,7 +372,11 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     filename: "launch-plan.html",
     contentType: "text/html",
     size: 9216,
-    url: "https://artifacts.example.com/launch-plan.html",
+    url:
+      overrides.url ??
+      (artifactItemId === "run-1:file-1"
+        ? "https://artifacts.example.com/launch-plan.html"
+        : `https://artifacts.example.com/${encodeURIComponent(artifactItemId)}`),
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",
@@ -1604,11 +1609,13 @@ describe("artifacts page", () => {
   it("keeps the most recently updated artifact for a shared URL", async () => {
     setupTeam();
     const scope = testAuthScope("shared-url-winner");
+    const sharedUrl = "https://artifacts.example.com/shared.html";
     const newestCreated = createArtifact({
       artifactItemId: "newest-created:file-1",
       threadId: "thread-newest-created",
       runId: "newest-created",
       filename: "newest-created.html",
+      url: sharedUrl,
       createdAt: "2026-01-03T00:00:00Z",
       updatedAt: "2026-01-03T00:00:00Z",
     });
@@ -1617,6 +1624,7 @@ describe("artifacts page", () => {
       threadId: "thread-newest-updated",
       runId: "newest-updated",
       filename: "newest-updated.html",
+      url: sharedUrl,
       createdAt: "2026-01-02T00:00:00Z",
       updatedAt: "2026-01-04T00:00:00Z",
     });
