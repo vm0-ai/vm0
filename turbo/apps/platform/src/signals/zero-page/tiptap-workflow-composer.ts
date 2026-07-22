@@ -1292,7 +1292,7 @@ function createMountEditorCommand({
       };
       configureMountedWorkflowEditor(editor, runtime, singleLineOnMobile);
       const input = get(draft.input$);
-      const structuredPrompt = get(draft.restoredStructuredPrompt$);
+      const structuredPrompt = set(draft.takeRestoredStructuredPrompt$);
       setWorkflowComposerDocument(
         editor,
         workflowComposerDocumentForDraft(editor, input, structuredPrompt),

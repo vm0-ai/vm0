@@ -21,6 +21,7 @@ import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -418,20 +419,23 @@ describe("chat drafts", () => {
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
       expect(
-        screen
-          .getAllByRole("button", { name: /Remove (?:first|second)\.txt/ })
+        queryAllByRoleFast("button")
+          .filter((button) => {
+            return /^Remove (?:first|second)\.txt$/.test(
+              button.getAttribute("aria-label") ?? "",
+            );
+          })
           .map((button) => {
             return button.getAttribute("aria-label");
           }),
       ).toStrictEqual(["Remove second.txt", "Remove first.txt"]);
     });
 
-    await user.click(editor);
-    await user.keyboard(" updated");
+    await user.click(screen.getByLabelText("Remove first.txt"));
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: `Review [Launch research](/chats/${referencedThreadId}) now updated`,
+        draftContent: `Review [Launch research](/chats/${referencedThreadId}) now`,
         draftStructuredPrompt: {
           version: 1,
           parts: [
@@ -446,22 +450,16 @@ describe("chat drafts", () => {
               filenameSnapshot: secondAttachment.filename,
               contentType: secondAttachment.contentType,
             },
-            {
-              type: "file",
-              fileId: firstAttachment.id,
-              filenameSnapshot: firstAttachment.filename,
-              contentType: firstAttachment.contentType,
-            },
             { type: "text", text: "Review " },
             {
               type: "chat_thread",
               threadId: referencedThreadId,
               titleSnapshot: "Launch research",
             },
-            { type: "text", text: " now updated" },
+            { type: "text", text: " now" },
           ],
         },
-        draftAttachments: [secondAttachment, firstAttachment],
+        draftAttachments: [secondAttachment],
       });
     });
   });

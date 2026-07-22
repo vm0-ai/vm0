@@ -1043,7 +1043,7 @@ function createDraftSync(
         };
       });
       const features = get(featureSwitch$);
-      const editorDocument = get(draft.editorDocument$);
+      const editorDocument = set(draft.readEditorDocument$);
       let structuredPrompt: UserMessageDocument | null = null;
       if (
         (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
@@ -3673,7 +3673,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
           return candidate.id === messageId;
         },
       );
-      if (!message) {
+      if (!message || message.role !== "user") {
         return;
       }
 
@@ -3694,11 +3694,16 @@ function createRecallMessage(deps: RecallMessageDeps) {
           createdAt: nowDate().toISOString(),
         },
       });
-      set(
-        draft.seed$,
-        message.content ?? "",
-        (message.attachFiles ?? []).map(createRestoredAttachment),
-      );
+      const features = get(featureSwitch$);
+      set(draft.seed$, {
+        content: message.content ?? "",
+        structuredPrompt:
+          (features[FeatureSwitchKey.StructuredPrompt] ?? false)
+            ? (message.structuredPrompt ?? null)
+            : null,
+        generationTemplate: message.generationTemplate,
+        attachments: (message.attachFiles ?? []).map(createRestoredAttachment),
+      });
 
       const persistedMessage = await set(
         dataSource.recallMessage$,

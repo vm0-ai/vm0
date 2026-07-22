@@ -215,9 +215,9 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
-  restoredStructuredPrompt$: Computed<UserMessageDocument | null>;
-  editorDocument$: Computed<EditorDocumentSnapshot | null>;
-  setEditorDocument$: Command<void, [EditorDocumentSnapshot]>;
+  takeRestoredStructuredPrompt$: Command<UserMessageDocument | null, []>;
+  readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
+  setEditorDocument$: Command<void, [EditorDocumentSnapshot | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   setGenerationTemplate$: Command<
     void,
@@ -298,7 +298,12 @@ function createDraftInputSignals() {
   });
   const syncStructuredPrompt$ = command(
     ({ get }, value: UserMessageDocument) => {
-      get(internalInputSyncTarget$)?.syncStructuredPrompt(value);
+      const target = get(internalInputSyncTarget$);
+      if (!target) {
+        return false;
+      }
+      target.syncStructuredPrompt(value);
+      return true;
     },
   );
   const setInputSyncTarget$ = command(
@@ -331,25 +336,30 @@ function createDraftInputSignals() {
 }
 
 function createDraftDocumentSignals() {
-  const internalStructuredPrompt$ = state<UserMessageDocument | null>(null);
-  const internalEditorDocument$ = state<EditorDocumentSnapshot | null>(null);
-  const restoredStructuredPrompt$ = computed((get) => {
-    return get(internalStructuredPrompt$);
+  let restoredStructuredPrompt: UserMessageDocument | null = null;
+  let editorDocument: EditorDocumentSnapshot | null = null;
+  const setRestoredStructuredPrompt$ = command(
+    (_context, value: UserMessageDocument | null) => {
+      restoredStructuredPrompt = value;
+    },
+  );
+  const takeRestoredStructuredPrompt$ = command(() => {
+    const value = restoredStructuredPrompt;
+    restoredStructuredPrompt = null;
+    return value;
   });
-  const editorDocument$ = computed((get) => {
-    return get(internalEditorDocument$);
+  const readEditorDocument$ = command(() => {
+    return editorDocument;
   });
   const setEditorDocument$ = command(
-    ({ set }, value: EditorDocumentSnapshot) => {
-      set(internalEditorDocument$, value);
-      set(internalStructuredPrompt$, null);
+    (_context, value: EditorDocumentSnapshot | null) => {
+      editorDocument = value;
     },
   );
   return {
-    internalStructuredPrompt$,
-    internalEditorDocument$,
-    restoredStructuredPrompt$,
-    editorDocument$,
+    setRestoredStructuredPrompt$,
+    takeRestoredStructuredPrompt$,
+    readEditorDocument$,
     setEditorDocument$,
   };
 }
@@ -369,7 +379,8 @@ function createDraftLifecycleSignals({
 }) {
   const clear$ = command(({ get, set }) => {
     set(draftInput.setInput$, "");
-    set(draftDocument.internalStructuredPrompt$, null);
+    set(draftDocument.setRestoredStructuredPrompt$, null);
+    set(draftDocument.setEditorDocument$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -382,13 +393,16 @@ function createDraftLifecycleSignals({
   });
 
   const seed$ = command(({ set }, value: DraftSeed) => {
-    set(draftDocument.internalStructuredPrompt$, value.structuredPrompt);
-    set(draftDocument.internalEditorDocument$, null);
+    set(draftDocument.setEditorDocument$, null);
+    set(draftDocument.setRestoredStructuredPrompt$, value.structuredPrompt);
     set(internalGenerationTemplate$, value.generationTemplate);
     set(internalAttachments$, value.attachments);
     set(draftInput.setInput$, value.content);
-    if (value.structuredPrompt) {
-      set(draftInput.syncStructuredPrompt$, value.structuredPrompt);
+    if (
+      value.structuredPrompt &&
+      set(draftInput.syncStructuredPrompt$, value.structuredPrompt)
+    ) {
+      set(draftDocument.takeRestoredStructuredPrompt$);
     }
   });
 
@@ -499,8 +513,8 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
-    restoredStructuredPrompt$: draftDocument.restoredStructuredPrompt$,
-    editorDocument$: draftDocument.editorDocument$,
+    takeRestoredStructuredPrompt$: draftDocument.takeRestoredStructuredPrompt$,
+    readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,
     setGenerationTemplate$,
