@@ -1573,6 +1573,11 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(startCount).toBe(1);
       expect(openMock.calls).toHaveLength(1);
+      expect(openMock.calls[0]).toStrictEqual({
+        url: "/connectors/stripe/redirecting?label=Public+Stripe",
+        target: "_blank",
+        features: "width=600,height=700",
+      });
       expect(authWindow.opener).toBeNull();
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
@@ -1619,6 +1624,50 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(authWindow.closed).toBeTruthy();
+    });
+  });
+
+  it("shows an error in the OAuth popup when the start request fails", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(zeroConnectorOauthStartContract.start, ({ respond }) => {
+      return respond(500, {
+        error: {
+          message: "OAuth authorization is unavailable",
+          code: "UNAVAILABLE",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "/connectors/stripe/redirecting?label=Public+Stripe&status=error",
+      );
+      expect(authWindow.closed).toBeFalsy();
     });
   });
 

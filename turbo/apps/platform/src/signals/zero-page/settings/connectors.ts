@@ -64,6 +64,7 @@ import { resetPermissionDialog$ } from "./permission-dialog.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
+import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 type ConnectorType = ConnectorCatalogRef;
@@ -2161,6 +2162,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     args: {
       readonly type: ConnectorType;
       readonly method: ConnectorStatusAuthMethodDetail;
+      readonly connectorLabel: string;
       readonly agentId: string | undefined;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
     },
@@ -2171,7 +2173,11 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.
     const popupFeatures = standalone ? undefined : "width=600,height=700";
-    const authWindow = window.open("about:blank", "_blank", popupFeatures);
+    const redirectingPath = connectorRedirectingPath({
+      type: args.type,
+      label: args.connectorLabel,
+    });
+    const authWindow = window.open(redirectingPath, "_blank", popupFeatures);
 
     if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
@@ -2233,7 +2239,15 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       })(),
       () => {
         if (authWindow && !navigated) {
-          authWindow.close();
+          if (signal.aborted) {
+            authWindow.close();
+          } else {
+            authWindow.location.href = connectorRedirectingPath({
+              type: args.type,
+              label: args.connectorLabel,
+              status: "error",
+            });
+          }
         }
       },
     );
@@ -2283,6 +2297,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           {
             type,
             method,
+            connectorLabel: options.connectorLabel ?? type,
             agentId: options.agentId,
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
