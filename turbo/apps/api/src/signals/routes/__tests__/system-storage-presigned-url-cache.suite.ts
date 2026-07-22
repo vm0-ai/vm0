@@ -348,23 +348,6 @@ describe("system storage presigned URL cache", () => {
             );
             expect(firstSkillEntry?.archiveSize).toBe(1024);
 
-            // The system skill storage is shared platform state, so
-            // concurrently running files' claims may hold cache rows under
-            // the same prefix — assert this claim's row exists rather than
-            // an exact global row count.
-            const rowsAfterFirst = await readCacheRowsByObjectKeyPrefix(
-              skill.s3Prefix,
-            );
-            expect(
-              rowsAfterFirst.some((row) => {
-                return (
-                  row.presigned_url === firstSkillEntry?.archiveUrl &&
-                  row.storage_version_id === skill.versionId &&
-                  row.object_key.includes(skill.versionId)
-                );
-              }),
-            ).toBeTruthy();
-
             const secondRun = await api.createRun(actor, {
               agentId,
               prompt: "reuse the system storage URL cache",

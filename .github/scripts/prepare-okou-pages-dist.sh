@@ -9,7 +9,7 @@ fi
 canonical_dist="$1"
 pages_dist="$2"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-headers_file="${script_dir}/../pages/okou-app/_headers"
+pages_config_dir="${script_dir}/../pages/okou-app"
 
 if [[ ! -f "${canonical_dist}/index.html" ]]; then
   echo "canonical app artifact must contain index.html" >&2
@@ -27,4 +27,4 @@ rm -f \
   "${pages_dist}/.gitkeep" \
   "${pages_dist}/manifest.json" \
   "${pages_dist}/ready.json"
-cp "$headers_file" "${pages_dist}/_headers"
+cp -a "${pages_config_dir}/." "$pages_dist/"
