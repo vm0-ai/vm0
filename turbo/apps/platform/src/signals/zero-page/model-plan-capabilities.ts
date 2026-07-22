@@ -5,7 +5,7 @@ import {
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 
-import { billingStatusAsync$ } from "./billing.ts";
+import { orgPlanCapabilities$ } from "./org-plan-capabilities.ts";
 
 export interface ModelPlanCapabilities {
   readonly supportByok: boolean;
@@ -20,13 +20,10 @@ export const DEFAULT_MODEL_PLAN_CAPABILITIES =
 
 export const modelPlanCapabilities$ = computed(
   async (get): Promise<ModelPlanCapabilities> => {
-    const billing = await get(billingStatusAsync$);
-    // Older API deployments only return the tier. Preserve the previous
-    // frontend behavior while browser clients and API versions overlap.
-    const legacyLimitedFree = billing.tier === "limited-free-1";
+    const capabilities = await get(orgPlanCapabilities$);
     return {
-      supportByok: billing.supportByok ?? !legacyLimitedFree,
-      restrictedVm0Models: billing.restrictedVm0Models ?? legacyLimitedFree,
+      supportByok: capabilities.supportByok,
+      restrictedVm0Models: capabilities.restrictedVm0Models,
     };
   },
 );
