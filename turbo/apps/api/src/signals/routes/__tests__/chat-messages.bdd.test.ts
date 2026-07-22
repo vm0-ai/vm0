@@ -1032,7 +1032,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
 
 describe("CHAT-02: queueing and recalling messages", () => {
   it("queues, retries, and recalls messages behind an active run", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
@@ -1055,6 +1055,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected the queued send to be accepted");
     }
     expect(queued.body.runId).toBeNull();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
     const queuedRetry = await chat.requestSendMessage(
       actor,
       {
@@ -1066,6 +1075,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       [201],
     );
     expect(queuedRetry.body).toStrictEqual(queued.body);
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-opus-4-6",
+    );
 
     // Another user's send cannot claim the queued message's client id.
     const stranger = bdd.user();

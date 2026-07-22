@@ -243,6 +243,10 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly runConfiguration: ResolvedRunConfiguration;
+  readonly clientMessagePrechecked: boolean;
+  readonly preflightClientMessageConflict:
+    | ReturnType<typeof duplicateClientMessageIdResponse>
+    | undefined;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -2245,11 +2249,37 @@ const prepareNormalSend$ = command(
     { set },
     args: NormalSendArgs,
     signal: AbortSignal,
-  ): Promise<PreparedNormalSend | NormalSendFailure> => {
+  ): Promise<
+    PreparedNormalSend | NormalSendFailure | CreatedChatMessageResponse
+  > => {
     const db = set(writeDb$);
     const agent = await loadTimedAuthorizedAgent(args, db, signal);
     if ("status" in agent) {
       return agent;
+    }
+
+    const preflightThreadId = args.body.threadId ?? args.body.clientThreadId;
+    const clientMessagePrechecked = Boolean(
+      preflightThreadId && args.body.clientMessageId,
+    );
+    const preflightClientMessageResponse = preflightThreadId
+      ? await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+          "nested",
+          () => {
+            return resolveClientMessageSend({
+              db,
+              userId: args.userId,
+              threadId: preflightThreadId,
+              clientMessageId: args.body.clientMessageId,
+            });
+          },
+        )
+      : undefined;
+    signal.throwIfAborted();
+    if (preflightClientMessageResponse?.status === 201) {
+      return preflightClientMessageResponse;
     }
 
     const generationTemplateError = validateGenerationTemplatePrompt(args.body);
@@ -2325,6 +2355,8 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       runConfiguration,
+      clientMessagePrechecked,
+      preflightClientMessageConflict: preflightClientMessageResponse,
     };
   },
 );
@@ -3119,19 +3151,25 @@ const sendNormalMessage$ = command(
       return prepared;
     }
 
-    const clientMessageResolution = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-      "nested",
-      async () => {
-        return await resolveClientMessageSend({
-          db: prepared.db,
-          userId: args.userId,
-          threadId: prepared.thread.threadId,
-          clientMessageId: args.body.clientMessageId,
-        });
-      },
-    );
+    const clientMessageResolution =
+      prepared.preflightClientMessageConflict ??
+      (!prepared.clientMessagePrechecked ||
+      args.body.revokesMessageId !== undefined ||
+      prepared.thread.isClientThreadRetry
+        ? await measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+            "nested",
+            async () => {
+              return await resolveClientMessageSend({
+                db: prepared.db,
+                userId: args.userId,
+                threadId: prepared.thread.threadId,
+                clientMessageId: args.body.clientMessageId,
+              });
+            },
+          )
+        : undefined);
     signal.throwIfAborted();
     if (clientMessageResolution) {
       return clientMessageResolution;
