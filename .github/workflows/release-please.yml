@@ -7,11 +7,8 @@ on:
     types:
       - completed
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   issues: write
@@ -19,7 +16,24 @@ permissions:
   checks: write
 
 jobs:
+  queue-production-deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - name: Wait for older production deployment workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/wait-production-deploy-queue.sh
+
   release-please:
+    needs: queue-production-deploy
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
@@ -1558,7 +1572,8 @@ jobs:
                   type: mrkdwn
                   text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Update rollback dashboard issue after deployments
+  # Record a complete production release target after all applicable
+  # production promotions succeed.
   update-rollback-dashboard:
     needs:
       [
@@ -1569,9 +1584,11 @@ jobs:
       ]
     if: >-
       always() &&
-      (
-       needs.promote-api-production.result == 'success' ||
-       needs.promote-app-production.result == 'success' ||
+      needs.release-please.outputs.releases_created == 'true' &&
+      needs.promote-api-production.result == 'success' &&
+      (needs.release-please.outputs.app_release_created != 'true' ||
+       needs.promote-app-production.result == 'success') &&
+      (needs.release-please.outputs.runner_rs_release_created != 'true' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
     permissions:
@@ -1580,168 +1597,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-
-      - name: Build dashboard entry
-        id: entry
-        env:
-          API_VERSION: ${{ needs.release-please.outputs.api_version }}
-          APP_VERSION: ${{ needs.release-please.outputs.app_version }}
-          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
-          API_RESULT: ${{ needs.promote-api-production.result }}
-          APP_RESULT: ${{ needs.promote-app-production.result }}
-          RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
-          API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
-          APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.cloudflare_dashboard_url }}
-          SAFETY: safe
-          MIGRATION_FILES: ""
-          RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml
-        run: |
-          DATE=$(date -u +%Y-%m-%d)
-
-          # Build title parts
-          TITLE_PARTS=""
-          if [ "$API_RESULT" = "success" ] && [ -n "$API_VERSION" ]; then
-            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }api v${API_VERSION}"
-          fi
-          if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
-            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
-          fi
-          if [ "$RUNNER_RESULT" = "success" ] && [ -n "$RUNNER_VERSION" ]; then
-            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
-          fi
-
-          # API/app migration-safety indicator.
-          case "$SAFETY" in
-            destructive)
-              INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
-              ;;
-            major)
-              INDICATOR="🔴 **Warning: major version bump**"
-              ;;
-            migration)
-              INDICATOR="🟡 **Warning: includes migration** ($MIGRATION_FILES)"
-              ;;
-            *)
-              INDICATOR="🟢 Safe to rollback"
-              ;;
-          esac
-
-          # Helper: append a row, handling empty ROWS without a leading newline.
-          append_row() {
-            if [ -n "$ROWS" ]; then
-              ROWS="${ROWS}
-          $1"
-            else
-              ROWS="$1"
-            fi
-          }
-
-          # Build table rows
-          ROWS=""
-          if [ -n "$API_VERSION" ]; then
-            if [ "$API_RESULT" = "success" ] && [ -n "$API_DASHBOARD_URL" ]; then
-              append_row "| api | v${API_VERSION} | [Rollback in Vercel](${API_DASHBOARD_URL}) |"
-            elif [ "$API_RESULT" = "success" ]; then
-              append_row "| api | v${API_VERSION} | _URL unavailable_ |"
-            else
-              append_row "| api | v${API_VERSION} | ❌ Deploy failed |"
-            fi
-          fi
-
-          if [ -n "$APP_VERSION" ]; then
-            if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
-              append_row "| app | v${APP_VERSION} | [Rollback in Cloudflare](${APP_DASHBOARD_URL}) |"
-            elif [ "$APP_RESULT" = "success" ]; then
-              append_row "| app | v${APP_VERSION} | _URL unavailable_ |"
-            else
-              append_row "| app | v${APP_VERSION} | ❌ Deploy failed |"
-            fi
-          fi
-
-          # Runner row. Link points to the rollback-runner.yml workflow
-          # dispatch page; operator pastes the adjacent version (without
-          # the leading `v`) into `target_version` and picks
-          # `rollback_mode` / `confirmed_compatible` manually.
-          if [ -n "$RUNNER_VERSION" ]; then
-            if [ "$RUNNER_RESULT" = "success" ]; then
-              append_row "| runner-rs | v${RUNNER_VERSION} | [Rollback workflow](${RUNNER_ROLLBACK_URL}) |"
-            else
-              append_row "| runner-rs | v${RUNNER_VERSION} | ❌ Deploy failed |"
-            fi
-          fi
-
-          # Build full entry.
-          # - The migration-safety INDICATOR only describes DB migrations
-          #   (see Detect migration safety step), so suppress it for release
-          #   cycles with no api/app changes — otherwise a runner-only
-          #   release would print a misleading "🟢 Safe to rollback".
-          # - Runner has no auto-computed compatibility indicator. We print
-          #   a static advisory whenever the release includes runner so the
-          #   operator doesn't silently treat runner rollbacks the same as
-          #   app (which uses a provider-level deployment rollback). Deliberately
-          #   NOT naming specific compat surfaces — that would encourage a
-          #   checklist mindset and miss cases the list doesn't anticipate.
-          {
-            echo "### ${DATE} — ${TITLE_PARTS}"
-            if [ -n "$API_VERSION" ] || [ -n "$APP_VERSION" ]; then
-              echo "${INDICATOR}"
-            fi
-            if [ -n "$RUNNER_VERSION" ]; then
-              echo "⚠️ **Runner rollback needs manual diff review.** The \`confirmed_compatible\` input gates it."
-            fi
-            echo "| Component | Version | Rollback |"
-            echo "|-----------|---------|----------|"
-            echo "${ROWS}"
-          } > /tmp/dashboard-entry.md
+          ref: main
 
       - name: Update rollback dashboard issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
+          RELEASE_TARGET: ${{ github.event.workflow_run.head_sha }}
+          ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-production.yml
         run: |
+          set -euo pipefail
+
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "ROLLBACK_ISSUE_NUMBER not set, skipping dashboard update"
             exit 0
           fi
 
-          # Fetch current issue body
-          BODY=$(gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" --jq '.body')
+          gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
+            --jq '.body' > /tmp/rollback-dashboard.md
+          updated_body=$(bash .github/scripts/update-rollback-dashboard-body.sh \
+            /tmp/rollback-dashboard.md \
+            "$RELEASE_TARGET" \
+            "$ROLLBACK_URL")
 
-          # Insert new entry after start sentinel using file-based approach
-          # This avoids awk -v issues with multi-line strings containing backslashes or special chars
-          UPDATED_BODY=$(echo "$BODY" | awk '
-            /<!-- ROLLBACK_ENTRIES_START -->/ {
-              print
-              while ((getline line < "/tmp/dashboard-entry.md") > 0) print line
-              close("/tmp/dashboard-entry.md")
-              next
-            }
-            { print }
-          ')
-
-          # Trim to 20 entries (count ### headers between sentinels)
-          TRIMMED_BODY=$(echo "$UPDATED_BODY" | awk '
-            BEGIN { in_section=0; entry_count=0; skip=0 }
-            /<!-- ROLLBACK_ENTRIES_START -->/ { in_section=1; print; next }
-            /<!-- ROLLBACK_ENTRIES_END -->/ { in_section=0; print; next }
-            in_section && /^### / {
-              entry_count++
-              if (entry_count > 20) { skip=1 } else { skip=0 }
-            }
-            in_section && skip { next }
-            { print }
-          ')
-
-          # Remove the placeholder text if present
-          TRIMMED_BODY=$(echo "$TRIMMED_BODY" | grep -v '_No deployments recorded yet._')
-
-          # Update issue
           gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
             -X PATCH \
-            -f body="$TRIMMED_BODY"
+            -f body="$updated_body"
 
-          echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
+          echo "Recorded release target $RELEASE_TARGET in rollback dashboard #${ISSUE_NUMBER}"
 
   publish-npm:
     needs: [release-please, builds-complete]
