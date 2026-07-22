@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.147.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.29...runner-rs-v0.147.0) (2026-07-22)
+
+
+### Features
+
+* **runner:** accept canonical storage mount manifests ([#22546](https://github.com/vm0-ai/vm0/issues/22546)) ([d9cea3a](https://github.com/vm0-ai/vm0/commit/d9cea3a2f56de399b38ef9d1f004da740b699bbc))
+
+
+### Performance Improvements
+
+* **runner:** attribute sandbox start phases ([#22523](https://github.com/vm0-ai/vm0/issues/22523)) ([cd8f6a4](https://github.com/vm0-ai/vm0/commit/cd8f6a40c109d7b04bd991067fdf2b5ad1c77ca8))
+
 ## [0.146.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.28...runner-rs-v0.146.29) (2026-07-22)
 
 
