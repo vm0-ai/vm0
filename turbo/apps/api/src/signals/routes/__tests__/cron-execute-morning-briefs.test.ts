@@ -602,11 +602,11 @@ describe("cron execute morning briefs", () => {
     // sources are annotated as failed instead of gating the whole brief.
     const { runId } = await findMorningBriefThread(scenario);
     const input = capturedMorningBriefInput();
-    expect(input.sources.github?.ok).toBe(false);
-    expect(input.sources.gmail?.ok).toBe(false);
-    expect(input.sources.calendar?.ok).toBe(false);
-    expect(input.sources.chatThreads?.ok).toBe(true);
-    expect(input.sources.chatThreads?.data?.threads).toEqual([]);
+    expect(input.sources.github?.ok).toBeFalsy();
+    expect(input.sources.gmail?.ok).toBeFalsy();
+    expect(input.sources.calendar?.ok).toBeFalsy();
+    expect(input.sources.chatThreads?.ok).toBeTruthy();
+    expect(input.sources.chatThreads?.data?.threads).toStrictEqual([]);
 
     mockUploadedBriefOutput(
       JSON.stringify({
