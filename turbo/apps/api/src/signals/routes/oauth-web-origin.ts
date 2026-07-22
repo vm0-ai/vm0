@@ -130,6 +130,10 @@ export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
   }
 
   const requestUrl = new URL(request.url);
+  if (requestUrl.origin === new URL(env("VM0_WEB_URL")).origin) {
+    return null;
+  }
+
   const canonicalOrigin = canonicalSiblingOriginForHost(
     requestUrl,
     "api",
