@@ -289,14 +289,16 @@ describe("workflow queue", () => {
 
     const first = await postWorkflowWebhook(automation, "first");
     const firstRunId = expectAcceptedRunId(first);
-    expect(kms.generateDataKeyCalls).toBe(2);
+    // Runner execution secrets still use one data key; callback persistence no
+    // longer adds a second key for the internal workflow callback.
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     // The workflow is busy: the next two events are accepted into the queue
     // without creating runs.
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
-    expect(kms.generateDataKeyCalls).toBe(3);
+    expect(kms.generateDataKeyCalls).toBe(2);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
-    expect(kms.generateDataKeyCalls).toBe(4);
+    expect(kms.generateDataKeyCalls).toBe(3);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -336,12 +338,12 @@ describe("workflow queue", () => {
     const busyRunId = expectAcceptedRunId(
       await postWorkflowWebhook(webhookAutomation, "busy"),
     );
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     // Two due ticks while busy: the second coalesces into the pending one.
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
-    expect(kms.generateDataKeyCalls).toBe(3);
+    expect(kms.generateDataKeyCalls).toBe(2);
     const updated = await accept(
       automationsClient().update({
         headers: authHeaders(),
@@ -495,7 +497,7 @@ describe("workflow queue", () => {
     releaseKms.resolve(undefined);
 
     const secondRunId = expectAcceptedRunId(await secondRequest);
-    expect(kms.generateDataKeyCalls).toBe(3);
+    expect(kms.generateDataKeyCalls).toBe(2);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
       secondRunId,

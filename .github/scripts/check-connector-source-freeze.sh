@@ -47,14 +47,6 @@ while IFS= read -r -d '' status; do
         blocked_changes+=("$rendered_change")
       fi
       ;;
-    C*)
-      IFS= read -r -d '' old_path
-      IFS= read -r -d '' new_path
-      if is_frozen_path "$new_path"; then
-        printf -v rendered_change '%q -> %q' "$old_path" "$new_path"
-        blocked_changes+=("$rendered_change")
-      fi
-      ;;
     D*)
       IFS= read -r -d '' _
       ;;

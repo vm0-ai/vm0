@@ -3573,27 +3573,27 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
 
 const WEBSITE_TEMPLATE_V2_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
-    "0f12d8408536ce4e0178129db5ceecc3b7d77605eaff76bff8fab04fd6193c22",
+    "840a02ad6e9caac5abfa6abea991f7a0c71fdee16700011d64ad3af7013164cc",
   "blueprint-grid":
-    "38737948531b22ab5ae03c537464b948b48e139ca0362ea68e9dd3daaf6760b6",
+    "8d02b52dfe72d8d0e59ba69e6ee9ffe3ae527c68e6cc89afe04264801c5c8d53",
   "coastal-hotel":
-    "5c8650684d247143e010859d957c58c3c77d2b4e3a5540dbb4c4961cc2d70d54",
+    "b9e2ac6e12ee525ce8896b704071eebf439590700d95060c6db76c90d167a08e",
   "dot-matrix":
-    "20931f59434fea45e2772dd4a2a7790572f65b3514b84bfbb245968618f0ad44",
+    "823b02b5ac17d4899de867b99a9332912f6ace671cce8a72a91cff9426a661b3",
   "frame-stack":
-    "628139021e196f12e06723d899d299a89dc16696870fede38fc9864b6ffff9c1",
+    "c2a9d32dadbc0e00c3e29fe78eebe6525757b81e21d39eb25cbf34adb98e2322",
   "frosted-scatter":
-    "3b0fab9f9f52434f37686377793dae2e467e818e48b85b6696f862d9e8e23232",
+    "a2a191134d56a33b90bfc0540c97a022f8f4b028d942ddcd482380ad5e9589ca",
   "gallery-wall":
-    "df998b7ca480d24665b49e6c07f4e29eb8f26f3916ed3b8051f41e47535588ab",
+    "0295121b12c8ded9a93efd3781e308020ffcb5b71b1f9fc682cac96cf4d5c14a",
   "glass-bloom":
-    "b66ec9fda392e13a8f0c71c842cc0b2e655695cf60d7dd28e8db3b322ba35596",
+    "48374e9ded67087f481b82d260a70438aa2fd9abc33367e4190fa5fb606214e4",
   "serif-stack":
-    "0641c65b035abab0b53d3b345178688f1b4091083d1b7c574b640537b49ef3e5",
+    "9cb399465cb5c66ae7fb857986450ef154e7dc7c6e7c59a89281011933c55ab3",
   "sticker-pop":
-    "4b076e69118268108e550322cdfe9befd91378bee5d28bf73627df54ccbaacbd",
+    "5802135c5f922d6ae3748d13468e6bc24549f70c946fdf109b34ff02de471b09",
   "warm-cards":
-    "20f0a7fa09bf2653b55fb0323b050accaa565817587d105b98ada03243b75bf3",
+    "0973164b9b4e3811ab565430043f74a6fa0546ca6f215db64a1eb79bd14542e6",
 };
 
 function websiteTemplateV2ArchiveSha256(slug: string): string {

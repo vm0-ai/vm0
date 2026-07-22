@@ -756,6 +756,14 @@ describe("CHAT-02: web chat send and client ids", () => {
       ["api_dispatch_pre_create_agent_run"],
       "top_level",
     );
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: "api_dispatch_prepare_run_callbacks",
+        span_kind: "nested",
+        run_callback_internal_count_bucket: "1",
+        run_callback_http_count_bucket: "0",
+      }),
+    );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,

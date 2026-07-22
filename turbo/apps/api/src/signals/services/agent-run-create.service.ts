@@ -4662,24 +4662,46 @@ async function prepareRunCallbackRows(args: {
   readonly runId: string;
   readonly callbacks: readonly RunCallback[] | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<readonly AgentRunCallbackInsert[]> {
-  if (!args.callbacks || args.callbacks.length === 0) {
-    return [];
-  }
-
-  return await Promise.all(
-    args.callbacks.map(async (callback): Promise<AgentRunCallbackInsert> => {
-      return {
-        runId: args.runId,
-        url: "url" in callback ? callback.url : null,
-        internalKind: "internalKind" in callback ? callback.internalKind : null,
-        encryptedSecret: await encryptPersistentSecretValue(
-          callback.secret,
-          args.featureSwitchContext,
-        ),
-        payload: callback.payload,
-      };
-    }),
+  const callbacks = args.callbacks ?? [];
+  const internalCallbackCount = callbacks.filter((callback) => {
+    return "internalKind" in callback;
+  }).length;
+  return await args.timing.measure(
+    "api_dispatch_prepare_run_callbacks",
+    "nested",
+    async () => {
+      return await Promise.all(
+        callbacks.map(async (callback): Promise<AgentRunCallbackInsert> => {
+          if ("internalKind" in callback) {
+            return {
+              runId: args.runId,
+              url: null,
+              internalKind: callback.internalKind,
+              encryptedSecret: null,
+              payload: callback.payload,
+            };
+          }
+          return {
+            runId: args.runId,
+            url: callback.url,
+            internalKind: null,
+            encryptedSecret: await encryptPersistentSecretValue(
+              callback.secret,
+              args.featureSwitchContext,
+            ),
+            payload: callback.payload,
+          };
+        }),
+      );
+    },
+    {
+      run_callback_internal_count_bucket: countBucket(internalCallbackCount),
+      run_callback_http_count_bucket: countBucket(
+        callbacks.length - internalCallbackCount,
+      ),
+    },
   );
 }
 
@@ -4792,6 +4814,7 @@ async function insertRunRecord(
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timing: ApiDispatchTimingCollector;
   },
 ): Promise<RunRecord> {
   const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
@@ -4799,6 +4822,7 @@ async function insertRunRecord(
     runId: identity.runId,
     callbacks: args.callbacks,
     featureSwitchContext: args.featureSwitchContext,
+    timing: args.timing,
   });
   const { createdAt } = await insertLaunchRunRows(tx, {
     userId: args.userId,
@@ -4841,6 +4865,7 @@ async function insertQueuedRunRecord(
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timing: ApiDispatchTimingCollector;
   },
 ): Promise<RunRecord> {
   const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
@@ -4848,6 +4873,7 @@ async function insertQueuedRunRecord(
     runId: identity.runId,
     callbacks: args.callbacks,
     featureSwitchContext: args.featureSwitchContext,
+    timing: args.timing,
   });
   const { createdAt } = await insertLaunchRunRows(tx, {
     userId: args.userId,
@@ -7047,6 +7073,7 @@ async function insertRunWithConcurrency(
           chatThreadId: args.chatThreadId,
           zeroRunMetadata: args.zeroRunMetadata,
           featureSwitchContext: context.featureSwitchContext,
+          timing,
         });
       }
       return concurrency;
@@ -7067,6 +7094,7 @@ async function insertRunWithConcurrency(
           chatThreadId: args.chatThreadId,
           zeroRunMetadata: args.zeroRunMetadata,
           featureSwitchContext: context.featureSwitchContext,
+          timing,
         });
       },
     );
@@ -7424,6 +7452,7 @@ function createAtomicLaunchRun(input: {
       runId: identity.runId,
       callbacks: input.args.callbacks,
       featureSwitchContext: input.context.featureSwitchContext,
+      timing: input.timing,
     });
     input.signal.throwIfAborted();
 

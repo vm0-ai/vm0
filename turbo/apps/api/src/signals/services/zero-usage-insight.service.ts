@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { count, sql } from "drizzle-orm";
 import type {
   UsageInsightBucket,
   UsageInsightChatRow,
@@ -586,7 +586,7 @@ async function queryUsageInsightTopChats(
           WHERE zr.chat_thread_id IS NOT NULL
           GROUP BY zr.chat_thread_id
         )
-        SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100
+        SELECT ${count()}::bigint AS cnt FROM agg WHERE rn > 100
       `,
       usageInsightCountRowSchema,
     );

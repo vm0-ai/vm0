@@ -144,22 +144,29 @@ returned fields independently of `.set({...})`. Likewise, raw SQL passed to
 `insert(...).select(...)` is the write source rather than a returned field; only
 a subsequent `returning(...)` introduces a result-mapping boundary.
 
-Use typed operators such as `eq`, `gt`, `isNull`, `isNotNull`, and `like`
-instead of an equivalent SQL tag. They make the operation explicit and, when
-the helper supports it, preserve the schema relationship between a column and
-its bound value. Pass value arrays directly to `inArray(column, values)`; do not
-rebuild parameter lists with `sql.join(...)`. Use `asc(...)` and `desc(...)` for
-ordering leaves, and use `arrayContains(...)` when the left operand is an
-array-valued schema column and an SQL wrapper intentionally constructs the
-right JSON value.
+Use typed operators such as `eq`, `gt`, `isNull`, `isNotNull`, `not`, `exists`,
+and `notExists` instead of an equivalent SQL tag. Use `like`, `notLike`,
+`ilike`, and `notIlike` for dynamic pattern leaves, and `between` /
+`notBetween` for exact range leaves. These helpers make the operation explicit
+and, when supported, preserve the schema relationship between a column and its
+bound value. Pass value arrays directly to `inArray(column, values)` or
+`notInArray(column, values)`; do not rebuild parameter lists with
+`sql.join(...)`. Use `asc(...)` and `desc(...)` for ordering leaves. Use
+`arrayContains(...)`, `arrayContained(...)`, or `arrayOverlaps(...)` only when
+the left operand is statically array-valued and the right operand preserves the
+intended array encoding or is an explicit SQL wrapper.
 
-Likewise, use `sum(...)`, `count(...)`, `countDistinct(...)`, `max(...)`, or
-`min(...)` for an exact aggregate leaf. Keep an existing outer SQL cast,
-`FILTER`, `COALESCE`, alias, and `.mapWith(...)` when that outer expression owns
-a stricter result decoder or nullability contract. Keep literal predicates as
-literals when changing them into helper arguments would introduce a parameter
-and alter planner-visible query shape; a `LIKE ... ESCAPE` suffix also remains
-outside the `like(...)` leaf.
+Likewise, use `count()`, `count(...)`, `countDistinct(...)`, `avg(...)`,
+`avgDistinct(...)`, `sum(...)`, `sumDistinct(...)`, `max(...)`, or `min(...)`
+for an exact aggregate leaf. Use the helper directly at a structured selection
+boundary when its decoder owns an equal-or-stronger result contract. When the
+leaf remains inside otherwise irreducible SQL, interpolate the helper while
+keeping an existing outer SQL cast, `FILTER`, `COALESCE`, alias, row schema, and
+`.mapWith(...)` that owns the selected result. Do not replace a whole aggregate
+when the helper's decoder would weaken a non-column result. Keep literal
+predicates as literals when changing them into helper arguments would introduce
+a parameter and alter planner-visible query shape; a `LIKE ... ESCAPE` suffix
+also remains outside the pattern-helper leaf.
 
 This preference also applies to a replaceable leaf inside otherwise irreducible
 SQL. Interpolate the typed operator in place of that leaf while retaining the

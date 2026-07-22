@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { sql, type SQL } from "drizzle-orm";
+import { count, sql, type SQL } from "drizzle-orm";
 import {
   type UsageRecordKind,
   type UsageRecordRow,
@@ -296,7 +296,7 @@ async function queryUsageRecordTotals(
     db,
     sql`
       ${recordCte}
-      SELECT COUNT(*)::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
+      SELECT ${count()}::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
       FROM record ${where}
     `,
     usageRecordTotalsSqlRowSchema,
