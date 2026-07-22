@@ -7,6 +7,10 @@ import {
 } from "@vm0/core";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -36,6 +40,47 @@ function mockOnboardingNeeded(): void {
   context.mocks.data.onboardingStatus({
     needsOnboarding: true,
     onboardingComplete: false,
+  });
+}
+
+function mockGithubCatalogItem(
+  icon: PublicConnectorCatalogStatusItem["icon"],
+): void {
+  const github: PublicConnectorCatalogStatusItem = {
+    connectorRef: "github",
+    label: "Catalog GitHub",
+    description: "Connect Catalog GitHub to continue",
+    icon,
+    category: "developer-tools",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "oauth",
+        label: "OAuth",
+        description: null,
+        grantKind: "auth-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: "oauth",
+    connectNotice: null,
+  };
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [github] });
   });
 }
 
@@ -118,6 +163,44 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("renders workflow connector marks from catalog metadata", async () => {
+    mockGithubCatalogItem({
+      url: "https://icons.example.test/onboarding-github.svg",
+      invertInDarkMode: true,
+      scale: 1.4,
+    });
+
+    await openGithubWorkflowRun();
+
+    const connectorLabel = await screen.findByText(
+      "Connect the Catalog GitHub to continue the workflow",
+    );
+    const connectorRow = connectorLabel.parentElement?.parentElement;
+    if (!connectorRow) {
+      throw new Error("Expected Catalog GitHub connector row");
+    }
+    const rowIcon = connectorRow.querySelector<HTMLImageElement>(
+      'img[src="https://icons.example.test/onboarding-github.svg"]',
+    );
+    expect(rowIcon).toHaveClass("zero-icon-mono");
+    expect(rowIcon).toHaveStyle({ transform: "scale(1.4)" });
+
+    const pageIcons = document.querySelectorAll<HTMLImageElement>(
+      'img[src="https://icons.example.test/onboarding-github.svg"]',
+    );
+    expect(pageIcons.length).toBeGreaterThanOrEqual(2);
+
+    click(buttonByAriaLabel("Preview workflow details"));
+    const preview = await screen.findByRole("dialog", {
+      name: "Auto-merge GitHub PRs",
+    });
+    const previewIcon = preview.querySelector<HTMLImageElement>(
+      'img[src="https://icons.example.test/onboarding-github.svg"]',
+    );
+    expect(previewIcon).toHaveClass("zero-icon-mono");
+    expect(previewIcon).toHaveStyle({ transform: "scale(1.4)" });
+  });
+
   it("moves from workflow selection to a connector-aware first run", async () => {
     await openMakePage();
     chooseMakeOption("Workflow automation");

@@ -87,10 +87,21 @@ export default [
             "Use now() from src/lib/time instead of Date.now() so tests can control the platform clock.",
         },
       ],
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**", "src/test/**"],
+    rules: {
       "no-restricted-imports": [
         "error",
         {
           paths: [
+            {
+              name: "@vm0/connectors/static-connector-icons",
+              message:
+                "Platform production code must render connector icons from public catalog descriptors.",
+            },
             {
               name: "@vm0/connectors/firewalls",
               message:
