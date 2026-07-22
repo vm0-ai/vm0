@@ -29,6 +29,7 @@ const teamsActivityBaseSchema = z.object({
   conversationId: z.string(),
   conversationType: z.string().nullable(),
   teamId: z.string().nullable(),
+  teamAadGroupId: z.string().nullable(),
   teamName: z.string().nullable(),
   channelId: z.string().nullable(),
   timestamp: z.string().nullable(),
