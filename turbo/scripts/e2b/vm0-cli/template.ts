@@ -1,11 +1,11 @@
 import { Template } from "e2b";
 
 /**
- * VM0 CLI E2B Template Configuration
+ * Zero CLI E2B Template Configuration
  *
  * This template includes:
  * - Node.js 24.x
- * - vm0 CLI (globally installed as "vm0")
+ * - Zero CLI (globally installed as "zero")
  * - curl, git, jq for compose operations
  */
 export const template = Template()

@@ -95,9 +95,13 @@ async function resolveMorningBriefConnectorAccess(args: {
   const connection = loaded.connection;
 
   const tokenExpiresAt = connection.tokenExpiresAt;
+  const supportsRefresh =
+    connection.runtimeMethod.method.access.kind === "refresh-token";
   const needsRefresh =
-    !tokenExpiresAt ||
-    tokenExpiresAt.getTime() <= currentTime.getTime() + TOKEN_REFRESH_BUFFER_MS;
+    supportsRefresh &&
+    (!tokenExpiresAt ||
+      tokenExpiresAt.getTime() <=
+        currentTime.getTime() + TOKEN_REFRESH_BUFFER_MS);
   if (needsRefresh) {
     const refreshed = await refreshConnectorCredentialAccess({
       connection,

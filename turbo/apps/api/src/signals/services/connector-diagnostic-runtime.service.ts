@@ -1,4 +1,4 @@
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   FirewallBaseUrlResolutionError,
   hasUnsafeFirewallPath,
@@ -27,7 +27,7 @@ export interface ConnectorDiagnosticCatalogApi {
 }
 
 export interface ConnectorDiagnosticCatalogView {
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly label: string;
   readonly baseUrlVarNames: readonly string[];
   readonly apis: readonly ConnectorDiagnosticCatalogApi[];

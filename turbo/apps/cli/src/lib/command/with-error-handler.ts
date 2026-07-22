@@ -23,7 +23,7 @@ export function withErrorHandler<T extends unknown[]>(
             console.error(chalk.dim("  ZERO_TOKEN is invalid or expired"));
           } else {
             console.error(chalk.red("✗ Not authenticated"));
-            console.error(chalk.dim("  Run: vm0 auth login"));
+            console.error(chalk.dim("  Set ZERO_TOKEN to a valid run token"));
           }
         } else {
           const guidance = RUN_ERROR_GUIDANCE[error.code];

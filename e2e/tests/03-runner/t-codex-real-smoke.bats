@@ -27,7 +27,7 @@ VOLEOF
     seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
-    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+    configure_e2e_model_provider "openai-api-key" "$OPENAI_API_KEY"
 
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
@@ -55,7 +55,7 @@ teardown_file() {
 }
 
 ensure_openai_model_provider() {
-    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+    configure_e2e_model_provider "openai-api-key" "$OPENAI_API_KEY"
 }
 
 @test "t-codex-real-smoke-0: print sandbox codex version" {
@@ -78,6 +78,6 @@ ensure_openai_model_provider() {
         '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"turn.completed"'
     assert_output --partial "RESULT=579"
 }

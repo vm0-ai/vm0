@@ -28,7 +28,7 @@ describe("zero preference command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
 
     // Save original TTY state
     originalIsTTY = process.stdout.isTTY;
@@ -259,7 +259,7 @@ describe("zero preference command", () => {
       }).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-      expect(errorCalls).toContain("Not authenticated");
+      expect(errorCalls).toContain("Authentication failed");
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 

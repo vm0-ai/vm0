@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import {
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+} from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -85,10 +89,6 @@ const cronComputerUseScreenshotCleanupResponseSchema = z.object({
   cleaned: z.number(),
 });
 
-const cronArtifactPreviewResponseSchema = z.object({
-  generated: z.number(),
-});
-
 const cronDrainEmailOutboxResponseSchema = z.object({
   success: z.literal(true),
   drained: z.number(),
@@ -127,8 +127,8 @@ export const connectorCatalogCompatibilityReasonSchema = z.enum([
 ]);
 
 export const connectorCatalogFilteredAuthMethodSchema = z.object({
-  connectorRef: z.string().min(1),
-  authMethodId: z.string().min(1),
+  connectorRef: connectorRefSchema,
+  authMethodId: connectorAuthMethodIdSchema,
   reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
 });
 
@@ -368,19 +368,6 @@ export const cronComputerUseScreenshotCleanupContract = c.router({
   },
 });
 
-export const cronArtifactPreviewContract = c.router({
-  generate: {
-    method: "GET",
-    path: "/api/cron/artifact-preview",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronArtifactPreviewResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Render static preview images for HTML/website artifacts",
-  },
-});
-
 export const cronDrainEmailOutboxContract = c.router({
   drain: {
     method: "GET",
@@ -574,7 +561,6 @@ export type CronRefreshStoragePresignedUrlsContract =
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
-export type CronArtifactPreviewContract = typeof cronArtifactPreviewContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
@@ -595,7 +581,6 @@ export {
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
   cronComputerUseScreenshotCleanupResponseSchema,
-  cronArtifactPreviewResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
   cronExecuteWorkflowAutomationsResponseSchema,

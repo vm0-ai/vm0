@@ -28,14 +28,15 @@ from mitmproxy.addonmanager import Loader
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
 # response_encoding_negotiation/response_streaming/runner_flush_lifecycle/terminal_usage/
-# upstream_admission/usage are imported by module (not selective `from X import ...`) so that:
+# upstream_admission/usage/websocket_retention are imported by module (not selective
+# `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
 #      ``runner_flush_lifecycle.X(...)`` / ``terminal_usage.X(...)`` /
-#      ``upstream_admission.X(...)`` / ``usage.X(...)``, making the module boundary
-#      visible at call sites.
+#      ``upstream_admission.X(...)`` / ``usage.X(...)`` /
+#      ``websocket_retention.X(...)``, making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
@@ -63,6 +64,7 @@ import terminal_usage
 import upstream_admission
 import upstream_destination_binding
 import usage
+import websocket_retention
 from auth import (
     FirewallAuthHandlingResult,
     FirewallHeaderPhaseAuthResult,
@@ -1101,20 +1103,19 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 
 
 def websocket_message(flow: http.HTTPFlow) -> None:
-    """Feed server-side WebSocket frames into model-provider usage parsers."""
+    """Bound registered WebSocket history and feed model-provider usage."""
     if not flow.websocket or not flow.websocket.messages:
         return
     if not flow_metadata.run_id(flow.metadata):
         return
-    if not response_streaming.is_model_websocket_usage_enabled(flow):
-        return
 
     message = flow.websocket.messages[-1]
+    websocket_retention.schedule_message_trim(flow)
+    if not response_streaming.is_model_websocket_usage_enabled(flow):
+        return
     if getattr(message, "from_client", False):
-        terminal_usage.schedule_model_websocket_message_trim(flow)
         return
     response_streaming.feed_model_websocket_usage(flow, message.content)
-    terminal_usage.schedule_model_websocket_message_trim(flow)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -1191,6 +1192,7 @@ def _release_terminal_flow_state(
     release_tracking: bool,
 ) -> None:
     if release_tracking:
+        websocket_retention.release_terminal_messages(flow)
         terminal_usage.release_model_websocket_terminal_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)

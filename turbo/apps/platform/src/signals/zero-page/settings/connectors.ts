@@ -6,9 +6,9 @@ import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
 import {
-  connectorCatalogAuthMethodIdSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorScopeDiffContract,
@@ -63,10 +63,9 @@ import { localStorageSignals } from "../../external/local-storage.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
+import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
-type ConnectorType = ConnectorCatalogRef;
-type ConnectorAuthMethodId = ConnectorCatalogAuthMethodId;
 
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
@@ -89,7 +88,7 @@ export type ConnectorConnectionStatus =
  * Uses server-authored public catalog/status data.
  */
 export interface ConnectorTypeWithStatus {
-  type: ConnectorType;
+  type: ConnectorRef;
   label: string;
   helpText: string;
   icon: PublicConnectorCatalogIcon;
@@ -286,7 +285,7 @@ export function getAvailableStatusAuthCodeAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -315,7 +314,7 @@ export function getAvailableStatusBrowserAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -353,7 +352,7 @@ export function getAvailableStatusNoAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -524,12 +523,12 @@ export const allConnectorTypes$ = computed(async (get) => {
 // Hidden connector types (removed from list by user; persisted in localStorage)
 // ---------------------------------------------------------------------------
 
-const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
+const hiddenConnectorTypes$ = computed((get): Set<ConnectorRef> => {
   const raw = get(hiddenConnectorTypesRaw$);
   if (!raw) {
     return new Set();
   }
-  return new Set(jsonParseOr<ConnectorType[]>(raw, []));
+  return new Set(jsonParseOr<ConnectorRef[]>(raw, []));
 });
 
 // ---------------------------------------------------------------------------
@@ -633,10 +632,10 @@ export const setConnectorsConnectionFilter$ = command(
 // Selected connector for connect modal
 // ---------------------------------------------------------------------------
 
-const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
+const internalSelectedConnectorType$ = state<ConnectorRef | null>(null);
 
 type ActiveConnectorOAuthDeviceAuthState = {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly sessionId: string;
@@ -651,7 +650,7 @@ type ActiveConnectorOAuthDeviceAuthState = {
 };
 
 type ActiveConnectorExternalCodeState = {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly sessionId: string;
@@ -665,11 +664,11 @@ type ActiveConnectorExternalCodeState = {
 export type ConnectorOAuthDeviceAuthState =
   | {
       readonly status: "idle";
-      readonly connectorType: ConnectorType | null;
+      readonly connectorType: ConnectorRef | null;
     }
   | {
       readonly status: "starting";
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly requestId: string;
     }
@@ -678,7 +677,7 @@ export type ConnectorOAuthDeviceAuthState =
     })
   | {
       readonly status: "denied" | "expired" | "error";
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly message: string;
     };
@@ -686,11 +685,11 @@ export type ConnectorOAuthDeviceAuthState =
 export type ConnectorExternalCodeState =
   | {
       readonly status: "idle";
-      readonly connectorType: ConnectorType | null;
+      readonly connectorType: ConnectorRef | null;
     }
   | {
       readonly status: "starting";
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly requestId: string;
     }
@@ -699,18 +698,18 @@ export type ConnectorExternalCodeState =
     })
   | {
       readonly status: "expired" | "error";
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly message: string;
     };
 
 type ConnectorConnectFlowState = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly id: string;
 };
 
 function createIdleConnectorOAuthDeviceAuthState(
-  connectorType: ConnectorType | null = null,
+  connectorType: ConnectorRef | null = null,
 ): ConnectorOAuthDeviceAuthState {
   return { status: "idle", connectorType };
 }
@@ -721,7 +720,7 @@ const internalConnectorOAuthDeviceAuthState$ =
   );
 
 function createIdleConnectorExternalCodeState(
-  connectorType: ConnectorType | null = null,
+  connectorType: ConnectorRef | null = null,
 ): ConnectorExternalCodeState {
   return { status: "idle", connectorType };
 }
@@ -739,7 +738,7 @@ export const selectedConnectorType$ = computed((get) => {
   return get(internalSelectedConnectorType$);
 });
 export const setSelectedConnectorType$ = command(
-  ({ get, set }, type: ConnectorType | null) => {
+  ({ get, set }, type: ConnectorRef | null) => {
     set(internalSelectedConnectorType$, type);
     const deviceAuthCurrent = get(internalConnectorOAuthDeviceAuthState$);
     if (type !== deviceAuthCurrent.connectorType) {
@@ -790,7 +789,7 @@ function connectorConnectOperationIsActive({
   deviceAuthState,
   externalCodeState,
 }: {
-  readonly authCodeConnectorType: ConnectorType | null;
+  readonly authCodeConnectorType: ConnectorRef | null;
   readonly connectFlow: ConnectorConnectFlowState | null;
   readonly deviceAuthState: ConnectorOAuthDeviceAuthState;
   readonly externalCodeState: ConnectorExternalCodeState;
@@ -804,7 +803,7 @@ function connectorConnectOperationIsActive({
 }
 
 function connectorOAuthDeviceAuthStartOptionsKey(
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): string {
   return `${type}:${authMethod}`;
@@ -812,7 +811,7 @@ function connectorOAuthDeviceAuthStartOptionsKey(
 
 export const connectorOAuthDeviceAuthStartOptionValuesFor$ = computed((get) => {
   const values = get(connectorOAuthDeviceAuthStartOptionValues$);
-  return (type: ConnectorType, authMethod: ConnectorAuthMethodId) => {
+  return (type: ConnectorRef, authMethod: ConnectorAuthMethodId) => {
     return (
       values[connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)] ?? {}
     );
@@ -823,7 +822,7 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
   (
     { get, set },
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly name: string;
       readonly value: string;
@@ -848,7 +847,7 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-const internalScopeReviewType$ = state<ConnectorType | null>(null);
+const internalScopeReviewType$ = state<ConnectorRef | null>(null);
 export const scopeReviewType$ = computed((get) => {
   return get(internalScopeReviewType$);
 });
@@ -865,7 +864,7 @@ export const scopeDiff$ = computed(async (get) => {
 });
 
 export const setScopeReviewType$ = command(
-  ({ set }, type: ConnectorType | null) => {
+  ({ set }, type: ConnectorRef | null) => {
     set(internalScopeReviewType$, type);
   },
 );
@@ -921,7 +920,7 @@ type FinishConnectorConnectionOptions = PostConnectOptions & {
 const finishConnectorConnection$ = command(
   (
     { get, set },
-    type: ConnectorType,
+    type: ConnectorRef,
     options: FinishConnectorConnectionOptions = {},
   ): boolean => {
     set(internalJustConnectedTypes$, (prev) => {
@@ -958,7 +957,7 @@ const finishConnectorConnection$ = command(
 // ---------------------------------------------------------------------------
 
 type SubmitManualGrantParams = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly inputValues: Record<string, string>;
   readonly options: PostConnectOptions;
@@ -1027,7 +1026,7 @@ export const submitManualGrant$ = command(
 // ---------------------------------------------------------------------------
 
 type ConnectNoAuthParams = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
 };
@@ -1109,7 +1108,7 @@ export const connectConnectorNoAuthAndSettle$ = command(
 // Polling state (for connect flow)
 // ---------------------------------------------------------------------------
 
-const internalPollingOAuthAuthCodeConnectorType$ = state<ConnectorType | null>(
+const internalPollingOAuthAuthCodeConnectorType$ = state<ConnectorRef | null>(
   null,
 );
 const internalConnectFlowState$ = state<ConnectorConnectFlowState | null>(null);
@@ -1132,7 +1131,7 @@ export const connectFlowType$ = computed((get) => {
 export const runConnectorConnectSuccess$ = command(
   async (
     { set },
-    type: ConnectorType,
+    type: ConnectorRef,
     onSuccess: () => void | Promise<void>,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1176,7 +1175,7 @@ export const justConnectedTypes$ = computed((get) => {
 export const disconnectConnector$ = command(
   async (
     { set },
-    type: ConnectorType,
+    type: ConnectorRef,
     connectorLabel: string,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1197,7 +1196,7 @@ export const disconnectConnector$ = command(
 );
 
 function createConnectorConnectFlowState(
-  type: ConnectorType,
+  type: ConnectorRef,
 ): ConnectorConnectFlowState {
   return {
     type,
@@ -1216,7 +1215,7 @@ function secondsToMilliseconds(value: number): number {
 const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
 
 type PollConnectorOAuthDeviceAuthArgs = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly createClient: ZeroClientFactory;
@@ -1224,7 +1223,7 @@ type PollConnectorOAuthDeviceAuthArgs = {
 };
 
 type ConnectConnectorOAuthDeviceAuthParams = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
   readonly startOptions?: ConnectorDeviceAuthStartOptions;
@@ -1262,7 +1261,7 @@ type PollConnectorOAuthDeviceAuthIterationOutcome = {
   readonly expired?: true;
 };
 
-function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
+function createConnectorOAuthDeviceAuthRequestId(type: ConnectorRef): string {
   return `${type}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
@@ -1290,7 +1289,7 @@ function getOAuthDeviceAuthTerminalMessage(
 
 function isCurrentConnectorOAuthDeviceAuthRequest(
   state: ConnectorOAuthDeviceAuthState,
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorOAuthDeviceAuthState & {
@@ -1315,7 +1314,7 @@ export const clearConnectorOAuthDeviceAuth$ = command(({ set }) => {
 export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
   (
     { get, set },
-    type: ConnectorType,
+    type: ConnectorRef,
     authMethod: ConnectorAuthMethodId,
   ): boolean => {
     const current = get(internalConnectorOAuthDeviceAuthState$);
@@ -1661,7 +1660,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
   async (
     { set },
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;
@@ -1691,24 +1690,24 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
 // ---------------------------------------------------------------------------
 
 type ConnectConnectorExternalCodeParams = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly agentId?: string;
 };
 
 type CompleteConnectorExternalCodeParams = {
-  readonly type: ConnectorType;
+  readonly type: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
 };
 
-function createConnectorExternalCodeRequestId(type: ConnectorType): string {
+function createConnectorExternalCodeRequestId(type: ConnectorRef): string {
   return `${type}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function isCurrentConnectorExternalCodeRequest(
   state: ConnectorExternalCodeState,
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorExternalCodeState & {
@@ -1734,7 +1733,7 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
   (
     { get, set },
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly code: string;
     },
@@ -1759,7 +1758,7 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
 export const openConnectorExternalCodeAuthorizationPage$ = command(
   (
     { get, set },
-    type: ConnectorType,
+    type: ConnectorRef,
     authMethod: ConnectorAuthMethodId,
   ): boolean => {
     const current = get(internalConnectorExternalCodeState$);
@@ -2069,14 +2068,14 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 
 function connectorMatchesAuthMethod(
   connector: ConnectorResponse,
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): boolean {
   return connector.type === type && connector.authMethod === authMethod;
 }
 
 function createConnectorOAuthAuthCodeChangedCommand(
-  type: ConnectorType,
+  type: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
 ) {
@@ -2129,8 +2128,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly method: ConnectorStatusAuthMethodDetail;
+      readonly connectorLabel: string;
       readonly agentId: string | undefined;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
     },
@@ -2141,7 +2141,11 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.
     const popupFeatures = standalone ? undefined : "width=600,height=700";
-    const authWindow = window.open("about:blank", "_blank", popupFeatures);
+    const redirectingPath = connectorRedirectingPath({
+      type: args.type,
+      label: args.connectorLabel,
+    });
+    const authWindow = window.open(redirectingPath, "_blank", popupFeatures);
 
     if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
@@ -2203,7 +2207,15 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       })(),
       () => {
         if (authWindow && !navigated) {
-          authWindow.close();
+          if (signal.aborted) {
+            authWindow.close();
+          } else {
+            authWindow.location.href = connectorRedirectingPath({
+              type: args.type,
+              label: args.connectorLabel,
+              status: "error",
+            });
+          }
         }
       },
     );
@@ -2216,7 +2228,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
 export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
-    type: ConnectorType,
+    type: ConnectorRef,
     method: ConnectorStatusAuthMethodDetail,
     options: PostConnectOptions,
     signal: AbortSignal,
@@ -2253,6 +2265,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           {
             type,
             method,
+            connectorLabel: options.connectorLabel ?? type,
             agentId: options.agentId,
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
@@ -2357,7 +2370,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   async (
     { set },
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly method: ConnectorStatusAuthMethodDetail;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;

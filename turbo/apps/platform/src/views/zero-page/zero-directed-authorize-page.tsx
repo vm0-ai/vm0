@@ -1,8 +1,8 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
-  type ConnectorCatalogRef as ConnectorType,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -84,7 +84,7 @@ function AuthorizeAction({
 // ---------------------------------------------------------------------------
 
 function useDirectedAuthorizeParams(): {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly agentId: string;
 } | null {
   const type = useGet(directedAuthorizeType$);
@@ -92,14 +92,14 @@ function useDirectedAuthorizeParams(): {
   if (!type || !agentId) {
     return null;
   }
-  const parsed = connectorCatalogRefSchema.safeParse(type);
+  const parsed = connectorRefSchema.safeParse(type);
   if (!parsed.success) {
     return null;
   }
   return { connectorType: parsed.data, agentId };
 }
 
-function useDirectedAuthorizeCatalogState(connectorType: ConnectorType | null) {
+function useDirectedAuthorizeCatalogState(connectorType: ConnectorRef | null) {
   const justConnected = useGet(justConnectedTypes$);
   const allLoadable = useLastLoadable(allConnectorTypes$);
   const catalogLoaded = allLoadable.state === "hasData";
@@ -125,7 +125,7 @@ function useDirectedAuthorizeCatalogState(connectorType: ConnectorType | null) {
 }
 
 function useDirectedAuthorizePermissionState(
-  connectorType: ConnectorType | null,
+  connectorType: ConnectorRef | null,
   agentId: string | null,
 ) {
   const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
@@ -177,7 +177,7 @@ function canAuthorizeConnector(
 function directedAuthorizeConnectModalOpen(
   key: DirectedAuthorizeConnectModalKey | null,
   args: {
-    readonly connectorType: ConnectorType | null;
+    readonly connectorType: ConnectorRef | null;
     readonly agentId: string | null;
     readonly signal: AbortSignal;
   },
@@ -258,18 +258,18 @@ function runDirectedAuthorize(params: {
   readonly canAuthorize: boolean;
   readonly isConnected: boolean;
   readonly item: ConnectorTypeWithStatus | undefined;
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly connectorLabel: string;
   readonly agentId: string;
   readonly authMethod: ConnectorStatusAuthMethodDetail | null;
   readonly signal: AbortSignal;
   readonly authorize: (
-    connectorType: ConnectorType,
+    connectorType: ConnectorRef,
     agentId: string,
     signal: AbortSignal,
   ) => Promise<void>;
   readonly connect: (
-    connectorType: ConnectorType,
+    connectorType: ConnectorRef,
     method: ConnectorStatusAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
@@ -279,7 +279,7 @@ function runDirectedAuthorize(params: {
   ) => Promise<boolean>;
   readonly connectNoAuth: (
     args: {
-      readonly type: ConnectorType;
+      readonly type: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options: {
         readonly connectorLabel?: string;

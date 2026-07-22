@@ -9,8 +9,8 @@ import {
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodAccessMetadata,
@@ -429,8 +429,8 @@ type PreparedRefreshTokenContext =
 type ConnectorPreparedRefreshTokenContext = {
   readonly sourceType: "connector";
   readonly connectorId: string;
-  readonly connectorRef: ConnectorCatalogRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly connectorRef: ConnectorRef;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly authClient?: ConnectorAuthClient;
   readonly context: RefreshTokenContext;
@@ -539,7 +539,7 @@ interface RefreshSourceState {
 interface ConnectorAccessState extends RefreshSourceState {
   readonly access: ConnectorCredentialAccess;
   readonly connectorId: string;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly storageVersion: number;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;

@@ -23,7 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
@@ -104,7 +104,7 @@ interface ConnectorPermission {
 interface PermissionsDrawerProps {
   agentId: string;
   targetKind?: "agent" | "workflow";
-  connectorType: ConnectorType;
+  connectorType: ConnectorRef;
   connectorLabel: string;
   metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
   displayName: string;
@@ -142,7 +142,7 @@ interface PermissionsDrawerFooterProps {
 }
 
 interface InitialPermissionDrawerState {
-  readonly ref: ConnectorType;
+  readonly ref: ConnectorRef;
   readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
   readonly initialPolicyKey: string;
 }

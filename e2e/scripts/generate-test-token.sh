@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate a test CLI token via API and save to config file
+# Generate an E2E-only API token via the test endpoint.
 # Called by deploy-api job after Vercel deployment
 #
 # This creates a token that E2E tests can use immediately,
@@ -10,13 +10,20 @@
 #   - VERCEL_AUTOMATION_BYPASS_SECRET for Vercel bypass
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
-# Usage: ./generate-test-token.sh <email>
+# Usage: ./generate-test-token.sh <email> <output-json>
 #   email: test user email (default: dev+clerk_test+serial@vm0-e2e.ai)
 
 set -euo pipefail
+umask 077
 
 # Test user email
 EMAIL="${1:-dev+clerk_test+serial@vm0-e2e.ai}"
+OUTPUT_FILE="${2:-}"
+
+if [[ -z "$OUTPUT_FILE" ]]; then
+  echo "Error: output JSON path is required"
+  exit 1
+fi
 
 # URL-encode the email (handle + and @)
 ENCODED_EMAIL=$(printf '%s' "$EMAIL" | sed 's/+/%2B/g; s/@/%40/g')
@@ -25,7 +32,7 @@ ENCODED_EMAIL=$(printf '%s' "$EMAIL" | sed 's/+/%2B/g; s/@/%40/g')
 MAX_RETRIES=5
 INITIAL_DELAY=2
 
-echo "=== Generating Test CLI Token (email: ${EMAIL}) ==="
+echo "=== Generating E2E API Token (email: ${EMAIL}) ==="
 
 # Validate environment
 if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
@@ -134,20 +141,11 @@ fi
 MASKED_TOKEN="${TOKEN:0:10}...${TOKEN: -4}"
 echo "Got token: $MASKED_TOKEN"
 
-# Create config directory and file
-# Note: activeOrg is derived from the JWT token at runtime, not from config
-CONFIG_DIR="$HOME/.vm0"
-CONFIG_FILE="$CONFIG_DIR/config.json"
-
-mkdir -p "$CONFIG_DIR"
-
-cat > "$CONFIG_FILE" << EOF
-{
-  "token": "$TOKEN",
-  "apiUrl": "$VM0_API_BACKEND_URL"
-}
-EOF
+jq -n \
+  --arg token "$TOKEN" \
+  --arg apiUrl "$VM0_API_BACKEND_URL" \
+  '{token: $token, apiUrl: $apiUrl}' > "$OUTPUT_FILE"
 
 echo ""
 echo "=== Token generated successfully ==="
-echo "Config file: $CONFIG_FILE"
+echo "Credential artifact: $OUTPUT_FILE"

@@ -7,8 +7,8 @@ import {
   isStaticConnectorIconType,
 } from "@vm0/connectors/static-connector-icons";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   allConnectorTypes$,
@@ -29,9 +29,9 @@ import { launchConnectorConnect } from "../zero-page/components/settings/launch-
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 
-function connectorRefs(values: readonly string[]): ConnectorCatalogRef[] {
+function connectorRefs(values: readonly string[]): ConnectorRef[] {
   return values.flatMap((value) => {
-    const parsed = connectorCatalogRefSchema.safeParse(value);
+    const parsed = connectorRefSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
 }
@@ -65,7 +65,7 @@ function OnboardingConnectorRow({
   variant,
   onConnect,
 }: {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly item: ConnectorTypeWithStatus | undefined;
   readonly connected: boolean;
   readonly connecting: boolean;

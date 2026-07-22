@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
@@ -20,7 +20,7 @@ import {
 export const directedAuthorizeType$ = computed((get): string | null => {
   const params = get(pathParams$);
   const type = params?.type;
-  const parsed = connectorCatalogRefSchema.safeParse(
+  const parsed = connectorRefSchema.safeParse(
     typeof type === "string" ? type.toLowerCase() : null,
   );
   return parsed.success ? parsed.data : null;
@@ -57,7 +57,7 @@ export const agentEnabledTypes$ = computed(async (get) => {
 });
 
 export type DirectedAuthorizeConnectModalKey = {
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly agentId: string;
   readonly signal: AbortSignal;
 };
@@ -74,7 +74,7 @@ export const setDirectedAuthorizeConnectModalKey$ = command(
 );
 
 function connectorAgentAuthorizationKey(args: {
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly agentId: string;
 }): string {
   return `${args.agentId}:${args.connectorType}`;
@@ -91,7 +91,7 @@ export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
 export const authorizeConnector$ = command(
   async (
     { get, set },
-    connectorType: ConnectorCatalogRef,
+    connectorType: ConnectorRef,
     agentId: string,
     signal: AbortSignal,
   ) => {
@@ -126,7 +126,7 @@ export const authorizeConnector$ = command(
 export function isJustAuthorizedConnectorAgent(
   justAuthorizedKeys: ReadonlySet<string>,
   args: {
-    readonly connectorType: ConnectorCatalogRef;
+    readonly connectorType: ConnectorRef;
     readonly agentId: string;
   },
 ): boolean {

@@ -23,9 +23,9 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -176,7 +176,7 @@ function teamAgent(
 function mockConnectors(
   connectors: {
     type: ConnectorType;
-    authMethod?: ConnectorAuthMethodId;
+    authMethod?: ConnectorRegistryAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
     reconnectReason?: ConnectorResponse["reconnectReason"];
@@ -267,7 +267,7 @@ function customConnector(
 }
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -1565,6 +1565,11 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(startCount).toBe(1);
       expect(openMock.calls).toHaveLength(1);
+      expect(openMock.calls[0]).toStrictEqual({
+        url: "/connectors/stripe/redirecting?label=Public+Stripe",
+        target: "_blank",
+        features: "width=600,height=700",
+      });
       expect(authWindow.opener).toBeNull();
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
@@ -1611,6 +1616,50 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(authWindow.closed).toBeTruthy();
+    });
+  });
+
+  it("shows an error in the OAuth popup when the start request fails", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(zeroConnectorOauthStartContract.start, ({ respond }) => {
+      return respond(500, {
+        error: {
+          message: "OAuth authorization is unavailable",
+          code: "UNAVAILABLE",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "/connectors/stripe/redirecting?label=Public+Stripe&status=error",
+      );
+      expect(authWindow.closed).toBeFalsy();
     });
   });
 
@@ -1745,6 +1794,9 @@ describe("connectors page", () => {
       expect(connectCount).toBe(1);
     });
     expect(openMock.calls).toHaveLength(0);
+    expect(
+      screen.getByText("Public Stripe enabled successfully"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/You've successfully connected with/u),
     ).not.toBeInTheDocument();
@@ -2440,6 +2492,9 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
+        screen.getByText("Public Axiom connected successfully"),
+      ).toBeInTheDocument();
+      expect(
         within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
     });
@@ -2459,6 +2514,9 @@ describe("connectors page", () => {
     click(buttonByText("Save", stripeDialog));
 
     await waitFor(() => {
+      expect(
+        screen.getByText("Public Stripe connected successfully"),
+      ).toBeInTheDocument();
       expect(
         within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
       ).toBeInTheDocument();
@@ -2546,9 +2604,12 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+        screen.getByText("Public Axiom connected successfully"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+    ).toBeInTheDocument();
     expect(authorizationUpdateCount).toBe(0);
     expect(
       screen.queryByText("You've successfully connected with Public Axiom!"),
@@ -2603,15 +2664,18 @@ describe("connectors page", () => {
     );
 
     await waitFor(() => {
+      expect(screen.getByText("AWS connected")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("You've successfully connected with AWS!"),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
       expect(
         within(connectorCardByLabel("AWS")).getByText(
           /@arn:aws:iam::000000000000:user\/mock-aws/u,
         ),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.queryByText("You've successfully connected with AWS!"),
-    ).not.toBeInTheDocument();
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {

@@ -50,6 +50,7 @@ const CORS_HEADERS = {
 const STATIC_ALLOWED_ORIGINS = new Set([
   "https://www.vm0.ai",
   "https://vm0.ai",
+  "https://okou.ai",
   "https://app.vm7.ai:8443",
 ]);
 const DEFAULT_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
@@ -77,7 +78,12 @@ function allowedCorsOrigin(origin: string | null): string | null {
   }
 
   const hostname = url.hostname.toLowerCase();
-  if (isSubdomainOf(hostname, "vm0.ai") || isSubdomainOf(hostname, "vm6.ai")) {
+  if (
+    isSubdomainOf(hostname, "vm0.ai") ||
+    isSubdomainOf(hostname, "okou.ai") ||
+    isSubdomainOf(hostname, "vm6.ai") ||
+    isSubdomainOf(hostname, "omby.ai")
+  ) {
     return normalizedOrigin;
   }
   if (isSubdomainOf(hostname, "vm7.ai") && url.port === "8443") {

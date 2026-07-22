@@ -3,7 +3,7 @@ import {
   type ConnectorCatalogCompatibilityReason,
   type ConnectorCatalogFilteredAuthMethod,
 } from "@vm0/api-contracts/contracts/cron";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
@@ -636,7 +636,7 @@ export function getAcceptedConnectorCatalogAvailableDetail(args: {
 export function listAcceptedConnectorCatalogAvailableRefs(args: {
   readonly snapshot: AcceptedConnectorCatalogSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): readonly ConnectorCatalogRef[] {
+}): readonly ConnectorRef[] {
   return effectiveConnectors({
     catalog: args.snapshot,
     featureStates: args.featureStates,

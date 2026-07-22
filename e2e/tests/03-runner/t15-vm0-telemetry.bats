@@ -75,7 +75,7 @@ teardown() {
     assert_success
 
     # Verify run completed successfully
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 
     # Step 3: Extract Run ID from output
     RUN_ID=$(run_fixture_field "$output" '.runId')
@@ -89,12 +89,12 @@ teardown() {
     # Step 4: Verify agent events (default log view)
     echo "# Step 4: Fetching agent events (default)..."
     # Mock-claude produces: Claude Code Started, text, tool calls, Completed
-    wait_for_log "$RUN_ID" -- "▷ Claude Code Started" "◆ Claude Code Completed"
+    wait_for_log "$RUN_ID" -- '"subtype":"init"' '"subtype":"success"'
     echo "# Agent events contain expected event types"
 
     # Step 5: Verify --agent option explicitly shows agent events
     echo "# Step 5: Testing --agent option..."
-    wait_for_log "$RUN_ID" --agent -- "▷ Claude Code Started"
+    wait_for_log "$RUN_ID" --agent -- '"subtype":"init"'
     echo "# --agent option works correctly"
 
     # Step 6: Verify --system option shows system logs
@@ -111,12 +111,10 @@ teardown() {
     wait_for_log "$RUN_ID" --metrics -- "CPU:" "Mem:" "Disk:"
     echo "# Metrics contain expected resource data"
 
-    # Step 8: Verify `zero logs --tail` limits output
-    echo "# Step 8: Testing --tail option..."
-    run $ZERO_CLI logs "$RUN_ID" --tail 2
-
+    # Step 8: Verify API pagination limits structured agent events.
+    echo "# Step 8: Testing agent-event page limit..."
+    run e2e_api_curl "/api/zero/runs/$RUN_ID/telemetry/agent?limit=2&order=desc"
     assert_success
-    # With tail=2, should see at most 2 events
-    # If more exist, should see "Use --tail to see more"
-    echo "# Tail option works correctly"
+    assert_equal "$(jq -r '.events | length' <<< "$output")" "2"
+    echo "# Agent-event page limit works correctly"
 }

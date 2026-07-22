@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.613.4](https://github.com/vm0-ai/vm0/compare/app-v0.613.3...app-v0.613.4) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
+## [0.613.3](https://github.com/vm0-ai/vm0/compare/app-v0.613.2...app-v0.613.3) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** remove redundant post-connect agent authorization dialog ([#22467](https://github.com/vm0-ai/vm0/issues/22467)) ([c067465](https://github.com/vm0-ai/vm0/commit/c067465aab7a2643851c3a97f9fc24a36df9eeec))
+
+## [0.613.2](https://github.com/vm0-ai/vm0/compare/app-v0.613.1...app-v0.613.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **platform:** show connector page before oauth redirect ([#22464](https://github.com/vm0-ai/vm0/issues/22464)) ([55710d7](https://github.com/vm0-ai/vm0/commit/55710d7d9153b8fbc9fe15c7419699c1d6eb6881))
+
 ## [0.613.1](https://github.com/vm0-ai/vm0/compare/app-v0.613.0...app-v0.613.1) (2026-07-21)
 
 

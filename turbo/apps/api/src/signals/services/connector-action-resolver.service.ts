@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
@@ -46,14 +46,14 @@ export type ConnectorActionResolutionFailure =
 
 export type ResolvedConnectorRef = {
   readonly ok: true;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly runtimeConnector: ConnectorRuntimeConnector;
   readonly snapshot: ConnectorRuntimeSnapshot;
 };
 
 export type ResolvedConnectorActionMethod = ResolvedConnectorRef & {
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly runtimeMethod: ConnectorRuntimeMethod;
@@ -73,7 +73,7 @@ export type ConnectorRefsResolution =
       readonly connectors: readonly ResolvedConnectorRef[];
     }
   | (ConnectorRefResolutionFailure & {
-      readonly connectorRef: ConnectorCatalogRef;
+      readonly connectorRef: ConnectorRef;
     });
 
 /**
@@ -89,27 +89,27 @@ export type ConnectorRefsResolution =
  */
 export interface ConnectorActionResolver {
   readonly resolveRef: (args: {
-    readonly connectorRef: ConnectorCatalogRef;
+    readonly connectorRef: ConnectorRef;
     readonly requireExecutable: boolean;
   }) => ConnectorRefResolution;
   readonly resolveMethod: (args: {
-    readonly connectorRef: ConnectorCatalogRef;
-    readonly authMethodId: ConnectorCatalogAuthMethodId;
+    readonly connectorRef: ConnectorRef;
+    readonly authMethodId: ConnectorAuthMethodId;
     readonly expectedGrantKind: ConnectorCatalogGrantKind;
   }) => ConnectorActionMethodResolution;
   readonly resolveNewActionMethod: (args: {
-    readonly connectorRef: ConnectorCatalogRef;
-    readonly authMethodId: ConnectorCatalogAuthMethodId;
+    readonly connectorRef: ConnectorRef;
+    readonly authMethodId: ConnectorAuthMethodId;
     readonly expectedGrantKind: ConnectorCatalogGrantKind;
   }) => ConnectorActionMethodResolution;
   readonly resolveRefs: (args: {
-    readonly connectorRefs: readonly ConnectorCatalogRef[];
+    readonly connectorRefs: readonly ConnectorRef[];
     readonly requireExecutable: boolean;
   }) => ConnectorRefsResolution;
 }
 
 function resolvedRef(args: {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly requireExecutable: boolean;
   readonly runtimeConnector: ConnectorRuntimeConnector;
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -133,7 +133,7 @@ function resolvedRef(args: {
 
 function executableMethod(args: {
   readonly resolvedRef: ResolvedConnectorRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
 }): ResolvedConnectorActionMethod | ConnectorActionResolutionFailure {
   const runtimeMethod = getConnectorRuntimeMethod({

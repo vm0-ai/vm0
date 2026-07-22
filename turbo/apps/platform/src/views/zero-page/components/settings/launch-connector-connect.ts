@@ -1,4 +1,4 @@
-import type { ConnectorCatalogAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 
 import {
   getConnectorStatusConnectLaunchMode,
@@ -16,7 +16,7 @@ interface LaunchConnectorConnectOptions {
     authMethod: ConnectorStatusAuthMethodDetail,
   ) => Promise<unknown>;
   readonly connectNoAuth: (
-    authMethod: ConnectorCatalogAuthMethodId,
+    authMethod: ConnectorAuthMethodId,
   ) => Promise<unknown>;
 }
 

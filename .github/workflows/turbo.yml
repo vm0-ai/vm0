@@ -1178,10 +1178,12 @@ jobs:
       # Step 7: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
-          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+serial@vm0-e2e.ai"
-          cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
-          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
-          cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
+          e2e/scripts/generate-test-token.sh \
+            "${JOB_REF}+clerk_test+serial@vm0-e2e.ai" \
+            "/tmp/e2e-api-credentials-serial.json"
+          e2e/scripts/generate-test-token.sh \
+            "${JOB_REF}+clerk_test+runner@vm0-e2e.ai" \
+            "/tmp/e2e-api-credentials-runner.json"
         env:
           VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -1192,8 +1194,8 @@ jobs:
         with:
           name: e2e-tokens
           path: |
-            /tmp/e2e-token-serial.json
-            /tmp/e2e-token-runner.json
+            /tmp/e2e-api-credentials-serial.json
+            /tmp/e2e-api-credentials-runner.json
           retention-days: 1
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
@@ -1767,7 +1769,7 @@ jobs:
           set -euo pipefail
           cd turbo/apps/cli/dist
           # Ensure all imported chunks are present in the package
-          for f in index.js zero.js; do
+          for f in zero.js; do
             chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
             for chunk in $chunks; do
               chunk_file="${chunk#./}"
@@ -1793,10 +1795,9 @@ jobs:
         run: |
           set -euo pipefail
           cd /tmp/cli-deploy
-          # Eager imports in both entry points load the full dependency tree
+          # Eager imports load the full dependency tree
           # (@sentry/node → @prisma/instrumentation → @opentelemetry/*).
           # Any broken transitive dep will fail here.
-          node dist/index.js --help
           node dist/zero.js --help
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
@@ -1856,18 +1857,21 @@ jobs:
           sudo rm -rf "$CLI_DIR"
           sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
           sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo chmod +x "$CLI_DIR/dist/zero.js"
           sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help
           zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
-      - name: Setup test token
-        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-serial.json ~/.vm0/config.json
+      - name: Setup E2E API credentials
+        run: |
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
+          echo "::add-mask::$token"
+          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
 
       - name: Start Cron Simulator
         run: |
@@ -2314,47 +2318,29 @@ jobs:
     concurrency:
       group: e2e-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, build-cli, deploy-api]
+    needs: [prepare, deploy-api]
     if: |
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     timeout-minutes: 2
     steps:
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - name: Download CLI artifact
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: cli-dist
-          path: /tmp/cli-deploy
-      - name: Install CLI globally
-        run: |
-          set -euo pipefail
-          # Derive from `node` on PATH so sudo and user see the same prefix
-          # regardless of npmrc / env-var inheritance.
-          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
-          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo rm -rf "$CLI_DIR"
-          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
-          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help
-          zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
-      - name: Setup test token
-        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Setup E2E API credentials
+        run: |
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          echo "::add-mask::$token"
+          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
       - name: Reset model-first defaults
         run: |
           set -euo pipefail
-          token="$(jq -r '.token // empty' ~/.vm0/config.json)"
+          token="${E2E_API_TOKEN:-}"
           if [ -z "$token" ]; then
             echo "::error::Missing runner E2E token"
             exit 1
@@ -2381,7 +2367,13 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap test account
         run: |
-          zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+          curl -fsS \
+            -H "Authorization: Bearer ${E2E_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            -X POST \
+            -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
+            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2395,7 +2387,6 @@ jobs:
     needs:
       [
         prepare,
-        build-cli,
         deploy-api,
         deploy-runner-prepare,
         deploy-runner-start,
@@ -2417,26 +2408,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Download CLI artifact
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: cli-dist
-          path: /tmp/cli-deploy
-      - name: Install CLI globally
-        run: |
-          set -euo pipefail
-          # Derive from `node` on PATH so sudo and user see the same prefix
-          # regardless of npmrc / env-var inheritance.
-          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
-          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo rm -rf "$CLI_DIR"
-          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
-          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help
-          zero --help
       - name: Install GNU parallel for bats
         run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
@@ -2444,8 +2415,13 @@ jobs:
         with:
           name: e2e-tokens
           path: /tmp
-      - name: Setup test token
-        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Setup E2E API credentials
+        run: |
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          echo "::add-mask::$token"
+          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
 
       - name: Start Cron Simulator
         run: |

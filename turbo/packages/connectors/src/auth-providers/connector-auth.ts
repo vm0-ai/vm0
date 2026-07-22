@@ -1,7 +1,7 @@
 import {
   type ConnectorAuthCodeGrantAuthMethodId,
   type AuthCodeGrantConnectorType,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorAuthMethodRuntimeConfig,
   type ConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
@@ -158,7 +158,7 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
 
 type ConnectorAuthMethodIdsWithoutProviderGrant<Type extends ConnectorType> =
   Exclude<
-    ConnectorAuthMethodId,
+    ConnectorRegistryAuthMethodId,
     | ConnectorAuthMethodIdsByGrantKind<
         Type & AuthCodeGrantConnectorType,
         "auth-code"
@@ -180,7 +180,7 @@ type ConnectorAuthMethodIdsWithoutProviderGrant<Type extends ConnectorType> =
 type ConnectorAuthMethodIdsWithoutRefreshTokenAccess<
   Type extends ConnectorType,
 > = Exclude<
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorAuthMethodIdsByAccessKind<
     Type & RefreshTokenAccessConnectorType,
     "refresh-token"
@@ -189,7 +189,7 @@ type ConnectorAuthMethodIdsWithoutRefreshTokenAccess<
 
 type ConnectorAuthMethodIdsWithoutTokenRevoke<Type extends ConnectorType> =
   Exclude<
-    ConnectorAuthMethodId,
+    ConnectorRegistryAuthMethodId,
     ConnectorAuthMethodIdsByRevokeKind<
       Type & TokenRevokeConnectorType,
       "token-revoke"
@@ -252,7 +252,7 @@ type RuntimeAuthProviderEntry = {
 
 type RuntimeAuthProviderRegistration<
   Type extends ConnectorType = ConnectorType,
-  Method extends ConnectorAuthMethodId = ConnectorAuthMethodId,
+  Method extends ConnectorRegistryAuthMethodId = ConnectorRegistryAuthMethodId,
 > = {
   readonly type: Type;
   readonly authMethod: Method;
@@ -281,7 +281,10 @@ export type ConnectorAuthProviderRegistryCapabilities = Readonly<
       ConnectorType,
       Readonly<
         Partial<
-          Record<ConnectorAuthMethodId, ConnectorAuthProviderRegistryCapability>
+          Record<
+            ConnectorRegistryAuthMethodId,
+            ConnectorAuthProviderRegistryCapability
+          >
         >
       >
     >
@@ -481,14 +484,17 @@ type MutableConnectorAuthProviderRegistryCapabilities = Partial<
   Record<
     ConnectorType,
     Partial<
-      Record<ConnectorAuthMethodId, ConnectorAuthProviderRegistryCapability>
+      Record<
+        ConnectorRegistryAuthMethodId,
+        ConnectorAuthProviderRegistryCapability
+      >
     >
   >
 >;
 
 function connectorAuthProviderRegistryEntry<
   Type extends ConnectorType,
-  Method extends ConnectorAuthMethodId,
+  Method extends ConnectorRegistryAuthMethodId,
 >(
   type: Type,
   authMethod: Method,

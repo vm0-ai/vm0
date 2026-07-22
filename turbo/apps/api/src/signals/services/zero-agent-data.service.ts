@@ -2,8 +2,8 @@ import { computed, type Computed } from "ccstate";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -166,8 +166,8 @@ export function zeroAgentEnabledConnectorTypes(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-}): Computed<Promise<readonly ConnectorCatalogRef[]>> {
-  return computed(async (get): Promise<readonly ConnectorCatalogRef[]> => {
+}): Computed<Promise<readonly ConnectorRef[]>> {
+  return computed(async (get): Promise<readonly ConnectorRef[]> => {
     const rows = await get(db$)
       .select({ connectorType: userConnectors.connectorType })
       .from(userConnectors)
@@ -180,7 +180,7 @@ export function zeroAgentEnabledConnectorTypes(args: {
       );
 
     return rows.map((row) => {
-      return connectorCatalogRefSchema.parse(row.connectorType);
+      return connectorRefSchema.parse(row.connectorType);
     });
   });
 }
