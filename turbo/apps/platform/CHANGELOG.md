@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.613.2](https://github.com/vm0-ai/vm0/compare/app-v0.613.1...app-v0.613.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **platform:** show connector page before oauth redirect ([#22464](https://github.com/vm0-ai/vm0/issues/22464)) ([55710d7](https://github.com/vm0-ai/vm0/commit/55710d7d9153b8fbc9fe15c7419699c1d6eb6881))
+
 ## [0.613.1](https://github.com/vm0-ai/vm0/compare/app-v0.613.0...app-v0.613.1) (2026-07-21)
 
 
