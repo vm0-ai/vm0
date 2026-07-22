@@ -41,7 +41,6 @@ interface ResolvedModelFirstPolicyRoute {
   readonly modelProviderType: ModelProviderType;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope;
   readonly selectedModel: SupportedRunModel;
-  readonly cliAgentType: SupportedFramework;
 }
 
 interface PersistedModelFirstRouteResolution {
@@ -114,17 +113,6 @@ function parseModelProviderCredentialScope(
     return value;
   }
   throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
-function cliAgentTypeForPolicyRoute(
-  providerType: ModelProviderType,
-  selectedModel: SupportedRunModel,
-): SupportedFramework {
-  return getFrameworkForType(
-    providerType === "vm0"
-      ? getVm0ConcreteProviderType(selectedModel)
-      : providerType,
-  );
 }
 
 async function resolveValidPolicyRoute(params: {
@@ -221,7 +209,6 @@ async function resolveValidPolicyRoute(params: {
     modelProviderType: providerType.data,
     modelProviderCredentialScope: credentialScope,
     selectedModel: policy.model,
-    cliAgentType: cliAgentTypeForPolicyRoute(providerType.data, policy.model),
   };
 }
 
