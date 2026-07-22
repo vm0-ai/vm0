@@ -1400,28 +1400,6 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
   });
-
-  it("redirects the legacy agent workflows tab", async () => {
-    mockAgentPageApis();
-    mockWorkflowApis([
-      salesResearch(),
-      opsPlaybook(),
-      launchChecklistWorkflow(),
-      otherAgentWorkflow(),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}?tab=workflows`,
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}`);
-      expect(search()).toBe("");
-    });
-    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
-    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
-  });
 });
 
 describe("workflow detail page", () => {

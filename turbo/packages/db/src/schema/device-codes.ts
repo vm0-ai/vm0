@@ -19,6 +19,7 @@ export const deviceCodeStatusEnum = pgEnum("device_code_status", [
 
 export const deviceCodes = pgTable("device_codes", {
   code: varchar("code", { length: 9 }).primaryKey(), // XXXX-XXXX format
+  // Keep retired physical fields until all pre-cleanup API readers have drained.
   purpose: varchar("purpose", { length: 32 }).default("cli").notNull(),
   status: deviceCodeStatusEnum("status").default("pending").notNull(),
   userId: text("user_id"), // Clerk user ID, set after authentication

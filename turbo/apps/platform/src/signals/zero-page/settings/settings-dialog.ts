@@ -23,8 +23,6 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
-type LegacySettingsSection = "providers";
-type UnifiedSettingsSection = SettingsSection | LegacySettingsSection;
 
 // `usage` stays visible to everyone. The rendered label and detail UI depend
 // on org role and feature switches.
@@ -218,22 +216,9 @@ function isSettingsSection(value: string): value is SettingsSection {
   return (SETTINGS_SECTIONS as readonly string[]).includes(value);
 }
 
-function isUnifiedSettingsSection(
-  value: string,
-): value is UnifiedSettingsSection {
-  return isSettingsSection(value) || value === "providers";
-}
-
-function settingsSectionFromParam(
-  section: UnifiedSettingsSection,
-): SettingsSection {
-  return section === "providers" ? "model" : section;
-}
-
 /**
  * Check URL for `?settings=<section>` and auto-open the matching settings
- * surface. The legacy `providers` value remains an alias for `model` so old
- * links keep opening the unified settings dialog.
+ * surface.
  * Valid settings params stay in the URL while the dialog is open; closing the
  * dialog clears them.
  */
@@ -245,7 +230,7 @@ export const checkUnifiedSettingsParam$ = command(
     if (!value) {
       return;
     }
-    if (!isUnifiedSettingsSection(value)) {
+    if (!isSettingsSection(value)) {
       const next = new URLSearchParams(get(searchParams$));
       next.delete("settings");
       next.delete("billingView");
@@ -253,7 +238,7 @@ export const checkUnifiedSettingsParam$ = command(
       return;
     }
 
-    const section = settingsSectionFromParam(value);
+    const section = value;
     const opensBillingPlans = section === "billing" && billingView === "plans";
     const opensBuyCredits = section === "billing" && billingView === "credits";
     const isAdmin = await get(isOrgAdmin$);

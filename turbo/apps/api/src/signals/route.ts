@@ -44,7 +44,6 @@ import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
-import { legacyFileRoutes } from "./routes/legacy-file";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
@@ -212,7 +211,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
-  ...legacyFileRoutes,
   ...usageRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,

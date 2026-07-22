@@ -12,10 +12,6 @@ import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import {
-  deleteUnsupportedHistoricalConnectors,
-  seedUnsupportedHistoricalConnectors,
-} from "../../../test-fixtures/historical-connectors";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   deleteOrgMembership$,
@@ -37,8 +33,6 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
-const REMOVED_AUTH_CONNECTOR_TYPE = "github";
-const MISMATCHED_AUTH_CONNECTOR_TYPE = "gitlab";
 
 async function enableFeatureSwitches(
   orgId: string,
@@ -142,10 +136,6 @@ describe("GET /api/zero/connector-catalog", () => {
     readonly userId: string;
   }[] = [];
   const seededOrgs: OrgMembershipFixture[] = [];
-  const historicalConnectorFixtures: {
-    readonly orgId: string;
-    readonly userId: string;
-  }[] = [];
 
   async function enableConnectorFeatureSwitches(
     orgId: string,
@@ -167,12 +157,6 @@ describe("GET /api/zero/connector-catalog", () => {
       const fixture = seededOrgs.pop();
       if (fixture) {
         await store.set(deleteOrgMembership$, fixture, context.signal);
-      }
-    }
-    while (historicalConnectorFixtures.length > 0) {
-      const fixture = historicalConnectorFixtures.pop();
-      if (fixture) {
-        await deleteUnsupportedHistoricalConnectors(fixture);
       }
     }
   });
@@ -629,72 +613,6 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.connection).not.toHaveProperty("externalId");
     expect(openai?.connection).not.toHaveProperty("createdAt");
     expect(openai?.connection).not.toHaveProperty("updatedAt");
-  });
-
-  it("ignores unsupported historical connector identities", async () => {
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Historical connector fixture requires an organization");
-    }
-    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
-      apiKey: "sk-public-status",
-    });
-
-    await seedUnsupportedHistoricalConnectors({
-      orgId: actor.orgId,
-      userId: actor.userId,
-    });
-    historicalConnectorFixtures.push({
-      orgId: actor.orgId,
-      userId: actor.userId,
-    });
-
-    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const response = await accept(
-      client.status({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const openai = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
-    });
-    expect(openai).toMatchObject({
-      connected: true,
-      connectionStatus: "connected",
-    });
-    const github = response.body.connectors.find((connector) => {
-      return connector.connectorRef === REMOVED_AUTH_CONNECTOR_TYPE;
-    });
-    expect(github).toMatchObject({
-      connected: false,
-      connection: null,
-      connectionStatus: "not-connected",
-    });
-    const gitlab = response.body.connectors.find((connector) => {
-      return connector.connectorRef === MISMATCHED_AUTH_CONNECTOR_TYPE;
-    });
-    expect(gitlab).toMatchObject({
-      connected: false,
-      connection: null,
-      connectionStatus: "not-connected",
-    });
-
-    const removedAuthConnector = await connectorsApi.requestReadConnectorByType(
-      actor,
-      REMOVED_AUTH_CONNECTOR_TYPE,
-      [404],
-    );
-    expect(removedAuthConnector.status).toBe(404);
-    const mismatchedAuthConnector =
-      await connectorsApi.requestReadConnectorByType(
-        actor,
-        MISMATCHED_AUTH_CONNECTOR_TYPE,
-        [404],
-      );
-    expect(mismatchedAuthConnector.status).toBe(404);
   });
 
   it("returns connected auth-code status without exposing stored scopes", async () => {

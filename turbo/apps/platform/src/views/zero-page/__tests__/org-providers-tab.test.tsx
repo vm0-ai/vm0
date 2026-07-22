@@ -223,7 +223,7 @@ async function openProvidersTab(options?: {
 }): Promise<void> {
   detachedSetupPage({
     context,
-    path: "/?settings=providers",
+    path: "/?settings=model",
     featureSwitches:
       options?.vm0ModelEnabled === undefined
         ? undefined

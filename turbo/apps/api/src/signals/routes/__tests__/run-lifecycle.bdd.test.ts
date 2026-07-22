@@ -2417,6 +2417,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    let affinitySnapshotSequence = 0;
+    function nextAffinitySnapshotSequence(): number {
+      affinitySnapshotSequence += 1;
+      return affinitySnapshotSequence;
+    }
+
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
@@ -2432,6 +2438,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         admittableProfiles: args.admittableProfiles,
         heldSessionStates: [
           {
@@ -2483,6 +2491,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runnerId: affinityRunnerId,
         runnerName: "bdd-runner",
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         totalVcpu: 8,
         totalMemoryMb: 16_384,
         maxConcurrent: 2,
@@ -2553,6 +2563,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
       admittableProfiles: [],
       heldSessionStates: [
         {
@@ -2578,6 +2590,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 2,
       admittableProfiles: [],
       heldSessionStates: [],
       mode: "stopping",
@@ -2600,6 +2614,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
       admittableProfiles: ["vm0/default"],
       heldSessionStates: [
         {
@@ -2936,7 +2952,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 
-  it("keeps runner heartbeat snapshots ordered without breaking legacy senders", async () => {
+  it("keeps runner heartbeat snapshots ordered", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2975,8 +2991,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     async function heartbeat(args: {
-      readonly generation?: number;
-      readonly sequence?: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly advertisesReusableSandbox: boolean;
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
@@ -3066,9 +3082,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       advertisesReusableSandbox: true,
     });
     await expectReusableAffinity(false);
-
-    await heartbeat({ advertisesReusableSandbox: true });
-    await expectReusableAffinity(true);
   });
 
   it("prioritizes exact reusable work only for its runner and protection window", async () => {

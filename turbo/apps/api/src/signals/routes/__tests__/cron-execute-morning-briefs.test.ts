@@ -580,14 +580,6 @@ describe("cron execute morning briefs", () => {
     const token = manageUrl.searchParams.get("token");
     expect(token).toBeTruthy();
 
-    // Legacy links in already-sent emails hit the API GET route, which now
-    // forwards to the platform page with the token preserved.
-    const legacyResponse = await createApp({ signal: context.signal }).request(
-      `/api/email/morning-brief/unsubscribe?token=${token}`,
-    );
-    expect(legacyResponse.status).toBe(302);
-    expect(legacyResponse.headers.get("Location")).toBe(manageUrl.toString());
-
     const unsubscribeResponse = await createApp({
       signal: context.signal,
     }).request(`/api/email/morning-brief/unsubscribe?token=${token}`, {

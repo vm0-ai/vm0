@@ -6,7 +6,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 // Keep registry resource downloads in the CLI release lifecycle.
 export async function getRegistryResourceDownload(query: {
   id: string;
-  expectedSha256?: string;
+  expectedSha256: string;
 }): Promise<{
   url: string;
   id: string;

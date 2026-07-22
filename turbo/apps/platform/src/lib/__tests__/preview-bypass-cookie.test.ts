@@ -19,17 +19,7 @@ describe("preview bypass cookie", () => {
     );
   });
 
-  it("does not read legacy vm0 preview bypass query params", () => {
-    expect(
-      buildPreviewBypassCookie({
-        hostname: "pr-123-app.omby.ai",
-        protocol: "https:",
-        search: "?vm0_preview_bypass=preview-secret",
-      }),
-    ).toBeNull();
-  });
-
-  it("builds a host-only cookie for local previews", () => {
+  it("falls back to a host-only cookie outside vm6.ai", () => {
     expect(
       buildPreviewBypassCookie({
         hostname: "localhost",

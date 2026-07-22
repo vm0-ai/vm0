@@ -12,10 +12,7 @@ export const registryResourceDownloadContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       id: z.string().min(1, "Resource id is required"),
-      expectedSha256: z
-        .string()
-        .regex(/^[a-f0-9]{64}$/)
-        .optional(),
+      expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
     }),
     responses: {
       200: z.object({

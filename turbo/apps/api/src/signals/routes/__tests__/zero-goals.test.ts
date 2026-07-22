@@ -4,7 +4,6 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { seedInvalidLegacyGoalMessages } from "../../../test-fixtures/legacy-goals";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi } from "./helpers/api-bdd";
@@ -347,53 +346,6 @@ describe("zero goals", () => {
         },
       }),
     );
-  });
-
-  it("normalizes invalid legacy goal marker JSON", async () => {
-    const fixture = await seedGoalApiFixture();
-    const chat = createChatFilesBddApi(context);
-    await createGoal(fixture, "ship goals");
-
-    await seedInvalidLegacyGoalMessages(fixture.threadId);
-
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadMessages(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:member",
-        email: "goal-user@example.com",
-      },
-      fixture.threadId,
-    );
-
-    const legacyMessages = messages.messages.filter((message) => {
-      return message.goalSnapshot?.objectiveBrief === "Untitled goal";
-    });
-    expect(legacyMessages).toHaveLength(2);
-    expect(
-      legacyMessages.some((message) => {
-        return (
-          message.goalEvent?.type === "state" &&
-          message.goalEvent.status === "active" &&
-          message.goalEvent.objectiveBrief === "Untitled goal"
-        );
-      }),
-    ).toBeTruthy();
-    expect(
-      legacyMessages.some((message) => {
-        return message.goalEvent === undefined;
-      }),
-    ).toBeTruthy();
-    const missingSnapshotBriefMessage = messages.messages.find((message) => {
-      return message.content === "legacy snapshot without objective brief";
-    });
-    expect(missingSnapshotBriefMessage).toStrictEqual(
-      expect.objectContaining({
-        role: "user",
-      }),
-    );
-    expect(missingSnapshotBriefMessage?.goalSnapshot).toBeUndefined();
   });
 
   it("clears the current goal and writes a cleared marker", async () => {

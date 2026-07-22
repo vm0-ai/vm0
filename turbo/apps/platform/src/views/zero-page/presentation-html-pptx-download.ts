@@ -4,11 +4,7 @@ import {
 } from "./zero-attachment-url.ts";
 import domToPptxBundleUrl from "../../../node_modules/dom-to-pptx/dist/dom-to-pptx.bundle.js?url";
 import JSZip from "jszip";
-import {
-  createDeferredPromise,
-  jsonParseOr,
-  withCleanup,
-} from "../../signals/utils.ts";
+import { createDeferredPromise, withCleanup } from "../../signals/utils.ts";
 import {
   hasPresentationElementOffsets,
   PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME,
@@ -1193,14 +1189,15 @@ function parseHtml(html: string): Document {
 function parseDeckMetadata(doc: Document): DeckMetadata {
   const script = doc.getElementById(METADATA_SCRIPT_ID);
   if (!script?.textContent) {
-    return {};
+    throw new Error("Presentation deck metadata is required");
   }
-  const parsed = jsonParseOr<unknown>(script.textContent, null);
-  if (!isRecord(parsed) || !isRecord(parsed.slides)) {
-    return {};
+  const parsed: unknown = JSON.parse(script.textContent);
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid presentation deck metadata");
   }
   const slides: Record<string, DeckMetadataSlide> = {};
-  for (const [slideId, value] of Object.entries(parsed.slides)) {
+  const metadataSlides = isRecord(parsed.slides) ? parsed.slides : {};
+  for (const [slideId, value] of Object.entries(metadataSlides)) {
     if (!isRecord(value)) {
       continue;
     }

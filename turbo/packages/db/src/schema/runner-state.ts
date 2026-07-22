@@ -22,8 +22,12 @@ export const runnerState = pgTable(
     runnerGroup: varchar("runner_group", { length: 255 }).notNull(),
     heartbeatGeneration: bigint("heartbeat_generation", {
       mode: "number",
-    }),
-    heartbeatSequence: bigint("heartbeat_sequence", { mode: "number" }),
+    })
+      .notNull()
+      .default(0),
+    heartbeatSequence: bigint("heartbeat_sequence", { mode: "number" })
+      .notNull()
+      .default(0),
     totalVcpu: integer("total_vcpu").notNull().default(0),
     totalMemoryMb: integer("total_memory_mb").notNull().default(0),
     maxConcurrent: integer("max_concurrent").notNull().default(0),

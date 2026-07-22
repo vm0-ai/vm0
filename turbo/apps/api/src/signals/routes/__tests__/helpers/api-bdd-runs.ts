@@ -230,12 +230,8 @@ function runnerHeartbeatBody(
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
-    ...(args.snapshotGeneration === undefined
-      ? {}
-      : { snapshotGeneration: args.snapshotGeneration }),
-    ...(args.snapshotSequence === undefined
-      ? {}
-      : { snapshotSequence: args.snapshotSequence }),
+    snapshotGeneration: args.snapshotGeneration ?? 1,
+    snapshotSequence: args.snapshotSequence ?? 1,
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,

@@ -67,10 +67,6 @@ export function nonEmptyGoalObjectiveBrief(
     : DEFAULT_GOAL_OBJECTIVE_BRIEF;
 }
 
-export function goalObjectiveBriefFromJson(value: unknown): string {
-  return nonEmptyGoalObjectiveBrief(typeof value === "string" ? value : null);
-}
-
 export function normalizeGoalObjectiveBrief(args: {
   readonly objective: string;
   readonly objectiveBrief: string;

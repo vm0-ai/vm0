@@ -39,6 +39,9 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
               sp.value='M:Mauve Dusk';sf.value='Fredoka / Quicksand';
               sp.onchange();sf.onchange();
             </script>
+            <script id="vm0-deck-metadata" type="application/json">
+              {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+            </script>
           </body>
         </html>
       `,
@@ -116,6 +119,9 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
                 <h1>Slide</h1>
               </div>
             </section>
+            <script id="vm0-deck-metadata" type="application/json">
+              {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+            </script>
           </body>
         </html>
       `,

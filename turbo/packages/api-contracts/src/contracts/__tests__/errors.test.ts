@@ -237,11 +237,11 @@ describe("formatRunErrorForExternalSurface", () => {
           modelProviderType: "anthropic-api-key",
           modelProviderCredentialScope: "org",
           canManageOrgModelProviders: true,
-          modelProvidersUrl: "https://app.example.test/?settings=providers",
+          modelProvidersUrl: "https://app.example.test/?settings=model",
         },
       }),
     ).toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.example.test/?settings=providers",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.example.test/?settings=model",
     );
   });
 
@@ -255,11 +255,11 @@ describe("formatRunErrorForExternalSurface", () => {
           modelProviderType: "anthropic-api-key",
           modelProviderCredentialScope: "org",
           canManageOrgModelProviders: false,
-          modelProvidersUrl: "https://app.example.test/?settings=providers",
+          modelProvidersUrl: "https://app.example.test/?settings=model",
         },
       }),
     ).toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.example.test/?settings=providers",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.example.test/?settings=model",
     );
   });
 
@@ -273,7 +273,7 @@ describe("formatRunErrorForExternalSurface", () => {
           modelProviderType: "openai-api-key",
           modelProviderCredentialScope: "org",
           canManageOrgModelProviders: true,
-          modelProvidersUrl: "https://app.example.test/?settings=providers",
+          modelProvidersUrl: "https://app.example.test/?settings=model",
         },
       }),
     ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);

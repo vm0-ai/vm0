@@ -68,34 +68,17 @@ function googleSlidesUploadDisabled() {
 
 const presentationUploadIdSchema = z.string().uuid();
 
-type GoogleSlidesUploadSource =
-  | { readonly type: "staged"; readonly uploadId: string }
-  | {
-      readonly type: "inline";
-      readonly filename: string;
-      readonly pptx: Buffer;
-    };
-
-async function googleSlidesUploadSource(
+function googleSlidesUploadSource(
   formData: FormData,
-): Promise<GoogleSlidesUploadSource | ReturnType<typeof badRequestMessage>> {
+): { readonly uploadId: string } | ReturnType<typeof badRequestMessage> {
   const uploadId = formData.get("uploadId");
   if (typeof uploadId === "string") {
     const parsed = presentationUploadIdSchema.safeParse(uploadId);
     return parsed.success
-      ? { type: "staged", uploadId: parsed.data }
+      ? { uploadId: parsed.data }
       : badRequestMessage("Invalid presentation upload ID");
   }
-
-  const file = formData.get("file");
-  if (!(file instanceof File)) {
-    return badRequestMessage("No presentation file provided");
-  }
-  return {
-    type: "inline",
-    filename: file.name,
-    pptx: Buffer.from(await file.arrayBuffer()),
-  };
+  return badRequestMessage("No presentation upload ID provided");
 }
 
 const uploadGoogleSlidesInner$ = command(
@@ -121,7 +104,7 @@ const uploadGoogleSlidesInner$ = command(
     const request = get(request$);
     const formData = await request.raw.formData();
     signal.throwIfAborted();
-    const source = await googleSlidesUploadSource(formData);
+    const source = googleSlidesUploadSource(formData);
     signal.throwIfAborted();
     if ("status" in source) {
       return source;
