@@ -241,16 +241,15 @@ describe("app auth pages", () => {
     const redirectUrl = new URL(
       screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
     );
-    expect(redirectUrl.origin).toBe("https://www.vm0.ai");
-    expect(redirectUrl.pathname).toBe("/onboarding/491858");
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/onboarding");
     expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
     expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
-    expect(redirectUrl.searchParams.get("vm0_experiment")).toBe("491858");
   });
 
   it("keeps sign-up redirects to sibling origins of the current host", async () => {
-    const redirectUrl = "https://www.vm0.ai/onboarding/491858?vm0_theme=light";
+    const redirectUrl = "https://www.vm0.ai/connector/success?vm0_theme=light";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -266,7 +265,7 @@ describe("app auth pages", () => {
   });
 
   it("drops sign-up redirects to other environments", async () => {
-    const redirectUrl = "https://staging-www.omby.ai/onboarding/491858";
+    const redirectUrl = "https://staging-www.omby.ai/connector/success";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 

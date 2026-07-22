@@ -5,7 +5,6 @@ import { env } from "./env";
 // URL carries the checkout session id. To prevent an open redirect / session-id
 // leak we pin the target to vm0-owned hosts:
 //   - the configured app origin (APP_URL) — also covers dev/test localhost,
-//   - the configured onboarding origin (ONBOARDING_URL),
 //   - any first-party *.vm0.ai production domain (app.vm0.ai, www.vm0.ai, ...),
 //   - okou.ai and its production subdomains,
 //   - *.omby.ai staging and per-branch preview hosts.
@@ -15,13 +14,6 @@ import { env } from "./env";
 export function billingRedirectAllowed(rawUrl: string): boolean {
   const url = new URL(rawUrl);
   if (url.origin === new URL(env("APP_URL")).origin) {
-    return true;
-  }
-  const onboardingUrl = env("ONBOARDING_URL");
-  if (
-    onboardingUrl !== undefined &&
-    url.origin === new URL(onboardingUrl).origin
-  ) {
     return true;
   }
   const host = url.hostname;

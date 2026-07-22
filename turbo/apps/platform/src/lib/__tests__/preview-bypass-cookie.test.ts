@@ -73,14 +73,14 @@ describe("preview bypass cookie", () => {
     const otherPreviewUrl = new URL(
       "https://pr-22086-api.vm6.ai/api/zero/status",
     );
-    const retiredWwwUrl = new URL(
-      "https://pr-22085-www.vm6.ai/onboarding/491858?x-vercel-protection-bypass=stale",
+    const wwwUrl = new URL(
+      "https://pr-22085-www.vm6.ai/connector/success?x-vercel-protection-bypass=stale",
     );
 
     appendPreviewBypassToUrl(apiUrl, location, cookie);
     appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
     appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);
-    appendPreviewBypassToUrl(retiredWwwUrl, location, cookie);
+    appendPreviewBypassToUrl(wwwUrl, location, cookie);
 
     expect(apiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
       "preview secret",
@@ -91,8 +91,6 @@ describe("preview bypass cookie", () => {
     expect(
       otherPreviewUrl.searchParams.has("x-vercel-protection-bypass"),
     ).toBeFalsy();
-    expect(
-      retiredWwwUrl.searchParams.has("x-vercel-protection-bypass"),
-    ).toBeFalsy();
+    expect(wwwUrl.searchParams.has("x-vercel-protection-bypass")).toBeFalsy();
   });
 });

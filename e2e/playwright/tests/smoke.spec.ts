@@ -1,23 +1,16 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "../fixtures";
 import { refreshClerkSessionToken, signInThroughHostedAuth } from "../lib/auth";
-import {
-  completeExploreOnboarding,
-  deriveOnboardingUrl,
-} from "../lib/onboarding";
+import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
-test("sign in through onboarding handoff to chat page", async ({
-  browser,
-  page,
-}) => {
+test("complete app onboarding to chat page", async ({ browser, page }) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
   const orgId = process.env.E2E_CLERK_ORG_ID!;
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
-  const onboardingUrl = deriveOnboardingUrl(apiUrl);
 
   await clerkSetup();
   await setupClerkTestingToken({ page });
@@ -25,14 +18,10 @@ test("sign in through onboarding handoff to chat page", async ({
   await signInThroughHostedAuth(page, email, appUrl, {
     followRedirect: false,
     activeOrganizationId: orgId,
-    mirrorStorageToUrls: [onboardingUrl],
   });
 
   await completeExploreOnboarding(page, {
-    apiUrl,
     appUrl,
-    onboardingUrl,
-    auth: { email, activeOrganizationId: orgId },
   });
 
   // Verify: landed on chat page

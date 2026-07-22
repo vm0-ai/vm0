@@ -783,13 +783,13 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
-  # Bind PR WWW onboarding to the standing marketing Pages deployment. The
+  # Bind a PR WWW origin for connector OAuth callbacks and auth redirects. The
   # per-PR Worker keeps /api/* on the matching Vercel PR API.
-  provision-onboarding-www:
+  provision-preview-www:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: provision-onboarding-www-${{ needs.prepare.outputs.job-ref }}
+      group: provision-preview-www-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -845,13 +845,13 @@ jobs:
           worker_name="vm0-www-${JOB_REF}-runtime"
           api_backend_origin="https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
           pnpm --dir turbo/apps/host-worker exec wrangler deploy \
-            --config ../../../.github/workers/onboarding-www-preview-wrangler.jsonc \
+            --config ../../../.github/workers/preview-www-wrangler.jsonc \
             --name "$worker_name" \
             --var "API_BACKEND_ORIGIN:${api_backend_origin}"
           printf '%s' "$API_BACKEND_BYPASS_SECRET" | \
             pnpm --dir turbo/apps/host-worker exec wrangler secret put \
               API_BACKEND_BYPASS_SECRET \
-              --config ../../../.github/workers/onboarding-www-preview-wrangler.jsonc \
+              --config ../../../.github/workers/preview-www-wrangler.jsonc \
               --name "$worker_name"
 
       - name: Route PR WWW API requests to the proxy Worker
@@ -934,7 +934,7 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.omby.ai' }}
+          web-url: ${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -1022,7 +1022,7 @@ jobs:
             DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
           fi
 
-          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.omby.ai' }}}"
+          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}}"
           if [ -z "$API_SEED_WEB_URL" ]; then
             API_SEED_WEB_URL="https://www.vm0.ai"
           fi
@@ -1041,7 +1041,7 @@ jobs:
           environment: preview
           database-url: ${{ steps.neon.outputs.database-url }}
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.omby.ai' }}
+          web-url: ${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -1050,9 +1050,8 @@ jobs:
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Use Stripe CLI webhook secret for PR API preview
-        # Staging uses the standing Stripe Dashboard webhook endpoint at the
-        # configured onboarding staging URL; only PR previews should trust
-        # Stripe CLI webhooks.
+        # Staging uses its standing Stripe Dashboard webhook endpoint; only PR
+        # previews should trust Stripe CLI webhooks.
         if: |
           needs.prepare.outputs.job-ref != 'staging' && (
             needs.prepare.outputs.api-changed == 'true' ||
@@ -1643,7 +1642,6 @@ jobs:
       cancel-in-progress: true
     needs:
       - prepare
-      - provision-onboarding-www
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
@@ -1658,7 +1656,6 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
-      (github.event_name == 'push' || needs.provision-onboarding-www.result == 'success') &&
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
@@ -1728,7 +1725,6 @@ jobs:
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VM0_ONBOARDING_URL: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.omby.ai' }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -2644,7 +2640,7 @@ jobs:
       - test-app
       - test-api
       - test-other
-      - provision-onboarding-www
+      - provision-preview-www
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
@@ -2738,7 +2734,7 @@ jobs:
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
-          check_result "provision-onboarding-www" "${{ needs.provision-onboarding-www.result }}" "true"
+          check_result "provision-preview-www" "${{ needs.provision-preview-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
