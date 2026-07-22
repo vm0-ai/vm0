@@ -729,6 +729,16 @@ async fn execute_cli_inner(
     let mut termination_runtime =
         CliTerminationRuntime::new(process_group, runtime.post_result_cleanup_policy);
 
+    // A resumed Codex process prints `thread.started` from the resume response
+    // before its real turn notifications begin. Bound only that transition;
+    // once any real lifecycle event arrives, long turns remain unrestricted.
+    let codex_resume_startup_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(codex_resume_startup_deadline);
+    let codex_resume_startup_guard_enabled =
+        matches!(runtime.framework, env::Framework::Codex) && !runtime.resume_session_id.is_empty();
+    let mut codex_resume_startup_deadline_armed = false;
+    let mut codex_resume_lifecycle_started = false;
+
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
     // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
@@ -886,6 +896,27 @@ async fn execute_cli_inner(
                             {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
+                            }
+                            if codex_resume_startup_guard_enabled
+                                && !codex_resume_lifecycle_started
+                            {
+                                let event_type = event
+                                    .get("type")
+                                    .and_then(serde_json::Value::as_str);
+                                if behavior.is_codex_turn_lifecycle_event(&event) {
+                                    codex_resume_lifecycle_started = true;
+                                    codex_resume_startup_deadline_armed = false;
+                                } else if event_type == Some("thread.started")
+                                    && !codex_resume_startup_deadline_armed
+                                {
+                                    codex_resume_startup_deadline.as_mut().reset(
+                                        tokio::time::Instant::now()
+                                            + Duration::from_secs(
+                                                constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS,
+                                            ),
+                                    );
+                                    codex_resume_startup_deadline_armed = true;
+                                }
                             }
                             let is_result_event = behavior.handles_claude_result_event(&event);
                             if post_result_cleanup_was_armed || is_result_event {
@@ -1076,6 +1107,35 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
+            }
+            () = &mut codex_resume_startup_deadline, if codex_resume_startup_deadline_armed && cli_status.is_none() => {
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_closed,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => {
+                        codex_resume_startup_deadline_armed = false;
+                        continue;
+                    }
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
+                }
+                codex_resume_startup_deadline_armed = false;
+                let timeout_secs = constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS;
+                let timeout_error = AgentError::Execution(format!(
+                    "Codex resume startup timeout: no turn lifecycle event received within {timeout_secs} seconds after thread.started"
+                ));
+                termination_runtime.begin_control_failure(
+                    TerminationReason::CodexResumeStartupTimeout,
+                    timeout_error,
+                    ControlTerminationLog::CodexResumeStartupTimeout { timeout_secs },
+                    termination_deadline.as_mut(),
+                );
             }
             () = &mut drain_deadline, if cli_status.is_some() => {
                 log_warn!(

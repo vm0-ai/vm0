@@ -1,13 +1,20 @@
 import {
-  SUPPORTED_RUN_MODELS,
+  getFrameworkForType,
+  getVm0ConcreteProviderType,
+  isCodexFastModeModel,
   isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
+  isModelSupportedByProvider,
+  modelProviderTypeSchema,
   type ModelProviderCredentialScope,
+  type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -29,6 +36,18 @@ export interface ModelFirstPin {
   readonly selectedModel: string | null;
 }
 
+interface ResolvedModelFirstPolicyRoute {
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: ModelProviderType;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope;
+  readonly selectedModel: SupportedRunModel;
+}
+
+interface PersistedModelFirstRouteResolution {
+  readonly route: ResolvedModelFirstPolicyRoute | null;
+  readonly selectedModelChanged: boolean;
+}
+
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
@@ -36,6 +55,21 @@ interface ModelSelectionRequest {
 
 interface AvailableModelProviderPin {
   readonly type: string;
+}
+
+function modelFirstPinFromRoute(
+  route: ResolvedModelFirstPolicyRoute,
+): ModelFirstPin {
+  return {
+    modelProviderId: route.modelProviderId,
+    modelProviderType: route.modelProviderType,
+    modelProviderCredentialScope: route.modelProviderCredentialScope,
+    selectedModel: route.selectedModel,
+  };
+}
+
+function isOAuthMemberProviderType(type: ModelProviderType): boolean {
+  return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
 
 async function orgModelCapabilities(
@@ -81,14 +115,100 @@ function parseModelProviderCredentialScope(
   throw new Error(`Unknown model provider credential scope "${value}"`);
 }
 
-export function modelOnlyModelFirstPin(
-  selectedModel: string | null,
-): ModelFirstPin {
+async function resolveValidPolicyRoute(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >;
+  readonly selectedModel: string;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  if (
+    !isSupportedRunModel(params.selectedModel) ||
+    !modelAllowedForOrgPlan({
+      capabilities: params.capabilities,
+      selectedModel: params.selectedModel,
+    })
+  ) {
+    return null;
+  }
+
+  const [policy] = await params.db
+    .select({
+      model: orgModelPolicies.model,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+    })
+    .from(orgModelPolicies)
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, params.orgId),
+        eq(orgModelPolicies.model, params.selectedModel),
+      ),
+    )
+    .limit(1);
+  const providerType = policy
+    ? modelProviderTypeSchema.safeParse(policy.defaultProviderType)
+    : null;
+  if (
+    !policy ||
+    !isSupportedRunModel(policy.model) ||
+    !providerType?.success ||
+    !isModelSupportedByProvider(policy.model, providerType.data) ||
+    !modelProviderAllowedForOrgPlan({
+      capabilities: params.capabilities,
+      modelProviderType: providerType.data,
+    })
+  ) {
+    return null;
+  }
+
+  const credentialScope = parseModelProviderCredentialScope(
+    policy.credentialScope,
+  );
+  if (credentialScope === null) {
+    return null;
+  }
+  if (credentialScope === "member") {
+    if (
+      !isOAuthMemberProviderType(providerType.data) ||
+      policy.modelProviderId !== null
+    ) {
+      return null;
+    }
+  } else if (isOAuthMemberProviderType(providerType.data)) {
+    return null;
+  } else if (providerType.data === "vm0") {
+    if (policy.modelProviderId !== null) {
+      return null;
+    }
+  } else {
+    if (policy.modelProviderId === null) {
+      return null;
+    }
+    const [provider] = await params.db
+      .select({ type: modelProviders.type })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.id, policy.modelProviderId),
+          eq(modelProviders.orgId, params.orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        ),
+      )
+      .limit(1);
+    if (provider?.type !== providerType.data) {
+      return null;
+    }
+  }
+
   return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel,
+    modelProviderId: policy.modelProviderId,
+    modelProviderType: providerType.data,
+    modelProviderCredentialScope: credentialScope,
+    selectedModel: policy.model,
   };
 }
 
@@ -101,133 +221,105 @@ export async function resolveDefaultModelFirstPin(
     await ensureOrgModelPolicies(db, orgId, userId);
   }
   const capabilities = await orgModelCapabilities(db, orgId);
-  const [preference] = await db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
+  if (userId !== "__no_preference__") {
+    const [preference] = await db
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, orgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (preference?.selectedModel) {
+      const preferredRoute = await resolveValidPolicyRoute({
+        db,
+        orgId,
+        capabilities,
+        selectedModel: preference.selectedModel,
+      });
+      if (preferredRoute) {
+        return modelFirstPinFromRoute(preferredRoute);
+      }
+    }
+  }
+
+  const route = await resolveWorkspaceDefaultModelFirstRoute({
+    db,
+    orgId,
+    capabilities,
+  });
+  return route
+    ? modelFirstPinFromRoute(route)
+    : {
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: null,
+      };
+}
+
+async function resolveWorkspaceDefaultModelFirstRoute(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  const [policy] = await params.db
+    .select({ model: orgModelPolicies.model })
+    .from(orgModelPolicies)
     .where(
       and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
+        eq(orgModelPolicies.orgId, params.orgId),
+        eq(orgModelPolicies.isDefault, true),
       ),
     )
     .limit(1);
-
-  const preferredModel =
-    isSupportedRunModel(preference?.selectedModel) &&
-    modelAllowedForOrgPlan({
-      capabilities,
-      selectedModel: preference.selectedModel,
-    })
-      ? preference.selectedModel
-      : null;
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      preferredModel
-        ? and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.model, preferredModel),
-          )
-        : and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.isDefault, true),
-          ),
-    )
-    .limit(1);
-
-  if (!policy && preferredModel) {
-    return resolveDefaultModelFirstPin(db, orgId, "__no_preference__");
+  if (!policy) {
+    return null;
   }
-
-  if (
-    !policy ||
-    !isSupportedRunModel(policy.model) ||
-    !modelAllowedForOrgPlan({ capabilities, selectedModel: policy.model }) ||
-    !modelProviderAllowedForOrgPlan({
-      capabilities,
-      modelProviderType: policy.defaultProviderType,
-    })
-  ) {
-    const fallbackPolicies = await db
-      .select({
-        model: orgModelPolicies.model,
-        defaultProviderType: orgModelPolicies.defaultProviderType,
-        credentialScope: orgModelPolicies.credentialScope,
-        modelProviderId: orgModelPolicies.modelProviderId,
-      })
-      .from(orgModelPolicies)
-      .where(
-        and(
-          eq(orgModelPolicies.orgId, orgId),
-          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
-        ),
-      )
-      .limit(SUPPORTED_RUN_MODELS.length);
-    const fallbackPolicy = fallbackPolicies.find((candidate) => {
-      return (
-        isSupportedRunModel(candidate.model) &&
-        modelAllowedForOrgPlan({
-          capabilities,
-          selectedModel: candidate.model,
-        }) &&
-        modelProviderAllowedForOrgPlan({
-          capabilities,
-          modelProviderType: candidate.defaultProviderType,
-        })
-      );
-    });
-    if (
-      fallbackPolicy &&
-      isSupportedRunModel(fallbackPolicy.model) &&
-      modelAllowedForOrgPlan({
-        capabilities,
-        selectedModel: fallbackPolicy.model,
-      }) &&
-      modelProviderAllowedForOrgPlan({
-        capabilities,
-        modelProviderType: fallbackPolicy.defaultProviderType,
-      })
-    ) {
-      return {
-        modelProviderId: fallbackPolicy.modelProviderId ?? null,
-        modelProviderType: fallbackPolicy.defaultProviderType,
-        modelProviderCredentialScope: parseModelProviderCredentialScope(
-          fallbackPolicy.credentialScope,
-        ),
-        selectedModel: fallbackPolicy.model,
-      };
-    }
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: null,
-    };
-  }
-
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
+  return resolveValidPolicyRoute({
+    db: params.db,
+    orgId: params.orgId,
+    capabilities: params.capabilities,
     selectedModel: policy.model,
-  };
+  });
 }
 
-export async function modelProviderPinAvailable(params: {
+export async function resolvePersistedModelFirstRoute(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly modelProviderId: string;
-}): Promise<boolean> {
-  return (await loadAvailableModelProviderPin(params)) !== null;
+  readonly selectedModel: string | null;
+}): Promise<PersistedModelFirstRouteResolution> {
+  await ensureOrgModelPolicies(params.db, params.orgId, params.userId);
+  const capabilities = await orgModelCapabilities(params.db, params.orgId);
+  const currentRoute = params.selectedModel
+    ? await resolveValidPolicyRoute({
+        db: params.db,
+        orgId: params.orgId,
+        capabilities,
+        selectedModel: params.selectedModel,
+      })
+    : null;
+  if (currentRoute) {
+    return { route: currentRoute, selectedModelChanged: false };
+  }
+
+  const defaultRoute = await resolveWorkspaceDefaultModelFirstRoute({
+    db: params.db,
+    orgId: params.orgId,
+    capabilities,
+  });
+  return {
+    route: defaultRoute,
+    selectedModelChanged:
+      defaultRoute !== null &&
+      defaultRoute.selectedModel !== params.selectedModel,
+  };
 }
 
 async function loadAvailableModelProviderPin(params: {
@@ -310,45 +402,17 @@ export async function resolveModelSelectionPin(params: {
   }
 
   await ensureOrgModelPolicies(db, orgId, userId);
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, orgId),
-        eq(orgModelPolicies.model, modelSelection.selectedModel),
-      ),
-    )
-    .limit(1);
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
-  }
-  if (
-    !modelProviderAllowedForOrgPlan({
-      capabilities,
-      modelProviderType: policy.defaultProviderType,
-    })
-  ) {
-    return insufficientCredits();
-  }
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
-  };
+  const route = await resolveValidPolicyRoute({
+    db,
+    orgId,
+    capabilities,
+    selectedModel: modelSelection.selectedModel,
+  });
+  return route
+    ? modelFirstPinFromRoute(route)
+    : badRequestMessage(
+        "The selected model is not available in this workspace",
+      );
 }
 
 async function resolveEffectiveModelProviderType(params: {
@@ -391,15 +455,55 @@ export async function resolveModelFirstProviderAdmission(params: {
   readonly requestedModelProvider: string | undefined;
 }): Promise<{
   readonly effectiveModelProvider: string | null | undefined;
-  readonly error: Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>;
+  readonly cliAgentType: SupportedFramework | null;
+  readonly error:
+    | Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>
+    | ReturnType<typeof badRequestMessage>;
 }> {
   const effectiveModelProvider =
     await resolveEffectiveModelProviderType(params);
+  const selectedModel = params.modelPin.selectedModel;
+  const parsedProvider = modelProviderTypeSchema.safeParse(
+    effectiveModelProvider,
+  );
+  const knownProvider = parsedProvider.success ? parsedProvider.data : null;
+  const cliAgentType = knownProvider
+    ? getFrameworkForType(
+        knownProvider === "vm0" && isSupportedRunModel(selectedModel)
+          ? getVm0ConcreteProviderType(selectedModel)
+          : knownProvider,
+      )
+    : null;
+  if (
+    isSupportedRunModel(selectedModel) &&
+    (!knownProvider ||
+      !isModelSupportedByProvider(selectedModel, knownProvider))
+  ) {
+    return {
+      effectiveModelProvider,
+      cliAgentType,
+      error: badRequestMessage(
+        "The selected model is not supported by the current model provider",
+      ),
+    };
+  }
   const error = await checkOrgCreditsForRunAdmission({
     db: params.db,
     orgId: params.orgId,
     modelProviderType: effectiveModelProvider,
-    selectedModel: params.modelPin.selectedModel,
+    selectedModel,
   });
-  return { effectiveModelProvider, error };
+  return { effectiveModelProvider, cliAgentType, error };
+}
+
+export function isCodexFastServiceTierSupported(params: {
+  readonly selectedModel: string | null | undefined;
+  readonly effectiveModelProvider: string | null | undefined;
+  readonly codexFastModeEnabled: boolean;
+}): boolean {
+  return (
+    params.codexFastModeEnabled &&
+    params.effectiveModelProvider === "codex-oauth-token" &&
+    isCodexFastModeModel(params.selectedModel)
+  );
 }

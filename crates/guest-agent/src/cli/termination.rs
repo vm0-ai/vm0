@@ -67,6 +67,7 @@ pub(super) enum TerminationReason {
     PostResult,
     InitialPromptStdin,
     StuckTool,
+    CodexResumeStartupTimeout,
     HeartbeatError,
     HeartbeatPanic,
     EventDelivery,
@@ -79,6 +80,7 @@ impl TerminationReason {
             TerminationReason::PostResult => "post-result reap",
             TerminationReason::InitialPromptStdin => "initial-prompt stdin",
             TerminationReason::StuckTool => "stuck-tool watchdog",
+            TerminationReason::CodexResumeStartupTimeout => "Codex resume startup timeout",
             TerminationReason::HeartbeatError => "heartbeat error",
             TerminationReason::HeartbeatPanic => "heartbeat panic",
             TerminationReason::EventDelivery => "event delivery",
@@ -223,6 +225,7 @@ pub(super) enum ControlTerminationLog {
     ClaudeStdinWriterFailed { error: String },
     ClaudeStdinWriterTaskFailed { error: String },
     StuckTool { name: String, elapsed: u64 },
+    CodexResumeStartupTimeout { timeout_secs: u64 },
     HeartbeatFailed,
     HeartbeatTaskPanicked,
     HeartbeatStoppedBeforeStatus,
@@ -249,6 +252,12 @@ impl ControlTerminationLog {
                 log_warn!(
                     LOG_TAG,
                     "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={pgid}"
+                );
+            }
+            Self::CodexResumeStartupTimeout { timeout_secs } => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex resume emitted no turn lifecycle event within {timeout_secs}s after thread.started, SIGTERM pgid={pgid}"
                 );
             }
             Self::HeartbeatFailed => {
@@ -576,6 +585,9 @@ fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTermina
         TerminationReason::PostResult => DiagnosticTerminationReason::PostResultReap,
         TerminationReason::InitialPromptStdin => DiagnosticTerminationReason::InitialPromptStdin,
         TerminationReason::StuckTool => DiagnosticTerminationReason::StuckToolWatchdog,
+        TerminationReason::CodexResumeStartupTimeout => {
+            DiagnosticTerminationReason::CodexResumeStartupTimeout
+        }
         TerminationReason::HeartbeatError => DiagnosticTerminationReason::HeartbeatError,
         TerminationReason::HeartbeatPanic => DiagnosticTerminationReason::HeartbeatPanic,
         TerminationReason::EventDelivery => DiagnosticTerminationReason::EventDelivery,

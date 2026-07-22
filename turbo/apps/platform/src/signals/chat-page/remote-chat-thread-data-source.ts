@@ -378,6 +378,11 @@ function createSubscribeRealtime() {
           const subscriptions: ChatRealtimeSubscription[] = [
             {
               kind: "loop",
+              topic: `chatThreadDetailChanged:${threadId}`,
+              loopCommand$: handlers.onThreadDetailChanged$,
+            },
+            {
+              kind: "loop",
               topic: `chatThreadMessageCreated:${threadId}`,
               loopCommand$: handlers.onMessageCreated$,
             },

@@ -12,8 +12,9 @@ import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   postRunUserMessage,
-  resolveRunChatThreadModelPin,
+  resolveRunChatThreadModelContext,
 } from "./zero-chat-run-message.service";
+import { canReuseChatSessionForModelRoute } from "./chat-session-continuity.service";
 import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
 import {
   pauseActiveGoalForThread,
@@ -21,10 +22,7 @@ import {
   type GoalBootstrap,
 } from "./zero-goal.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-continuation");
@@ -75,6 +73,8 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
+      readonly cliAgentType: string | null;
+      readonly codexServiceTier: "fast" | undefined;
     }
   | {
       readonly ok: false;
@@ -234,30 +234,27 @@ async function resolveModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ModelContext> {
-  const threadModelPin = await resolveRunChatThreadModelPin({
+  const threadModelContext = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
     threadId: args.chatThreadId,
   });
   args.signal.throwIfAborted();
-  if ("status" in threadModelPin) {
+  if ("status" in threadModelContext) {
     return {
       ok: false,
       failure: {
         kind: "run_error",
-        response: { status: 400, body: threadModelPin.body },
+        response: {
+          status: threadModelContext.status,
+          body: threadModelContext.body,
+        },
       },
     };
   }
 
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    modelPin: threadModelPin,
-    requestedModelProvider: undefined,
-  });
+  const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
   args.signal.throwIfAborted();
   if (providerAdmission.error) {
     return {
@@ -268,8 +265,10 @@ async function resolveModelContext(args: {
 
   return {
     ok: true,
-    modelPin: threadModelPin,
+    modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    cliAgentType: providerAdmission.cliAgentType,
+    codexServiceTier: runCodexServiceTier,
   };
 }
 
@@ -296,7 +295,21 @@ const runGoalNow$ = command(
     if (!modelContext.ok) {
       return modelContext.failure;
     }
-    const { modelPin, effectiveModelProvider } = modelContext;
+    const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
+      modelContext;
+    const sessionId =
+      args.sessionId &&
+      (await canReuseChatSessionForModelRoute({
+        db,
+        threadId: goal.threadId,
+        sessionId: args.sessionId,
+        nextModel: modelPin.selectedModel,
+        nextModelProvider: effectiveModelProvider,
+        nextCliAgentType: cliAgentType,
+      }))
+        ? args.sessionId
+        : undefined;
+    signal.throwIfAborted();
 
     const normalizedGoal = {
       ...goal,
@@ -318,7 +331,7 @@ const runGoalNow$ = command(
         body: {
           prompt,
           agentId: goal.agentId,
-          ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+          ...(sessionId ? { sessionId } : {}),
           ...(effectiveModelProvider
             ? { modelProvider: effectiveModelProvider }
             : {}),
@@ -330,6 +343,7 @@ const runGoalNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        codexServiceTier,
         callbacks: buildGoalChatCallbacks({
           threadId: goal.threadId,
           agentId: goal.agentId,

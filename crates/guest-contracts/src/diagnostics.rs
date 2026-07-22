@@ -327,6 +327,8 @@ pub enum CliTerminationReason {
     PostResultReap,
     /// The stuck-tool watchdog terminated the process.
     StuckToolWatchdog,
+    /// A resumed Codex process did not begin emitting real turn lifecycle events.
+    CodexResumeStartupTimeout,
     /// Heartbeat handling failed and required termination.
     HeartbeatError,
     /// Heartbeat handling panicked and required termination.
@@ -346,6 +348,7 @@ impl CliTerminationReason {
         match self {
             Self::PostResultReap => "post_result_reap",
             Self::StuckToolWatchdog => "stuck_tool_watchdog",
+            Self::CodexResumeStartupTimeout => "codex_resume_startup_timeout",
             Self::HeartbeatError => "heartbeat_error",
             Self::HeartbeatPanic => "heartbeat_panic",
             Self::InitialPromptStdin => "initial_prompt_stdin",
@@ -701,6 +704,23 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<CliTerminationReason>(serde_json::json!("stdout_ingestion"))
                 .unwrap(),
+            reason
+        );
+    }
+
+    #[test]
+    fn codex_resume_startup_timeout_reason_has_stable_serialization() {
+        let reason = CliTerminationReason::CodexResumeStartupTimeout;
+        assert_eq!(reason.as_str(), "codex_resume_startup_timeout");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("codex_resume_startup_timeout")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!(
+                "codex_resume_startup_timeout"
+            ))
+            .unwrap(),
             reason
         );
     }

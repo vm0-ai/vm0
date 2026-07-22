@@ -616,11 +616,6 @@ describe("zero connector check command", () => {
         platformOrigin: "https://staging-app.omby.ai",
       },
       {
-        name: "legacy staging app",
-        baseUrl: "https://staging-app.vm6.ai",
-        platformOrigin: "https://staging-app.omby.ai",
-      },
-      {
         name: "Cloudflare staging app",
         baseUrl: "https://staging-app.omby.ai",
         platformOrigin: "https://staging-app.omby.ai",
@@ -633,11 +628,6 @@ describe("zero connector check command", () => {
       {
         name: "preview web",
         baseUrl: "https://pr-123-www.omby.ai",
-        platformOrigin: "https://pr-123-app.omby.ai",
-      },
-      {
-        name: "legacy preview app",
-        baseUrl: "https://pr-123-app.vm6.ai",
         platformOrigin: "https://pr-123-app.omby.ai",
       },
       {

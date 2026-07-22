@@ -106,6 +106,22 @@ impl CliFrameworkBehavior {
     pub(super) fn logs_codex_failure_diagnostics(self) -> bool {
         matches!(self.framework, env::Framework::Codex)
     }
+
+    pub(super) fn is_codex_turn_lifecycle_event(self, event: &serde_json::Value) -> bool {
+        matches!(self.framework, env::Framework::Codex)
+            && matches!(
+                event.get("type").and_then(serde_json::Value::as_str),
+                Some(
+                    "turn.started"
+                        | "turn.completed"
+                        | "turn.failed"
+                        | "item.started"
+                        | "item.updated"
+                        | "item.completed"
+                        | "error"
+                )
+            )
+    }
 }
 
 #[cfg(test)]
