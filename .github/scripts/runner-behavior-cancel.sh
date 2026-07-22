@@ -109,7 +109,7 @@ reserve_index() {
   local index=$1
   local path="/var/lock/vm0-netns-pool-${index}.lock"
   local candidate_fd
-  exec {candidate_fd}>"$path"
+  exec {candidate_fd}>>"$path"
   if flock -n "$candidate_fd"; then
     RESERVED_FDS+=("$candidate_fd")
     RESERVED_INDEXES+=("$index")
