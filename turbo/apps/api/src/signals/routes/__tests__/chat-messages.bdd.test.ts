@@ -4401,6 +4401,19 @@ describe("CHAT-02: shared user message queue", () => {
       queuedId,
     );
     expect(original.runId).toBeUndefined();
+    expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
+      Date.parse(original.createdAt),
+    );
+    const appended = await chat.listThreadMessages(actor, anchor.threadId, {
+      sinceId: queuedId,
+    });
+    expect(appended.messages).toContainEqual(
+      expect.objectContaining({
+        id: promoted.id,
+        revokesMessageId: queuedId,
+        runId: promoted.runId,
+      }),
+    );
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
