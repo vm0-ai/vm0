@@ -8,35 +8,35 @@ import {
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   scopeDiff$,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ScopeReviewModalProps {
-  connectorType: ConnectorRef | null;
+  connectorRef: ConnectorRef | null;
   onClose: () => void;
-  onReconnect: (type: ConnectorRef) => void;
+  onReconnect: (connectorRef: ConnectorRef) => void;
 }
 
 export function ScopeReviewModal({
-  connectorType,
+  connectorRef,
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
   const scopeDiffLoadable = useLoadable(scopeDiff$);
-  const connectorTypes = useLastResolved(allConnectorTypes$);
+  const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
   const loading = scopeDiffLoadable.state === "loading";
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
 
-  if (!connectorType) {
+  if (!connectorRef) {
     return null;
   }
 
-  const connector = connectorTypes?.find((candidate) => {
-    return candidate.type === connectorType;
+  const connector = connectorCatalogItems?.find((candidate) => {
+    return candidate.connectorRef === connectorRef;
   });
-  const connectorLabel = connector?.label ?? connectorType;
+  const connectorLabel = connector?.label ?? connectorRef;
 
   return (
     <Dialog
@@ -116,7 +116,7 @@ export function ScopeReviewModal({
               <button
                 type="button"
                 onClick={() => {
-                  return onReconnect(connectorType);
+                  return onReconnect(connectorRef);
                 }}
                 className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >

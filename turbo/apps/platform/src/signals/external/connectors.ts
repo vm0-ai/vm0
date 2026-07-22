@@ -5,8 +5,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
-  type PublicConnectorCatalogIcon,
-  type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
@@ -14,13 +12,6 @@ import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connect
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
-
-export interface ConnectorCatalogDisplayMetadata {
-  readonly connectorRef: ConnectorRef;
-  readonly label: string;
-  readonly helpText: string;
-  readonly icon: PublicConnectorCatalogIcon;
-}
 
 /**
  * Reload trigger for connector signals.
@@ -67,29 +58,6 @@ export const connectorCatalogStatusByRef$ = computed(async (get) => {
   );
 });
 
-function connectorCatalogDisplayMetadata(
-  connector: PublicConnectorCatalogStatusItem,
-): ConnectorCatalogDisplayMetadata {
-  return {
-    connectorRef: connector.connectorRef,
-    label: connector.label,
-    helpText: connector.description,
-    icon: connector.icon,
-  };
-}
-
-export const connectorCatalogDisplayMetadataByRef$ = computed(async (get) => {
-  const connectorsByRef = await get(connectorCatalogStatusByRef$);
-  return new Map(
-    [...connectorsByRef.values()].map((connector) => {
-      return [
-        connector.connectorRef,
-        connectorCatalogDisplayMetadata(connector),
-      ];
-    }),
-  );
-});
-
 /**
  * Trigger a reload of connectors data.
  */
@@ -100,19 +68,20 @@ export const reloadConnectors$ = command(({ set }) => {
 });
 
 /**
- * Delete a connector by type.
+ * Delete a connector by ref.
  */
 export const deleteConnector$ = command(
-  async ({ get, set }, type: ConnectorRef, _signal: AbortSignal) => {
+  async ({ get, set }, connectorRef: ConnectorRef, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
     await accept(
       client.delete({
-        params: { type },
-        fetchOptions: { signal: _signal },
+        params: { type: connectorRef },
+        fetchOptions: { signal },
       }),
       [204],
     );
+    signal.throwIfAborted();
 
     set(internalReloadConnectors$, (x) => {
       return x + 1;
