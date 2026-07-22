@@ -45,7 +45,6 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignalScope } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { reloadAgentConnectorAuthorizations$ } from "../../../signals/zero-page/agent-connector-authorizations.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
@@ -1001,7 +1000,7 @@ describe("connectors page", () => {
     expect(search()).toContain(agentId);
   });
 
-  it("refreshes agent-filtered connectors when authorizations reload", async () => {
+  it("refreshes connector and agent authorization state after an Ably update", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
     let enabledTypes = ["github"];
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
@@ -1020,14 +1019,24 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
     });
 
     enabledTypes = ["github", "asana"];
-    await context.store.set(reloadAgentConnectorAuthorizations$);
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "asana" },
+    ]);
+    context.mocks.ably.trigger("connector:changed");
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Asana")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
   });
 
