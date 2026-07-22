@@ -21,6 +21,7 @@ export const connectorOauthStates = pgTable(
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
     redirectUri: text("redirect_uri").notNull(),
+    authorizationUrl: text("authorization_url"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

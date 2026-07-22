@@ -3,6 +3,7 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
+  zeroConnectorOauthContinueContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
@@ -23,7 +24,7 @@ import {
 } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -44,13 +45,17 @@ import {
   type ConnectorRefResolution,
 } from "../services/connector-action-resolver.service";
 import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
+import { getConnectorOAuthAuthorizationUrl } from "../services/connector-oauth-state.service";
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 import {
   getConnectorOAuthCallbackOriginForMethod,
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
-import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "./connector-oauth-route-state";
+import {
+  connectorOAuthRedirectResponse,
+  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+} from "./connector-oauth-route-state";
 import {
   buildConnectorAuthCodeAuthUrlWithMethod,
   prepareConnectorAuthCodeStartWithMethod,
@@ -59,6 +64,7 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
+import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -541,6 +547,7 @@ const startConnectorOauthInner$ = command(
       agentId: bodyResult.data.agentId,
       authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
       redirectUri: prepared.redirectUri,
+      authorizationUrl: authResult.url,
       codeVerifier: authResult.codeVerifier,
       oauthContext: authResult.oauthContext,
       expiresAt: new Date(
@@ -549,12 +556,42 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
+    const continuationUrl = new URL(
+      `/api/zero/connectors/${resolved.connectorRef}/oauth/continue`,
+      getOAuthApiOrigin(request),
+    );
+    continuationUrl.searchParams.set("state", prepared.state);
+
     return {
       status: 200 as const,
       body: {
-        authorizationUrl: authResult.url,
+        authorizationUrl: continuationUrl.toString(),
       },
     };
+  },
+);
+
+const continueConnectorOauthInner$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const params = get(
+      pathParamsOf(zeroConnectorOauthContinueContract.continue),
+    );
+    const query = get(queryOf(zeroConnectorOauthContinueContract.continue));
+    const resolution = await getConnectorOAuthAuthorizationUrl(
+      get(db$),
+      { state: query.state, connectorType: params.type },
+      signal,
+    );
+
+    if (resolution.kind !== "usable") {
+      return notFound("OAuth handoff not found");
+    }
+
+    const response = connectorOAuthRedirectResponse(
+      resolution.authorizationUrl,
+    );
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   },
 );
 
@@ -694,6 +731,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
+  },
+  {
+    route: zeroConnectorOauthContinueContract.continue,
+    handler: continueConnectorOauthInner$,
   },
   {
     route: zeroConnectorOpenIdStartContract.start,
