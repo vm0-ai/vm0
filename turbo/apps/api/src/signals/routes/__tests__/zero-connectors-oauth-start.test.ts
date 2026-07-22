@@ -1,15 +1,14 @@
 import { randomUUID } from "node:crypto";
 
+import { connectorOauthStartResponseSchema } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorRegistryAuthMethodId } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { zeroConnectorsRoutes } from "../zero-connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -110,10 +109,7 @@ async function requestOauthStart(
     headers.set("authorization", "Bearer clerk-session");
   }
   headers.set("content-type", "application/json");
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: zeroConnectorsRoutes,
-  });
+  const app = createApp({ signal: context.signal });
   return await app.request(oauthStartUrl(type, options.origin), {
     method: "POST",
     headers,
@@ -122,9 +118,7 @@ async function requestOauthStart(
 }
 
 async function continuationUrlFromResponse(response: Response): Promise<URL> {
-  const body = (await response.json()) as {
-    readonly authorizationUrl: string;
-  };
+  const body = connectorOauthStartResponseSchema.parse(await response.json());
   return new URL(body.authorizationUrl);
 }
 
@@ -142,10 +136,7 @@ async function providerAuthorizationUrl(continuationUrl: URL): Promise<URL> {
 async function requestOauthContinuation(
   continuationUrl: URL,
 ): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: zeroConnectorsRoutes,
-  });
+  const app = createApp({ signal: context.signal });
   return await app.request(continuationUrl.toString());
 }
 
@@ -303,10 +294,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     );
     continuationUrl.searchParams.set("state", "0".repeat(64));
 
-    const app = createAppWithRoutes({
-      signal: context.signal,
-      routes: zeroConnectorsRoutes,
-    });
+    const app = createApp({ signal: context.signal });
     const response = await app.request(continuationUrl.toString());
 
     expect(response.status).toBe(404);
