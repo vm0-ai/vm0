@@ -1,0 +1,552 @@
+# Manual production rollback — converges App, Runner, and API to one release
+# commit recorded by release-please.yml in the rollback dashboard issue.
+
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: "Full release commit SHA to roll back to"
+        required: true
+        type: string
+      rollback_mode:
+        description: "Runner: graceful (drain, ≤2h) or emergency (SIGTERM stop, ≤5min)"
+        required: true
+        type: choice
+        options:
+          - graceful
+          - emergency
+        default: graceful
+      confirmed_compatible:
+        description: "I confirm the target Runner is compatible with current API, guest, and on-disk state"
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  resolve-target:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: production
+    outputs:
+      api_deployment_url: ${{ steps.api.outputs.deployment_url }}
+      runner_matrix: ${{ steps.groups.outputs.matrix }}
+      runner_version: ${{ steps.runner.outputs.version }}
+      target_commit: ${{ steps.target.outputs.commit }}
+    steps:
+      - name: Gate confirmed compatibility
+        if: inputs.confirmed_compatible != 'yes'
+        run: |
+          echo "::error::'confirmed_compatible' must be 'yes' before rolling back production."
+          exit 1
+
+      # Always run the current rollback implementation. The target commit is
+      # read as data and is never allowed to replace the workflow or playbooks.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Validate release target
+        id: target
+        env:
+          TARGET_COMMIT: ${{ inputs.target_commit }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::target_commit must be a full lowercase SHA-1: $TARGET_COMMIT"
+            exit 1
+          fi
+
+          git fetch --force --tags origin main
+          git cat-file -e "${TARGET_COMMIT}^{commit}"
+          if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
+            echo "::error::Target commit is not reachable from main: $TARGET_COMMIT"
+            exit 1
+          fi
+
+          release_tags=$(git tag --points-at "$TARGET_COMMIT" | grep -E -- '-v[0-9]' || true)
+          if [ -z "$release_tags" ]; then
+            echo "::error::Target commit has no release tags: $TARGET_COMMIT"
+            exit 1
+          fi
+
+          echo "commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Release target: $TARGET_COMMIT"
+          printf '%s\n' "$release_tags"
+
+      - name: Resolve API deployment
+        id: api
+        env:
+          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          deployments=$(curl -fsS --get "https://api.vercel.com/v6/deployments" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            --data-urlencode "teamId=${VERCEL_ORG_ID}" \
+            --data-urlencode "projectId=${VERCEL_PROJECT_ID}" \
+            --data-urlencode "target=production" \
+            --data-urlencode "state=READY" \
+            --data-urlencode "meta-githubCommitSha=${TARGET_COMMIT}" \
+            --data-urlencode "limit=100")
+
+          matches=$(jq -c --arg sha "$TARGET_COMMIT" '[
+            .deployments[]
+            | select(.meta.githubCommitSha == $sha)
+            | select(.state == "READY")
+            | select(.target == "production")
+          ]' <<<"$deployments")
+          match_count=$(jq -r 'length' <<<"$matches")
+          if [ "$match_count" -ne 1 ]; then
+            echo "::error::Expected exactly one READY production API deployment for $TARGET_COMMIT, found $match_count."
+            exit 1
+          fi
+
+          deployment_url="https://$(jq -r '.[0].url' <<<"$matches")"
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "API target: $deployment_url"
+
+      - name: Verify App artifact
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_file=$(mktemp)
+          aws s3 cp \
+            "s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}/ready.json" \
+            "$ready_file" \
+            --endpoint-url "$r2_endpoint"
+          jq -e --arg sha "$TARGET_COMMIT" '.commitSha == $sha' "$ready_file" >/dev/null
+          echo "App target: s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}/"
+
+      - name: Resolve Runner version
+        id: runner
+        env:
+          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
+        run: |
+          set -euo pipefail
+          . .github/scripts/runner-image-target.sh
+
+          version=$(git show "${TARGET_COMMIT}:crates/runner/Cargo.toml" \
+            | sed -nE 's/^version = "([^"]+)"/\1/p' \
+            | head -1)
+          tag=$(runner_image_release_tag "$version")
+          tag_commit=$(git rev-list -n 1 "$tag")
+          if [ -z "$tag_commit" ] || ! git merge-base --is-ancestor "$tag_commit" "$TARGET_COMMIT"; then
+            echo "::error::Runner release $tag is not reachable from $TARGET_COMMIT."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Runner target: $tag"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve production Runner host groups
+        id: groups
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        run: |
+          set -euo pipefail
+
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh target-matrix)
+          group_count=$(jq -r 'length' <<<"$matrix")
+          if [ "$group_count" -lt 1 ]; then
+            echo "::error::No production Runner host groups found."
+            exit 1
+          fi
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          jq . <<<"$matrix"
+
+      - name: Verify Runner release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_MATRIX: ${{ steps.groups.outputs.matrix }}
+          RUNNER_TAG: ${{ steps.runner.outputs.tag }}
+          RUNNER_VERSION: ${{ steps.runner.outputs.version }}
+        run: |
+          set -euo pipefail
+          . .github/scripts/runner-image-target.sh
+
+          assets=$(curl -fsSL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RUNNER_TAG}" \
+            | jq -r '.assets[].name')
+
+          while IFS= read -r target; do
+            asset_name=$(runner_image_release_asset_name "$RUNNER_VERSION" "$target")
+            if ! grep -qx "$asset_name" <<<"$assets"; then
+              echo "::error::Runner release $RUNNER_TAG is missing $asset_name."
+              exit 1
+            fi
+          done < <(jq -r '.[].target' <<<"$RUNNER_MATRIX")
+
+  rollback-app:
+    name: Roll back App
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: app/production
+          ref: ${{ needs.resolve-target.outputs.target_commit }}
+          desc: Rolling App back to a release commit
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Production* ⏪ rolling App back to `${{ needs.resolve-target.outputs.target_commit }}`..."
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+
+      - name: Prepare App production deployment
+        id: app
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+        run: |
+          set -euo pipefail
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
+          canonical_dist=$(mktemp -d)
+          pages_dist=$(mktemp -d)
+
+          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+          bash .github/scripts/verify-okou-app-artifact.sh \
+            "$canonical_dist" \
+            "$TARGET_COMMIT"
+          bash .github/scripts/prepare-okou-pages-dist.sh \
+            "$canonical_dist" \
+            "$pages_dist"
+
+          echo "canonical_dist=$canonical_dist" >> "$GITHUB_OUTPUT"
+          echo "pages_dist=$pages_dist" >> "$GITHUB_OUTPUT"
+
+      - name: Upload App source maps to Sentry
+        env:
+          CANONICAL_DIST: ${{ steps.app.outputs.canonical_dist }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
+        working-directory: turbo
+        run: pnpm --filter @vm0/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
+
+      - name: Deploy App to Cloudflare Pages production
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_DIST: ${{ steps.app.outputs.pages_dist }}
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+        working-directory: turbo
+        run: |
+          set -euo pipefail
+
+          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
+            --project-name "$CF_PAGES_PROJECT_NAME" \
+            --branch production \
+            --commit-hash "$TARGET_COMMIT" \
+            --commit-dirty=false
+
+          for url in "https://${CF_PAGES_PROJECT_NAME}.pages.dev" "https://app.vm0.ai"; do
+            curl -fsSL \
+              --retry 12 \
+              --retry-delay 5 \
+              --retry-max-time 120 \
+              --retry-all-errors \
+              "$url" \
+              --output /dev/null
+          done
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: https://app.vm0.ai
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ✅ App rolled back to `${{ needs.resolve-target.outputs.target_commit }}`"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ❌ App rollback failed for `${{ needs.resolve-target.outputs.target_commit }}`"
+
+  rollback-runner:
+    name: Roll back Runner (${{ matrix.label }})
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    permissions:
+      contents: read
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve-target.outputs.runner_matrix || '[]') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Production* ⏪ rolling Runner `${{ matrix.label }}` back to v${{ needs.resolve-target.outputs.runner_version }}..."
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve metal hosts for architecture
+        id: matrix-hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
+            echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}."
+            exit 1
+          fi
+          echo "hosts=$hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back Runner on production hosts
+        env:
+          API_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
+          RUNNER_TARGET: ${{ matrix.target }}
+          RUNNER_VERSION: ${{ needs.resolve-target.outputs.runner_version }}
+          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${RUNNER_HOSTS}," \
+            playbooks/rollback-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "runner_version=${RUNNER_VERSION}" \
+            -e "runner_target=${RUNNER_TARGET}" \
+            -e "rollback_mode=${ROLLBACK_MODE}" \
+            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
+            -e "api_url=${API_URL}" \
+            -e "github_token=${GH_TOKEN}" \
+            -v
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ✅ Runner `${{ matrix.label }}` rolled back to v${{ needs.resolve-target.outputs.runner_version }}"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ❌ Runner `${{ matrix.label }}` rollback failed for v${{ needs.resolve-target.outputs.runner_version }}"
+
+  rollback-api:
+    name: Roll back API
+    needs: [resolve-target, rollback-app, rollback-runner]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: api/production
+          ref: ${{ needs.resolve-target.outputs.target_commit }}
+          desc: Rolling API back to a release commit
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Production* ⏪ rolling API back to `${{ needs.resolve-target.outputs.target_commit }}`..."
+
+      - name: Promote target API deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ needs.resolve-target.outputs.api_deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ needs.resolve-target.outputs.api_deployment_url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ✅ API rolled back to `${{ needs.resolve-target.outputs.target_commit }}`"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Production* ❌ API rollback failed for `${{ needs.resolve-target.outputs.target_commit }}`"
