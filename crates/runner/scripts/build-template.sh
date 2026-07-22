@@ -113,10 +113,10 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.5"
-CLAUDE_CODE_VERSION="2.1.216"
-CODEX_CLI_VERSION="0.144.6"
+CLAUDE_CODE_VERSION="2.1.217"
+CODEX_CLI_VERSION="0.145.0"
 GWS_CLI_VERSION="0.22.5"
-XURL_VERSION="1.2.3"
+XURL_VERSION="1.3.1"
 AGENT_BROWSER_VERSION="0.32.3"
 PNPM_VERSION="11.15.1"
 CHROMIUM_VERSION="150.0.7871.124-1~deb12u1"
@@ -461,9 +461,9 @@ install_runtimes() {
       arm64) PLATFORM=\"linux-arm64\" ;;
       *) echo \"Unsupported architecture: \$ARCH\" >&2; exit 1 ;;
     esac
-    GCS_BUCKET=\"https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases\"
-    curl -fsSL \"\${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/\${PLATFORM}/claude\" -o /usr/local/bin/claude
-    CHECKSUM=\$(curl -fsSL \"\${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/manifest.json\" \
+    DOWNLOAD_BASE_URL=\"https://downloads.claude.ai/claude-code-releases\"
+    curl -fsSL \"\${DOWNLOAD_BASE_URL}/${CLAUDE_CODE_VERSION}/\${PLATFORM}/claude\" -o /usr/local/bin/claude
+    CHECKSUM=\$(curl -fsSL \"\${DOWNLOAD_BASE_URL}/${CLAUDE_CODE_VERSION}/manifest.json\" \
       | jq -r \".platforms[\\\"\$PLATFORM\\\"].checksum\")
     echo \"\${CHECKSUM}  /usr/local/bin/claude\" | sha256sum -c -
     chmod +x /usr/local/bin/claude
