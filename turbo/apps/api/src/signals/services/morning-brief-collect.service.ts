@@ -1,13 +1,30 @@
 /**
  * Server-side collectors for the Morning Brief input bundle.
  *
- * Each source (GitHub, Gmail, Google Calendar) resolves the member's connector
- * access token through the shared credential runtime, pulls a bounded window
- * of data, and reports independently: a failed source is annotated in the
- * input JSON instead of blocking the brief.
+ * Connector sources (GitHub, Gmail, Google Calendar) resolve the member's
+ * connector access token through the shared credential runtime and pull a
+ * bounded window of data. The chat-threads source reads unread vm0 chat
+ * threads straight from the database. Each source reports independently: a
+ * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+} from "drizzle-orm";
 
+import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 import { nowDate } from "../external/time";
@@ -28,8 +45,10 @@ const MAX_GMAIL_MESSAGES = 25;
 const MAX_GITHUB_NOTIFICATIONS = 50;
 const MAX_GITHUB_SEARCH_RESULTS = 25;
 const MAX_CALENDAR_EVENTS = 50;
+const MAX_UNREAD_THREADS = 10;
+const MAX_THREAD_MESSAGES = 3;
 
-export const MORNING_BRIEF_CONNECTOR_REFS = [
+const MORNING_BRIEF_CONNECTOR_REFS = [
   "github",
   "gmail",
   "google-calendar",
@@ -521,6 +540,108 @@ async function collectCalendar(
   return { events };
 }
 
+// --- Unread vm0 chat threads ------------------------------------------------
+
+interface MorningBriefThreadMessage {
+  readonly role: string;
+  readonly content: string;
+  readonly at: string;
+}
+
+interface MorningBriefUnreadThread {
+  readonly threadId: string;
+  readonly title: string | null;
+  /** Deep link into the vm0 app; ready to use as the brief item url. */
+  readonly url: string;
+  readonly lastMessageAt: string;
+  readonly recentMessages: readonly MorningBriefThreadMessage[];
+}
+
+export interface MorningBriefChatThreadsData {
+  readonly threads: readonly MorningBriefUnreadThread[];
+}
+
+/**
+ * Threads whose latest message landed inside the window and past the user's
+ * read watermark — typically runs that finished after the user left. The
+ * Morning Brief thread itself is excluded so yesterday's brief never reports
+ * on itself.
+ */
+async function collectUnreadChatThreads(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly since: Date;
+  readonly until: Date;
+  readonly excludeChatThreadId: string | null;
+}): Promise<MorningBriefChatThreadsData> {
+  const appUrl = env("APP_URL");
+  const rows = await args.db
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      lastMessageAt: chatThreads.lastMessageAt,
+    })
+    .from(chatThreads)
+    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(chatThreads.userId, args.userId),
+        gte(chatThreads.lastMessageAt, args.since),
+        lte(chatThreads.lastMessageAt, args.until),
+        or(
+          isNull(chatThreads.lastReadAt),
+          gt(chatThreads.lastMessageAt, chatThreads.lastReadAt),
+        ),
+        ...(args.excludeChatThreadId
+          ? [ne(chatThreads.id, args.excludeChatThreadId)]
+          : []),
+      ),
+    )
+    .orderBy(desc(chatThreads.lastMessageAt))
+    .limit(MAX_UNREAD_THREADS);
+
+  const threads: MorningBriefUnreadThread[] = [];
+  for (const row of rows) {
+    const messages = await args.db
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, row.id),
+          isNotNull(chatMessages.content),
+        ),
+      )
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(MAX_THREAD_MESSAGES);
+    threads.push({
+      threadId: row.id,
+      title: row.title,
+      url: `${appUrl}/chats/${row.id}`,
+      lastMessageAt: row.lastMessageAt.toISOString(),
+      recentMessages: messages
+        .reverse()
+        .filter((message) => {
+          return message.content !== null;
+        })
+        .map((message) => {
+          return {
+            role: message.role,
+            content: message.content ?? "",
+            at: message.createdAt.toISOString(),
+          };
+        }),
+    });
+  }
+
+  return { threads };
+}
+
 // --- Combined input ---------------------------------------------------------
 
 interface MorningBriefSource<T> {
@@ -539,6 +660,7 @@ export interface MorningBriefInput {
     readonly github: MorningBriefSource<MorningBriefGithubData>;
     readonly gmail: MorningBriefSource<MorningBriefGmailData>;
     readonly calendar: MorningBriefSource<MorningBriefCalendarData>;
+    readonly chatThreads: MorningBriefSource<MorningBriefChatThreadsData>;
   };
 }
 
@@ -570,6 +692,8 @@ interface CollectMorningBriefInputArgs {
   readonly until: Date;
   readonly dayStart: Date;
   readonly dayEnd: Date;
+  /** The member's Morning Brief thread; never reported as unread. */
+  readonly excludeChatThreadId: string | null;
   readonly signal: AbortSignal;
 }
 
@@ -599,7 +723,7 @@ export async function collectMorningBriefInput(
     });
   };
 
-  const [github, gmail, calendar] = await Promise.all([
+  const [github, gmail, calendar, chatThreadsSource] = await Promise.all([
     withAccess("github", (access) => {
       return collectGithub(access, args.since, args.signal);
     }),
@@ -608,6 +732,16 @@ export async function collectMorningBriefInput(
     }),
     withAccess("google-calendar", (access) => {
       return collectCalendar(access, args.dayStart, args.dayEnd, args.signal);
+    }),
+    collectSource(() => {
+      return collectUnreadChatThreads({
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        since: args.since,
+        until: args.until,
+        excludeChatThreadId: args.excludeChatThreadId,
+      });
     }),
   ]);
 
@@ -620,6 +754,6 @@ export async function collectMorningBriefInput(
       since: args.since.toISOString(),
       until: args.until.toISOString(),
     },
-    sources: { github, gmail, calendar },
+    sources: { github, gmail, calendar, chatThreads: chatThreadsSource },
   };
 }

@@ -40,6 +40,7 @@ const callbackPayloadSchema = z.object({
 const SECTION_KEYS = [
   "schedule",
   "needs_attention",
+  "unread_threads",
   "github_updates",
   "email_updates",
   "suggestions",
@@ -77,17 +78,20 @@ function isAllowedSourceHost(hostname: string): boolean {
   );
 }
 
-/** Only https links straight into Gmail, Calendar, or GitHub survive. */
+/** Only https links into Gmail, Calendar, GitHub, or the vm0 app survive. */
 function sanitizeSourceUrl(url: string | undefined): string | undefined {
   if (!url) {
     return undefined;
   }
   const parsed = safeUrlParse(url);
-  if (
-    !parsed ||
-    parsed.protocol !== "https:" ||
-    !isAllowedSourceHost(parsed.hostname)
-  ) {
+  if (!parsed || parsed.protocol !== "https:") {
+    return undefined;
+  }
+  const app = safeUrlParse(appUrl());
+  if (app && parsed.origin === app.origin) {
+    return url;
+  }
+  if (!isAllowedSourceHost(parsed.hostname)) {
     return undefined;
   }
   return url;
