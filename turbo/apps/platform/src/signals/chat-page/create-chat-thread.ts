@@ -1042,12 +1042,28 @@ function createDraftSync(
           size: r.attachment.size,
         };
       });
+      const features = get(featureSwitch$);
+      const editorDocument = get(draft.editorDocument$);
+      let structuredPrompt: UserMessageDocument | null = null;
+      if (
+        (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
+        editorDocument
+      ) {
+        structuredPrompt = editorDocument.toMessageDocument({
+          generationTemplate: get(draft.generationTemplate$),
+          attachments: persisted,
+        });
+        if (!structuredPrompt) {
+          throw new Error("Failed to serialize structured draft");
+        }
+      }
 
       await set(
         dataSource.patchDraft$,
         {
           threadId,
           content,
+          structuredPrompt,
           attachments: persisted.length > 0 ? persisted : null,
         },
         signal,
@@ -1076,7 +1092,12 @@ function createDraftSync(
       }
       await set(
         dataSource.patchDraft$,
-        { threadId, content: null, attachments: null },
+        {
+          threadId,
+          content: null,
+          structuredPrompt: null,
+          attachments: null,
+        },
         signal,
       );
     },

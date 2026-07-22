@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -330,6 +332,193 @@ describe("chat drafts", () => {
     });
   });
 
+  it("restores and persists the structured draft when the switch is enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000104";
+    const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const draftPatches: Record<string, unknown>[] = [];
+    const secondAttachment = {
+      id: "draft-second",
+      filename: "second.txt",
+      contentType: "text/plain",
+      size: 6,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
+    };
+    const firstAttachment = {
+      id: "draft-first",
+      filename: "first.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/first.txt",
+    };
+    const template = {
+      type: "illustration" as const,
+      selection: {
+        illustrationStyleId: illustrationTemplate.illustrationStyleId,
+      },
+    };
+
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "stale legacy draft",
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
+            },
+            {
+              type: "file",
+              fileId: secondAttachment.id,
+              filenameSnapshot: secondAttachment.filename,
+              contentType: secondAttachment.contentType,
+            },
+            {
+              type: "file",
+              fileId: firstAttachment.id,
+              filenameSnapshot: firstAttachment.filename,
+              contentType: firstAttachment.contentType,
+            },
+            { type: "text", text: "Review " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Launch research",
+            },
+            { type: "text", text: " now" },
+          ],
+        },
+        draftAttachments: [firstAttachment, secondAttachment],
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("Review Launch research now");
+      expect(
+        editor.querySelector(
+          `span[data-chat-thread-mention="${referencedThreadId}"]`,
+        ),
+      ).toHaveTextContent("Launch research");
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+      expect(
+        screen
+          .getAllByRole("button", { name: /Remove (?:first|second)\.txt/ })
+          .map((button) => {
+            return button.getAttribute("aria-label");
+          }),
+      ).toStrictEqual(["Remove second.txt", "Remove first.txt"]);
+    });
+
+    await user.click(editor);
+    await user.keyboard(" updated");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: `Review [Launch research](/chats/${referencedThreadId}) now updated`,
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
+            },
+            {
+              type: "file",
+              fileId: secondAttachment.id,
+              filenameSnapshot: secondAttachment.filename,
+              contentType: secondAttachment.contentType,
+            },
+            {
+              type: "file",
+              fileId: firstAttachment.id,
+              filenameSnapshot: firstAttachment.filename,
+              contentType: firstAttachment.contentType,
+            },
+            { type: "text", text: "Review " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Launch research",
+            },
+            { type: "text", text: " now updated" },
+          ],
+        },
+        draftAttachments: [secondAttachment, firstAttachment],
+      });
+    });
+  });
+
+  it("keeps legacy draft hydration and clears structured state when the switch is disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b1000000-0000-4000-a000-000000000106";
+    const draftPatches: Record<string, unknown>[] = [];
+    const legacyAttachment = {
+      id: "legacy-draft-file",
+      filename: "legacy.txt",
+      contentType: "text/plain",
+      size: 6,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/legacy.txt",
+    };
+
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "legacy draft",
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [{ type: "text", text: "structured draft" }],
+        },
+        draftAttachments: [legacyAttachment],
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("legacy draft");
+      expect(editor).not.toHaveTextContent("structured draft");
+      expect(screen.getByLabelText("Remove legacy.txt")).toBeInTheDocument();
+    });
+
+    await user.click(editor);
+    await user.keyboard(" updated");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "legacy draft updated",
+        draftStructuredPrompt: null,
+        draftAttachments: [legacyAttachment],
+      });
+    });
+  });
+
   it("persists edited draft attachments and clears the server draft after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000102";
@@ -390,6 +579,7 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "Review the updated launch brief",
+        draftStructuredPrompt: null,
         draftAttachments: [
           {
             id: "draft-brief",
@@ -419,6 +609,7 @@ describe("chat drafts", () => {
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
         draftContent: null,
+        draftStructuredPrompt: null,
         draftAttachments: null,
       });
     });

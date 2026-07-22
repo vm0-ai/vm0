@@ -1,5 +1,13 @@
 import { command, computed, state, type Command } from "ccstate";
+import type {
+  ChatThreadDraft,
+  GenerationTemplateRequest,
+  PersistedAttachment,
+  UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   detachedNavigateTo$,
@@ -9,6 +17,10 @@ import {
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import {
+  messageDocumentToEditorDoc,
+  messageDocumentToPrompt,
+} from "../zero-page/user-message-document-codec.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
@@ -64,6 +76,68 @@ interface PaneSpec {
   resetSetupSignal$: ReturnType<typeof resetSignal>;
 }
 
+interface RestoredDraftState {
+  readonly content: string;
+  readonly structuredPrompt: UserMessageDocument | null;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly attachments: PersistedAttachment[];
+}
+
+function legacyDraftState(threadDraft: ChatThreadDraft): RestoredDraftState {
+  return {
+    content: threadDraft.draftContent ?? "",
+    structuredPrompt: null,
+    generationTemplate: undefined,
+    attachments: threadDraft.draftAttachments ?? [],
+  };
+}
+
+function structuredDraftAttachments(
+  document: UserMessageDocument,
+  attachments: readonly PersistedAttachment[],
+): PersistedAttachment[] {
+  const attachmentById = new Map(
+    attachments.map((attachment) => {
+      return [attachment.id, attachment] as const;
+    }),
+  );
+  return document.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+    const attachment = attachmentById.get(part.fileId);
+    return attachment ? [attachment] : [];
+  });
+}
+
+function structuredDraftState(
+  threadDraft: ChatThreadDraft,
+): RestoredDraftState | null {
+  const document = threadDraft.draftStructuredPrompt;
+  if (!document || messageDocumentToEditorDoc(document) === null) {
+    return null;
+  }
+  const content = messageDocumentToPrompt(document);
+  if (content === null) {
+    return null;
+  }
+  const generationTemplate = document.parts.find((part) => {
+    return part.type === "template";
+  });
+  return {
+    content,
+    structuredPrompt: document,
+    generationTemplate:
+      generationTemplate?.type === "template"
+        ? generationTemplate.template
+        : undefined,
+    attachments: structuredDraftAttachments(
+      document,
+      threadDraft.draftAttachments ?? [],
+    ),
+  };
+}
+
 const loadDraft$ = command(
   async (
     { get, set },
@@ -78,19 +152,25 @@ const loadDraft$ = command(
       return;
     }
 
-    const hasDraftContent = threadDraft.draftContent !== null;
-    const draftAttachments = threadDraft.draftAttachments;
-    const hasDraftAttachments =
-      draftAttachments !== null && draftAttachments.length > 0;
-    if (isNew && (hasDraftContent || hasDraftAttachments)) {
-      const restoredAttachments = (draftAttachments ?? []).map(
+    const features = get(featureSwitch$);
+    const restoredDraft =
+      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
+        ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
+        : legacyDraftState(threadDraft);
+    const hasDraft =
+      restoredDraft.content.length > 0 ||
+      restoredDraft.structuredPrompt !== null ||
+      restoredDraft.attachments.length > 0;
+    if (isNew && hasDraft) {
+      const restoredAttachments = restoredDraft.attachments.map(
         createRestoredAttachment,
       );
-      set(
-        thread.draft.seed$,
-        threadDraft.draftContent ?? "",
-        restoredAttachments,
-      );
+      set(thread.draft.seed$, {
+        content: restoredDraft.content,
+        structuredPrompt: restoredDraft.structuredPrompt,
+        generationTemplate: restoredDraft.generationTemplate,
+        attachments: restoredAttachments,
+      });
     }
   },
 );

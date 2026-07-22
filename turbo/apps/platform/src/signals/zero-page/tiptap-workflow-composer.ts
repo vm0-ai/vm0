@@ -18,7 +18,7 @@ import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
 import { onRef } from "../utils.ts";
-import type { DraftSignals } from "./chat-draft.ts";
+import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
   formatFeedbackPrompt,
@@ -45,6 +45,7 @@ import {
 import {
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
+  messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
@@ -1169,6 +1170,82 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
+function workflowComposerDocumentForStructuredPrompt(
+  editor: Editor,
+  value: Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0],
+): ProseMirrorNode | null {
+  const document = messageDocumentToEditorDoc(value);
+  return document ? editor.schema.nodeFromJSON(document) : null;
+}
+
+function workflowComposerDocumentForDraft(
+  editor: Editor,
+  input: string,
+  structuredPrompt:
+    | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
+    | null,
+): ProseMirrorNode {
+  if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
+    return editor.state.doc;
+  }
+  const structuredDocument = structuredPrompt
+    ? workflowComposerDocumentForStructuredPrompt(editor, structuredPrompt)
+    : null;
+  return structuredDocument ?? workflowComposerDocumentForValue(editor, input);
+}
+
+function configureMountedWorkflowEditor(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+  singleLineOnMobile: boolean,
+): void {
+  editor.setOptions({
+    editorProps: {
+      attributes: {
+        "aria-label": "Message",
+        placeholder: COMPOSER_PLACEHOLDER,
+        tabindex: "0",
+        class: editorContentClass(singleLineOnMobile),
+      },
+      handlePaste: (_view, event) => {
+        return runtime.paste(event, _view.dom);
+      },
+      handleKeyDown: (_view, event) => {
+        return runtime.keyDown(event);
+      },
+    },
+  });
+}
+
+function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
+  runtime.update = () => {};
+  runtime.selectionUpdate = () => {};
+  runtime.focus = () => {};
+  runtime.blur = () => {};
+  runtime.input = () => {};
+  runtime.replaceFeedbackItems = () => {};
+  runtime.removeFeedback = () => {};
+  runtime.keyDown = () => {
+    return false;
+  };
+  runtime.paste = () => {
+    return false;
+  };
+}
+
+interface MountEditorOptions {
+  editor: Editor;
+  draft: DraftSignals;
+  runtime: WorkflowComposerRuntime;
+  caretIndex$: State<number>;
+  editorFocusedState$: State<boolean>;
+  selectedSuggestionIndexState$: State<number>;
+  feedback: FeedbackSignals;
+  compositionGate: CompositionGate;
+  autoFocus: boolean;
+  singleLineOnMobile: boolean;
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -1180,18 +1257,7 @@ function createMountEditorCommand({
   compositionGate,
   autoFocus,
   singleLineOnMobile,
-}: {
-  editor: Editor;
-  draft: DraftSignals;
-  runtime: WorkflowComposerRuntime;
-  caretIndex$: State<number>;
-  editorFocusedState$: State<boolean>;
-  selectedSuggestionIndexState$: State<number>;
-  feedback: FeedbackSignals;
-  compositionGate: CompositionGate;
-  autoFocus: boolean;
-  singleLineOnMobile: boolean;
-}) {
+}: MountEditorOptions) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
@@ -1199,6 +1265,10 @@ function createMountEditorCommand({
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
         set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+        set(
+          draft.setEditorDocument$,
+          createEditorDocumentSnapshot(updatedEditor.state.doc),
+        );
         runtime.input();
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -1220,29 +1290,17 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      editor.setOptions({
-        editorProps: {
-          attributes: {
-            "aria-label": "Message",
-            placeholder: COMPOSER_PLACEHOLDER,
-            tabindex: "0",
-            class: editorContentClass(singleLineOnMobile),
-          },
-          handlePaste: (_view, event) => {
-            return runtime.paste(event, _view.dom);
-          },
-          handleKeyDown: (_view, event) => {
-            return runtime.keyDown(event);
-          },
-        },
-      });
+      configureMountedWorkflowEditor(editor, runtime, singleLineOnMobile);
       const input = get(draft.input$);
-      if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
-        setWorkflowComposerDocument(
-          editor,
-          workflowComposerDocumentForValue(editor, input),
-        );
-      }
+      const structuredPrompt = get(draft.restoredStructuredPrompt$);
+      setWorkflowComposerDocument(
+        editor,
+        workflowComposerDocumentForDraft(editor, input, structuredPrompt),
+      );
+      set(
+        draft.setEditorDocument$,
+        createEditorDocumentSnapshot(editor.state.doc),
+      );
       editor.mount(element);
       editor.view.dom.addEventListener(
         "compositionstart",
@@ -1267,7 +1325,30 @@ function createMountEditorCommand({
             runtime.replaceFeedbackItems(
               feedbackItemsFromWorkflowComposer(editor),
             );
+            set(
+              draft.setEditorDocument$,
+              createEditorDocumentSnapshot(editor.state.doc),
+            );
           }
+        },
+        syncStructuredPrompt(value) {
+          const document = workflowComposerDocumentForStructuredPrompt(
+            editor,
+            value,
+          );
+          if (!document) {
+            return;
+          }
+          const changed = setWorkflowComposerDocument(editor, document);
+          if (changed) {
+            runtime.replaceFeedbackItems(
+              feedbackItemsFromWorkflowComposer(editor),
+            );
+          }
+          set(
+            draft.setEditorDocument$,
+            createEditorDocumentSnapshot(editor.state.doc),
+          );
         },
       });
       if (autoFocus && !isIOS()) {
@@ -1275,19 +1356,7 @@ function createMountEditorCommand({
       }
       signal.addEventListener("abort", () => {
         compositionGate.cancel(signal.reason);
-        runtime.update = () => {};
-        runtime.selectionUpdate = () => {};
-        runtime.focus = () => {};
-        runtime.blur = () => {};
-        runtime.input = () => {};
-        runtime.replaceFeedbackItems = () => {};
-        runtime.removeFeedback = () => {};
-        runtime.keyDown = () => {
-          return false;
-        };
-        runtime.paste = () => {
-          return false;
-        };
+        resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();

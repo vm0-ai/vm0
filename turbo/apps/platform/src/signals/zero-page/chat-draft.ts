@@ -1,4 +1,11 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import { resetSignal, tapError } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -6,9 +13,11 @@ import { accept } from "../../lib/accept.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -206,6 +215,9 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
+  restoredStructuredPrompt$: Computed<UserMessageDocument | null>;
+  editorDocument$: Computed<EditorDocumentSnapshot | null>;
+  setEditorDocument$: Command<void, [EditorDocumentSnapshot]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   setGenerationTemplate$: Command<
     void,
@@ -221,11 +233,19 @@ export interface DraftSignals {
   /** Reset all draft state (input, template, attachments). Called after send. */
   clear$: Command<void, []>;
   /** Seed draft from persisted server data. Only called when local cache was empty. */
-  seed$: Command<void, [content: string, attachments: ZeroChatAttachment[]]>;
+  seed$: Command<void, [DraftSeed]>;
+}
+
+interface DraftSeed {
+  content: string;
+  structuredPrompt: UserMessageDocument | null;
+  generationTemplate: GenerationTemplateRequest | undefined;
+  attachments: ZeroChatAttachment[];
 }
 
 export interface DraftInputSyncTarget {
   syncInput(value: string): void;
+  syncStructuredPrompt(value: UserMessageDocument): void;
 }
 
 /**
@@ -276,6 +296,11 @@ function createDraftInputSignals() {
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
+  const syncStructuredPrompt$ = command(
+    ({ get }, value: UserMessageDocument) => {
+      get(internalInputSyncTarget$)?.syncStructuredPrompt(value);
+    },
+  );
   const setInputSyncTarget$ = command(
     ({ set }, target: DraftInputSyncTarget | null) => {
       set(internalInputSyncTarget$, target);
@@ -301,11 +326,78 @@ function createDraftInputSignals() {
     setInput$,
     appendInput$,
     setInputSyncTarget$,
+    syncStructuredPrompt$,
   };
+}
+
+function createDraftDocumentSignals() {
+  const internalStructuredPrompt$ = state<UserMessageDocument | null>(null);
+  const internalEditorDocument$ = state<EditorDocumentSnapshot | null>(null);
+  const restoredStructuredPrompt$ = computed((get) => {
+    return get(internalStructuredPrompt$);
+  });
+  const editorDocument$ = computed((get) => {
+    return get(internalEditorDocument$);
+  });
+  const setEditorDocument$ = command(
+    ({ set }, value: EditorDocumentSnapshot) => {
+      set(internalEditorDocument$, value);
+      set(internalStructuredPrompt$, null);
+    },
+  );
+  return {
+    internalStructuredPrompt$,
+    internalEditorDocument$,
+    restoredStructuredPrompt$,
+    editorDocument$,
+    setEditorDocument$,
+  };
+}
+
+function createDraftLifecycleSignals({
+  draftInput,
+  draftDocument,
+  internalGenerationTemplate$,
+  internalAttachments$,
+  internalDragOver$,
+}: {
+  draftInput: ReturnType<typeof createDraftInputSignals>;
+  draftDocument: ReturnType<typeof createDraftDocumentSignals>;
+  internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
+  internalAttachments$: State<ZeroChatAttachment[]>;
+  internalDragOver$: State<boolean>;
+}) {
+  const clear$ = command(({ get, set }) => {
+    set(draftInput.setInput$, "");
+    set(draftDocument.internalStructuredPrompt$, null);
+    set(internalGenerationTemplate$, undefined);
+    const attachments = get(internalAttachments$);
+    for (const attachment of attachments) {
+      set(attachment.cancel$);
+    }
+    if (attachments.length > 0) {
+      set(internalAttachments$, []);
+    }
+    set(internalDragOver$, false);
+  });
+
+  const seed$ = command(({ set }, value: DraftSeed) => {
+    set(draftDocument.internalStructuredPrompt$, value.structuredPrompt);
+    set(draftDocument.internalEditorDocument$, null);
+    set(internalGenerationTemplate$, value.generationTemplate);
+    set(internalAttachments$, value.attachments);
+    set(draftInput.setInput$, value.content);
+    if (value.structuredPrompt) {
+      set(draftInput.syncStructuredPrompt$, value.structuredPrompt);
+    }
+  });
+
+  return { clear$, seed$ };
 }
 
 export function createDraftSignals(): DraftSignals {
   const draftInput = createDraftInputSignals();
+  const draftDocument = createDraftDocumentSignals();
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
@@ -397,29 +489,19 @@ export function createDraftSignals(): DraftSignals {
     set(internalDragOver$, value);
   });
 
-  const clear$ = command(({ get, set }) => {
-    set(draftInput.setInput$, "");
-    set(internalGenerationTemplate$, undefined);
-    // Cancel all pending uploads before clearing
-    const attachments = get(internalAttachments$);
-    for (const attachment of attachments) {
-      set(attachment.cancel$);
-    }
-    if (attachments.length > 0) {
-      set(internalAttachments$, []);
-    }
-    set(internalDragOver$, false);
+  const { clear$, seed$ } = createDraftLifecycleSignals({
+    draftInput,
+    draftDocument,
+    internalGenerationTemplate$,
+    internalAttachments$,
+    internalDragOver$,
   });
-
-  const seed$ = command(
-    ({ set }, content: string, attachments: ZeroChatAttachment[]) => {
-      set(draftInput.setInput$, content);
-      set(internalAttachments$, attachments);
-    },
-  );
 
   return {
     ...draftInput,
+    restoredStructuredPrompt$: draftDocument.restoredStructuredPrompt$,
+    editorDocument$: draftDocument.editorDocument$,
+    setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,
     setGenerationTemplate$,
     attachments$,
