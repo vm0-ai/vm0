@@ -514,10 +514,11 @@ impl NetnsPoolState {
         }
     }
 
-    fn checkout(&mut self, info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
+    fn checkout(&mut self, mut info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
         if !self.in_flight.insert(info.name.clone()) {
             return Err(info);
         }
+        info.attachment_generation = info.attachment_generation.saturating_add(1);
         Ok(NetnsLease::new(info, self.instance_id))
     }
 
@@ -2634,6 +2635,27 @@ mod tests {
         assert!(pool.in_flight.is_empty());
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "ready-ns");
+    }
+
+    #[tokio::test]
+    async fn attachment_generation_increments_when_namespace_is_reused() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.active = true;
+        pool.ops = NetnsLifecycleOps::trusted_for_test();
+        let first = pool.checkout(test_info("reused-ns")).unwrap();
+        assert_eq!(first.info().attachment_generation(), 1);
+        let mut first = Some(first);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
+
+        let outcome = handle.release(&mut first).await;
+        assert!(matches!(outcome, NetnsReleaseOutcome::Released));
+
+        let second = {
+            let mut pool = handle.inner.state.lock().await;
+            let info = pool.plain_queue.pop_front().unwrap();
+            pool.checkout(info).unwrap()
+        };
+        assert_eq!(second.info().attachment_generation(), 2);
     }
 
     #[tokio::test]

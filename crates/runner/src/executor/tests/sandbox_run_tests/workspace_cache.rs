@@ -148,7 +148,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-dns-retry", 16).await;
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_new_sandbox(
+    let (outcome, events) = capture_sandbox_run_events(execute_new_sandbox(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -159,9 +159,9 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         &params,
         &mut telemetry,
         tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    ))
+    .await;
+    let outcome = outcome.unwrap();
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_none());
@@ -196,6 +196,10 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         true,
         None,
     );
+    let completion = captured_events_named(&events, "guest DNS readiness replacement completed");
+    assert_eq!(completion.len(), 1, "events={events:#?}");
+    assert_captured_field(completion[0], "success", "true");
+    assert_captured_field(completion[0], "workspace_fallback", "true");
 }
 
 #[tokio::test]

@@ -1,11 +1,16 @@
 //! Bounded passive evidence for terminal guest DNS readiness failures.
 
-use std::time::Duration;
+use std::future::Future;
+use std::time::{Duration, Instant};
 
 use tracing::warn;
 use vsock_host::{ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
 
 use crate::command::{CommandError, exec_with_timeout};
+use crate::duration::duration_ms;
+use crate::network::{
+    make_pool_dns_filter_comment, parse_netns_name, probe_namespace_dns_diagnostic,
+};
 
 const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(2);
 const HOST_COMMAND_TIMEOUT: Duration = Duration::from_millis(1_500);
@@ -14,6 +19,7 @@ const GUEST_WAIT_TIMEOUT: Duration = Duration::from_millis(1_750);
 const GUEST_OUTPUT_LIMIT_BYTES: u32 = 4 * 1024;
 const LOG_OUTPUT_LIMIT_BYTES: usize = 4 * 1024;
 const GUEST_DIAGNOSTIC_LABEL: &str = "guest-dns-failure-diagnostics";
+const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
 const GUEST_STATE_COMMAND: &str = r#"set +e
 /usr/sbin/ip -details -statistics link show dev eth0 2>&1
@@ -33,33 +39,55 @@ pub(crate) struct GuestDnsFailureDiagnosticContext<'a> {
     pub(crate) host_device: &'a str,
     pub(crate) peer_ip: &'a str,
     pub(crate) dns_port: u16,
+    pub(crate) attachment_generation: u64,
+    pub(crate) startup_mode: &'static str,
 }
 
 pub(crate) async fn capture_guest_dns_failure_snapshot(
     guest: &VsockHost,
     context: GuestDnsFailureDiagnosticContext<'_>,
 ) {
-    if tokio::time::timeout(SNAPSHOT_TIMEOUT, capture_snapshot(guest, context))
-        .await
-        .is_err()
-    {
-        warn!(
-            id = context.sandbox_id,
-            profile = context.profile,
-            namespace = context.namespace,
-            host_device = context.host_device,
-            peer_ip = context.peer_ip,
-            dns_port = context.dns_port,
-            timeout_ms = SNAPSHOT_TIMEOUT.as_millis() as u64,
-            "guest DNS failure diagnostic snapshot timed out"
-        );
-    }
+    capture_passive_then_control(
+        async {
+            if tokio::time::timeout(SNAPSHOT_TIMEOUT, capture_snapshot(guest, context))
+                .await
+                .is_err()
+            {
+                warn!(
+                    id = context.sandbox_id,
+                    profile = context.profile,
+                    namespace = context.namespace,
+                    host_device = context.host_device,
+                    peer_ip = context.peer_ip,
+                    dns_port = context.dns_port,
+                    attachment_generation = context.attachment_generation,
+                    startup_mode = context.startup_mode,
+                    timeout_ms = SNAPSHOT_TIMEOUT.as_millis() as u64,
+                    "guest DNS failure diagnostic snapshot timed out"
+                );
+            }
+        },
+        || capture_host_namespace_readiness(context),
+    )
+    .await;
+}
+
+async fn capture_passive_then_control<P, C, CF>(passive: P, control: C)
+where
+    P: Future<Output = ()>,
+    C: FnOnce() -> CF,
+    CF: Future<Output = ()>,
+{
+    passive.await;
+    control().await;
 }
 
 async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticContext<'_>) {
     let namespace = context.namespace;
     let peer_ip = context.peer_ip;
-    let listener_filter = format!("sport = :{}", context.dns_port);
+    let listener_port = format!(":{}", context.dns_port);
+    let pool_filter_comment =
+        parse_netns_name(namespace).map(|parsed| make_pool_dns_filter_comment(parsed.pool_index));
 
     let namespace_links_args = [
         "netns",
@@ -82,9 +110,21 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
     ];
     let raw_rules_args = ["-c", "-t", "raw"];
     let nat_rules_args = ["-c", "-t", "nat"];
+    let filter_rules_args = ["-c", "-t", "filter"];
     let conntrack_source_args = ["-L", "-s", peer_ip];
     let conntrack_destination_args = ["-L", "-d", peer_ip];
-    let listener_args = ["-H", "-lunt", listener_filter.as_str()];
+    let namespace_conntrack_args = [
+        "netns",
+        "exec",
+        namespace,
+        "conntrack",
+        "-L",
+        "-p",
+        "udp",
+        "--dport",
+        "53",
+    ];
+    let listener_args = ["-H", "-luntpm", "sport", "=", listener_port.as_str()];
 
     let (
         guest_state,
@@ -92,8 +132,11 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
         namespace_nat,
         host_raw_rules,
         host_nat_rules,
+        host_filter_rules_ipv4,
+        host_filter_rules_ipv6,
         conntrack_source,
         conntrack_destination,
+        namespace_dns_conntrack,
         dnsmasq_listener,
     ) = tokio::join!(
         capture_guest_state(guest),
@@ -101,12 +144,23 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
         exec_with_timeout("ip", &namespace_nat_args, HOST_COMMAND_TIMEOUT),
         exec_with_timeout("iptables-save", &raw_rules_args, HOST_COMMAND_TIMEOUT),
         exec_with_timeout("iptables-save", &nat_rules_args, HOST_COMMAND_TIMEOUT),
+        capture_pool_filter_rules(
+            "iptables-save",
+            &filter_rules_args,
+            pool_filter_comment.as_deref(),
+        ),
+        capture_pool_filter_rules(
+            "ip6tables-save",
+            &filter_rules_args,
+            pool_filter_comment.as_deref(),
+        ),
         exec_with_timeout("conntrack", &conntrack_source_args, HOST_COMMAND_TIMEOUT),
         exec_with_timeout(
             "conntrack",
             &conntrack_destination_args,
             HOST_COMMAND_TIMEOUT,
         ),
+        exec_with_timeout("ip", &namespace_conntrack_args, HOST_COMMAND_TIMEOUT),
         exec_with_timeout("ss", &listener_args, HOST_COMMAND_TIMEOUT),
     );
 
@@ -123,6 +177,8 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
         "host_nat_rules",
         filtered_command_output(host_nat_rules, namespace),
     );
+    log_component(context, "host_filter_rules_ipv4", host_filter_rules_ipv4);
+    log_component(context, "host_filter_rules_ipv6", host_filter_rules_ipv6);
     log_component(
         context,
         "conntrack_source",
@@ -135,9 +191,47 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
     );
     log_component(
         context,
+        "namespace_dns_conntrack",
+        command_output(namespace_dns_conntrack),
+    );
+    log_component(
+        context,
         "dnsmasq_listener",
         command_output(dnsmasq_listener),
     );
+}
+
+async fn capture_pool_filter_rules(program: &str, args: &[&str], comment: Option<&str>) -> String {
+    let Some(comment) = comment else {
+        return "identity_error=invalid_namespace".to_string();
+    };
+    filtered_command_output(
+        exec_with_timeout(program, args, HOST_COMMAND_TIMEOUT).await,
+        comment,
+    )
+}
+
+async fn capture_host_namespace_readiness(context: GuestDnsFailureDiagnosticContext<'_>) {
+    let started = Instant::now();
+    let output = match probe_namespace_dns_diagnostic(
+        context.namespace.to_string(),
+        CONTROL_PROBE_TIMEOUT,
+    )
+    .await
+    {
+        Ok(attempts) => format!(
+            "diagnostic_traffic=true success=true attempts={attempts} elapsed_ms={}",
+            duration_ms(started.elapsed()),
+        ),
+        Err(error) => format!(
+            "diagnostic_traffic=true success=false stage={} io_kind={:?} attempts={} elapsed_ms={}",
+            error.stage_label(),
+            error.io_kind(),
+            error.attempts(),
+            duration_ms(started.elapsed()),
+        ),
+    };
+    log_component(context, "host_namespace_readiness", output);
 }
 
 async fn capture_guest_state(guest: &VsockHost) -> String {
@@ -245,6 +339,8 @@ fn log_component(
         host_device = context.host_device,
         peer_ip = context.peer_ip,
         dns_port = context.dns_port,
+        attachment_generation = context.attachment_generation,
+        startup_mode = context.startup_mode,
         component,
         output,
         "guest DNS failure diagnostic component"
@@ -254,6 +350,62 @@ fn log_component(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn control_probe_starts_only_after_passive_capture_finishes() {
+        let passive_entered = Arc::new(tokio::sync::Notify::new());
+        let passive_release = Arc::new(tokio::sync::Notify::new());
+        let control_started = Arc::new(AtomicUsize::new(0));
+        let entered = passive_entered.notified();
+        let task = tokio::spawn(capture_passive_then_control(
+            {
+                let passive_entered = Arc::clone(&passive_entered);
+                let passive_release = Arc::clone(&passive_release);
+                async move {
+                    passive_entered.notify_one();
+                    passive_release.notified().await;
+                }
+            },
+            {
+                let control_started = Arc::clone(&control_started);
+                move || async move {
+                    control_started.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        ));
+
+        entered.await;
+        assert_eq!(control_started.load(Ordering::SeqCst), 0);
+        passive_release.notify_one();
+        task.await.unwrap();
+        assert_eq!(control_started.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn control_probe_starts_after_passive_capture_times_out() {
+        let control_started = Arc::new(AtomicUsize::new(0));
+
+        capture_passive_then_control(
+            async {
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(1), std::future::pending::<()>(),)
+                        .await
+                        .is_err()
+                );
+            },
+            {
+                let control_started = Arc::clone(&control_started);
+                move || async move {
+                    control_started.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        )
+        .await;
+
+        assert_eq!(control_started.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn bounded_output_truncates_at_utf8_boundary() {
@@ -284,5 +436,28 @@ mod tests {
             filtered,
             "-A PREROUTING -m comment --comment vm0-ns-0c-20 -j DROP"
         );
+    }
+
+    #[test]
+    fn filtered_command_output_keeps_only_exact_pool_dns_rules() {
+        let comment = "vm0-ns-0c-dns";
+        let output = [
+            "-A INPUT -i vm0-ve-0c-+ -p udp --dport 5353 -m comment --comment vm0-ns-0c-dns",
+            "-A INPUT ! -i vm0-ve-0c-+ -p udp --dport 5353 -m comment --comment vm0-ns-0c-dns -j REJECT",
+            "-A INPUT -i vm0-ve-0b-+ -p udp --dport 5353 -m comment --comment vm0-ns-0b-dns",
+            "-A INPUT -i vm0-ve-0c-+ -p udp --dport 5353 -m comment --comment vm0-ns-0c-dns-old",
+        ]
+        .join("\n");
+
+        let filtered = filtered_command_output(Ok(output), comment);
+
+        assert_eq!(filtered.lines().count(), 2);
+        assert!(
+            filtered
+                .lines()
+                .all(|line| line_has_exact_comment(line, comment))
+        );
+        assert!(filtered.contains("-j REJECT"));
+        assert!(filtered.lines().any(|line| !line.contains("-j")));
     }
 }

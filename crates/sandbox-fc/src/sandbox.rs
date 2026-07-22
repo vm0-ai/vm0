@@ -537,6 +537,10 @@ impl SandboxNetwork {
         self.info.host_device()
     }
 
+    fn attachment_generation(&self) -> u64 {
+        self.info.attachment_generation()
+    }
+
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
         let lease = self.lease.as_mut().ok_or_else(|| SandboxError::Start {
             message: "network lease missing while marking attachment non-reusable".into(),
@@ -1275,6 +1279,12 @@ impl FirecrackerSandbox {
                             host_device: self.network.host_device(),
                             peer_ip: self.network.peer_ip(),
                             dns_port,
+                            attachment_generation: self.network.attachment_generation(),
+                            startup_mode: if self.factory_config.snapshot.is_some() {
+                                "snapshot_restore"
+                            } else {
+                                "fresh"
+                            },
                         },
                     )
                     .await;

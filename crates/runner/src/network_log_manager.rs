@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::error::TrySendError;
 #[cfg(test)]
 use tokio::sync::{Notify, Semaphore};
 use tracing::warn;
@@ -70,6 +71,22 @@ pub struct NetworkLogSession {
     closed: bool,
 }
 
+/// Failure-scoped state observed while closing one network-log session.
+pub struct NetworkLogCloseObservation {
+    drain: crate::network_log_drain::NetworkLogDrainReport,
+    writer_backpressure_observed: bool,
+}
+
+impl NetworkLogCloseObservation {
+    pub(crate) fn drain_status(&self, producer: &str) -> &'static str {
+        self.drain.status(producer)
+    }
+
+    pub(crate) fn writer_backpressure_observed(&self) -> bool {
+        self.writer_backpressure_observed
+    }
+}
+
 impl NetworkLogSession {
     /// Close local Rust-side network logs for this run before upload reads the file.
     ///
@@ -81,12 +98,16 @@ impl NetworkLogSession {
     /// before the final path flush. Rows accepted before finalization remain
     /// tracked by the path pending count; rows racing after finalization are
     /// rejected instead of being missed by upload.
-    pub async fn close_for_upload(mut self, run_id: RunId, drain: &NetworkLogDrainCoordinator) {
+    pub async fn close_for_upload(
+        mut self,
+        run_id: RunId,
+        drain: &NetworkLogDrainCoordinator,
+    ) -> NetworkLogCloseObservation {
         let current = self
             .manager
             .begin_session_drain(&self.source_ip, &self.path, self.generation)
             .await;
-        if current {
+        let drain = if current {
             drain
                 .drain(NetworkLogDrainContext {
                     run_id,
@@ -94,15 +115,22 @@ impl NetworkLogSession {
                     path: &self.path,
                     generation: self.generation,
                 })
-                .await;
-        }
-        self.manager
+                .await
+        } else {
+            Default::default()
+        };
+        let writer_backpressure_observed = self
+            .manager
             .finalize_session(&self.source_ip, &self.path, self.generation)
             .await;
         #[cfg(test)]
         self.manager.before_close_upload_flush_for_test().await;
         self.manager.flush_path(&self.path).await;
         self.closed = true;
+        NetworkLogCloseObservation {
+            drain,
+            writer_backpressure_observed,
+        }
     }
 }
 
@@ -233,9 +261,25 @@ impl NetworkLogManager {
             warn!("network log writer pool has no shards");
             return false;
         };
-        let permit = match sender.reserve_owned().await {
+        let permit = match sender.try_reserve_owned() {
             Ok(permit) => permit,
-            Err(_) => {
+            Err(TrySendError::Full(sender)) => {
+                self.inner
+                    .state
+                    .mark_writer_backpressure(source_ip, &snapshot)
+                    .await;
+                match sender.reserve_owned().await {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        warn!(
+                            path = %snapshot.path.display(),
+                            "network log writer shard closed before append was accepted"
+                        );
+                        return false;
+                    }
+                }
+            }
+            Err(TrySendError::Closed(_)) => {
                 warn!(
                     path = %snapshot.path.display(),
                     "network log writer shard closed before append was accepted"
@@ -278,11 +322,11 @@ impl NetworkLogManager {
             .await
     }
 
-    async fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) {
+    async fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
         self.inner
             .state
             .finalize_session(source_ip, path, generation)
-            .await;
+            .await
     }
 
     /// Wait until all currently accepted Rust-side writes for `path` finish.
@@ -683,6 +727,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queue_full_is_reported_without_losing_or_reordering_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            started.clone(),
+            release.clone(),
+            WriterConfig {
+                shards: 1,
+                queue_capacity: 1,
+                max_batch_rows: 1,
+                max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+            },
+        );
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","index":1}))
+                .await
+        );
+        started.notified().await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","index":2}))
+                .await
+        );
+
+        let third = manager.append_for_ip("10.200.0.2", json!({"type":"dns","index":3}));
+        let mut third = std::pin::pin!(third);
+        assert!(
+            poll_fn(|cx| match third.as_mut().poll(cx) {
+                Poll::Ready(_) => Poll::Ready(false),
+                Poll::Pending => Poll::Ready(true),
+            })
+            .await
+        );
+
+        release.add_permits(3);
+        assert!(third.await);
+        let observation = session
+            .close_for_upload(RunId::nil(), &NetworkLogDrainCoordinator::noop())
+            .await;
+
+        assert!(observation.writer_backpressure_observed());
+        let indices: Vec<u64> = read_json_lines(&path)
+            .iter()
+            .map(|line| line["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(indices, [1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn immediately_reserved_session_reports_no_writer_backpressure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"ready.test"}))
+                .await
+        );
+
+        let observation = session
+            .close_for_upload(RunId::nil(), &NetworkLogDrainCoordinator::noop())
+            .await;
+
+        assert!(!observation.writer_backpressure_observed());
+        assert_eq!(observation.drain_status("dns"), "not_configured");
+    }
+
+    #[tokio::test]
     async fn queue_full_rejects_row_after_source_reregister_same_path() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
@@ -725,7 +842,7 @@ mod tests {
         );
 
         manager.unregister_source_ip("10.200.0.2").await;
-        let _new_session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let new_session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         release.add_permits(2);
         assert!(
             !third.await,
@@ -739,6 +856,13 @@ mod tests {
             .map(|line| line["host"].as_str().unwrap())
             .collect();
         assert_eq!(hosts, ["first.test", "second.test"]);
+        let observation = new_session
+            .close_for_upload(RunId::nil(), &NetworkLogDrainCoordinator::noop())
+            .await;
+        assert!(
+            !observation.writer_backpressure_observed(),
+            "an old source generation must not mark its replacement"
+        );
     }
 
     #[tokio::test]
@@ -942,9 +1066,10 @@ mod tests {
         drop(drain_rx);
         let drain = NetworkLogDrainCoordinator::new(vec![producer]);
 
-        session.close_for_upload(RunId::nil(), &drain).await;
+        let observation = session.close_for_upload(RunId::nil(), &drain).await;
 
         assert!(!source_ip_registered(&manager, "10.200.0.2").await);
+        assert_eq!(observation.drain_status("closed"), "producer_unavailable");
         assert!(
             !manager
                 .append_for_ip(
@@ -968,10 +1093,11 @@ mod tests {
             drop(request);
         });
 
-        session.close_for_upload(RunId::nil(), &drain).await;
+        let observation = session.close_for_upload(RunId::nil(), &drain).await;
         receiver.await.unwrap();
 
         assert!(!source_ip_registered(&manager, "10.200.0.2").await);
+        assert_eq!(observation.drain_status("dropped-ack"), "ack_dropped");
         assert!(
             !manager
                 .append_for_ip(
@@ -999,11 +1125,12 @@ mod tests {
             Duration::from_millis(1),
         );
 
-        session.close_for_upload(RunId::nil(), &drain).await;
+        let observation = session.close_for_upload(RunId::nil(), &drain).await;
 
         let lines = read_json_lines(&path);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "accepted.test");
+        assert_eq!(observation.drain_status("held"), "ack_timeout");
         assert!(
             !manager
                 .append_for_ip(

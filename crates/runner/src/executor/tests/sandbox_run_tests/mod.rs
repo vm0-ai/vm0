@@ -77,6 +77,39 @@ fn assert_no_telemetry_action(telemetry: &crate::telemetry::JobTelemetry, action
     );
 }
 
+async fn capture_sandbox_run_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: std::future::Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
+fn captured_events_named<'a>(events: &'a [CapturedEvent], message: &str) -> Vec<&'a CapturedEvent> {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .collect()
+}
+
+fn assert_captured_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = event
+        .fields
+        .get(field)
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+    assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+}
+
 fn telemetry_action_outcomes(
     telemetry: &crate::telemetry::JobTelemetry,
     action: &str,

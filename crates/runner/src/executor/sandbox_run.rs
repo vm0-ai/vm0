@@ -448,7 +448,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     let mut used_retry = false;
-    let mut dns_retry_started: Option<Instant> = None;
+    let mut dns_retry: Option<(Instant, bool)> = None;
     let prepared = loop {
         let result = create_started_sandbox(
             factory,
@@ -464,13 +464,20 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         )
         .await;
 
-        if let Some(started) = dns_retry_started.take() {
+        if let Some((started, workspace_fallback)) = dns_retry.take() {
             let success = result.is_ok();
             telemetry.record(
                 RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY,
                 started.elapsed(),
                 success,
                 (!success).then_some(DNS_READINESS_RETRY_PREPARE_FAILED),
+            );
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                success,
+                workspace_fallback,
+                "guest DNS readiness replacement completed"
             );
         }
 
@@ -551,7 +558,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 error = %failure.error,
                 "guest DNS readiness failed; retrying with a fresh sandbox attachment"
             );
-            dns_retry_started = Some(Instant::now());
+            dns_retry = Some((Instant::now(), cache_hit));
         }
 
         if cache_hit {
@@ -988,7 +995,7 @@ async fn create_started_sandbox(
                     false
                 }
             };
-        network_log_session
+        let network_log_observation = network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
         if guest_dns_readiness {
@@ -1005,6 +1012,9 @@ async fn create_started_sandbox(
                 query_observed = observation.query_observed,
                 result_observed = observation.result_observed,
                 scan_status = observation.status.as_str(),
+                dns_drain_status = network_log_observation.drain_status("dns"),
+                kmsg_drain_status = network_log_observation.drain_status("kmsg"),
+                writer_backpressure_observed = network_log_observation.writer_backpressure_observed(),
                 "guest DNS readiness network log observation"
             );
         }
