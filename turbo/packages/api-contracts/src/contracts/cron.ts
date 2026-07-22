@@ -85,6 +85,10 @@ const cronTelegramCleanupResponseSchema = z.object({
   deleted: z.number(),
 });
 
+const cronConnectorOauthStateCleanupResponseSchema = z.object({
+  deleted: z.number().int().nonnegative(),
+});
+
 const cronComputerUseScreenshotCleanupResponseSchema = z.object({
   cleaned: z.number(),
 });
@@ -355,6 +359,19 @@ export const cronTelegramCleanupContract = c.router({
   },
 });
 
+export const cronConnectorOauthStateCleanupContract = c.router({
+  cleanup: {
+    method: "GET",
+    path: "/api/cron/connector-oauth-state-cleanup",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronConnectorOauthStateCleanupResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Delete expired connector OAuth states",
+  },
+});
+
 export const cronComputerUseScreenshotCleanupContract = c.router({
   cleanup: {
     method: "GET",
@@ -559,6 +576,8 @@ export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronRefreshStoragePresignedUrlsContract =
   typeof cronRefreshStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
+export type CronConnectorOauthStateCleanupContract =
+  typeof cronConnectorOauthStateCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
@@ -580,6 +599,7 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
+  cronConnectorOauthStateCleanupResponseSchema,
   cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
