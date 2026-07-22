@@ -14,7 +14,6 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -25,7 +24,6 @@ import {
   eq,
   inArray,
   isNotNull,
-  isNull,
   lte,
   max,
   ne,
@@ -91,6 +89,7 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
+import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -1559,38 +1558,6 @@ async function loadAgentForAutoSend(
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
   return agent ?? null;
-}
-
-async function loadComputerUseHostGrantForAutoSend(args: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<{
-  readonly hostId: string;
-  readonly displayName: string;
-} | null> {
-  const [host] = await args.db
-    .select({
-      hostId: computerUseHosts.id,
-      displayName: computerUseHosts.displayName,
-    })
-    .from(chatThreads)
-    .innerJoin(
-      computerUseHosts,
-      eq(chatThreads.computerUseHostId, computerUseHosts.id),
-    )
-    .where(
-      and(
-        eq(chatThreads.id, args.threadId),
-        eq(chatThreads.userId, args.userId),
-        eq(computerUseHosts.orgId, args.orgId),
-        eq(computerUseHosts.userId, args.userId),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
-  return host ?? null;
 }
 
 async function activeChatRunExistsForThread(

@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.613.6](https://github.com/vm0-ai/vm0/compare/app-v0.613.5...app-v0.613.6) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** use canonical connector catalog items ([#22501](https://github.com/vm0-ai/vm0/issues/22501)) ([9fcde7f](https://github.com/vm0-ai/vm0/commit/9fcde7f4e7d05e5a6a54ef1457ea97399c452a7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+
+## [0.613.5](https://github.com/vm0-ai/vm0/compare/app-v0.613.4...app-v0.613.5) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+
 ## [0.613.4](https://github.com/vm0-ai/vm0/compare/app-v0.613.3...app-v0.613.4) (2026-07-22)
 
 

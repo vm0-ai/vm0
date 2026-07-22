@@ -17,24 +17,30 @@ function tokenSignature(orgId: string, userId: string): string {
     .slice(0, SIGNATURE_HEX_LENGTH);
 }
 
-function morningBriefUnsubscribeToken(orgId: string, userId: string): string {
+function buildToken(orgId: string, userId: string): string {
   return `${orgId}.${userId}.${tokenSignature(orgId, userId)}`;
 }
 
-export function buildMorningBriefManageUrl(
+/**
+ * One-click List-Unsubscribe target for email headers. Mail providers POST
+ * to this URL directly, so it must stay on the API origin.
+ */
+export function buildMorningBriefUnsubscribeUrl(
   orgId: string,
   userId: string,
 ): string {
-  const token = morningBriefUnsubscribeToken(orgId, userId);
-  return `${env("APP_URL")}/email/unsubscribe?scope=morning-brief&token=${token}`;
+  return `${env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
 }
 
-export function buildMorningBriefOneClickUnsubscribeUrl(
+/**
+ * Human-facing unsubscribe page in the platform app, used for links inside
+ * the email body. The page performs the actual unsubscribe via the API.
+ */
+export function buildMorningBriefUnsubscribePageUrl(
   orgId: string,
   userId: string,
 ): string {
-  const token = morningBriefUnsubscribeToken(orgId, userId);
-  return `${env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${token}`;
+  return `${env("APP_URL")}/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
 }
 
 export function verifyMorningBriefUnsubscribeToken(

@@ -38,6 +38,7 @@ export const ROUTES = {
   signUp: "/sign-up",
   signUpCatchAll: "/sign-up{/*path}",
   signInToken: "/sign-in-token",
+  morningBriefUnsubscribe: "/email/morning-brief/unsubscribe",
   lab: "/_/lab",
   insights: "/insights",
   usage: "/usage",

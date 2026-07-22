@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.298.0](https://github.com/vm0-ai/vm0/compare/api-v1.297.1...api-v1.298.0) (2026-07-22)
+
+
+### Features
+
+* **computer-use:** share chat thread grants with automations ([#22485](https://github.com/vm0-ai/vm0/issues/22485)) ([482c97d](https://github.com/vm0-ai/vm0/commit/482c97d79d9be463b7794a293444dda612784c78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+    * @vm0/db bumped to 1.125.3
+
+## [1.297.1](https://github.com/vm0-ai/vm0/compare/api-v1.297.0...api-v1.297.1) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+    * @vm0/db bumped to 1.125.2
+
 ## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
 
 

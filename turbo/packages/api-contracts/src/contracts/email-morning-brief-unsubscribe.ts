@@ -23,9 +23,8 @@ export const emailMorningBriefUnsubscribeContract = c.router({
     query: emailMorningBriefUnsubscribeQuerySchema,
     responses: {
       302: c.noBody(),
-      400: emailMorningBriefUnsubscribeErrorSchema,
     },
-    summary: "Redirect to the app Morning Brief unsubscribe page",
+    summary: "Redirect legacy email links to the platform unsubscribe page",
   },
   unsubscribe: {
     method: "POST",

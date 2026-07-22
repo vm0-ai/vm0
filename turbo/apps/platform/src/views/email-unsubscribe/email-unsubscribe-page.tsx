@@ -4,27 +4,20 @@ import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   confirmEmailUnsubscribe$,
-  emailUnsubscribeScope$,
   emailUnsubscribeStatus$,
   emailUnsubscribeToken$,
 } from "../../signals/email-unsubscribe/email-unsubscribe-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
+const DESCRIPTION =
+  "You will no longer receive system-initiated email notifications from VM0.";
+
 export function EmailUnsubscribePage() {
   const pageSignal = useGet(pageSignal$);
   const status = useGet(emailUnsubscribeStatus$);
-  const scope = useGet(emailUnsubscribeScope$);
   const token = useGet(emailUnsubscribeToken$);
   const confirm = useSet(confirmEmailUnsubscribe$);
-
-  const isMorningBrief = scope === "morning-brief";
-  const title = isMorningBrief
-    ? "Turn off the Morning Brief?"
-    : "Unsubscribe from email notifications?";
-  const description = isMorningBrief
-    ? "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings."
-    : "You will no longer receive system-initiated email notifications from VM0.";
 
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-background">
@@ -34,9 +27,9 @@ export function EmailUnsubscribePage() {
           <div className="flex flex-col items-center gap-2.5">
             <IconCheck size={20} className="text-muted-foreground" />
             <h1 className="text-lg font-medium text-foreground">
-              {isMorningBrief ? "Morning Brief turned off" : "Unsubscribed"}
+              Unsubscribed
             </h1>
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-sm text-muted-foreground">{DESCRIPTION}</p>
           </div>
         ) : status === "error" || !token ? (
           <div className="flex flex-col items-center gap-2.5">
@@ -52,8 +45,10 @@ export function EmailUnsubscribePage() {
         ) : (
           <div className="flex flex-col items-center gap-4">
             <div className="flex flex-col items-center gap-2.5">
-              <h1 className="text-lg font-medium text-foreground">{title}</h1>
-              <p className="text-sm text-muted-foreground">{description}</p>
+              <h1 className="text-lg font-medium text-foreground">
+                Unsubscribe from email notifications?
+              </h1>
+              <p className="text-sm text-muted-foreground">{DESCRIPTION}</p>
             </div>
             <Button
               disabled={status === "submitting"}
@@ -64,7 +59,7 @@ export function EmailUnsubscribePage() {
               {status === "submitting" ? (
                 <IconLoader2 size={16} className="animate-spin" />
               ) : null}
-              {isMorningBrief ? "Turn off Morning Brief" : "Unsubscribe"}
+              Unsubscribe
             </Button>
           </div>
         )}

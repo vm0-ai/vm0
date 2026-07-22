@@ -69,8 +69,7 @@ const artifactItemSchema = z.object({
   url: z.string(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
-  // Require this after the API-only preparation release is deployed.
-  updatedAt: z.string().optional(),
+  updatedAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });

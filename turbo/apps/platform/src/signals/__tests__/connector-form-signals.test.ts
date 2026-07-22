@@ -41,7 +41,7 @@ describe("connector form signals", () => {
     ).toStrictEqual({});
 
     context.store.set(setConnectorOAuthDeviceAuthStartOptionValue$, {
-      type: "connector-a",
+      connectorRef: "connector-a",
       authMethod: "device-auth-a",
       name: "region",
       value: "us-west",

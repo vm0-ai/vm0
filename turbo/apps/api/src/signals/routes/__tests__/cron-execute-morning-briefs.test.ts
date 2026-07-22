@@ -532,19 +532,31 @@ describe("cron execute morning briefs", () => {
     expect(email.headers?.["List-Unsubscribe"]).toContain(
       "/api/email/morning-brief/unsubscribe",
     );
-    // The body manage link points at the app confirmation page.
-    expect(email.html).toContain("/email/unsubscribe?scope=morning-brief");
 
-    // The RFC 8058 one-click POST turns the preference off.
-    const headerUrlMatch =
-      email.headers?.["List-Unsubscribe"]?.match(/<([^>]+)>/u);
-    if (!headerUrlMatch?.[1]) {
-      throw new Error("Expected the List-Unsubscribe header URL");
+    // The email body links to the platform unsubscribe page, which performs
+    // the actual unsubscribe through the one-click POST endpoint.
+    const manageUrlMatch = email.html.match(
+      /href="([^"]*morning-brief\/unsubscribe[^"]*)"/u,
+    );
+    if (!manageUrlMatch?.[1]) {
+      throw new Error("Expected the manage link in the email");
     }
-    const oneClickUrl = new URL(headerUrlMatch[1]);
+    const manageUrl = new URL(manageUrlMatch[1].replaceAll("&amp;", "&"));
+    expect(manageUrl.pathname).toBe("/email/morning-brief/unsubscribe");
+    const token = manageUrl.searchParams.get("token");
+    expect(token).toBeTruthy();
+
+    // Legacy links in already-sent emails hit the API GET route, which now
+    // forwards to the platform page with the token preserved.
+    const legacyResponse = await createApp({ signal: context.signal }).request(
+      `/api/email/morning-brief/unsubscribe?token=${token}`,
+    );
+    expect(legacyResponse.status).toBe(302);
+    expect(legacyResponse.headers.get("Location")).toBe(manageUrl.toString());
+
     const unsubscribeResponse = await createApp({
       signal: context.signal,
-    }).request(`${oneClickUrl.pathname}${oneClickUrl.search}`, {
+    }).request(`/api/email/morning-brief/unsubscribe?token=${token}`, {
       method: "POST",
     });
     expect(unsubscribeResponse.status).toBe(200);
