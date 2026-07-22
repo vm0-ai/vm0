@@ -105,7 +105,7 @@ declare -a PRIMARY_UNITS=()
 discover_primary_units() {
   local output unit rest suffix
   if ! output=$(sudo systemctl list-units \
-    --all --no-legend --plain "${UNIT_PREFIX}*.service" 2>&1); then
+    --all --full --no-legend --plain "${UNIT_PREFIX}*.service" 2>&1); then
     printf '%s\n' "$output" >&2
     return 1
   fi
