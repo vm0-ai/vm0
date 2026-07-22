@@ -465,11 +465,12 @@ publish() {
     ' > "$manifest_tmp"
   mv -f "$manifest_tmp" "${OUTPUT_DIR}/manifest.json"
 
-  MANIFEST_PATH="${OUTPUT_DIR}/manifest.json" \
-  EXPECTED_TARGET="$FRESH_TARGET" \
-  EXPECTED_BINARY_INPUT_DIGEST="$FRESH_BINARY_INPUT_DIGEST" \
-  EXPECTED_REPOSITORY="$PRODUCER_REPOSITORY" \
-  EXPECTED_WORKFLOW_PATH="${PRODUCER_WORKFLOW_PATH:-$RUNNER_BINARY_WORKFLOW_PATH}" \
+  env GITHUB_OUTPUT= \
+    MANIFEST_PATH="${OUTPUT_DIR}/manifest.json" \
+    EXPECTED_TARGET="$FRESH_TARGET" \
+    EXPECTED_BINARY_INPUT_DIGEST="$FRESH_BINARY_INPUT_DIGEST" \
+    EXPECTED_REPOSITORY="$PRODUCER_REPOSITORY" \
+    EXPECTED_WORKFLOW_PATH="${PRODUCER_WORKFLOW_PATH:-$RUNNER_BINARY_WORKFLOW_PATH}" \
     "$0" manifest-validate >/dev/null
 
   emit "published" "true"
@@ -518,7 +519,6 @@ validate_resolution_context() {
 
 collect_trusted_candidates() {
   local expected_target=$1 expected_digest=$2 output_dir=$3
-  validate_resolution_context
   mkdir -p "$output_dir"
 
   local artifact_name_value artifacts_json
@@ -602,7 +602,6 @@ collect_trusted_candidates() {
   while IFS=$'\t' read -r rank artifact_created artifact_id artifact_run_id source artifact_head_sha; do
     [ -n "$artifact_run_id" ] || continue
     if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ]; then
-      limit_reached=true
       break
     fi
     inspected=$((inspected + 1))
@@ -657,7 +656,8 @@ collect_trusted_candidates() {
       continue
     fi
     manifest_path="${manifest_candidates[0]}"
-    if ! MANIFEST_PATH="$manifest_path" \
+    if ! env GITHUB_OUTPUT= \
+      MANIFEST_PATH="$manifest_path" \
       EXPECTED_TARGET="$expected_target" \
       EXPECTED_BINARY_INPUT_DIGEST="$expected_digest" \
       EXPECTED_REPOSITORY="$REPO" \
@@ -740,6 +740,7 @@ shadow_resolve() {
     exit 2
   fi
   mkdir -p "$SHADOW_OUTPUT_DIR"
+  validate_resolution_context
 
   if ! collect_trusted_candidates \
     "$FRESH_TARGET" "$FRESH_BINARY_INPUT_DIGEST" "$SHADOW_OUTPUT_DIR"; then
@@ -881,14 +882,14 @@ active_resolve() {
     runnerSizeBytes: .runner.sizeBytes,
     guestSha256: .guests
   }' "$TRUSTED_MANIFEST_PATH" > "${transport_dir}/metadata.json"
-  FRESH_METADATA_PATH="${transport_dir}/metadata.json" \
-  RUNNER_PATH="${transport_dir}/runner" \
-  EXPECTED_TARGET="$EXPECTED_TARGET" \
-  EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
+  env GITHUB_OUTPUT= \
+    FRESH_METADATA_PATH="${transport_dir}/metadata.json" \
+    RUNNER_PATH="${transport_dir}/runner" \
+    EXPECTED_TARGET="$EXPECTED_TARGET" \
+    EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
     "$0" fresh-validate >/dev/null
   mv "$transport_dir" "$RESOLVE_OUTPUT_DIR"
 
-  emit "binary-input-digest" "$EXPECTED_BINARY_INPUT_DIGEST"
   emit "runner-size-bytes" "$runner_size"
   emit "object-size-bytes" "$object_size"
   resolve_result "hit" "$TRUSTED_SOURCE" "validated" "$TRUSTED_RUN_ID"
