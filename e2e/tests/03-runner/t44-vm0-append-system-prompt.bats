@@ -60,7 +60,7 @@ teardown_file() {
         '{"appendSystemPrompt":"Your name is Aria."}'
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo hello"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 }

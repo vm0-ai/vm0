@@ -103,7 +103,7 @@ describe("zero logs search command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -523,6 +523,6 @@ describe("zero logs search command", () => {
     ).rejects.toThrow();
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errorCalls).toContain("Not authenticated");
+    expect(errorCalls).toContain("Authentication failed");
   });
 });

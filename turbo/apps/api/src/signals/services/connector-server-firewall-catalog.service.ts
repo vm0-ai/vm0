@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -48,7 +48,7 @@ type AcceptedServerFirewall =
   ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
 
 export interface ConnectorServerFirewallPermissionIndex {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly permissionNames: ReadonlySet<string>;
   readonly permissionDescriptions: ReadonlyMap<string, string>;
@@ -66,7 +66,7 @@ export interface ConnectorServerFirewallExecutionBaseUrlTemplate {
 }
 
 export interface ConnectorServerFirewallExecutionMetadata {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly billable: boolean;
   readonly baseUrlVarNames: readonly string[];
   readonly baseUrlTemplates: readonly ConnectorServerFirewallExecutionBaseUrlTemplate[];
@@ -75,24 +75,24 @@ export interface ConnectorServerFirewallExecutionMetadata {
 }
 
 export interface ConnectorServerFirewallRoutingIndexMetadata {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly apis: readonly FirewallRoutingIndexApiMetadata[];
 }
 
 export interface ConnectorServerFirewallRoutingMetadata {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly apis: readonly FirewallRoutingApiMetadata[];
 }
 
 export interface ConnectorServerFirewallHostOwner {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
 }
 
 interface ConnectorServerFirewallShadowItem {
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly billable: boolean;
   readonly permissionCount: number;
@@ -108,7 +108,7 @@ interface ConnectorServerFirewallShadowItem {
 
 interface ConnectorServerFirewallShadowHostOwner {
   readonly host: string;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
 }
 
 export interface ConnectorServerFirewallShadowProjection {
@@ -117,7 +117,7 @@ export interface ConnectorServerFirewallShadowProjection {
 }
 
 export interface ConnectorServerFirewallCatalog {
-  readonly connectorRefs: readonly ConnectorCatalogRef[];
+  readonly connectorRefs: readonly ConnectorRef[];
   has(connectorRef: string): boolean;
   getExecutionMetadata(
     connectorRef: string,
@@ -488,7 +488,7 @@ function externalShadowItem(args: {
 }
 
 function staticPermissionIndex(
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
   index: NonNullable<Awaited<ReturnType<typeof loadFirewallPermissionIndex>>>,
 ): ConnectorServerFirewallPermissionIndex {
   return {
@@ -505,7 +505,7 @@ function staticPermissionIndex(
 }
 
 function staticExecutionMetadata(
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
 ): ConnectorServerFirewallExecutionMetadata | null {
   const metadata = getFirewallExecutionMetadata(connectorRef);
   if (!metadata) {
@@ -522,7 +522,7 @@ function staticExecutionMetadata(
 }
 
 function staticRoutingIndexMetadata(
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
 ): ConnectorServerFirewallRoutingIndexMetadata | null {
   const metadata = getFirewallRoutingIndexMetadata(connectorRef);
   if (!metadata) {
@@ -536,7 +536,7 @@ function staticRoutingIndexMetadata(
 }
 
 async function staticRoutingMetadata(
-  connectorRef: ConnectorCatalogRef,
+  connectorRef: ConnectorRef,
 ): Promise<ConnectorServerFirewallRoutingMetadata | null> {
   const metadata = await loadFirewallRoutingMetadata(connectorRef);
   if (!metadata) {
@@ -549,7 +549,7 @@ async function staticRoutingMetadata(
   };
 }
 
-function staticCompactMetadata(connectorRef: ConnectorCatalogRef): {
+function staticCompactMetadata(connectorRef: ConnectorRef): {
   readonly execution: ConnectorServerFirewallExecutionMetadata;
   readonly routing: ConnectorServerFirewallRoutingIndexMetadata;
   readonly summary: NonNullable<
@@ -571,10 +571,10 @@ function staticCompactMetadata(connectorRef: ConnectorCatalogRef): {
 }
 
 export function createStaticConnectorServerFirewallCatalog(
-  connectorRefs: readonly ConnectorCatalogRef[],
+  connectorRefs: readonly ConnectorRef[],
 ): ConnectorServerFirewallCatalog {
   const compactMetadata = new Map<
-    ConnectorCatalogRef,
+    ConnectorRef,
     NonNullable<ReturnType<typeof staticCompactMetadata>>
   >();
   for (const connectorRef of connectorRefs) {
@@ -687,10 +687,10 @@ function externalEntries(args: {
   readonly publicArtifact: ConnectorCatalogPublicArtifact;
   readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
   readonly runtimeMethodsByRef: ReadonlyMap<
-    ConnectorCatalogRef,
+    ConnectorRef,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
-}): ReadonlyMap<ConnectorCatalogRef, ExternalConnectorServerFirewallEntry> {
+}): ReadonlyMap<ConnectorRef, ExternalConnectorServerFirewallEntry> {
   const expectedRefs = args.publicArtifact.connectors
     .filter((connector) => {
       return connector.firewall.kind === "generated";
@@ -709,10 +709,7 @@ function externalEntries(args: {
       "Accepted connector server firewall identities are incomplete",
     );
   }
-  const entries = new Map<
-    ConnectorCatalogRef,
-    ExternalConnectorServerFirewallEntry
-  >();
+  const entries = new Map<ConnectorRef, ExternalConnectorServerFirewallEntry>();
   for (const firewall of args.privateFirewallsArtifact.connectors) {
     if (entries.has(firewall.connectorRef)) {
       throw new Error(
@@ -780,7 +777,7 @@ export function createExternalConnectorServerFirewallCatalog(args: {
   readonly publicArtifact: ConnectorCatalogPublicArtifact;
   readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
   readonly runtimeMethodsByRef: ReadonlyMap<
-    ConnectorCatalogRef,
+    ConnectorRef,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
 }): ConnectorServerFirewallCatalog {

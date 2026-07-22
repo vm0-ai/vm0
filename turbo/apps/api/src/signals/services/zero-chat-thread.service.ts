@@ -166,6 +166,7 @@ const artifactListSqlRowSchema = z.object({
   preview_image_url: z.string().nullable(),
   metadata: z.unknown(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
+  updated_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
   cursor_updated_at: z.string().optional(),
   thread_id: z.string(),
@@ -797,12 +798,11 @@ export function zeroChatThreadUnreads(args: {
         unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
-      .leftJoinLateral(lastRunFinish, sql`true`)
+      .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -814,14 +814,8 @@ export function zeroChatThreadUnreads(args: {
             : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
-    return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastRunFinish.createdAt) filter
-      // guarantees a joined row, but the left-lateral type keeps the column
-      // nullable.
-      if (row.unreadAt === null) {
-        return [];
-      }
-      return [{ threadId: row.threadId, unreadAt: row.unreadAt.toISOString() }];
+    return rows.map((row) => {
+      return { threadId: row.threadId, unreadAt: row.unreadAt.toISOString() };
     });
   });
 }
@@ -842,12 +836,11 @@ export function zeroChatThreadUnreadAgentIds(args: {
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoinLateral(lastRunFinish, sql`true`)
+      .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -1089,6 +1082,7 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     size: row.size_bytes ?? 0,
     url: row.url,
     createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
@@ -1265,6 +1259,7 @@ async function listChangedArtifacts(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
@@ -1321,7 +1316,7 @@ async function listArtifactHistory(args: {
   // and hosted-run shadowing, so this query avoids a history-wide URL sort.
   const keysetClause = args.cursor
     ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql``;
+    : sql.empty();
   const conditions = artifactVisibilityConditions(args.query);
   const rows = await executeRawRows(
     args.db,
@@ -1337,6 +1332,7 @@ async function listArtifactHistory(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         ${chatThreads.id} AS thread_id,
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
@@ -1682,7 +1678,7 @@ async function loadChatSearchContexts(
       matchedChatMessage,
       sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
     )
-    .innerJoinLateral(context, sql`true`)
+    .crossJoinLateral(context)
     .orderBy(resultOrdinality, asc(context.createdAt));
 
   for (const row of rows) {

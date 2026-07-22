@@ -53,9 +53,9 @@ teardown_file() {
     # Initial turn: creates a codex thread and writes the first mock session file.
     run run_compose_fixture "$AGENT_NAME" "first turn"
     assert_success
-    assert_output --partial "▷ Codex Started"
-    assert_output --partial "● first turn"
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "first turn"
+    assert_output --partial '"type":"turn.completed"'
 
     local session_id
     session_id=$(run_fixture_field "$output" '.sessionId')
@@ -71,7 +71,7 @@ teardown_file() {
     # Codex's rollout filename shape, and the next turn renders.
     run continue_run_fixture "$session_id" "second turn"
     assert_success
-    assert_output --partial "▷ Codex Started"
-    assert_output --partial "● second turn"
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "second turn"
+    assert_output --partial '"type":"turn.completed"'
 }

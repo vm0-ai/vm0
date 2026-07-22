@@ -81,7 +81,7 @@ function runnerStateHas(args: {
 }): SQL {
   const runnerCondition = args.runnerId
     ? sql`AND ${eq(runnerState.runnerId, args.runnerId)}`
-    : sql``;
+    : sql.empty();
   return sql`EXISTS (
     SELECT 1
     FROM ${runnerState}

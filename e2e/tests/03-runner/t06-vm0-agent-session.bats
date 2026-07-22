@@ -97,8 +97,8 @@ teardown_file() {
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
-    assert_output --partial "● Bash("
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"name":"Bash"'
+    assert_output --partial '"subtype":"success"'
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     local session_id
@@ -126,7 +126,7 @@ teardown_file() {
     run continue_run_fixture "$session_id" "ls && cat counter.txt"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
 
     # Verify LATEST version is used (not checkpoint version)
     # Should see external.txt (added after checkpoint)
@@ -169,7 +169,7 @@ teardown_file() {
             }')"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "initial-content"
 
     local session_id
@@ -193,7 +193,7 @@ teardown_file() {
     run continue_run_fixture "$session_id" "cat testfile.txt"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
 
     # Should see updated content (latest artifact version)
     assert_output --partial "updated-content"
@@ -274,7 +274,7 @@ EOF
 
     # Should succeed with the explicitly supplied refreshed value.
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"

@@ -786,7 +786,7 @@ export {
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorEnvBindings,
   type ConnectorEnvBindingValue,
 } from "@vm0/connectors/connectors";
@@ -1037,7 +1037,6 @@ export {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
-  type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
@@ -1077,14 +1076,11 @@ export {
   type ConnectorCheckRequest,
   type ZeroConnectorCheckContract,
 } from "./zero-connector-check";
-export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
-  CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
-  CONNECTOR_CATALOG_REF_MAX_LENGTH,
-  connectorCatalogAuthMethodIdSchema,
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,

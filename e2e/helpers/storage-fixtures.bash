@@ -68,7 +68,7 @@ seed_storage_fixture() (
         '{storageName: $storageName, storageType: $storageType, files: $files[0]}' > "$prepare_payload"
 
     local prepare_response version_id existing
-    prepare_response="$(zero_curl "/api/storages/prepare" -X POST --data-binary "@$prepare_payload")"
+    prepare_response="$(e2e_api_curl "/api/storages/prepare" -X POST --data-binary "@$prepare_payload")"
     version_id="$(jq -er '.versionId | select(length > 0)' <<< "$prepare_response")"
     existing="$(jq -r '.existing' <<< "$prepare_response")"
 
@@ -112,6 +112,6 @@ seed_storage_fixture() (
         --slurpfile files "$files_json" \
         '{storageName: $storageName, storageType: $storageType, versionId: $versionId, files: $files[0]}' > "$commit_payload"
 
-    zero_curl "/api/storages/commit" -X POST --data-binary "@$commit_payload" >/dev/null
+    e2e_api_curl "/api/storages/commit" -X POST --data-binary "@$commit_payload" >/dev/null
     printf '%s\n' "$version_id"
 )

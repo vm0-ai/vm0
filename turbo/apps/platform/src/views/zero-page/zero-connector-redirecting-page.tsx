@@ -1,5 +1,5 @@
 import { IconAlertCircle, IconLoader2 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   getStaticConnectorIconMetadata,
   isStaticConnectorIconType,
@@ -14,7 +14,7 @@ export function ZeroConnectorRedirectingPage({
   connectorLabel,
   status,
 }: {
-  readonly connectorType: ConnectorCatalogRef | null;
+  readonly connectorType: ConnectorRef | null;
   readonly connectorLabel: string;
   readonly status: ConnectorRedirectingStatus;
 }) {

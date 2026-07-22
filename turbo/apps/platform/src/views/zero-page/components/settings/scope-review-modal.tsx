@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -13,9 +13,9 @@ import {
 } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ScopeReviewModalProps {
-  connectorType: ConnectorType | null;
+  connectorType: ConnectorRef | null;
   onClose: () => void;
-  onReconnect: (type: ConnectorType) => void;
+  onReconnect: (type: ConnectorRef) => void;
 }
 
 export function ScopeReviewModal({

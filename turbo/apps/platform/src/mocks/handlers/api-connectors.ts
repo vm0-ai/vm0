@@ -1,14 +1,14 @@
 import {
   CONNECTOR_TYPE_KEYS,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorType,
   CONNECTOR_TYPES,
   connectorDisplayCategoryMetadataForItems,
 } from "@vm0/connectors/connectors";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorExternalCodeSessionStartResponse,
@@ -73,7 +73,7 @@ let mockExternalCodeSessionStartResponse:
   | undefined;
 
 function createMockOauthDeviceAuthConnector(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00Z";
   return {
@@ -93,7 +93,7 @@ function createMockOauthDeviceAuthConnector(
 }
 
 function defaultOauthDeviceAuthSessionStartResponse(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
 ): ConnectorOauthDeviceAuthSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000001",
@@ -109,8 +109,8 @@ function defaultOauthDeviceAuthSessionStartResponse(
 }
 
 function createMockLocalGrantConnector(
-  type: ConnectorCatalogRef,
-  authMethod: ConnectorCatalogAuthMethodId,
+  type: ConnectorRef,
+  authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
@@ -129,8 +129,8 @@ function createMockLocalGrantConnector(
 }
 
 function createMockExternalCodeConnector(
-  type: ConnectorCatalogRef,
-  authMethod: ConnectorCatalogAuthMethodId,
+  type: ConnectorRef,
+  authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00.000Z";
   return {
@@ -150,7 +150,7 @@ function createMockExternalCodeConnector(
 }
 
 function defaultExternalCodeSessionStartResponse(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
 ): ConnectorExternalCodeSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000002",
@@ -283,8 +283,8 @@ function mockConnectionForCatalogStatus(
 
 function mockSingleAuthCodeAuthMethodId(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): ConnectorAuthMethodId | null {
+  authMethods: readonly ConnectorRegistryAuthMethodId[],
+): ConnectorRegistryAuthMethodId | null {
   const [authMethod] = authMethods;
   if (authMethods.length !== 1 || !authMethod) {
     return null;
@@ -343,7 +343,7 @@ function mockStartOptionsForCatalog(
 
 function mockConnectorCatalogStatusItem(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
+  authMethods: readonly ConnectorRegistryAuthMethodId[],
   connector: ConnectorResponse | null,
 ): PublicConnectorCatalogStatusItem {
   const config = CONNECTOR_TYPES[type];

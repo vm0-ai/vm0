@@ -31,8 +31,8 @@ use super::super::{
     execute_job_reuse, job_terminal_wait_timeout,
 };
 use super::support::{
-    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_storage,
-    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_artifact,
+    api_storage, assert_proxy_registry_empty, create_overridden_sandbox, default_params,
     make_reusable_idle_sandbox, minimal_context, run_new_sandbox_outcome, run_new_sandbox_status,
     sandbox_create_error, sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache,
     test_budget_lease, test_device_rate_limits, test_executor_config, test_telemetry,

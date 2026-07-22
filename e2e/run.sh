@@ -23,9 +23,9 @@ if [[ ! -f "$BATS_BIN" ]]; then
     fi
 fi
 
-# Build the CLI before testing
-echo -e "${YELLOW}Building vm0-cli...${NC}"
-(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter vm0-cli)
+# Build the supported Zero CLI before testing
+echo -e "${YELLOW}Building Zero CLI...${NC}"
+(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/cli)
 
 # Ensure CLI is available globally
 echo -e "${YELLOW}Linking CLI globally...${NC}"

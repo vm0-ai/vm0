@@ -1,25 +1,21 @@
 import { z } from "zod";
 
-import { CONNECTOR_REF_MAX_LENGTH } from "./connector-ref";
+const CONNECTOR_REF_MAX_LENGTH = 64;
+const CONNECTOR_AUTH_METHOD_ID_MAX_LENGTH = 50;
 
-export const CONNECTOR_CATALOG_REF_MAX_LENGTH = CONNECTOR_REF_MAX_LENGTH;
-export const CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH = 50;
+const connectorIdentityPattern = /^[a-z0-9][a-z0-9-]*$/u;
 
-const connectorCatalogIdentityPattern = /^[a-z0-9][a-z0-9-]*$/u;
-
-export const connectorCatalogRefSchema = z
+export const connectorRefSchema = z
   .string()
   .min(1)
-  .max(CONNECTOR_CATALOG_REF_MAX_LENGTH)
-  .regex(connectorCatalogIdentityPattern);
+  .max(CONNECTOR_REF_MAX_LENGTH)
+  .regex(connectorIdentityPattern);
 
-export const connectorCatalogAuthMethodIdSchema = z
+export const connectorAuthMethodIdSchema = z
   .string()
   .min(1)
-  .max(CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH)
-  .regex(connectorCatalogIdentityPattern);
+  .max(CONNECTOR_AUTH_METHOD_ID_MAX_LENGTH)
+  .regex(connectorIdentityPattern);
 
-export type ConnectorCatalogRef = z.infer<typeof connectorCatalogRefSchema>;
-export type ConnectorCatalogAuthMethodId = z.infer<
-  typeof connectorCatalogAuthMethodIdSchema
->;
+export type ConnectorRef = z.infer<typeof connectorRefSchema>;
+export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;

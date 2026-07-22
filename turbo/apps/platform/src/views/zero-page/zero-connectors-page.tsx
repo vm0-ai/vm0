@@ -17,7 +17,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -37,7 +37,6 @@ import {
   connectFlowType$,
   connectorsSearch$,
   connectorsConnectionFilter$,
-  closePermissionDialog$,
   disconnectConnector$,
   filteredConnectorTypes$,
   setConnectorsConnectionFilter$,
@@ -49,7 +48,6 @@ import {
   justConnectedTypes$,
   scopeReviewType$,
   setScopeReviewType$,
-  permissionDialog$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
@@ -73,7 +71,6 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
-import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
   closeConnectorAccessManagement$,
@@ -551,7 +548,7 @@ function ConnectorAccessButton({
   connectorLabel,
   onClick,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
@@ -899,7 +896,7 @@ function renderBuiltinList({
 
 function connectorLabelForType(
   connectors: readonly ConnectorTypeWithStatus[],
-  type: ConnectorType | null,
+  type: ConnectorRef | null,
 ): string | null {
   if (!type) {
     return null;
@@ -926,8 +923,6 @@ export function ZeroConnectorsPage() {
   const setSelected = useSet(setSelectedConnectorType$);
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
-  const permissionDialog = useGet(permissionDialog$);
-  const closePermissionDialog = useSet(closePermissionDialog$);
   const managedConnectorType = useGet(managedConnectorAccessType$);
   const setManagedConnectorType = useSet(setManagedConnectorAccessType$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
@@ -962,18 +957,13 @@ export function ZeroConnectorsPage() {
       : undefined;
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const permissionDialogConnector = permissionDialog
-    ? allConnectors.find((connector) => {
-        return connector.type === permissionDialog.type;
-      })
-    : undefined;
   const managedConnectorLabel = connectorLabelForType(
     allConnectors,
     managedConnectorType,
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
-  const connectHandler = (type: ConnectorType) => {
+  const connectHandler = (type: ConnectorRef) => {
     const ct = filteredConnectors.find((c) => {
       return c.type === type;
     });
@@ -992,12 +982,7 @@ export function ZeroConnectorsPage() {
         return;
       }
       detach(
-        connect(
-          type,
-          authMethod,
-          { showPermissionDialog: true, connectorLabel: ct.label },
-          signal,
-        ),
+        connect(type, authMethod, { connectorLabel: ct.label }, signal),
         Reason.DomCallback,
       );
       return;
@@ -1012,7 +997,7 @@ export function ZeroConnectorsPage() {
         {
           type,
           authMethod,
-          options: { showPermissionDialog: true, connectorLabel: ct.label },
+          options: { connectorLabel: ct.label },
         },
         signal,
       ),
@@ -1021,7 +1006,7 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = async (
-    type: ConnectorType,
+    type: ConnectorRef,
     connectorLabel: string,
   ) => {
     if (disconnecting) {
@@ -1156,7 +1141,6 @@ export function ZeroConnectorsPage() {
           onClose={() => {
             return setSelected(null);
           }}
-          showPermissionDialogOnConnect
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
@@ -1198,24 +1182,12 @@ export function ZeroConnectorsPage() {
               connect(
                 type,
                 authMethod,
-                {
-                  showPermissionDialog: true,
-                  connectorLabel: connector.label,
-                },
+                { connectorLabel: connector.label },
                 signal,
               ),
               Reason.DomCallback,
             );
           }}
-        />
-      )}
-
-      {permissionDialog && (
-        <ConnectorPermissionDialog
-          connectorType={permissionDialog.type}
-          connectorLabel={permissionDialog.label}
-          icon={permissionDialogConnector?.icon}
-          onClose={closePermissionDialog}
         />
       )}
 

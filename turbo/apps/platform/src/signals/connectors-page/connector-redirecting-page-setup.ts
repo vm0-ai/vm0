@@ -1,6 +1,6 @@
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { command } from "ccstate";
 import { createElement } from "react";
@@ -11,10 +11,8 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import type { ConnectorRedirectingStatus } from "./connector-redirecting.ts";
 
-function connectorTypeFromPath(
-  value: string | undefined,
-): ConnectorCatalogRef | null {
-  const parsed = connectorCatalogRefSchema.safeParse(value?.toLowerCase());
+function connectorTypeFromPath(value: string | undefined): ConnectorRef | null {
+  const parsed = connectorRefSchema.safeParse(value?.toLowerCase());
   return parsed.success ? parsed.data : null;
 }
 

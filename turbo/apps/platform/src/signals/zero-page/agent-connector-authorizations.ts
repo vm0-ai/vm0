@@ -1,12 +1,12 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 export interface AgentConnectorAuthorizations {
   readonly agentId: string;
-  readonly enabledTypes: readonly ConnectorCatalogRef[];
+  readonly enabledTypes: readonly ConnectorRef[];
 }
 
 const internalAgentConnectorAuthorizationsReload$ = state(0);
@@ -68,7 +68,7 @@ export function agentConnectorAuthorizations(params: {
 
 export function isAgentConnectorAuthorized(params: {
   readonly agentId: string;
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const authorizations = await get(

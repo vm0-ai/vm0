@@ -20,7 +20,7 @@ import {
   IconMessageCircle,
   IconWand,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -483,8 +483,8 @@ export function ConnectedConnectorPermissions({
   setSearchActive: (active: boolean) => void;
   savingType: string | null;
   canManagePermissions: boolean;
-  onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
-  onManage: (type: ConnectorType) => void;
+  onToggle: (type: ConnectorRef, checked: boolean) => Promise<void>;
+  onManage: (type: ConnectorRef) => void;
 }) {
   return (
     <>
@@ -602,7 +602,7 @@ export function AgentPermissionsDrawer({
 }: {
   targetId: string;
   targetKind?: "agent" | "workflow";
-  connectorType: ConnectorType | null;
+  connectorType: ConnectorRef | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -705,7 +705,7 @@ function JobPermissionsTab({
   });
   const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = async (type: ConnectorType, checked: boolean) => {
+  const handleToggle = async (type: ConnectorRef, checked: boolean) => {
     if (savingType !== null) {
       return;
     }

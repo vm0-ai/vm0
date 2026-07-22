@@ -95,15 +95,16 @@ resolve() {
     echo "missing HEAD_SHA or GITHUB_SHA" >&2
     exit 2
   fi
+  local source_head_sha="${SOURCE_HEAD_SHA:-$head_sha}"
 
-  local job_ref="" release_skip="false" skip_reason=""
+  local job_ref="" release_skip="false" skip_reason="" pr_number="" pr_head_ref=""
 
   case "$EVENT_NAME" in
     pull_request)
       require_env PR_NUMBER
-      local pr_number
       pr_number=$(env_value PR_NUMBER)
       local head_ref="${HEAD_REF:-}"
+      pr_head_ref="$head_ref"
       if [[ "$head_ref" == release-please--branches--* ]]; then
         release_skip="true"
         skip_reason="release-please-pr"
@@ -125,7 +126,6 @@ resolve() {
       ;;
     merge_group)
       require_env MQ_HEAD_REF
-      local pr_number
       pr_number=$(printf '%s\n' "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//' || true)
       if [ -z "$pr_number" ]; then
         echo "failed to extract PR number from merge_group head_ref: ${MQ_HEAD_REF}" >&2
@@ -133,6 +133,7 @@ resolve() {
       fi
       local branch
       branch=$(pr_branch "$pr_number")
+      pr_head_ref="$branch"
       if [[ "$branch" == release-please--branches--* ]]; then
         release_skip="true"
         skip_reason="release-please-merge-queue"
@@ -158,6 +159,9 @@ resolve() {
   emit "skip-reason" "$skip_reason"
   emit "job-ref" "$job_ref"
   emit "head-sha" "$head_sha"
+  emit "source-head-sha" "$source_head_sha"
+  emit "pr-number" "$pr_number"
+  emit "pr-head-ref" "$pr_head_ref"
 }
 
 needed() {

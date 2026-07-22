@@ -1,8 +1,8 @@
-import { connectorCatalogAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 import {
-  connectorCatalogVersionSchema,
   connectorRefSchema,
+  connectorCatalogVersionSchema,
   privateNameSchema,
 } from "./common";
 
@@ -14,7 +14,7 @@ export const connectorFeatureSwitchKeySchema = z
 export const internalOptionNameSchema = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/u);
-export const connectorAuthMethodIdSchema = connectorCatalogAuthMethodIdSchema;
+export { connectorAuthMethodIdSchema };
 const connectorCategoryIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const connectorGenerationTypeSchema = z.enum([
   "audio",
