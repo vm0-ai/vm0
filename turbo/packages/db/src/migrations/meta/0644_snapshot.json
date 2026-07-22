@@ -1,5 +1,5 @@
 {
-  "id": "104b84c9-4d5c-4a44-8033-3baaf095f170",
+  "id": "d1eb4b24-4efa-492b-a14c-0167ba407231",
   "prevId": "1c47fb7c-62e7-4bd5-8eb6-495342f9084c",
   "version": "7",
   "dialect": "postgresql",
@@ -5924,6 +5924,13 @@
           "primaryKey": true,
           "notNull": true
         },
+        "purpose": {
+          "name": "purpose",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'cli'"
+        },
         "status": {
           "name": "status",
           "type": "device_code_status",
@@ -5941,6 +5948,48 @@
         "org_id": {
           "name": "org_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ble_session_nonce": {
+          "name": "ble_session_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poll_token_hash": {
+          "name": "poll_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poll_interval_seconds": {
+          "name": "poll_interval_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cli_token_id": {
+          "name": "cli_token_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -19693,6 +19742,9 @@
       "values": [
         "pending",
         "authenticated",
+        "approved",
+        "consumed",
+        "expired",
         "denied"
       ]
     },

@@ -98,7 +98,12 @@ const exchangeTokenInner$ = command(
     const writeDb = set(writeDb$);
     const deviceCode = bodyResult.data.device_code;
     const [session] = await writeDb
-      .select()
+      .select({
+        status: deviceCodes.status,
+        userId: deviceCodes.userId,
+        orgId: deviceCodes.orgId,
+        expiresAt: deviceCodes.expiresAt,
+      })
       .from(deviceCodes)
       .where(eq(deviceCodes.code, deviceCode))
       .limit(1);
@@ -190,7 +195,7 @@ const approveDeviceInner$ = command(
       .toUpperCase();
     const writeDb = set(writeDb$);
     const [session] = await writeDb
-      .select()
+      .select({ expiresAt: deviceCodes.expiresAt })
       .from(deviceCodes)
       .where(
         and(
