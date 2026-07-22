@@ -1894,7 +1894,7 @@ async function resolveQueuedMessageModelRoute(args: {
   };
 }
 
-async function buildCreateQueuedChatRunInput(args: {
+interface CreateQueuedChatRunInputArgs {
   readonly db: Db;
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly threadId: string;
@@ -1902,7 +1902,32 @@ async function buildCreateQueuedChatRunInput(args: {
   readonly agent: AgentForAutoSend;
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreateQueuedChatRunInput | null> {
+}
+
+function loadQueuedMessageSessionState(args: CreateQueuedChatRunInputArgs) {
+  return measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+    "nested",
+    () => {
+      return Promise.all([
+        latestSessionForThreadFromDb(
+          args.db,
+          args.threadId,
+          args.queuedMessage.triggerSource,
+        ),
+        args.queuedMessage.triggerSource === "web"
+          ? loadWebChatIncompleteContext(args.db, args.threadId)
+          : Promise.resolve(""),
+        loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
+      ]);
+    },
+  );
+}
+
+async function buildCreateQueuedChatRunInput(
+  args: CreateQueuedChatRunInputArgs,
+): Promise<CreateQueuedChatRunInput | null> {
   const sourceParams = await decryptQueuedUserMessageRunParams(
     args.queuedMessage.encryptedParams,
     { orgId: args.agent.orgId, userId: args.userId },
@@ -1922,24 +1947,7 @@ async function buildCreateQueuedChatRunInput(args: {
   }
 
   const [latestSession, loadedIncompleteContext, featureSwitchContext] =
-    await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
-      "nested",
-      () => {
-        return Promise.all([
-          latestSessionForThreadFromDb(
-            args.db,
-            args.threadId,
-            args.queuedMessage.triggerSource,
-          ),
-          args.queuedMessage.triggerSource === "web"
-            ? loadWebChatIncompleteContext(args.db, args.threadId)
-            : Promise.resolve(""),
-          loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
-        ]);
-      },
-    );
+    await loadQueuedMessageSessionState(args);
   const structuredPromptEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPrompt,
     featureSwitchContext,
