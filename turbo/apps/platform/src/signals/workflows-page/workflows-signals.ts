@@ -61,6 +61,18 @@ export interface WorkflowCopyFormState {
   readonly removeOriginal: boolean;
 }
 
+export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+export type GmailTextOperator = "contains" | "doesNotContain";
+export interface GmailMatchCondition {
+  readonly field: GmailTextField;
+  readonly operator: GmailTextOperator;
+  readonly value: string;
+}
+
+function defaultGmailMatchConditions(): readonly GmailMatchCondition[] {
+  return [{ field: "from", operator: "contains", value: "" }];
+}
+
 function defaultWorkflowCopyForm(): WorkflowCopyFormState {
   return {
     selectedAgentId: null,
@@ -217,6 +229,12 @@ const internalRevealWebhookSecretAutomationId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
   Record<string, WorkflowGithubLabelActor>
+>({});
+const internalCreateGmailMatchConditions$ = state<
+  readonly GmailMatchCondition[]
+>(defaultGmailMatchConditions());
+const internalEditingGmailMatchConditions$ = state<
+  Readonly<Record<string, readonly GmailMatchCondition[]>>
 >({});
 const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
@@ -421,6 +439,8 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalCreatedWorkflowWebhookAutomation$, null);
   set(internalCreateGithubLabelActor$, "me");
   set(internalEditingGithubLabelActors$, {});
+  set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
+  set(internalEditingGmailMatchConditions$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
   set(internalWorkflowConnectorReadiness$, null);
@@ -459,6 +479,7 @@ export const setEditingWorkflowAutomationId$ = command(
     set(internalEditingWorkflowAutomationId$, automationId);
     if (!automationId) {
       set(internalEditingGithubLabelActors$, {});
+      set(internalEditingGmailMatchConditions$, {});
     }
   },
 );
@@ -498,6 +519,9 @@ export const setWorkflowAutomationCreateDialog$ = command(
     }
     if (dialog === "github-label") {
       set(internalCreateGithubLabelActor$, "me");
+    }
+    if (dialog === "gmail") {
+      set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
     }
     if (dialog === "notion-page-content-updated") {
       set(internalCreateNotionPageContentUpdatedScope$, "page");
@@ -573,6 +597,34 @@ export const setEditingGithubLabelActor$ = command(
   ) => {
     set(internalEditingGithubLabelActors$, (actors) => {
       return { ...actors, [input.automationId]: input.actor };
+    });
+  },
+);
+
+export const createGmailMatchConditions$ = computed((get) => {
+  return get(internalCreateGmailMatchConditions$);
+});
+
+export const setCreateGmailMatchConditions$ = command(
+  ({ set }, conditions: readonly GmailMatchCondition[]) => {
+    set(internalCreateGmailMatchConditions$, conditions);
+  },
+);
+
+export const editingGmailMatchConditions$ = computed((get) => {
+  return get(internalEditingGmailMatchConditions$);
+});
+
+export const setEditingGmailMatchConditions$ = command(
+  (
+    { set },
+    input: {
+      readonly automationId: string;
+      readonly conditions: readonly GmailMatchCondition[];
+    },
+  ) => {
+    set(internalEditingGmailMatchConditions$, {
+      [input.automationId]: input.conditions,
     });
   },
 );
