@@ -267,6 +267,7 @@ async function setupMorningBriefActor(
 ): Promise<Scenario> {
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
+  mockEnv("APP_URL", "https://app.vm0.test");
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
   mockNow(BEFORE_SEVEN_LOCAL);
 
@@ -364,6 +365,33 @@ async function findMorningBriefThread(scenario: Scenario): Promise<{
     throw new Error("Expected a Morning Brief chat thread");
   }
   return found;
+}
+
+function capturedMorningBriefInput(): {
+  readonly sources: Record<
+    string,
+    { readonly ok: boolean; readonly data?: { readonly threads?: unknown[] } }
+  >;
+} {
+  const put = context.mocks.s3.send.mock.calls
+    .map(([command]) => {
+      return command as {
+        readonly constructor: { readonly name: string };
+        readonly input?: { readonly Key?: string; readonly Body?: string };
+      };
+    })
+    .find((command) => {
+      return (
+        command.constructor.name === "PutObjectCommand" &&
+        command.input?.Key?.endsWith("input.json") === true
+      );
+    });
+  if (!put?.input?.Body) {
+    throw new Error("Expected the staged morning brief input.json upload");
+  }
+  return JSON.parse(put.input.Body) as ReturnType<
+    typeof capturedMorningBriefInput
+  >;
 }
 
 function mockUploadedBriefOutput(body: string): void {
@@ -561,11 +589,63 @@ describe("cron execute morning briefs", () => {
     clearMockNow();
   });
 
-  it("skips members without supported connectors", async () => {
+  it("delivers a brief from vm0 chat threads when no connectors are connected", async () => {
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-threads-only-brief" },
+      error: null,
+    });
     const scenario = await setupMorningBriefActor({ connectConnectors: false });
     mockNow(AFTER_SEVEN_LOCAL);
     await executeMorningBriefsCron();
-    await expect(findMorningBriefThreadOrNull(scenario)).resolves.toBeNull();
+
+    // The brief runs on the internal chat-threads source alone; connector
+    // sources are annotated as failed instead of gating the whole brief.
+    const { runId } = await findMorningBriefThread(scenario);
+    const input = capturedMorningBriefInput();
+    expect(input.sources.github?.ok).toBe(false);
+    expect(input.sources.gmail?.ok).toBe(false);
+    expect(input.sources.calendar?.ok).toBe(false);
+    expect(input.sources.chatThreads?.ok).toBe(true);
+    expect(input.sources.chatThreads?.data?.threads).toEqual([]);
+
+    mockUploadedBriefOutput(
+      JSON.stringify({
+        version: 1,
+        headline: "One task finished while you were away.",
+        sections: [
+          {
+            key: "unread_threads",
+            title: "Task results you haven't seen",
+            items: [
+              {
+                title: "Competitor research finished",
+                detail: "The report is ready in the thread.",
+                url: "https://app.vm0.test/chats/123e4567-e89b-12d3-a456-426614174000",
+              },
+              {
+                title: "Sketchy link that must be dropped",
+                url: "https://evil.example.com/chats/1",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    await completeMorningBriefRun(scenario, runId, 0);
+    await drainOutbox();
+
+    const emails = sentMorningBriefEmails();
+    expect(emails).toHaveLength(1);
+    const email = emails[0];
+    if (!email) {
+      throw new Error("Expected a morning brief email");
+    }
+    expect(email.html).toContain("Competitor research finished");
+    // App-origin thread links survive sanitization; foreign hosts do not.
+    expect(email.html).toContain(
+      "https://app.vm0.test/chats/123e4567-e89b-12d3-a456-426614174000",
+    );
+    expect(email.html).not.toContain("evil.example.com");
     clearMockNow();
   });
 
