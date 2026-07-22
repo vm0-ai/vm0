@@ -837,6 +837,8 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
+          # The API schema still requires VM0_WEB_URL. PRs reuse the shared
+          # marketing staging origin instead of provisioning a PR WWW origin.
           web-url: ${{ format('https://staging-www.{0}', vars.CF_PAGES_PREVIEW_DOMAIN) }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
@@ -939,6 +941,7 @@ jobs:
           environment: preview
           database-url: ${{ steps.neon.outputs.database-url }}
           job-ref: ${{ needs.prepare.outputs.job-ref }}
+          # Keep the deployed API environment aligned with the seed environment.
           web-url: ${{ format('https://staging-www.{0}', vars.CF_PAGES_PREVIEW_DOMAIN) }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
