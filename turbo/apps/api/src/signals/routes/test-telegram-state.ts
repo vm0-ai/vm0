@@ -1279,6 +1279,8 @@ async function getTelegramPostRunStateForAction(
         hasEncryptedSecret: callback.encryptedSecret !== null,
         payload: callback.payload,
         status: callback.status,
+        attempts: callback.attempts,
+        lastError: callback.lastError,
       };
     }),
     job_exists: job !== undefined,
