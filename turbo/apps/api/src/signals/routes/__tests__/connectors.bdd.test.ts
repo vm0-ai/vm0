@@ -322,7 +322,10 @@ describe("CONN-02: OAuth start and callback", () => {
     const actor = bdd.user();
 
     const start = await connectorsApi.startOauth(actor, "github", "oauth");
-    const authorizationUrl = new URL(start.authorizationUrl);
+    const authorizationUrl = await connectorsApi.continueOauth(
+      "github",
+      start.authorizationUrl,
+    );
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://github.com/login/oauth/authorize",
     );
@@ -399,7 +402,10 @@ describe("CONN-02: OAuth start and callback", () => {
     });
 
     const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
-    const authorizationUrl = new URL(start.authorizationUrl);
+    const authorizationUrl = await connectorsApi.continueOauth(
+      "datadog",
+      start.authorizationUrl,
+    );
     expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
       "S256",
     );
@@ -2511,7 +2517,10 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "oauth",
       agent.agentId,
     );
-    const authorizationUrl = new URL(start.authorizationUrl);
+    const authorizationUrl = await connectorsApi.continueOauth(
+      "test-oauth",
+      start.authorizationUrl,
+    );
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "http://localhost:3000/api/test/oauth-provider/authorize",
     );
