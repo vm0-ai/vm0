@@ -454,6 +454,8 @@ export const preferDrizzleQueryBuilder = createRule({
     const checker = services.program.getTypeChecker();
     const directRawRowsBindings = new Set<string>();
     const rawRowsNamespaces = new Set<string>();
+    // Keep the type-aware consumer traversal out of files with no matching
+    // syntax. The API baseline has hundreds of result calls but zero targets.
     const scalarQueryCandidates = new Set<TSESTree.TaggedTemplateExpression>();
     const structuredSelectionCalls: TSESTree.CallExpression[] = [];
     const reportedScalarQueries = new Set<TSESTree.TaggedTemplateExpression>();
@@ -615,6 +617,8 @@ export const preferDrizzleQueryBuilder = createRule({
     }
 
     function localSingleReturn(node: TSESTree.Node): TSESTree.Node | null {
+      // This intentionally covers only the historical local factory shape.
+      // Parameter substitution and broader call flow remain opaque.
       if (
         node.type !== AST_NODE_TYPES.CallExpression ||
         node.callee.type !== AST_NODE_TYPES.Identifier ||

@@ -75,7 +75,7 @@ const scalarQuery = `
   sql\`(
     SELECT "message"."id"
     FROM "messages" AS "message"
-    WHERE "message"."user_id" = \${users.id}
+    WHERE "message"."user_id" = "users"."id"
     LIMIT 1
   )\`
 `;
@@ -305,6 +305,9 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         db.select({ value: sql\`(SELECT 1 WHERE true LIMIT 1)\` });
         db.select({ value: sql\`(SELECT 1 FROM messages LIMIT 1)\` });
         db.select({ value: sql\`(SELECT 1 FROM messages WHERE true)\` });
+        db.select({
+          value: sql\`(SELECT 1 FROM messages WHERE true LIMIT \${1})\`,
+        });
         db.select({
           value: sql\`(
             SELECT "message"."id"
