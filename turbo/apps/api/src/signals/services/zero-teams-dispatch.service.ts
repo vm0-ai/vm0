@@ -33,6 +33,7 @@ import {
   fetchTeamsChannelMessageReplies,
   fetchTeamsChannelMessages,
   fetchTeamsUsers,
+  fetchTeamsPersonalChatMessages,
   sendTeamsReaction,
   sendTeamsTypingActivity,
   type TeamsAdaptiveCard,
@@ -55,7 +56,7 @@ import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
 } from "./teams-org-callback-payload";
-import { encodeTeamsFileToken } from "./teams-file-token";
+import type { TeamsFileTokenPayload } from "./teams-file-token";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -90,6 +91,7 @@ const TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
 const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
   "application/vnd.microsoft.teams.file.download.info";
+const TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE = "reference";
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -132,6 +134,17 @@ interface TeamsPromptFile {
   readonly sourceId?: string;
   readonly name: string;
   readonly contentType: string;
+  readonly payload: TeamsFileTokenPayload;
+}
+
+interface TeamsAttachmentDownload {
+  readonly url: string;
+  readonly mode: "graph" | undefined;
+}
+
+interface TeamsPromptContext {
+  readonly text: string;
+  readonly files: readonly TeamsPromptFile[];
 }
 
 type EffectiveComposeResolution =
@@ -455,11 +468,21 @@ function recordFromUnknown(
 
 function teamsAttachmentDownloadUrl(
   attachment: TeamsInboundAttachment,
-): string | null {
-  return (
-    stringRecordValue(attachment.content, "downloadUrl") ??
-    attachment.contentUrl
-  );
+): TeamsAttachmentDownload | null {
+  const directUrl = stringRecordValue(attachment.content, "downloadUrl");
+  if (directUrl) {
+    return { url: directUrl, mode: undefined };
+  }
+  if (!attachment.contentUrl) {
+    return null;
+  }
+  return {
+    url: attachment.contentUrl,
+    mode:
+      attachment.contentType === TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE
+        ? "graph"
+        : undefined,
+  };
 }
 
 function teamsAttachmentName(attachment: TeamsInboundAttachment): string {
@@ -477,7 +500,8 @@ function teamsAttachmentContentType(
 ): string {
   if (
     attachment.contentType &&
-    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE
+    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE &&
+    attachment.contentType !== TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE
   ) {
     return attachment.contentType;
   }
@@ -493,24 +517,27 @@ function teamsPromptFile(
   activity: TeamsMessageActivity,
   attachment: TeamsInboundAttachment,
 ): TeamsPromptFile | null {
-  const url = teamsAttachmentDownloadUrl(attachment);
-  if (!url || !URL.canParse(url)) {
+  const download = teamsAttachmentDownloadUrl(attachment);
+  if (!download || !URL.canParse(download.url)) {
     return null;
   }
 
   const name = teamsAttachmentName(attachment);
   const contentType = teamsAttachmentContentType(attachment, name);
+  const payload: TeamsFileTokenPayload = {
+    tenantId: activity.tenantId,
+    url: download.url,
+    downloadMode: download.mode,
+    id: attachment.id ?? undefined,
+    name,
+    contentType,
+  };
   return {
-    fileId: encodeTeamsFileToken({
-      tenantId: activity.tenantId,
-      url,
-      id: attachment.id ?? undefined,
-      name,
-      contentType,
-    }),
+    fileId: `teams_file_${randomBytes(16).toString("base64url")}`,
     sourceId: attachment.id ?? undefined,
     name,
     contentType,
+    payload,
   };
 }
 
@@ -553,13 +580,24 @@ function graphAttachmentContent(
 
 function teamsGraphAttachmentDownloadUrl(
   attachment: TeamsGraphAttachment,
-): string | null {
+): TeamsAttachmentDownload | null {
   const content = graphAttachmentContent(attachment);
-  return (
-    stringRecordValue(content, "downloadUrl") ??
-    attachment.contentUrl ??
-    stringRecordValue(content, "contentUrl")
-  );
+  const directUrl = stringRecordValue(content, "downloadUrl");
+  if (directUrl) {
+    return { url: directUrl, mode: undefined };
+  }
+  const contentUrl =
+    attachment.contentUrl ?? stringRecordValue(content, "contentUrl");
+  if (!contentUrl) {
+    return null;
+  }
+  return {
+    url: contentUrl,
+    mode:
+      attachment.contentType === TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE
+        ? "graph"
+        : undefined,
+  };
 }
 
 function teamsGraphAttachmentName(attachment: TeamsGraphAttachment): string {
@@ -579,7 +617,8 @@ function teamsGraphAttachmentContentType(
   const content = graphAttachmentContent(attachment);
   if (
     attachment.contentType &&
-    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE
+    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE &&
+    attachment.contentType !== TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE
   ) {
     return attachment.contentType;
   }
@@ -595,24 +634,27 @@ function teamsGraphPromptFile(
   tenantId: string,
   attachment: TeamsGraphAttachment,
 ): TeamsPromptFile | null {
-  const url = teamsGraphAttachmentDownloadUrl(attachment);
-  if (!url || !URL.canParse(url)) {
+  const download = teamsGraphAttachmentDownloadUrl(attachment);
+  if (!download || !URL.canParse(download.url)) {
     return null;
   }
 
   const name = teamsGraphAttachmentName(attachment);
   const contentType = teamsGraphAttachmentContentType(attachment, name);
+  const payload: TeamsFileTokenPayload = {
+    tenantId,
+    url: download.url,
+    downloadMode: download.mode,
+    id: attachment.id ?? undefined,
+    name,
+    contentType,
+  };
   return {
-    fileId: encodeTeamsFileToken({
-      tenantId,
-      url,
-      id: attachment.id ?? undefined,
-      name,
-      contentType,
-    }),
+    fileId: `teams_file_${randomBytes(16).toString("base64url")}`,
     sourceId: attachment.id ?? undefined,
     name,
     contentType,
+    payload,
   };
 }
 
@@ -1122,6 +1164,18 @@ function formatTeamsContext(
   )}\n\n---`;
 }
 
+function formattedTeamsContext(
+  text: string,
+  messages: readonly TeamsContextMessage[],
+): TeamsPromptContext {
+  return {
+    text,
+    files: messages.flatMap((message) => {
+      return message.files;
+    }),
+  };
+}
+
 function plainTeamsMentionLabel(mentionText: string): string {
   return mentionText
     .replace(/<at[^>]*>/giu, "")
@@ -1334,7 +1388,7 @@ async function fetchTeamsThreadRootMessage(args: {
   const { activity } = args;
   if (
     !isTeamsThreadReply(activity) ||
-    !activity.teamId ||
+    !activity.teamAadGroupId ||
     !activity.channelId
   ) {
     return null;
@@ -1342,7 +1396,7 @@ async function fetchTeamsThreadRootMessage(args: {
 
   const rootResult = await fetchTeamsChannelMessage({
     tenantId: activity.tenantId,
-    teamId: activity.teamId,
+    teamId: activity.teamAadGroupId,
     channelId: activity.channelId,
     messageId: activity.threadId,
     signal: args.signal,
@@ -1351,6 +1405,7 @@ async function fetchTeamsThreadRootMessage(args: {
     L.warn("Teams thread root context fetch failed", {
       tenantId: activity.tenantId,
       teamId: activity.teamId,
+      teamAadGroupId: activity.teamAadGroupId,
       channelId: activity.channelId,
       threadId: activity.threadId,
       status: rootResult.status,
@@ -1366,15 +1421,15 @@ async function fetchTeamsThreadContext(args: {
   readonly activity: TeamsMessageActivity;
   readonly rootMessage: TeamsGraphMessage | null;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<TeamsPromptContext> {
   const { activity } = args;
-  if (!args.rootMessage || !activity.teamId || !activity.channelId) {
-    return "";
+  if (!args.rootMessage || !activity.teamAadGroupId || !activity.channelId) {
+    return { text: "", files: [] };
   }
 
   const repliesResult = await fetchTeamsChannelMessageReplies({
     tenantId: activity.tenantId,
-    teamId: activity.teamId,
+    teamId: activity.teamAadGroupId,
     channelId: activity.channelId,
     messageId: activity.threadId,
     limit: 100,
@@ -1384,12 +1439,13 @@ async function fetchTeamsThreadContext(args: {
     L.warn("Teams thread replies context fetch failed", {
       tenantId: activity.tenantId,
       teamId: activity.teamId,
+      teamAadGroupId: activity.teamAadGroupId,
       channelId: activity.channelId,
       threadId: activity.threadId,
       status: repliesResult.status,
       error: repliesResult.error,
     });
-    return "";
+    return { text: "", files: [] };
   }
 
   const messages = [args.rootMessage, ...repliesResult.messages];
@@ -1399,13 +1455,15 @@ async function fetchTeamsThreadContext(args: {
     signal: args.signal,
   });
 
-  return formatTeamsThreadContext(
-    teamsContextMessages(
-      activity.tenantId,
-      messages,
-      currentTeamsActivityIds(activity),
-      userInfoMap,
-    ),
+  const contextMessages = teamsContextMessages(
+    activity.tenantId,
+    messages,
+    currentTeamsActivityIds(activity),
+    userInfoMap,
+  );
+  return formattedTeamsContext(
+    formatTeamsThreadContext(contextMessages),
+    contextMessages,
   );
 }
 
@@ -1427,17 +1485,17 @@ async function fetchRecentTeamsChannelContext(args: {
   readonly activity: TeamsMessageActivity;
   readonly beforeMessage: TeamsGraphMessage | null;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<TeamsPromptContext> {
   const { activity } = args;
-  const teamId = activity.teamId;
+  const teamAadGroupId = activity.teamAadGroupId;
   const channelId = activity.channelId;
-  if (!teamId || !channelId) {
-    return "";
+  if (!teamAadGroupId || !channelId) {
+    return { text: "", files: [] };
   }
 
   const result = await fetchTeamsChannelMessages({
     tenantId: activity.tenantId,
-    teamId,
+    teamId: teamAadGroupId,
     channelId,
     limit: 10,
     signal: args.signal,
@@ -1446,11 +1504,12 @@ async function fetchRecentTeamsChannelContext(args: {
     L.warn("Teams channel context fetch failed", {
       tenantId: activity.tenantId,
       teamId: activity.teamId,
+      teamAadGroupId: activity.teamAadGroupId,
       channelId: activity.channelId,
       status: result.status,
       error: result.error,
     });
-    return "";
+    return { text: "", files: [] };
   }
 
   const messages = teamsMessagesBeforeReference(
@@ -1463,18 +1522,67 @@ async function fetchRecentTeamsChannelContext(args: {
     signal: args.signal,
   });
 
-  return formatRecentTeamsChannelContext(
-    teamsContextMessages(
-      activity.tenantId,
-      messages,
-      recentChannelContextExcludedIds(activity),
-      userInfoMap,
-    ),
+  const contextMessages = teamsContextMessages(
+    activity.tenantId,
+    messages,
+    recentChannelContextExcludedIds(activity),
+    userInfoMap,
+  );
+  return formattedTeamsContext(
+    formatRecentTeamsChannelContext(contextMessages),
+    contextMessages,
   );
 }
 
 function isTeamsDirectMessage(activity: TeamsMessageActivity): boolean {
   return activity.conversationType === "personal";
+}
+
+async function fetchTeamsDirectMessageThreadContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly signal: AbortSignal;
+}): Promise<TeamsPromptContext> {
+  const { activity } = args;
+  const userId = activity.sender.aadObjectId;
+  const teamsAppId = activity.teamsAppId ?? env("MICROSOFT_TEAMS_BOT_APP_ID");
+  if (!userId || !teamsAppId) {
+    return { text: "", files: [] };
+  }
+
+  const result = await fetchTeamsPersonalChatMessages({
+    tenantId: activity.tenantId,
+    userId,
+    teamsAppId,
+    limit: 50,
+    signal: args.signal,
+  });
+  if (result.kind === "teams-error") {
+    L.warn("Teams direct message thread context fetch failed", {
+      tenantId: activity.tenantId,
+      conversationId: activity.conversationId,
+      threadId: activity.threadId,
+      status: result.status,
+      error: result.error,
+    });
+    return { text: "", files: [] };
+  }
+
+  const messages = result.messages;
+  const userInfoMap = await fetchTeamsGraphUserInfoMap({
+    tenantId: activity.tenantId,
+    messages,
+    signal: args.signal,
+  });
+  const contextMessages = teamsContextMessages(
+    activity.tenantId,
+    messages,
+    currentTeamsActivityIds(activity),
+    userInfoMap,
+  );
+  return formattedTeamsContext(
+    formatTeamsThreadContext(contextMessages),
+    contextMessages,
+  );
 }
 
 function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
@@ -1497,28 +1605,33 @@ function teamsValidationFallbackNotice(args: {
 async function fetchTeamsPromptContext(args: {
   readonly activity: TeamsMessageActivity;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<TeamsPromptContext> {
+  if (isTeamsDirectMessage(args.activity)) {
+    return await fetchTeamsDirectMessageThreadContext(args);
+  }
+
   const threadRootMessage = await fetchTeamsThreadRootMessage({
     activity: args.activity,
     signal: args.signal,
   });
-  const recentChannelContext = isTeamsDirectMessage(args.activity)
-    ? ""
-    : await fetchRecentTeamsChannelContext({
-        activity: args.activity,
-        beforeMessage: threadRootMessage,
-        signal: args.signal,
-      });
+  const recentChannelContext = await fetchRecentTeamsChannelContext({
+    activity: args.activity,
+    beforeMessage: threadRootMessage,
+    signal: args.signal,
+  });
   const threadContext = await fetchTeamsThreadContext({
     activity: args.activity,
     rootMessage: threadRootMessage,
     signal: args.signal,
   });
-  return [recentChannelContext, threadContext]
-    .filter((context) => {
-      return context.length > 0;
-    })
-    .join("\n\n");
+  return {
+    text: [recentChannelContext.text, threadContext.text]
+      .filter((context) => {
+        return context.length > 0;
+      })
+      .join("\n\n"),
+    files: [...recentChannelContext.files, ...threadContext.files],
+  };
 }
 
 function buildTeamsPrompt(args: {
@@ -1556,6 +1669,7 @@ function callbackPayload(args: {
   readonly connection: TeamsConnection;
   readonly composeId: string;
   readonly existingSessionId: string | undefined;
+  readonly files: readonly TeamsPromptFile[];
 }): TeamsOrgCallbackPayload {
   return teamsOrgCallbackPayloadSchema.parse({
     tenantId: args.activity.tenantId,
@@ -1576,7 +1690,17 @@ function callbackPayload(args: {
     botName: args.activity.recipient?.name ?? args.installation.botName,
     agentId: args.composeId,
     existingSessionId: args.existingSessionId ?? null,
+    files: args.files.map((file) => {
+      return { fileId: file.fileId, ...file.payload };
+    }),
   });
+}
+
+function promptForTeamsRun(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly promptFiles: readonly TeamsPromptFile[];
+}): string {
+  return appendTeamsFilesToPrompt(args.activity.text, args.promptFiles);
 }
 
 const runAgentForTeams$ = command(
@@ -1590,7 +1714,8 @@ const runAgentForTeams$ = command(
       readonly agentLabel: string;
       readonly sessionId: string | undefined;
       readonly computerUseHostId: string | undefined;
-      readonly threadContext: string;
+      readonly promptFiles: readonly TeamsPromptFile[];
+      readonly promptContext: TeamsPromptContext;
       readonly apiStartTime: number;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
       readonly timing: ApiDispatchTimingCollector;
@@ -1612,7 +1737,7 @@ const runAgentForTeams$ = command(
           orgRole: "member",
         },
         body: {
-          prompt: args.activity.text,
+          prompt: promptForTeamsRun(args),
           agentId: args.composeId,
           sessionId: args.sessionId,
           ...(args.modelRoute?.modelProviderType
@@ -1624,7 +1749,7 @@ const runAgentForTeams$ = command(
         appendSystemPrompt: buildTeamsPrompt({
           activity: args.activity,
           installation: args.installation,
-          threadContext: args.threadContext,
+          threadContext: args.promptContext.text,
         }),
         userInfoExtras: {
           teamsUserDisplayName: args.activity.sender.name ?? undefined,
@@ -1649,6 +1774,7 @@ const runAgentForTeams$ = command(
               connection: args.connection,
               composeId: args.composeId,
               existingSessionId: args.sessionId,
+              files: [...args.promptFiles, ...args.promptContext.files],
             }),
           },
         ],
@@ -2048,6 +2174,7 @@ const runResolvedTeamsAgentForActivity$ = command(
     args: {
       readonly db: Db;
       readonly prompt: string;
+      readonly promptFiles: readonly TeamsPromptFile[];
       readonly activity: TeamsMessageActivity;
       readonly installation: BoundTeamsInstallation;
       readonly connection: TeamsConnection;
@@ -2085,7 +2212,7 @@ const runResolvedTeamsAgentForActivity$ = command(
     });
     signal.throwIfAborted();
 
-    const threadContext = await fetchTeamsPromptContext({
+    const promptContext = await fetchTeamsPromptContext({
       activity: args.activity,
       signal,
     });
@@ -2101,7 +2228,8 @@ const runResolvedTeamsAgentForActivity$ = command(
         agentLabel: agentLabel(args.effectiveCompose.agent),
         sessionId: runThreadContext.existingSessionId,
         computerUseHostId: runThreadContext.computerUseHostId,
-        threadContext,
+        promptFiles: args.promptFiles,
+        promptContext,
         apiStartTime: args.apiStartTime,
         modelRoute,
         timing: args.timing,
@@ -2241,7 +2369,8 @@ export const dispatchTeamsMessageToAgent$ = command(
       runResolvedTeamsAgentForActivity$,
       {
         db,
-        prompt: appendTeamsFilesToPrompt(prompt, promptFiles),
+        prompt,
+        promptFiles,
         activity,
         installation: boundInstallation,
         connection,
