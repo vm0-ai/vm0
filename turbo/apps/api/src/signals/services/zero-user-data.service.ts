@@ -26,7 +26,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
@@ -66,7 +66,7 @@ function parseSecretType(value: string): SecretType {
 }
 
 async function loadMorningBriefNextRunAt(
-  db: Db,
+  db: ReadonlyDb,
   orgId: string,
   userId: string,
 ): Promise<string | null> {
