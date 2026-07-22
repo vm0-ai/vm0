@@ -301,14 +301,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                           className={cn(
                             "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 focus-visible:bg-sidebar-accent focus-visible:outline-none",
                             isActive
-                              ? "text-primary-foreground font-medium"
+                              ? "bg-gray-200 text-gray-900 font-medium"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          style={
-                            isActive
-                              ? { backgroundColor: "hsl(var(--primary))" }
-                              : undefined
-                          }
                         >
                           <Icon
                             size={16}
