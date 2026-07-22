@@ -700,9 +700,16 @@ describe("zero workflow automation scheduler", () => {
     expect(read.nextRunAt).toBeNull();
   });
 
-  it("cascade-deletes a workflow's automations when the workflow is removed", async () => {
+  it("preserves run messages when workflow deletion removes automation provenance", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
+
+    await executeDueWorkflowAutomations();
+    const run = await onlyWorkflowRunMessage(automation.threadId);
+    expect(run.workflowSnapshot).toMatchObject({
+      id: scenario.workflowId,
+      automationId: automation.automationId,
+    });
 
     // Under the hard 1:N model a workflow belongs to exactly one agent; removing
     // the workflow cascade-deletes its automations (FK onDelete: cascade).
@@ -715,5 +722,17 @@ describe("zero workflow automation scheduler", () => {
       }),
       [404],
     );
+
+    const historicalRuns = await workflowRunMessages(automation.threadId);
+    expect(historicalRuns).toStrictEqual([
+      {
+        runId: run.runId,
+        triggerSource: "workflow-schedule",
+        automationId: undefined,
+        hasLegacyTriggerId: false,
+        triggerBrief: undefined,
+        workflowSnapshot: undefined,
+      },
+    ]);
   });
 });
