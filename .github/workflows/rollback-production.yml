@@ -51,7 +51,7 @@ jobs:
 
       # Always run the current rollback implementation. The target commit is
       # read as data and is never allowed to replace the workflow or playbooks.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: main
@@ -229,14 +229,14 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
         id: deployment
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: start
           token: ${{ github.token }}
@@ -247,7 +247,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -339,7 +339,7 @@ jobs:
 
       - name: Finish GitHub Deployment
         if: always()
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: finish
           token: ${{ github.token }}
@@ -350,7 +350,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -361,7 +361,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -387,14 +387,14 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.resolve-target.outputs.runner_matrix || '[]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
 
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -453,7 +453,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -464,7 +464,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -484,14 +484,14 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
         id: deployment
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: start
           token: ${{ github.token }}
@@ -502,7 +502,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -520,7 +520,7 @@ jobs:
 
       - name: Finish GitHub Deployment
         if: always()
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: finish
           token: ${{ github.token }}
@@ -531,7 +531,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -542,7 +542,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
