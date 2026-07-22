@@ -14,6 +14,8 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   deleteOrgPlanEntitlementFixture,
+  insertOrgMetadataAsLegacyWriterFixture,
+  updateOrgPlanKeyAsLegacyWriterFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
 import {
@@ -300,6 +302,40 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
+  });
+
+  it("keeps credit purchase capability accurate for legacy rollout writes", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(orgId);
+    });
+    await insertOrgMetadataAsLegacyWriterFixture({
+      orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+    const initialResponse = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(initialResponse.body.canBuyCredits).toBeFalsy();
+
+    await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
+
+    const updatedResponse = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(updatedResponse.body.tier).toBe("limited-free-1");
+    expect(updatedResponse.body.canBuyCredits).toBeTruthy();
   });
 
   it("includes active concurrency subscription slots", async () => {

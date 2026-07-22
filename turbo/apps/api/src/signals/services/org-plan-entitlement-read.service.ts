@@ -87,7 +87,7 @@ export async function loadOrgPlanCapabilities(
       : await query;
     if (!capabilities) {
       const orgQuery = db
-        .select({ tier: orgMetadata.tier })
+        .select({ orgId: orgMetadata.orgId })
         .from(orgMetadata)
         .where(eq(orgMetadata.orgId, orgId))
         .limit(1);
@@ -97,7 +97,7 @@ export async function loadOrgPlanCapabilities(
       if (!org) {
         return null;
       }
-      return capabilitiesForTier(org.tier);
+      throw new Error(`Missing org plan entitlement for ${orgId}`);
     }
     return {
       ...capabilities,
