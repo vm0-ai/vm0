@@ -478,26 +478,40 @@ function resolvedChatIdb(db: Awaited<ReturnType<typeof openChatIdb>>) {
   };
 }
 
+async function withChatIdb<T>(
+  scope: TestAuthScope,
+  operation: (db: Awaited<ReturnType<typeof openChatIdb>>) => Promise<T>,
+): Promise<T> {
+  const db = await openChatIdb(scope.userId, scope.orgId);
+  try {
+    return await operation(db);
+  } finally {
+    db.close();
+  }
+}
+
 async function seedCachedArtifacts(
   scope: TestAuthScope,
   artifacts: readonly ArtifactItem[],
 ): Promise<void> {
-  const db = await openChatIdb(scope.userId, scope.orgId);
-  const stores = createArtifactItemCacheStores(resolvedChatIdb(db));
-  await stores.writeStore.replaceItems(artifacts);
-  const seeded = await stores.readStore.readRecent({ limit: 10_000 });
-  if (seeded.length !== artifacts.length) {
-    throw new Error("Expected artifact cache seed to be readable");
-  }
+  await withChatIdb(scope, async (db) => {
+    const stores = createArtifactItemCacheStores(resolvedChatIdb(db));
+    await stores.writeStore.replaceItems(artifacts);
+    const seeded = await stores.readStore.readRecent({ limit: 10_000 });
+    if (seeded.length !== artifacts.length) {
+      throw new Error("Expected artifact cache seed to be readable");
+    }
+  });
 }
 
 async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
-  const db = await openChatIdb(scope.userId, scope.orgId);
-  const artifacts = await createArtifactItemCacheStores(
-    resolvedChatIdb(db),
-  ).readStore.readRecent({ limit: 10_000 });
-  return artifacts.map((artifact) => {
-    return artifact.artifactItemId;
+  return await withChatIdb(scope, async (db) => {
+    const artifacts = await createArtifactItemCacheStores(
+      resolvedChatIdb(db),
+    ).readStore.readRecent({ limit: 10_000 });
+    return artifacts.map((artifact) => {
+      return artifact.artifactItemId;
+    });
   });
 }
 
@@ -1520,10 +1534,11 @@ describe("artifacts page", () => {
         artifact.artifactItemId,
       ]);
     });
-    const db = await openChatIdb(scope.userId, scope.orgId);
-    const cached = await createArtifactItemCacheStores(
-      resolvedChatIdb(db),
-    ).readStore.readRecent({ limit: 10_000 });
+    const cached = await withChatIdb(scope, async (db) => {
+      return await createArtifactItemCacheStores(
+        resolvedChatIdb(db),
+      ).readStore.readRecent({ limit: 10_000 });
+    });
     expect(cached).toStrictEqual([artifact]);
     expect(cached[0]).not.toHaveProperty("isFavorited");
   });
@@ -1580,10 +1595,11 @@ describe("artifacts page", () => {
 
     await screen.findByText("legacy-remote.html");
     await waitFor(async () => {
-      const db = await openChatIdb(scope.userId, scope.orgId);
-      const cached = await createArtifactItemCacheStores(
-        resolvedChatIdb(db),
-      ).readStore.readRecent({ limit: 10_000 });
+      const cached = await withChatIdb(scope, async (db) => {
+        return await createArtifactItemCacheStores(
+          resolvedChatIdb(db),
+        ).readStore.readRecent({ limit: 10_000 });
+      });
       expect(cached).toHaveLength(1);
       expect(cached[0]?.size).toBe(0);
     });
@@ -1629,11 +1645,12 @@ describe("artifacts page", () => {
         staleArtifact.artifactItemId,
       ]);
     });
-    const db = await openChatIdb(scope.userId, scope.orgId);
     await expect(
-      createArtifactItemCacheStores(
-        resolvedChatIdb(db),
-      ).readStore.readLastSyncedAt(),
+      withChatIdb(scope, async (db) => {
+        return await createArtifactItemCacheStores(
+          resolvedChatIdb(db),
+        ).readStore.readLastSyncedAt();
+      }),
     ).resolves.toBe("2026-01-04T00:00:00.000Z");
   });
 
