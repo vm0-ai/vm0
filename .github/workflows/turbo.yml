@@ -1254,7 +1254,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          # PR checks run against GitHub's synthetic merge commit. Build that
+          # same commit so the deployed app matches the code exercised by E2E.
+          ref: ${{ github.sha }}
 
       - uses: ./.github/actions/toolchain-init
 
