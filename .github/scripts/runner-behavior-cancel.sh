@@ -42,6 +42,8 @@ RECONCILE_LOCK_INFO="$RECONCILE_TEST_DIR/pool-indexes"
 RECONCILE_IDLE_RELEASE="$RECONCILE_TEST_DIR/release-idle"
 RECONCILE_IDLE_RELEASED="$RECONCILE_TEST_DIR/idle-released"
 RECONCILE_ACTIVE_RELEASE="$RECONCILE_TEST_DIR/release-active"
+RECONCILE_FIREWALL_DELETE_STARTED="$RECONCILE_TEST_DIR/firewall-delete-started"
+RECONCILE_FIREWALL_DELETE_RELEASE="$RECONCILE_TEST_DIR/release-firewall-delete"
 RECONCILE_LOCK_HOLDER_PID=""
 
 fail() { echo "FAIL: $1"; exit 1; }
@@ -61,10 +63,13 @@ cleanup_submit_pid() {
 cleanup() {
   local status=$?
   trap - EXIT
-  touch "$RECONCILE_IDLE_RELEASE" "$RECONCILE_ACTIVE_RELEASE"
   if [ "$status" -ne 0 ]; then
     print_service_logs
   fi
+  sudo touch \
+    "$RECONCILE_IDLE_RELEASE" \
+    "$RECONCILE_ACTIVE_RELEASE" \
+    "$RECONCILE_FIREWALL_DELETE_RELEASE"
   echo "--- Cleanup ---"
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   cleanup_submit_pid "$SUBMIT_PID"
@@ -192,8 +197,14 @@ contains_argument() {
 
 case "$COMMAND_NAME" in
   iptables-save | ip6tables-save)
+    SNAPSHOT_CAPTURE=false
+    SNAPSHOT_MARKER=""
     if [ "${1:-}" = "-t" ] && [ -n "${2:-}" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/${COMMAND_NAME}.${2}"
+      SNAPSHOT_MARKER="$VM0_RECONCILE_COUNT_DIR/snapshot-${COMMAND_NAME}.${2}"
+      if mkdir "$SNAPSHOT_MARKER" 2>/dev/null; then
+        SNAPSHOT_CAPTURE=true
+      fi
     fi
     if [ "$COMMAND_NAME" = "iptables-save" ]; then
       REAL_COMMAND=$VM0_RECONCILE_REAL_IPTABLES_SAVE
@@ -205,10 +216,15 @@ case "$COMMAND_NAME" in
     else
       STATUS=$?
     fi
+    if [ "$STATUS" -eq 0 ] && [ "$SNAPSHOT_CAPTURE" = true ]; then
+      touch "$SNAPSHOT_MARKER/succeeded"
+    fi
     if [ "$STATUS" -eq 0 ] && [ "${1:-}" = "-t" ] && [ "${2:-}" = "filter" ]; then
       OWN_POOL_HEX=$(find_own_pool_hex)
       printf '%s\n' "$OWN_POOL_HEX" >"$VM0_RECONCILE_COUNT_DIR/own-pool"
-      if [ "$COMMAND_NAME" = "iptables-save" ]; then
+      if [ "$COMMAND_NAME" = "iptables-save" ] \
+        && [ ! -e "$VM0_RECONCILE_COUNT_DIR/firewall-snapshot-seeded" ]; then
+        touch "$VM0_RECONCILE_COUNT_DIR/firewall-snapshot-seeded"
         printf '%s\n' \
           "-A VM0-RECONCILE-OWN -m comment --comment \"vm0-ns-${OWN_POOL_HEX}-fd\" -j ACCEPT" \
           "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT" \
@@ -230,6 +246,12 @@ case "$COMMAND_NAME" in
         printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-unlocked"
       fi
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
+      touch "$VM0_RECONCILE_FIREWALL_DELETE_STARTED"
+      for _ in $(seq 1 1200); do
+        [ -e "$VM0_RECONCILE_FIREWALL_DELETE_RELEASE" ] && break
+        sleep 0.05
+      done
+      [ -e "$VM0_RECONCILE_FIREWALL_DELETE_RELEASE" ] || exit 1
       exit 0
     fi
     if contains_argument VM0-RECONCILE-DECOY "$@"; then
@@ -309,9 +331,76 @@ sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --env "VM0_RECONCILE_REAL_IP6TABLES_SAVE=$REAL_IP6TABLES_SAVE" \
   --env "VM0_RECONCILE_FIREWALL_POOL_INDEX=${RECONCILE_POOL_INDEXES[2]}" \
   --env "VM0_RECONCILE_FIREWALL_POOL_HEX=$RECONCILE_FIREWALL_POOL_HEX" \
+  --env "VM0_RECONCILE_FIREWALL_DELETE_STARTED=$RECONCILE_FIREWALL_DELETE_STARTED" \
+  --env "VM0_RECONCILE_FIREWALL_DELETE_RELEASE=$RECONCILE_FIREWALL_DELETE_RELEASE" \
   --env "VM0_RECONCILE_ACTIVE_POOL_HEX=$RECONCILE_ACTIVE_POOL_HEX" \
   --env "VM0_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
   --env "VM0_RECONCILE_IDLE_RELEASED=$RECONCILE_IDLE_RELEASED"
+
+assert_reconcile_count() {
+  local name=$1 expected=$2 path="$RECONCILE_COUNT_DIR/$1" actual=0
+  if [ -f "$path" ]; then
+    actual=$(wc -l <"$path")
+  fi
+  [ "$actual" -eq "$expected" ] \
+    || fail "expected $expected reconciliation $name call(s), found $actual"
+}
+
+assert_reconcile_count_at_least() {
+  local name=$1 minimum=$2 path="$RECONCILE_COUNT_DIR/$1" actual=0
+  if [ -f "$path" ]; then
+    actual=$(wc -l <"$path")
+  fi
+  [ "$actual" -ge "$minimum" ] \
+    || fail "expected at least $minimum reconciliation $name call(s), found $actual"
+}
+
+# Pause the runner at the cross-pool mutation boundary. This keeps later
+# warm-up or namespace failure cleanup from being mistaken for another startup
+# discovery pass while also proving that the target pool lock is still held.
+echo "--- Waiting for startup reconciliation checkpoint ---"
+for _ in $(seq 1 1200); do
+  [ -e "$RECONCILE_FIREWALL_DELETE_STARTED" ] && break
+  sleep 0.05
+done
+[ -e "$RECONCILE_FIREWALL_DELETE_STARTED" ] \
+  || fail "startup reconciliation did not reach the firewall cleanup checkpoint"
+
+echo "--- Test: startup reconciliation uses one host snapshot ---"
+# A fully captured snapshot must read every table exactly once. If a source was
+# abandoned, the preserved targeted fallback may re-read IPv4 tables for the
+# synthetic own-index namespace. The unique IPv6 and namespace cardinalities
+# still reject the historical per-index discovery loop in that failure path.
+FIREWALL_SNAPSHOT_SUCCEEDED=true
+for source in \
+  iptables-save.raw \
+  iptables-save.nat \
+  iptables-save.filter \
+  ip6tables-save.filter; do
+  if [ ! -e "$RECONCILE_COUNT_DIR/snapshot-${source}/succeeded" ]; then
+    FIREWALL_SNAPSHOT_SUCCEEDED=false
+  fi
+done
+if [ "$FIREWALL_SNAPSHOT_SUCCEEDED" = true ]; then
+  assert_reconcile_count iptables-save.raw 1
+  assert_reconcile_count iptables-save.nat 1
+  assert_reconcile_count iptables-save.filter 1
+else
+  assert_reconcile_count_at_least iptables-save.raw 1
+  assert_reconcile_count_at_least iptables-save.nat 1
+  assert_reconcile_count_at_least iptables-save.filter 1
+fi
+assert_reconcile_count ip6tables-save.filter 1
+assert_reconcile_count ip.netns-list 1
+assert_reconcile_count iptables.own-delete 1
+assert_reconcile_count ip.own-link-delete 1
+assert_reconcile_count ip.own-netns-delete 1
+assert_reconcile_count iptables.firewall-only-delete 1
+assert_reconcile_count iptables.firewall-only-unlocked 0
+assert_reconcile_count iptables.decoy-delete 0
+assert_reconcile_count ip.active-delete 0
+sudo touch "$RECONCILE_FIREWALL_DELETE_RELEASE"
+echo "PASS: startup reconciled one snapshot without modifying the active pool"
 
 # Submit a long-running job in background
 echo "--- Submitting long-running job ---"
@@ -348,30 +437,6 @@ for _ in $(seq 1 60); do
 done
 [ "$SANDBOX_READY" = true ] || fail "sandbox not found after 60s"
 echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
-
-assert_reconcile_count() {
-  local name=$1 expected=$2 path="$RECONCILE_COUNT_DIR/$1" actual=0
-  if [ -f "$path" ]; then
-    actual=$(wc -l <"$path")
-  fi
-  [ "$actual" -eq "$expected" ] \
-    || fail "expected $expected reconciliation $name call(s), found $actual"
-}
-
-echo "--- Test: startup reconciliation uses one host snapshot ---"
-assert_reconcile_count iptables-save.raw 1
-assert_reconcile_count iptables-save.nat 1
-assert_reconcile_count iptables-save.filter 1
-assert_reconcile_count ip6tables-save.filter 1
-assert_reconcile_count ip.netns-list 1
-assert_reconcile_count iptables.own-delete 1
-assert_reconcile_count ip.own-link-delete 1
-assert_reconcile_count ip.own-netns-delete 1
-assert_reconcile_count iptables.firewall-only-delete 1
-assert_reconcile_count iptables.firewall-only-unlocked 0
-assert_reconcile_count iptables.decoy-delete 0
-assert_reconcile_count ip.active-delete 0
-echo "PASS: startup reconciled one snapshot without modifying the active pool"
 
 # Test 1: cancel the job via runner local cancel
 echo "--- Test: runner local cancel ---"
