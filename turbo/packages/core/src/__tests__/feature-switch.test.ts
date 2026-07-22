@@ -126,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
