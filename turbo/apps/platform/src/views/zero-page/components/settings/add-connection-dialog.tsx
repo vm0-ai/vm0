@@ -90,7 +90,6 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
 }
 
 type PostConnectOptions = {
-  readonly showPermissionDialog?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
@@ -155,7 +154,6 @@ type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
   agentId?: string;
   onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
 };
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
@@ -242,7 +240,6 @@ function ManualGrantForm({
   authMethod,
   method,
   onSuccess,
-  showPermissionDialogOnConnect,
   agentId,
   submit,
   submitting,
@@ -252,7 +249,6 @@ function ManualGrantForm({
   authMethod: ConnectorAuthMethodId;
   method: ConnectorStatusAuthMethodDetail;
   onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
   agentId?: string;
   submit: SubmitManualGrantFn;
   submitting: boolean;
@@ -278,7 +274,6 @@ function ManualGrantForm({
         authMethod,
         manualGrantInputValuesForMethod(method, fieldValues),
         {
-          showPermissionDialog: showPermissionDialogOnConnect,
           connectorLabel,
           ...(agentId ? { agentId } : {}),
         },
@@ -367,7 +362,6 @@ function OAuthAuthCodeConnectButton({
   item,
   method,
   onSuccess,
-  showPermissionDialogOnConnect,
   agentId,
   connectOAuthAuthCodeAndSettle,
   signal,
@@ -386,7 +380,6 @@ function OAuthAuthCodeConnectButton({
             method,
             onSuccess,
             {
-              showPermissionDialog: showPermissionDialogOnConnect,
               connectorLabel: item.label,
               ...(agentId ? { agentId } : {}),
             },
@@ -408,7 +401,6 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
       item={props.item}
       method={props.method}
       onSuccess={props.onSuccess}
-      showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
       signal={props.signal}
     />
@@ -643,7 +635,6 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
-          showPermissionDialog: props.showPermissionDialogOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -877,7 +868,6 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
-          showPermissionDialog: props.showPermissionDialogOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -936,7 +926,6 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
       authMethod={props.authMethod}
       method={props.method}
       onSuccess={props.onSuccess}
-      showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       agentId={props.agentId}
       submit={props.submitManualGrant}
       submitting={props.manualGrantSubmitting}
@@ -952,7 +941,6 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
-          showPermissionDialog: props.showPermissionDialogOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
@@ -1093,7 +1081,6 @@ function StandardConnectMethodsContent({
   item,
   agentId,
   onSuccess,
-  showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
   connectExternalCode,
@@ -1127,7 +1114,6 @@ function StandardConnectMethodsContent({
           item,
           agentId,
           onSuccess,
-          showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
           connectExternalCode,
@@ -1148,7 +1134,6 @@ function ConnectModalContent({
   item,
   agentId,
   onSuccess,
-  showPermissionDialogOnConnect,
 }: ConnectModalContentProps) {
   const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
@@ -1252,7 +1237,6 @@ function ConnectModalContent({
       item={item}
       agentId={agentId}
       onSuccess={onConnectSuccess}
-      showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
       connectExternalCode={connectExternalCode}
@@ -1275,13 +1259,11 @@ function ConnectModalContent({
 export function ConnectModal({
   onClose,
   onSuccess,
-  showPermissionDialogOnConnect = false,
   selectedType: selectedTypeOverride,
   agentId,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
-  showPermissionDialogOnConnect?: boolean;
   selectedType?: ConnectorType | null;
   agentId?: string;
 }) {
@@ -1353,7 +1335,6 @@ export function ConnectModal({
         <ConnectModalContent
           item={item}
           agentId={agentId}
-          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
           onSuccess={async () => {
             await onSuccess?.();
             clearConnectorOAuthDeviceAuth();

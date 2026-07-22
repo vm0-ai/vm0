@@ -74,7 +74,6 @@ function runDirectedConnect(params: {
     type: ConnectorType,
     method: ConnectorStatusAuthMethodDetail,
     options: {
-      readonly showPermissionDialog?: boolean;
       readonly connectorLabel?: string;
       readonly agentId?: string;
     },
@@ -85,7 +84,6 @@ function runDirectedConnect(params: {
       readonly type: ConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options: {
-        readonly showPermissionDialog?: boolean;
         readonly connectorLabel?: string;
         readonly agentId?: string;
       };
