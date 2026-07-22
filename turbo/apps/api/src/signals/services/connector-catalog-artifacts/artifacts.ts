@@ -57,6 +57,8 @@ export function connectorCatalogReleaseArtifactKeys(
   };
 }
 
+// These schema-v1 limits mirror vm0-connectors output. Changing them requires
+// a new connector catalog artifact schema generation in both repositories.
 const CONNECTOR_SKILL_MAX_FILES = 64;
 const CONNECTOR_SKILL_MAX_FILE_BYTES = 512 * 1024;
 export const CONNECTOR_SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
