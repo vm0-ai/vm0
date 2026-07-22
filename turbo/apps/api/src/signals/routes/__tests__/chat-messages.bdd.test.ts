@@ -194,6 +194,7 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
+  readonly structuredPrompt?: UserMessageDocument;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
@@ -2927,6 +2928,132 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
+  it("uses the structured message document for the enabled runtime path", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const fileId = randomUUID();
+    const referencedThreadId = randomUUID();
+    const prompt = `Review [Roadmap](/chats/${referencedThreadId}) now`;
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          template: generationTemplate,
+        },
+        {
+          type: "file",
+          fileId,
+          filenameSnapshot: "brief.pdf",
+          contentType: "application/pdf",
+        },
+        { type: "text", text: "Review " },
+        {
+          type: "chat_thread",
+          threadId: referencedThreadId,
+          titleSnapshot: "Roadmap",
+        },
+        { type: "text", text: " now" },
+      ],
+    };
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      structuredPrompt,
+      generationTemplate,
+      attachFiles: [
+        {
+          id: fileId,
+          filename: "brief.pdf",
+          contentType: "application/pdf",
+          size: 42,
+        },
+      ],
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe(
+      [
+        `[Web file] brief.pdf (application/pdf)\n   [ID] ${fileId}`,
+        prompt,
+      ].join("\n\n"),
+    );
+    expect(run.appendSystemPrompt).toContain("# Artifact Template Context");
+    expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    const message = userMessages(messages.messages).find((item) => {
+      return item.runId === sent.runId;
+    });
+    expect(message).toMatchObject({
+      content: prompt,
+      structuredPrompt,
+    });
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
+  it("falls back to the legacy runtime path for enabled old clients", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const fileId = randomUUID();
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "legacy client attachment",
+      attachFiles: [
+        {
+          id: fileId,
+          filename: "legacy.txt",
+          contentType: "text/plain",
+          size: 12,
+        },
+      ],
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe(
+      [
+        "legacy client attachment",
+        `[Web file] legacy.txt (text/plain)\n   [ID] ${fileId}`,
+      ].join("\n\n"),
+    );
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3379,6 +3506,90 @@ describe("CHAT-02: generation templates and attachments", () => {
 });
 
 describe("CHAT-02: queued attachments on auto-send", () => {
+  it("preserves structured part order when a queued message is promoted", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor before the structured queue item",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const fileId = randomUUID();
+    const queuedId = randomUUID();
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "file",
+          fileId,
+          filenameSnapshot: "ordered.txt",
+          contentType: "text/plain",
+        },
+        { type: "text", text: "queued structured text" },
+      ],
+    };
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued structured text",
+        structuredPrompt,
+        clientMessageId: queuedId,
+        attachFiles: [
+          {
+            id: fileId,
+            filename: "ordered.txt",
+            contentType: "text/plain",
+            size: 12,
+          },
+        ],
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === queuedId && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === queuedId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the structured queued message to auto-send");
+    }
+    expect(promoted.structuredPrompt).toStrictEqual(structuredPrompt);
+
+    const run = await api.readRun(actor, promoted.runId);
+    expect(run.prompt).toBe(
+      [
+        `[Web file] ordered.txt (text/plain)\n   [ID] ${fileId}`,
+        "queued structured text",
+      ].join("\n\n"),
+    );
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+
   it("carries queued attachments into the auto-sent follow-up run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

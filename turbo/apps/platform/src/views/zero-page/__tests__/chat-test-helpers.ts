@@ -21,6 +21,7 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
   type PersistedAttachment,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -400,6 +401,7 @@ export function mockChatLifecycle(
       attachments?: PersistedAttachment[];
       clientMessageId: string;
       generationTemplate?: GenerationTemplateRequest;
+      structuredPrompt?: UserMessageDocument;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
@@ -447,6 +449,7 @@ export function mockChatLifecycle(
       }[];
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
+      structuredPrompt?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
@@ -484,6 +487,7 @@ export function mockChatLifecycle(
   let resultContent = "";
   let threadListOverride: ThreadListItem[] | null = null;
   let runPrompt: string | null = null;
+  let runStructuredPrompt: UserMessageDocument | undefined;
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
@@ -631,6 +635,9 @@ export function mockChatLifecycle(
         id: runUserMessageId,
         role: "user",
         content: runPrompt ?? "Hello",
+        ...(runStructuredPrompt
+          ? { structuredPrompt: runStructuredPrompt }
+          : {}),
         runId: MOCK_RUN_ID,
         createdAt: "2026-03-10T00:00:01Z",
       });
@@ -672,6 +679,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
+    structuredPrompt?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
   }) => {
@@ -689,6 +697,7 @@ export function mockChatLifecycle(
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
+      structuredPrompt: body.structuredPrompt,
       modelSelection,
       runOptions: body.runOptions,
     });
@@ -702,6 +711,9 @@ export function mockChatLifecycle(
       content: body.prompt ?? "",
       attachFiles,
       generationTemplate: body.generationTemplate,
+      ...(body.structuredPrompt
+        ? { structuredPrompt: body.structuredPrompt }
+        : {}),
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };
@@ -718,6 +730,7 @@ export function mockChatLifecycle(
     }[];
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
+    structuredPrompt?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
@@ -729,6 +742,7 @@ export function mockChatLifecycle(
     if (body.prompt) {
       runPrompt = body.prompt;
     }
+    runStructuredPrompt = body.structuredPrompt;
     rememberRunUserMessageId(body.clientMessageId);
     const modelSelection = modelSelectionFromBody(body);
     options?.onRunCreate?.({ ...body, modelSelection });

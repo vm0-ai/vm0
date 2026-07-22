@@ -12,6 +12,7 @@ import {
   chatMessages,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
+  type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -68,6 +69,7 @@ import {
 } from "./zero-chat-message-shared.service";
 import { insertChatMessage } from "./zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
+import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
@@ -324,6 +326,7 @@ interface CompletedChatOutputLoad {
 interface PriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -1433,8 +1436,21 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatPriorRunMessage(message: PriorRunMessage): string {
+function formatPriorRunMessage(
+  message: PriorRunMessage,
+  structuredPromptEnabled: boolean,
+): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
+  if (
+    structuredPromptEnabled &&
+    message.role === "user" &&
+    message.structuredPrompt
+  ) {
+    const prompt = projectStructuredUserMessage(
+      message.structuredPrompt,
+    ).agentPrompt;
+    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
+  }
   const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
   const attach = formatAttachFileIds(message.attachFiles);
   return attach ? `${body}\n${attach}` : body;
@@ -1443,12 +1459,15 @@ function formatPriorRunMessage(message: PriorRunMessage): string {
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   triggerSource: "web" | "slack",
+  structuredPromptEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
   }
   const sections = runs.map((run, index) => {
-    const renderedMessages = run.messages.map(formatPriorRunMessage);
+    const renderedMessages = run.messages.map((message) => {
+      return formatPriorRunMessage(message, structuredPromptEnabled);
+    });
     const transcript =
       renderedMessages.length > 0
         ? renderedMessages.join("\n\n")
@@ -1513,6 +1532,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -1543,6 +1563,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: row.role,
       content: row.content,
+      structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -1756,6 +1777,7 @@ async function buildQueuedPriorContext(args: {
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
   readonly triggerSource: "web" | "slack";
+  readonly structuredPromptEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
     return "";
@@ -1768,6 +1790,7 @@ async function buildQueuedPriorContext(args: {
       RECENT_CHAT_RUN_LIMIT,
     ),
     args.triggerSource,
+    args.structuredPromptEnabled,
   );
 }
 
@@ -1821,6 +1844,35 @@ async function buildQueuedFullPrompt(args: {
   return `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 }
 
+async function resolveQueuedRuntimePrompt(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly sourcePrompt: string | undefined;
+  readonly structuredProjection:
+    | ReturnType<typeof projectStructuredUserMessage>
+    | undefined;
+  readonly userId: string;
+  readonly timing?: ChatCallbackPreCreateTimingCollector;
+}): Promise<string> {
+  if (args.structuredProjection) {
+    return args.structuredProjection.agentPrompt;
+  }
+  const canonicalPrompt = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
+    "nested",
+    () => {
+      return buildQueuedFullPrompt({
+        getResolvedAttachFiles: args.getResolvedAttachFiles,
+        queuedMessage: args.queuedMessage,
+        userId: args.userId,
+        timing: args.timing,
+      });
+    },
+  );
+  return args.sourcePrompt ?? canonicalPrompt;
+}
+
 async function buildCreateQueuedChatRunInput(args: {
   readonly db: Db;
   readonly getResolvedAttachFiles: ResolveAttachFiles;
@@ -1869,6 +1921,14 @@ async function buildCreateQueuedChatRunInput(args: {
         ]);
       },
     );
+  const structuredPromptEnabled = isFeatureEnabled(
+    FeatureSwitchKey.StructuredPrompt,
+    featureSwitchContext,
+  );
+  const structuredProjection =
+    structuredPromptEnabled && resolvedQueuedMessage.structuredPrompt
+      ? projectStructuredUserMessage(resolvedQueuedMessage.structuredPrompt)
+      : undefined;
   const startNewSession = shouldStartNewSessionForQueuedMessage({
     latestSession,
     queuedMessage: resolvedQueuedMessage,
@@ -1885,6 +1945,7 @@ async function buildCreateQueuedChatRunInput(args: {
         startNewSession,
         incompleteContext,
         triggerSource: args.queuedMessage.triggerSource,
+        structuredPromptEnabled,
       });
     },
   );
@@ -1894,7 +1955,9 @@ async function buildCreateQueuedChatRunInput(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
-        explicit: resolvedQueuedMessage.generationTemplate,
+        explicit: structuredProjection
+          ? structuredProjection.generationTemplate
+          : resolvedQueuedMessage.generationTemplate,
         websiteTemplateV2Enabled: isFeatureEnabled(
           FeatureSwitchKey.WebsiteTemplateV2,
           featureSwitchContext,
@@ -1915,20 +1978,14 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
-  const canonicalPrompt = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
-    "nested",
-    () => {
-      return buildQueuedFullPrompt({
-        getResolvedAttachFiles: args.getResolvedAttachFiles,
-        queuedMessage: resolvedQueuedMessage,
-        userId: args.userId,
-        timing: args.timing,
-      });
-    },
-  );
-  const prompt = sourceParams?.prompt ?? canonicalPrompt;
+  const prompt = await resolveQueuedRuntimePrompt({
+    getResolvedAttachFiles: args.getResolvedAttachFiles,
+    queuedMessage: resolvedQueuedMessage,
+    sourcePrompt: sourceParams?.prompt,
+    structuredProjection,
+    userId: args.userId,
+    timing: args.timing,
+  });
 
   return {
     orgId: args.agent.orgId,

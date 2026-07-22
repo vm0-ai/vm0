@@ -44,7 +44,9 @@ import {
 } from "./workflow-composer-domain.ts";
 import {
   CHAT_THREAD_MENTION_NODE_NAME,
+  createEditorDocumentSnapshot,
   TEMPLATE_ATTACHMENT_NODE_NAME,
+  type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
 import {
   createTemplatePreviewRuntime,
@@ -83,6 +85,11 @@ interface WorkflowHighlightStorage {
   workflowNames: readonly string[];
 }
 
+export interface WorkflowComposerSubmissionSnapshot {
+  readonly prompt: string;
+  readonly editorDocument: EditorDocumentSnapshot;
+}
+
 export interface WorkflowComposerSignals {
   readonly editor: Editor;
   readonly templatePreview: TemplatePreviewRuntime;
@@ -115,7 +122,10 @@ export interface WorkflowComposerSignals {
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
-  readonly readInputForSubmission$: Command<Promise<string>, [AbortSignal]>;
+  readonly readInputForSubmission$: Command<
+    Promise<WorkflowComposerSubmissionSnapshot>,
+    [AbortSignal]
+  >;
   readonly setTemplateAttachmentLifecycleRef$: Command<
     (() => void) | undefined,
     [HTMLButtonElement | null]
@@ -145,6 +155,20 @@ export interface WorkflowComposerEventHandlers {
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ) => boolean;
+}
+
+function createReadInputForSubmissionCommand(
+  editor: Editor,
+  compositionGate: CompositionGate,
+) {
+  return command((_context, signal: AbortSignal) => {
+    return compositionGate.runWhenSettled(() => {
+      return {
+        prompt: workflowComposerDocToString(editor),
+        editorDocument: createEditorDocumentSnapshot(editor.state.doc),
+      };
+    }, signal);
+  });
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
@@ -1528,11 +1552,10 @@ export function createWorkflowComposerSignals(
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
-  const readInputForSubmission$ = command((_context, signal: AbortSignal) => {
-    return compositionGate.runWhenSettled(() => {
-      return workflowComposerDocToString(editor);
-    }, signal);
-  });
+  const readInputForSubmission$ = createReadInputForSubmissionCommand(
+    editor,
+    compositionGate,
+  );
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });
