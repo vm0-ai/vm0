@@ -38,12 +38,10 @@ const zeroMailDraftBaseSchema = z.object({
   sentAt: z.string().optional(),
 });
 
-export const zeroMailDraftV3Schema = zeroMailDraftBaseSchema.extend({
+export const zeroMailDraftSchema = zeroMailDraftBaseSchema.extend({
   version: z.literal(3),
   attachments: z.array(zeroMailAttachmentSchema),
 });
-
-export const zeroMailDraftSchema = zeroMailDraftV3Schema;
 
 const zeroMailDraftResponseSchema = z.object({
   mailDraftId: z.string().uuid(),
@@ -129,6 +127,5 @@ export const zeroMailContract = c.router({
 export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
 export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
 export type ZeroMailAttachment = z.infer<typeof zeroMailAttachmentSchema>;
-export type ZeroMailDraftV3 = z.infer<typeof zeroMailDraftV3Schema>;
 export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
 export type ZeroMailContract = typeof zeroMailContract;
