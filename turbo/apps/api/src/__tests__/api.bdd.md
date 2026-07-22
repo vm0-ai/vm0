@@ -266,14 +266,14 @@ Then cross-org, stale member, missing pricing, insufficient credit, and disabled
 
 Coverage: `usage`, `zero-usage-record`, `zero-usage-runs`, `zero-usage-members`, `zero-usage-insight`, `zero-insights`, `model-stats`, `zero-attribution`, `zero-maps`, `zero-banking`, `cron-aggregate-usage`, `cron-process-usage-events`, `cron-aggregate-insights`.
 
-### FILE-01: Uploads, storage, host, and legacy files
+### FILE-01: Uploads, storage, and hosting
 
 Given an authenticated user prepares uploads, completes uploads, writes storage, and hosts artifacts through API routes
-When they read files, hosted content, storage content, and legacy file routes
+When they read files, hosted content, and storage content
 Then owner-visible content is returned.
 Then cross-user, cross-org, unsupported content type, invalid filename, missing object, stale version, and missing capability cases are rejected.
 
-Coverage: `zero-uploads-prepare`, `zero-uploads-complete`, `storages`, `storages-write`, `zero-host`, `zero-web-download`, `legacy-file`.
+Coverage: `zero-uploads-prepare`, `zero-uploads-complete`, `storages`, `storages-write`, `zero-host`, `zero-web-download`.
 
 ### FILE-02: Image, video, voice, audio, and built-in generation
 
@@ -611,7 +611,7 @@ Production-reachable but not API-constructible (recorded as explicit exceptions;
 - `agent-run-callback.service.ts:64` (`dispatchRunCallbacks` missing-run `return []`): only reachable when the `agent_runs` row disappears between the terminal-transition commit and the detached dispatch (org deletion racing a cancel). Uncovered in the main baseline as well, so not a parity gap.
 - `zero-slack-webhooks.service.ts` `resolveEffectiveCompose` `not_found` arm (646-647) and its DM/ephemeral notice case (1414-1425): requires `orgMetadata.defaultAgentId` to reference a compose with no `zeroAgents` row; the column's FK is `onDelete: 'set null'` and the default-agent PUT validates `zeroAgents` membership, so every public write/delete path keeps the reference valid. Reachable only through historical data; the legacy test seeded an orphan compose directly. BDD covers the adjacent `not_configured` notice on both ephemeral and DM branches, and covers the `not_accessible` arm through the admin-sets-private-default API journey.
 - `onboarding.service.ts:500-501` (`defaultAgentInfo` `!row → return null`): same FK argument as above — `org_metadata.default_agent_id` is `onDelete: 'set null'` and only validated zero-agents can be set as default, so an orphan reference is not API-constructible; the legacy test seeded it directly. The ORG-03 chain covers the adjacent deleted-default path (`defaultAgentId` null).
-- `zero-chat-thread.service.ts` / `google-drive-artifact-sync.service.ts` legacy artifact URL resolution fallbacks (`run_uploaded_files` rows without `metadata.s3Key`, persisted CDN URLs without metadata keys, and legacy `/f/{userId}/{id}/{filename}` storage-bucket URLs) require historical rows or direct DB writes. Current artifact writers persist artifact-bucket keys through metadata, and CHAT-03 in `chat-threads.bdd.test.ts` covers API-reachable upload grouping, hosted-site filtering, Google Drive connection status, disconnected/not_synced/synced/unknown statuses, 401/400/404 request boundaries, and run-scoped sandbox uploads. The legacy `zero-chat-threads-artifacts-sync.test.ts` remnant also asserted Google Drive multipart body shape and hosted zip internals; those are provider implementation details rather than API-visible Then assertions.
+- `zero-chat-thread.service.ts` / `google-drive-artifact-sync.service.ts` artifact URL resolution fallbacks (`run_uploaded_files` rows without `metadata.s3Key` and persisted CDN URLs without metadata keys) require historical rows or direct DB writes. Current artifact writers persist artifact-bucket keys through metadata, and CHAT-03 in `chat-threads.bdd.test.ts` covers API-reachable upload grouping, hosted-site filtering, Google Drive connection status, disconnected/not_synced/synced/unknown statuses, 401/400/404 request boundaries, and run-scoped sandbox uploads. The deleted `zero-chat-threads-artifacts-sync.test.ts` remnant also asserted Google Drive multipart body shape and hosted zip internals; those are provider implementation details rather than API-visible Then assertions.
 
 ## Open Helper Gaps
 

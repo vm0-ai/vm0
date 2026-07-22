@@ -42,10 +42,6 @@ interface IndexedRow {
   readonly value: ArtifactItem;
 }
 
-type LegacyArtifactItem = Omit<ArtifactItem, "size"> & {
-  readonly isFavorited?: boolean;
-};
-
 class MemoryCursor implements FakeCursor {
   private position = 0;
 
@@ -133,10 +129,6 @@ function indexKey(indexName: string, item: ArtifactItem): IDBValidKey | null {
 class MemoryArtifactDb {
   private readonly rows = new Map<string, ArtifactItem>();
   private syncState: unknown;
-
-  seedLegacyItem(item: LegacyArtifactItem): void {
-    this.rows.set(item.artifactItemId, item as ArtifactItem);
-  }
 
   get db(): IDBPDatabase {
     return {
@@ -277,27 +269,6 @@ describe("artifact item IndexedDB cache reads", () => {
       second,
       first,
     ]);
-  });
-
-  it("normalizes legacy cached artifact items", async () => {
-    const { db, stores } = setupStores();
-    const { size, ...legacy } = artifact(1);
-    expect(size).toBeGreaterThan(0);
-    db.seedLegacyItem({ ...legacy, isFavorited: true });
-
-    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
-      { ...legacy, size: 0 },
-    ]);
-  });
-
-  it("removes favorite state from legacy cached artifact items", async () => {
-    const { db, stores } = setupStores();
-    const legacy = { ...artifact(1), isFavorited: true };
-    db.seedLegacyItem(legacy);
-
-    const cached = await stores.readStore.readRecent();
-    expect(cached).toStrictEqual([artifact(1)]);
-    expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
   it("upserts idempotently and replaces stale metadata", async () => {

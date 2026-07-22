@@ -14,7 +14,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
@@ -166,20 +165,6 @@ function requestTokenFromUrl(authorizationUrl: string): string {
 }
 
 describe("FILE-03 desktop computer-use runtime", () => {
-  it("does not expose the legacy computer-use command approval route", async () => {
-    const app = createApp({ signal: context.signal });
-    const response = await app.request(
-      `/api/zero/computer-use/commands/${randomUUID()}/approval`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision: "approve" }),
-      },
-    );
-
-    expect(response.status).toBe(404);
-  });
-
   it("creates a delegated authorization link and applies the selected host to the chat thread", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });

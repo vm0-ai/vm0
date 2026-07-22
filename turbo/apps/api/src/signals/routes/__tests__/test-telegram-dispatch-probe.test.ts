@@ -178,6 +178,8 @@ async function heartbeatRunner() {
         runnerId: randomUUID(),
         runnerName: "telegram-dispatch-probe-runner",
         group: "vm0/test",
+        snapshotGeneration: 1,
+        snapshotSequence: 1,
         admittableProfiles: ["vm0/default"],
         totalVcpu: 8,
         totalMemoryMb: 16_384,

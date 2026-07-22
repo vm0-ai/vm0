@@ -987,7 +987,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
+  it("loads more sidebar chats and deletes a chat", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
       return createThread(
@@ -1024,9 +1024,6 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Delete chat?",
     });
-    expect(
-      within(dialog).queryByText(/linked automations/u),
-    ).not.toBeInTheDocument();
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {

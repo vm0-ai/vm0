@@ -24,7 +24,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { storages } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
@@ -34,7 +34,7 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -680,67 +680,23 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const storageRows = await db
-      .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+      .select({ s3Prefix: storages.s3Prefix })
       .from(storages)
-      .where(eq(storages.userId, userId));
+      .where(
+        and(
+          eq(storages.userId, userId),
+          sql`${storages.s3Prefix} = ${storages.orgId} || '/' || ${storages.id}::text`,
+        ),
+      );
 
-    // Legacy prefixes like `{orgId}/artifact/{name}` have no user segment,
-    // so another user's storage in the same org can share the prefix.
-    // Deleting a shared prefix wholesale would destroy the other user's
-    // version objects (#22148). Prefixes still exclusive to this user are
-    // deleted wholesale (which also removes orphan objects from uncommitted
-    // prepares); shared prefixes fall back to deleting exactly this user's
-    // version directories.
-    const prefixes = storageRows.map((row) => {
-      return row.s3Prefix;
-    });
-    const sharedRows =
-      prefixes.length > 0
-        ? await db
-            .select({ s3Prefix: storages.s3Prefix })
-            .from(storages)
-            .where(
-              and(
-                inArray(storages.s3Prefix, prefixes),
-                ne(storages.userId, userId),
-              ),
-            )
-        : [];
-    const sharedPrefixes = new Set(
-      sharedRows.map((row) => {
-        return row.s3Prefix;
-      }),
-    );
-
-    const exclusivePrefixes = [
+    const prefixes = [
       ...new Set(
-        prefixes.filter((prefix) => {
-          return !sharedPrefixes.has(prefix);
+        storageRows.map((row) => {
+          return row.s3Prefix;
         }),
       ),
     ];
-    await get(
-      deleteUserObjectsForPrefixesBestEffort(bucket, exclusivePrefixes, userId),
-    );
-
-    const sharedStorageIds = storageRows.flatMap((row) => {
-      return sharedPrefixes.has(row.s3Prefix) ? [row.id] : [];
-    });
-    if (sharedStorageIds.length > 0) {
-      const versionRows = await db
-        .select({ s3Key: storageVersions.s3Key })
-        .from(storageVersions)
-        .where(inArray(storageVersions.storageId, sharedStorageIds));
-      await get(
-        deleteUserObjectsForPrefixesBestEffort(
-          bucket,
-          versionRows.map((row) => {
-            return row.s3Key;
-          }),
-          userId,
-        ),
-      );
-    }
+    await get(deleteUserObjectsForPrefixesBestEffort(bucket, prefixes, userId));
 
     const exportRows = await db
       .select({ s3Key: exportJobs.s3Key })

@@ -60,33 +60,10 @@ export const uploadPresentationToGoogleSlides$ = command(
     const client = createClient(chatThreadArtifactsContract);
     const stagedFormData = new FormData();
     stagedFormData.append("uploadId", prepared.body.id);
-    const stagedResult = await accept(
-      client.uploadGoogleSlides({
-        params: { threadId: params.threadId },
-        body: stagedFormData,
-        fetchOptions: { signal },
-      }),
-      [200, 400],
-    );
-    signal.throwIfAborted();
-    if (stagedResult.status === 200) {
-      return stagedResult.body;
-    }
-    if (stagedResult.body.error.message !== "No presentation file provided") {
-      return await accept(Promise.resolve(stagedResult), [200]);
-    }
-
-    // Rollout compatibility with API revisions before staged Slides uploads.
-    // Remove after this API revision is the minimum supported backend.
-    const inlineFormData = new FormData();
-    inlineFormData.append(
-      "file",
-      new File([params.blob], params.filename, { type: PPTX_MIME_TYPE }),
-    );
     const result = await accept(
       client.uploadGoogleSlides({
         params: { threadId: params.threadId },
-        body: inlineFormData,
+        body: stagedFormData,
         fetchOptions: { signal },
       }),
       [200],

@@ -1,14 +1,8 @@
-import { randomUUID } from "node:crypto";
-
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import {
-  deleteHistoricalBb0DeviceCode,
-  seedHistoricalBb0DeviceCode,
-} from "../../../test-fixtures/historical-device-code";
 import { testContext } from "../../../__tests__/test-context";
 import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
@@ -147,38 +141,6 @@ describe("AUTH-02: CLI device code expiry", () => {
     expect(expiredApproval.body.error).toBe("Device code has expired");
 
     clearMockNow();
-  });
-});
-
-describe("AUTH-02: CLI device purpose isolation", () => {
-  it("rejects a device code written by the retired BB0 protocol", async () => {
-    const compactId = randomUUID()
-      .replaceAll("-", "")
-      .slice(0, 8)
-      .toUpperCase();
-    const deviceCode = `${compactId.slice(0, 4)}-${compactId.slice(4)}`;
-    await seedHistoricalBb0DeviceCode({
-      code: deviceCode,
-      expiresAt: new Date(now() + DEVICE_CODE_EXPIRY_MS),
-    });
-    onTestFinished(async () => {
-      await deleteHistoricalBb0DeviceCode(deviceCode);
-    });
-
-    const exchange = await authDevice.requestCliToken(deviceCode, [400]);
-    expectOAuthError(exchange.body);
-    expect(exchange.body).toStrictEqual({
-      error: "invalid_request",
-      error_description: "Invalid device code",
-    });
-
-    const approval = await authDevice.requestCliApproval(
-      bdd.user(),
-      { device_code: deviceCode },
-      [400],
-    );
-    expectCliApprovalError(approval.body);
-    expect(approval.body.error).toBe("Invalid or expired device code");
   });
 });
 

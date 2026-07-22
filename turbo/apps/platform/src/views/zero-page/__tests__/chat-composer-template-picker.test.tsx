@@ -28,7 +28,6 @@ import {
   context,
   AGENT_ID,
   THREAD_ID,
-  NOW,
   tabByText,
   presentationTemplateGridScrollContainer,
   mockActiveTemplateThread,
@@ -1754,42 +1753,6 @@ describe("chat composer templates", () => {
     });
     expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("shows historical illustration labels after template picker rollout", async () => {
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatMessages: [
-        {
-          id: "msg-illustration-template-history",
-          role: "user",
-          content: "Make an illustrated launch card",
-          runId: "run-illustration-template-history",
-          generationTemplate: {
-            type: "illustration",
-            selection: {
-              illustrationStyleId: illustrationTemplate.illustrationStyleId,
-            },
-          },
-          createdAt: NOW,
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Make an illustrated launch card"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
-      ).toHaveTextContent("Illustration");
-    });
   });
 
   it("renders video templates in the default template picker", async () => {

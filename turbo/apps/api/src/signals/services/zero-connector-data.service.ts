@@ -457,7 +457,7 @@ export function zeroConnectorList(args: {
     // Feature switches filter configuredTypes for discovery only. Stored
     // connections remain manageable and executable after rollout is disabled.
     const now = nowDate();
-    const connectorList: ConnectorWithRuntimeMethod[] = storedRows.flatMap(
+    const connectorList: ConnectorWithRuntimeMethod[] = storedRows.map(
       (row) => {
         const runtimeMethod = getConnectorRuntimeMethod({
           snapshot,
@@ -466,14 +466,14 @@ export function zeroConnectorList(args: {
           requireExecutable: true,
         });
         if (runtimeMethod === undefined) {
-          return [];
+          throw new Error(
+            `Stored connector ${row.type}:${row.authMethod} has no executable runtime method`,
+          );
         }
-        return [
-          {
-            response: storedConnectorRowToResponse(row, runtimeMethod, now),
-            runtimeMethod,
-          },
-        ];
+        return {
+          response: storedConnectorRowToResponse(row, runtimeMethod, now),
+          runtimeMethod,
+        };
       },
     );
     const connectorProvidedBindings =
@@ -576,7 +576,9 @@ function storedConnectorByType(args: {
         requireExecutable: true,
       });
       if (runtimeMethod === undefined) {
-        return null;
+        throw new Error(
+          `Stored connector ${oauthRow.type}:${oauthRow.authMethod} has no executable runtime method`,
+        );
       }
       return storedConnectorRowToResponse(oauthRow, runtimeMethod, nowDate());
     }

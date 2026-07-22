@@ -22,58 +22,48 @@ function client() {
 }
 
 describe("registry resource download", () => {
-  // Deployment compatibility is a small old/new request-state matrix. Keeping
-  // it direct avoids requiring production R2 version hashes in the test DB.
-  it("keeps legacy clients on the default archive and lets new clients opt in", () => {
-    const id = "template:html-ppt-schoolhouse-runbook";
-    const legacySha256 =
-      "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e";
-    const refreshedSha256 =
-      "bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63";
-    const colorSystemFixedSha256 =
+  it("resolves the presentation archive for the current registry digest", () => {
+    const currentSha256 =
       "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
 
     expect(
-      resolvePrivateRegistryResourceArchive(id, undefined, legacySha256),
-    ).toMatchObject({
-      versionId:
-        "a34ed3483769cc2825656849385b86f23c50e5500d8ab20e7a705019949e49a5",
-      sha256: legacySha256,
-    });
-    expect(
-      resolvePrivateRegistryResourceArchive(id, refreshedSha256, legacySha256),
-    ).toMatchObject({
-      versionId:
-        "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
-      sha256: refreshedSha256,
-    });
-    expect(
       resolvePrivateRegistryResourceArchive(
-        id,
-        colorSystemFixedSha256,
-        legacySha256,
+        "template:html-ppt-schoolhouse-runbook",
+        currentSha256,
+        currentSha256,
       ),
-    ).toMatchObject({
+    ).toStrictEqual({
+      storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
       versionId:
         "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
-      sha256: colorSystemFixedSha256,
+      sha256: currentSha256,
     });
   });
 
+  it("rejects a registry digest that differs from the current registry", () => {
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        "template:html-ppt-schoolhouse-runbook",
+        "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
+        "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
+      ),
+    ).toBeUndefined();
+  });
+
   it("resolves every refreshed additive website v2 archive", () => {
-    const legacySha256 =
+    const currentSha256 =
       "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3";
 
     expect(
       resolvePrivateRegistryResourceArchive(
         "template:black-slabs",
-        undefined,
-        legacySha256,
+        currentSha256,
+        currentSha256,
       ),
     ).toMatchObject({
       versionId:
         "eaca342df50857477c64a1ca73faffb4a1819879948fc8610ff095fae9fe3f22",
-      sha256: legacySha256,
+      sha256: currentSha256,
     });
 
     const v2Archives = [
@@ -174,7 +164,7 @@ describe("registry resource download", () => {
     const response = await accept(
       client().download({
         headers: authHeaders(),
-        query: { id: "template:dashboard" },
+        query: { id: "template:dashboard", expectedSha256: "0".repeat(64) },
       }),
       [404],
     );

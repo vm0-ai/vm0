@@ -25,7 +25,6 @@ import {
   eq,
   gt,
   inArray,
-  isNull,
   lt,
   notInArray,
   or,
@@ -385,23 +384,10 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
-  // Legacy senders remain last-arrival-wins during rolling deployments and
-  // intentionally leave any ordered watermark untouched.
-  const snapshotOrder =
-    body.data.snapshotGeneration === undefined ||
-    body.data.snapshotSequence === undefined
-      ? undefined
-      : {
-          generation: body.data.snapshotGeneration,
-          sequence: body.data.snapshotSequence,
-        };
-  const snapshotOrderValues =
-    snapshotOrder === undefined
-      ? {}
-      : {
-          heartbeatGeneration: snapshotOrder.generation,
-          heartbeatSequence: snapshotOrder.sequence,
-        };
+  const snapshotOrder = {
+    generation: body.data.snapshotGeneration,
+    sequence: body.data.snapshotSequence,
+  };
   const db = set(writeDb$);
   await db
     .insert(runnerState)
@@ -409,7 +395,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      ...snapshotOrderValues,
+      heartbeatGeneration: snapshotOrder.generation,
+      heartbeatSequence: snapshotOrder.sequence,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
@@ -426,7 +413,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        ...snapshotOrderValues,
+        heartbeatGeneration: snapshotOrder.generation,
+        heartbeatSequence: snapshotOrder.sequence,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
@@ -438,18 +426,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
-      ...(snapshotOrder === undefined
-        ? {}
-        : {
-            setWhere: or(
-              isNull(runnerState.heartbeatGeneration),
-              lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
-              and(
-                eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
-                lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
-              ),
-            ),
-          }),
+      setWhere: or(
+        lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
+        and(
+          eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
+          lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
+        ),
+      ),
     });
   signal.throwIfAborted();
 

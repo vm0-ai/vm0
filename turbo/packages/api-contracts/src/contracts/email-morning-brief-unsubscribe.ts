@@ -17,15 +17,6 @@ export const emailMorningBriefUnsubscribeErrorSchema = z.object({
 });
 
 export const emailMorningBriefUnsubscribeContract = c.router({
-  get: {
-    method: "GET",
-    path: "/api/email/morning-brief/unsubscribe",
-    query: emailMorningBriefUnsubscribeQuerySchema,
-    responses: {
-      302: c.noBody(),
-    },
-    summary: "Redirect legacy email links to the platform unsubscribe page",
-  },
   unsubscribe: {
     method: "POST",
     path: "/api/email/morning-brief/unsubscribe",
