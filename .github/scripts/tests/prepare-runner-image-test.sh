@@ -15,7 +15,7 @@ if JOB_REF=pr-123 \
   HEAD_SHA=abc \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
-  TARGET_TRIPLE= \
+  TARGET_TRIPLE='' \
   "$PREPARE" >"${TMPDIR}/empty.out" 2>"${TMPDIR}/empty.err"; then
   fail "expected empty target to fail"
 fi
@@ -102,7 +102,7 @@ if JOB_REF=pr-123 \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \
-  EXPECTED_REMOTE_ARCH= \
+  EXPECTED_REMOTE_ARCH='' \
   "$PREPARE" >"${TMPDIR}/arch-empty.out" 2>"${TMPDIR}/arch-empty.err"; then
   fail "expected empty expected remote arch to fail"
 fi
@@ -118,5 +118,106 @@ if JOB_REF=pr-123 \
   fail "expected expected remote arch mismatch to fail"
 fi
 grep -q "EXPECTED_REMOTE_ARCH mismatch: aarch64-unknown-linux-musl maps to aarch64, got x86_64" "${TMPDIR}/arch-mismatch.err" || fail "expected expected remote arch mismatch message"
+
+if grep -q 'runner-binary-build/build.sh' "$PREPARE"; then
+  fail "host preparation must not invoke the runner binary build"
+fi
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/missing-runner.out" 2>"${TMPDIR}/missing-runner.err"; then
+  fail "expected a missing supplied runner to fail"
+fi
+grep -q "missing required env: RUNNER_PATH" "${TMPDIR}/missing-runner.err" || fail "expected missing runner path message"
+
+. "${SCRIPT_DIR}/runner-guest-binaries.sh"
+. "${SCRIPT_DIR}/runner-binary-build/contract.env"
+runner_guest_binaries_load
+runner="${TMPDIR}/runner"
+printf 'prepared runner fixture\n' > "$runner"
+runner_sha=$(sha256sum "$runner" | awk '{print $1}')
+runner_size=$(stat -c '%s' "$runner")
+input_digest=$(printf 'a%.0s' {1..64})
+guest_json='{}'
+for guest in "${RUNNER_GUEST_BINARIES[@]}"; do
+  guest_sha=$(printf '%s' "$guest" | sha256sum | awk '{print $1}')
+  guest_json=$(jq -c --arg guest "$guest" --arg sha "$guest_sha" '. + {($guest): $sha}' <<<"$guest_json")
+done
+metadata="${TMPDIR}/metadata.json"
+jq -n \
+  --arg digest "$input_digest" \
+  --arg toolchain "$RUNNER_BINARY_TOOLCHAIN_IMAGE" \
+  --arg sha "$runner_sha" \
+  --argjson size "$runner_size" \
+  --argjson guests "$guest_json" '
+    {
+      schemaVersion: 1,
+      binaryInputDigest: $digest,
+      target: "aarch64-unknown-linux-musl",
+      toolchainImage: $toolchain,
+      runnerSha256: $sha,
+      runnerSizeBytes: $size,
+      guestSha256: $guests
+    }
+  ' > "$metadata"
+
+printf 'wrong bytes\n' > "${TMPDIR}/wrong-runner"
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  RUNNER_PATH="${TMPDIR}/wrong-runner" \
+  FRESH_METADATA_PATH="$metadata" \
+  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  "$PREPARE" >"${TMPDIR}/wrong-bytes.out" 2>"${TMPDIR}/wrong-bytes.err"; then
+  fail "expected mismatched supplied runner bytes to fail"
+fi
+grep -q "fresh runner size mismatch" "${TMPDIR}/wrong-bytes.err" || fail "expected supplied runner validation message"
+
+ln -s "$metadata" "${TMPDIR}/metadata-link.json"
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  RUNNER_PATH="$runner" \
+  FRESH_METADATA_PATH="${TMPDIR}/metadata-link.json" \
+  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  "$PREPARE" >"${TMPDIR}/metadata-link.out" 2>"${TMPDIR}/metadata-link.err"; then
+  fail "expected symlinked supplied metadata to fail"
+fi
+grep -q "fresh runner metadata is not a regular file" "${TMPDIR}/metadata-link.err" || fail "expected metadata symlink validation message"
+
+mkdir -p "${TMPDIR}/bin"
+cat > "${TMPDIR}/bin/ssh" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$SSH_LOG"
+exit 42
+BASH
+chmod +x "${TMPDIR}/bin/ssh"
+: > "${TMPDIR}/ssh.log"
+if PATH="${TMPDIR}/bin:${PATH}" \
+  SSH_LOG="${TMPDIR}/ssh.log" \
+  JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  RUNNER_PATH="$runner" \
+  FRESH_METADATA_PATH="$metadata" \
+  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  "$PREPARE" >"${TMPDIR}/valid-input.out" 2>"${TMPDIR}/valid-input.err"; then
+  fail "expected mocked SSH boundary to fail"
+fi
+grep -q 'ci@dev-1 uname -m' "${TMPDIR}/ssh.log" || fail "valid supplied runner must reach the SSH boundary"
 
 echo "prepare-runner-image-test: ok"

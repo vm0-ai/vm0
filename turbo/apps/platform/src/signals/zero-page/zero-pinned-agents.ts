@@ -1,7 +1,8 @@
 import { command, computed } from "ccstate";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { defaultAgentId$, sortedAgents$ } from "../agent.ts";
+import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
+import { unreadAgentIds$ } from "../chat-page/sidebar-unread-threads.ts";
 import {
   updateUserPreference$,
   userPreferences$,
@@ -39,6 +40,20 @@ export const pinnedAgents$ = computed(async (get) => {
   return list.filter((a) => {
     return pinnedIds.has(a.id);
   });
+});
+
+export const displayedPinnedAgents$ = computed(async (get) => {
+  const pinnedAgents = await get(pinnedAgents$);
+  const unreadAgentIds = await get(unreadAgentIds$);
+  const pinnedAgentIds = new Set(
+    pinnedAgents.map((agent) => {
+      return agent.id;
+    }),
+  );
+  const unreadOnlyAgents = (await get(subagents$)).filter((agent) => {
+    return unreadAgentIds.has(agent.id) && !pinnedAgentIds.has(agent.id);
+  });
+  return [...pinnedAgents, ...unreadOnlyAgents];
 });
 
 export const setAgentPinned$ = command(

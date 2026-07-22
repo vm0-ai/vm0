@@ -1,7 +1,7 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { command } from "ccstate";
-import { gte, isNotNull, lt, sql } from "drizzle-orm";
+import { count, gte, isNotNull, lt, sql } from "drizzle-orm";
 
 import { nowDate } from "../external/time";
 import { writeDb$ } from "../external/db";
@@ -29,7 +29,7 @@ export const aggregateUsageDaily$ = command(
         ${agentRuns.userId},
         ${agentRuns.orgId},
         ${targetDate}::date,
-        COUNT(*)::int,
+        ${count()}::int,
         COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint
       FROM ${agentRuns}
       WHERE ${gte(agentRuns.createdAt, yesterday)}

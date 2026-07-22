@@ -390,6 +390,7 @@ export const remoteArtifacts$ = computed(
 // (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
+    get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const artifacts = await artifactItemCacheStores(
       dbPromise,

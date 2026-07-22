@@ -1,6 +1,6 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { and, eq, like, or, sql } from "drizzle-orm";
+import { and, count, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -158,7 +158,7 @@ export async function holdOrgAdmissionLockFixture(args: {
       const rows = await executeRawRows(
         db(),
         sql`
-          SELECT count(*)::int AS "waiterCount"
+          SELECT ${count()}::int AS "waiterCount"
           FROM pg_locks AS waiting
           WHERE waiting.locktype = 'advisory'
             AND NOT waiting.granted
@@ -232,7 +232,7 @@ export async function holdChatMessageWritesFixture(args: {
             INNER JOIN blocked AS blocker
               ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
           )
-          SELECT count(*)::int AS "waiterCount"
+          SELECT ${count()}::int AS "waiterCount"
           FROM blocked
         `,
         waiterCountRowSchema,
