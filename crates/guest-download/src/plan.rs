@@ -455,7 +455,8 @@ mod tests {
                 "extractPath": "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0",
                 "archiveUrl": "https://s3/instructions.tar.gz",
                 "instructionsTargetFilename": "AGENTS.md"
-            }]
+            }],
+            "artifacts": []
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
 
@@ -489,7 +490,8 @@ mod tests {
                 "mountPath": "/data",
                 "extractPath": "/tmp/staged-data",
                 "archiveUrl": "https://s3/data.tar.gz"
-            }]
+            }],
+            "artifacts": []
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
 
@@ -512,6 +514,7 @@ mod tests {
     #[test]
     fn run_plan_ignores_extract_path_for_artifacts() {
         let json = r#"{
+            "storages": [],
             "artifacts": [{
                 "mountPath": "/workspace",
                 "extractPath": "/tmp/staged-artifact",
@@ -539,6 +542,7 @@ mod tests {
     fn run_plan_collects_instruction_cleanups() {
         let json = r#"{
             "storages": [],
+            "artifacts": [],
             "instructionCleanups": [{
                 "mountPath": "/home/user/.codex",
                 "targetFilename": "AGENTS.md"

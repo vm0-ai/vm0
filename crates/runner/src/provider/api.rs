@@ -42,6 +42,13 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
+    capabilities: [ClaimCapability; 1],
+}
+
+#[derive(Serialize)]
+enum ClaimCapability {
+    #[serde(rename = "storage-mounts-v1")]
+    StorageMountsV1,
 }
 
 #[derive(Serialize)]
@@ -1086,6 +1093,7 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
+        capabilities: [ClaimCapability::StorageMountsV1],
     }
 }
 
@@ -1247,6 +1255,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "allowNonDefaultPort"
             | "apiStartTime"
             | "apis"
+            | "archiveSize"
             | "archiveUrl"
             | "artifacts"
             | "ask"
@@ -1272,6 +1281,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "encodedSize"
             | "encoding"
             | "encryptedSecrets"
+            | "empty"
             | "environment"
             | "experimentalProfile"
             | "expires"
@@ -1284,6 +1294,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "historyRef"
             | "hostPolicy"
             | "heldSessionStates"
+            | "instructionsTargetFilename"
             | "issued"
             | "job"
             | "keyName"
@@ -1316,6 +1327,8 @@ fn is_static_json_field(field: &str) -> bool {
             | "sourceType"
             | "sourceUserId"
             | "storageManifest"
+            | "storageId"
+            | "storageMounts"
             | "storages"
             | "suffixes"
             | "timestamp"
@@ -1330,6 +1343,8 @@ fn is_static_json_field(field: &str) -> bool {
             | "vasStorageId"
             | "vasStorageName"
             | "vasVersionId"
+            | "versionId"
+            | "writeback"
     )
 }
 
@@ -1941,7 +1956,10 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert!(body.get("capabilities").is_none());
+        assert_eq!(
+            body["capabilities"],
+            serde_json::json!(["storage-mounts-v1"])
+        );
     }
 
     #[test]
@@ -3321,6 +3339,70 @@ mod tests {
         assert_eq!(
             context.codex_runtime_config.as_ref().unwrap().provider_id,
             "fixture_provider"
+        );
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_accepts_canonical_storage_mount_response() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let mut response: serde_json::Value =
+            serde_json::from_str(RUNNER_CLAIM_RESPONSE_FIXTURE).unwrap();
+        response["storageManifest"] = serde_json::json!({
+            "storageMounts": [
+                {
+                    "name": "fixture-workspace",
+                    "storageId": "fixture-workspace-id",
+                    "versionId": "fixture-storage-version",
+                    "mountPath": "/home/user/workspace",
+                    "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz"
+                },
+                {
+                    "name": "fixture-artifacts",
+                    "storageId": "fixture-storage-id",
+                    "versionId": "fixture-artifact-version",
+                    "mountPath": "/home/user/artifacts",
+                    "archiveUrl": "https://storage.fixture.invalid/artifacts.tar.gz",
+                    "writeback": true
+                }
+            ]
+        });
+        let claim_mock = server
+            .mock_async(move |when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(response);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("canonical storage mount claim response should decode");
+        let manifest = claimed.context().storage_manifest.as_ref().unwrap();
+
+        assert_eq!(manifest.storages.len(), 1);
+        assert_eq!(manifest.storages[0].name, "fixture-workspace");
+        assert_eq!(
+            manifest.storages[0].vas_version_id,
+            "fixture-storage-version"
+        );
+        assert_eq!(manifest.artifacts.len(), 1);
+        assert_eq!(manifest.artifacts[0].vas_storage_id, "fixture-storage-id");
+        assert_eq!(
+            manifest.artifacts[0].vas_version_id,
+            "fixture-artifact-version"
         );
         claim_mock.assert_calls_async(1).await;
     }

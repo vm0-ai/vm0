@@ -16,6 +16,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
   runnersPollContract,
+  storageMountEntrySchema,
   storageManifestSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
@@ -48,6 +49,71 @@ describe("runner claim response contract", () => {
 });
 
 describe("runner storage manifest contract", () => {
+  it("accepts canonical read-only and writeback mounts", () => {
+    expect(
+      storageMountEntrySchema.parse({
+        name: "workspace",
+        storageId: "storage-id-1",
+        versionId: "version-1",
+        mountPath: "/workspace",
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+      }),
+    ).toMatchObject({
+      name: "workspace",
+      storageId: "storage-id-1",
+      versionId: "version-1",
+      mountPath: "/workspace",
+    });
+
+    expect(
+      storageMountEntrySchema.parse({
+        name: "memory",
+        storageId: "storage-id-2",
+        versionId: "version-2",
+        mountPath: "/memory",
+        empty: true,
+        writeback: true,
+      }),
+    ).toMatchObject({
+      name: "memory",
+      empty: true,
+      writeback: true,
+    });
+  });
+
+  it("rejects canonical mounts that cannot preserve current behavior", () => {
+    const base = {
+      name: "workspace",
+      storageId: "storage-id-1",
+      versionId: "version-1",
+      mountPath: "/workspace",
+    };
+
+    expect(storageMountEntrySchema.safeParse(base).success).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        empty: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        missingRootPolicy: "fail",
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        instructionsTargetFilename: "AGENTS.md",
+        writeback: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts the web-produced claim manifest shape", () => {
     expect(
       storageManifestSchema.parse({
