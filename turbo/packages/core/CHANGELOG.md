@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.452.0](https://github.com/vm0-ai/vm0/compare/core-v8.451.0...core-v8.452.0) (2026-07-22)
+
+
+### Features
+
+* enable zero scrape for all organizations ([#22599](https://github.com/vm0-ai/vm0/issues/22599)) ([3f0755a](https://github.com/vm0-ai/vm0/commit/3f0755a059742f6c1585b9452dac01c75733abe6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+
 ## [8.451.0](https://github.com/vm0-ai/vm0/compare/core-v8.450.0...core-v8.451.0) (2026-07-22)
 
 

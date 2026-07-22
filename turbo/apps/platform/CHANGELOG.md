@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.618.0](https://github.com/vm0-ai/vm0/compare/app-v0.617.0...app-v0.618.0) (2026-07-22)
+
+
+### Features
+
+* **chat:** persist and restore structured composer drafts ([#22560](https://github.com/vm0-ai/vm0/issues/22560)) ([c7b17fb](https://github.com/vm0-ai/vm0/commit/c7b17fb7f5422f9b17774d6d57691d6a8bce0a6d))
+* **onboarding:** drop card defaults, lighten shadows, send custom workflow into the product ([#22579](https://github.com/vm0-ai/vm0/issues/22579)) ([de803bd](https://github.com/vm0-ai/vm0/commit/de803bd24b4524dbda190cba1d83f43f7eb14fa8))
+
+
+### Refactoring
+
+* **platform:** initialize thread data with synchronous projections ([#22567](https://github.com/vm0-ai/vm0/issues/22567)) ([dcf6eee](https://github.com/vm0-ai/vm0/commit/dcf6eee7ede423abba0a0614c378f2a0ee623aad))
+* **platform:** let ccstate own resource lifetimes ([#22598](https://github.com/vm0-ai/vm0/issues/22598)) ([d65191a](https://github.com/vm0-ai/vm0/commit/d65191af7790a23a34a7777f5af705d8edcaf9ec))
+* remove obsolete platform and api compatibility fallbacks ([#22573](https://github.com/vm0-ai/vm0/issues/22573)) ([427124a](https://github.com/vm0-ai/vm0/commit/427124a7d9afa3f174a86b33d213d8ba143e35e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+    * @vm0/core bumped to 8.452.0
+
 ## [0.617.0](https://github.com/vm0-ai/vm0/compare/app-v0.616.0...app-v0.617.0) (2026-07-22)
 
 

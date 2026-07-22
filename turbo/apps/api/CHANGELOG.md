@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.303.0](https://github.com/vm0-ai/vm0/compare/api-v1.302.0...api-v1.303.0) (2026-07-22)
+
+
+### Features
+
+* enable zero scrape for all organizations ([#22599](https://github.com/vm0-ai/vm0/issues/22599)) ([3f0755a](https://github.com/vm0-ai/vm0/commit/3f0755a059742f6c1585b9452dac01c75733abe6))
+* make managed zero web search authoritative ([#22544](https://github.com/vm0-ai/vm0/issues/22544)) ([e8e66ce](https://github.com/vm0-ai/vm0/commit/e8e66ce625f8bde4673ed4846eecd8cda15c7fa9))
+
+
+### Refactoring
+
+* **api:** convert active run lookups to drizzle builders ([#22587](https://github.com/vm0-ai/vm0/issues/22587)) ([8e78e37](https://github.com/vm0-ai/vm0/commit/8e78e37a0becd45abee30e4fe38e8cc29fab4bd5))
+* **api:** register connector skills from catalog metadata ([#22606](https://github.com/vm0-ai/vm0/issues/22606)) ([5cc44cf](https://github.com/vm0-ai/vm0/commit/5cc44cfec3b502250b696187b28e388d663e7b2e))
+* reduce fallback slop in log search ([#22615](https://github.com/vm0-ai/vm0/issues/22615)) ([a9cf034](https://github.com/vm0-ai/vm0/commit/a9cf034cae6a36968257329677e8d768c35a33d9))
+* remove obsolete platform and api compatibility fallbacks ([#22573](https://github.com/vm0-ai/vm0/issues/22573)) ([427124a](https://github.com/vm0-ai/vm0/commit/427124a7d9afa3f174a86b33d213d8ba143e35e1))
+
+
+### Performance Improvements
+
+* **api:** consolidate chat message metadata lookups ([#22604](https://github.com/vm0-ai/vm0/issues/22604)) ([0c35542](https://github.com/vm0-ai/vm0/commit/0c355425bb2336c46637e607e27af58a5fdc687e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+    * @vm0/core bumped to 8.452.0
+    * @vm0/db bumped to 1.127.1
+
 ## [1.302.0](https://github.com/vm0-ai/vm0/compare/api-v1.301.0...api-v1.302.0) (2026-07-22)
 
 
