@@ -48,8 +48,7 @@ describe("zero connector permission-request command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.stubEnv("VM0_TOKEN", "test-token");
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
     server.use(
       stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
@@ -373,7 +372,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("exits with authentication guidance when no token is available", async () => {
-    vi.stubEnv("VM0_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
     await expect(async () => {

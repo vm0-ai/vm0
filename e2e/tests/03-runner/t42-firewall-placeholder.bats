@@ -26,12 +26,13 @@ setup_file() {
 
     # discord-webhook uses api-token auth, so set it up through the same
     # connector-aware path as the frontend's "Add Connection" dialog.
-    $ZERO_CLI connector connect discord-webhook \
-        --value DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1234567890/fake-token-for-e2e
+    connect_e2e_connector \
+        "discord-webhook" \
+        '{"DISCORD_WEBHOOK_URL":"https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"}'
 }
 
 teardown_file() {
-    zero_curl "/api/zero/connectors/discord-webhook" -X DELETE >/dev/null 2>&1 || true
+    e2e_api_curl "/api/zero/connectors/discord-webhook" -X DELETE >/dev/null 2>&1 || true
 }
 
 setup() {
@@ -48,8 +49,8 @@ setup() {
 }
 
 teardown() {
-    [ -n "$THREAD_ID" ] && zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+    [ -n "$THREAD_ID" ] && e2e_api_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    [ -n "$AGENT_ID" ] && delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -105,7 +106,7 @@ setup_test_connector() {
 
 authorize_slack_for_agent() {
     local agent_id="$1"
-    zero_curl "/api/zero/agents/${agent_id}/user-connectors" \
+    e2e_api_curl "/api/zero/agents/${agent_id}/user-connectors" \
         -X PUT \
         -d '{"enabledTypes":["slack"]}' \
         >/dev/null
@@ -133,7 +134,7 @@ apply_slack_chat_write_permission() {
             ;;
     esac
 
-    zero_curl "/api/zero/user-permission-grants/apply" \
+    e2e_api_curl "/api/zero/user-permission-grants/apply" \
         -X PUT \
         -d "$payload" \
         >/dev/null
@@ -153,7 +154,7 @@ slack_mock_state() {
     local -a headers
     slack_test_endpoint_headers headers
     curl -fsS "${headers[@]}" \
-        "$(zero_api_url)/api/test/slack-state?team_id=$team_id"
+        "$(e2e_api_url)/api/test/slack-state?team_id=$team_id"
 }
 
 wait_for_slack_mock_marker() {
@@ -281,7 +282,7 @@ EOF
     local marker_team_id="T_FIREWALL_REFRESH_${UNIQUE_ID//-/_}"
     local marker_text="first-deny-${UNIQUE_ID}"
     local slack_mock_url
-    slack_mock_url="$(zero_api_url)/api/test/slack-mock/chat.postMessage"
+    slack_mock_url="$(e2e_api_url)/api/test/slack-mock/chat.postMessage"
 
     local prompt
     prompt=$(cat <<'EOF'
@@ -377,7 +378,7 @@ EOF
     THREAD_ID="$LAST_THREAD_ID"
 
     wait_for_slack_mock_marker "$marker_team_id" "$marker_text" "$LAST_RUN_ID" 60 || {
-        zero_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
+        e2e_api_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
         return 1
     }
 

@@ -606,6 +606,40 @@
       }
     },
     {
+      "name": "rightmost host parameter rejects undeclared non-default port",
+      "url": "https://api.example:8443/items",
+      "base": "https://api.{domain}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "rightmost host parameter matches declared non-default port",
+      "url": "https://api.example:8443/items",
+      "base": "https://api.{domain}:8443",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/items"
+      }
+    },
+    {
+      "name": "rightmost host parameter rejects mismatched non-default port",
+      "url": "https://api.example:9443/items",
+      "base": "https://api.{domain}:8443",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "rightmost host parameter normalizes explicit default port",
+      "url": "https://api.example/items",
+      "base": "https://api.{domain}:443",
+      "expected": {
+        "kind": "match",
+        "relativePath": "/items"
+      }
+    },
+    {
       "name": "exact static base returns slash",
       "url": "https://api.github.com?per_page=1#ignored",
       "base": "https://api.github.com",
@@ -741,6 +775,60 @@
       },
       "expected": {
         "kind": "no_match"
+      }
+    },
+    {
+      "name": "parameterized base does not authorize an undeclared port",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.{domain}",
+              "auth": { "headers": { "Authorization": "Bearer token" } }
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "https://api.example:8443/items"
+      },
+      "expected": {
+        "kind": "no_match"
+      }
+    },
+    {
+      "name": "port does not change parameterized hostname specificity",
+      "firewalls": [
+        {
+          "name": "broad",
+          "apis": [
+            {
+              "base": "https://api.{domain}:8443",
+              "auth": {}
+            }
+          ]
+        },
+        {
+          "name": "specific",
+          "apis": [
+            {
+              "base": "https://{sub}.example:8443",
+              "auth": {}
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "https://api.example:8443/items"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "specific",
+        "base": "https://{sub}.example:8443",
+        "relativePath": "/items"
       }
     },
     {

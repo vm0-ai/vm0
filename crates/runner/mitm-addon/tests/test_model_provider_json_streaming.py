@@ -13,7 +13,11 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import (
+    STREAM_BUFFER_LIMIT,
+    STREAM_DECODE_EXPANSION_GRACE,
+    STREAM_DECODE_MAX_EXPANSION_RATIO,
+)
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_response_helpers import (
@@ -159,6 +163,51 @@ class TestModelProviderJsonStreaming:
             provider_case,
             cache_write_tokens=cache_write_tokens,
         )
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_pipeline_zlib_expansion_limit_preserves_wire_body_and_rejects_usage(
+        self, tmp_path, real_flow, encoding_case
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = (
+            b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"'
+            + b"A" * (STREAM_DECODE_EXPANSION_GRACE + 1024)
+            + b'"}],"usage":{"input_tokens":50,"output_tokens":200}}'
+        )
+        compressed = gzip.compress(payload) if encoding_case == "gzip" else zlib.compress(payload)
+        allowed_decoded_bytes = max(
+            STREAM_DECODE_EXPANSION_GRACE,
+            len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO,
+        )
+        assert allowed_decoded_bytes < len(payload)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {"content-type": "application/json", "content-encoding": encoding_case}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(compressed) == compressed
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
+        usage_warnings = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert len(usage_warnings) == 1
+        assert usage_warnings[0]["error"] == "decoded body limit exceeded"
 
     def test_full_pipeline_small_zstd_model_json_uses_bounded_fallback(
         self,

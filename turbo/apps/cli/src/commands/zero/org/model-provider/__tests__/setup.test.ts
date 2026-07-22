@@ -25,7 +25,7 @@ describe("zero org model-provider setup command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   describe("non-interactive mode", () => {
@@ -243,7 +243,7 @@ describe("zero org model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
+        expect.stringContaining("Authentication failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

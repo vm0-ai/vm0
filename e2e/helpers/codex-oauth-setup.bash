@@ -61,7 +61,7 @@ seed_codex_oauth() {
     curl_args+=(-d "$body")
 
     local resp http_code resp_body
-    resp=$(curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}")
+    resp=$(curl "${curl_args[@]}" "$(e2e_api_url)/api/cli/auth/test-codex-oauth?email=${encoded_email}")
     http_code=$(echo "$resp" | tail -n1)
     resp_body=$(echo "$resp" | head -n-1)
 
@@ -72,28 +72,15 @@ seed_codex_oauth() {
     fi
 }
 
-# Resolve the auth token for /api/zero/* calls. CI does not export
-# VM0_TOKEN/ZERO_TOKEN/VM0_TEST_TOKEN; the cli-e2e-03-runner job copies
-# the e2e-runner config to ~/.vm0/config.json instead (turbo.yml line
-# 1880, 1952). Fall back to that file the same way _codex_zero_token in
-# helpers/codex-zero.bash does, so this helper works in both env-var-
-# driven local runs and config-file-driven CI runs.
+# Resolve the explicit E2E-only credential for /api/zero/* calls.
 _codex_oauth_token() {
-    if [ -n "${VM0_TEST_TOKEN:-}" ]; then
-        printf '%s' "$VM0_TEST_TOKEN"
-    elif [ -n "${ZERO_TOKEN:-}" ]; then
-        printf '%s' "$ZERO_TOKEN"
-    elif [ -n "${VM0_TOKEN:-}" ]; then
-        printf '%s' "$VM0_TOKEN"
-    elif [ -f "$HOME/.vm0/config.json" ]; then
-        jq -r '.token // empty' "$HOME/.vm0/config.json"
-    fi
+    e2e_api_token
 }
 
 # Prefer the serial E2E token for the feature-off probe so runner chunks do
 # not race each other by mutating the shared runner user's feature switches.
 codex_oauth_feature_off_token() {
-    local config="${CODEX_OAUTH_FEATURE_OFF_TOKEN_CONFIG:-/tmp/e2e-token-serial.json}"
+    local config="${CODEX_OAUTH_FEATURE_OFF_TOKEN_CONFIG:-/tmp/e2e-api-credentials-serial.json}"
     if [ -f "$config" ]; then
         jq -r '.token // empty' "$config"
         return
@@ -109,7 +96,7 @@ _set_codex_oauth_provider() {
         token=$(_codex_oauth_token)
     fi
     if [ -z "$token" ]; then
-        echo "_set_codex_oauth_provider: no auth token (env or ~/.vm0/config.json)" >&2
+        echo "_set_codex_oauth_provider: E2E_API_TOKEN is required" >&2
         return 1
     fi
     local body
@@ -120,7 +107,7 @@ _set_codex_oauth_provider() {
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/zero/feature-switches" >/dev/null
+    curl "${curl_args[@]}" "$(e2e_api_url)/api/zero/feature-switches" >/dev/null
 }
 
 # Enable the codexOauthProvider feature switch for the current test user.
@@ -164,7 +151,7 @@ _post_test_codex_oauth() {
     fi
     curl_args+=(-d "$body")
 
-    curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}"
+    curl "${curl_args[@]}" "$(e2e_api_url)/api/cli/auth/test-codex-oauth?email=${encoded_email}"
 }
 
 # Seed a codex-oauth-token model provider via the auth_json paste path.
@@ -229,7 +216,7 @@ codex_oauth_stale_supported() {
     fi
 
     local resp
-    resp=$(curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/zero/model-providers" 2>/dev/null)
+    resp=$(curl "${curl_args[@]}" "$(e2e_api_url)/api/zero/model-providers" 2>/dev/null)
 
     # Probe for needsReconnect field on any provider in the response. Schema-
     # level signal is more robust than UI-shape probes.

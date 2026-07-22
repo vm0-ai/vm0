@@ -913,6 +913,16 @@ fn cli_failure_reason_classifies_codex_usage_limit() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_codex_quota_exceeded_as_usage_limit() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::Codex,
+        "Quota exceeded. Check your plan and billing details.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::UsageLimit));
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_session_limit() {
     for message in [
         "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits. Resets 12:50pm (Asia/Shanghai).",

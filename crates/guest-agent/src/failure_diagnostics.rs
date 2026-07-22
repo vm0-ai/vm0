@@ -296,11 +296,14 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::ContextWindowExceeded);
     }
     // Subscription/usage limits are an expected quota state for both Codex
-    // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
-    // "weekly limit" / org monthly spend limit), so classify them regardless of
-    // framework where the wording is shared. This lets the runner log these
-    // expected outcomes at info instead of error.
+    // (ChatGPT plan "usage limit" or API billing "quota exceeded") and Claude
+    // Code (Max plan "session limit" / "weekly limit" / org monthly spend
+    // limit), so classify them regardless of framework where the wording is
+    // shared. This lets the runner log these expected outcomes at info instead
+    // of error.
     if normalized.contains("usage limit")
+        || (matches!(framework, AgentFramework::Codex)
+            && normalized.contains("quota exceeded. check your plan and billing details"))
         || normalized.contains("session limit")
         || normalized.contains("weekly limit")
         || (matches!(framework, AgentFramework::ClaudeCode)

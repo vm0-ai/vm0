@@ -85,9 +85,9 @@ teardown_file() {
     assert_success
 
     # Verify mock-claude execution events
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo 'created by agent'"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     # Extract checkpoint ID as a local variable
@@ -121,7 +121,7 @@ teardown_file() {
     assert_success
 
     # Verify mock-claude execution events for resume
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "ls && cat counter.txt"
 
     # Verify checkpoint version is restored:

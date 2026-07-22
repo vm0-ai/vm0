@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.613.4](https://github.com/vm0-ai/vm0/compare/app-v0.613.3...app-v0.613.4) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
 ## [0.613.3](https://github.com/vm0-ai/vm0/compare/app-v0.613.2...app-v0.613.3) (2026-07-22)
 
 

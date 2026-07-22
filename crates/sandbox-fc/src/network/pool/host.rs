@@ -9,7 +9,7 @@ use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
 use crate::command::{
-    IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
+    CommandError, IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
     exec_with_timeout,
 };
 use crate::paths::LockPaths;
@@ -98,9 +98,38 @@ async fn exec_ip(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Shorthand: run `iptables <args>`, discard stdout.
+/// Prepend an unbounded xtables lock wait to a mutating firewall command.
+///
+/// The surrounding command timeout remains the sole deadline so an exhausted
+/// wait is classified as a timeout instead of a completed non-zero exit.
+fn xtables_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let mut waited_args = Vec::with_capacity(args.len() + 1);
+    waited_args.push("--wait");
+    waited_args.extend_from_slice(args);
+    waited_args
+}
+
+async fn exec_xtables_status_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> std::result::Result<(), CommandError> {
+    let args = xtables_args(args);
+    exec_status_with_timeout(program, &args, timeout).await
+}
+
+async fn exec_xtables_ignore_errors_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> IgnoredCommandOutcome {
+    let args = xtables_args(args);
+    exec_ignore_errors_with_timeout(program, &args, timeout).await
+}
+
+/// Shorthand: run a bounded mutating `iptables` command and discard stdout.
 async fn exec_iptables(args: &[&str]) -> Result<()> {
-    exec_status_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
+    exec_xtables_status_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
     Ok(())
 }
 
@@ -139,7 +168,7 @@ pub(super) async fn setup_dns_input_filter(pool_index: u32, dns_port: u16) -> Re
                 "REJECT",
             ];
             if let Err(error) =
-                exec_status_with_timeout(program, &args, NETNS_COMMAND_TIMEOUT).await
+                exec_xtables_status_with_timeout(program, &args, NETNS_COMMAND_TIMEOUT).await
             {
                 if matches!(
                     delete_pool_firewall_rules_by_comment(&comment).await,
@@ -268,11 +297,8 @@ async fn setup_namespace_routing(
         "netns", "exec", name, "ip", "route", "add", "default", "via", host_ip,
     ])
     .await?;
-    exec_ip(&[
-        "netns",
-        "exec",
-        name,
-        "iptables",
+    let mut iptables_command_args = vec!["netns", "exec", name, "iptables"];
+    iptables_command_args.extend(xtables_args(&[
         "-t",
         "nat",
         "-A",
@@ -283,8 +309,8 @@ async fn setup_namespace_routing(
         PEER_DEVICE,
         "-j",
         "MASQUERADE",
-    ])
-    .await?;
+    ]));
+    exec_ip(&iptables_command_args).await?;
     exec_ip(&[
         "netns",
         "exec",
@@ -608,7 +634,7 @@ async fn delete_firewall_rules_from_table(
             return NamespaceDeleteOutcome::Abandoned;
         }
     };
-    // Sequential: xtables lock serializes writes to the same table anyway.
+    // Sequential: the legacy xtables lock serializes writes to the same table anyway.
     // Note: split_whitespace + trim_matches('"') is safe because namespace
     // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
     // did, iptables-save would quote them as `--comment "foo bar"` and the
@@ -621,7 +647,9 @@ async fn delete_firewall_rules_from_table(
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
-        outcomes.push(exec_ignore_errors_with_timeout(command, &args, NETNS_COMMAND_TIMEOUT).await);
+        outcomes.push(
+            exec_xtables_ignore_errors_with_timeout(command, &args, NETNS_COMMAND_TIMEOUT).await,
+        );
     }
     NamespaceDeleteOutcome::from_best_effort(outcomes)
 }
@@ -995,6 +1023,41 @@ fn try_claim_idle_pool_lock(locks: &LockPaths, index: u32) -> Option<Flock<File>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn xtables_status_prepends_bare_wait() {
+        exec_xtables_status_with_timeout("test", &["=", "--wait"], Duration::from_secs(1))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn xtables_timeout_is_abandoned_by_cleanup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let command = dir.path().join("wait-for-timeout");
+        std::fs::write(
+            &command,
+            "#!/bin/sh\n[ \"$1\" = \"--wait\" ] || exit 2\nsleep 5\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let outcome = exec_xtables_ignore_errors_with_timeout(
+            command.to_str().unwrap(),
+            &[],
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
+        assert_eq!(
+            NamespaceDeleteOutcome::from_best_effort([outcome]),
+            NamespaceDeleteOutcome::Abandoned
+        );
+    }
 
     #[test]
     fn conntrack_flush_trusts_completed_deletes() {

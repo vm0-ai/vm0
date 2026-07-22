@@ -75,7 +75,7 @@ teardown() {
     assert_success
 
     # Verify run completes properly with checkpoint
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 }
 
@@ -100,7 +100,7 @@ teardown() {
     assert_success
 
     # Verify run completes properly with checkpoint
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
     assert_output --partial "existing content"
     assert_output --partial "nested file"

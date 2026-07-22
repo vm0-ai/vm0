@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** expose artifact update timestamps ([#22402](https://github.com/vm0-ai/vm0/issues/22402)) ([14cb524](https://github.com/vm0-ai/vm0/commit/14cb524e721340826b70c1c4c86633febab1e386))
+* **artifacts:** generate video posters on creation ([#22387](https://github.com/vm0-ai/vm0/issues/22387)) ([309920f](https://github.com/vm0-ai/vm0/commit/309920f74b9e17780f4d479b45ed70f1d3458986))
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+    * @vm0/db bumped to 1.125.1
+
 ## [1.296.1](https://github.com/vm0-ai/vm0/compare/api-v1.296.0...api-v1.296.1) (2026-07-21)
 
 

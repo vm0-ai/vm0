@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.448.0](https://github.com/vm0-ai/vm0/compare/core-v8.447.0...core-v8.448.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** generate video posters on creation ([#22387](https://github.com/vm0-ai/vm0/issues/22387)) ([309920f](https://github.com/vm0-ai/vm0/commit/309920f74b9e17780f4d479b45ed70f1d3458986))
+
+
+### Bug Fixes
+
+* **chat:** keep structured prompt disabled by default ([#22472](https://github.com/vm0-ai/vm0/issues/22472)) ([473be74](https://github.com/vm0-ai/vm0/commit/473be74e1c80968300f499b4ed52310c5061cdd4))
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+
 ## [8.447.0](https://github.com/vm0-ai/vm0/compare/core-v8.446.0...core-v8.447.0) (2026-07-21)
 
 
