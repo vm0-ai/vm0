@@ -52,6 +52,8 @@ interface BinaryHelper {
   readonly rightBoundary: BinaryRightBoundary;
 }
 
+const TEMPLATE_EXPRESSION_BOUNDARY = "\u0000";
+
 const BINARY_HELPERS = new Map<string, BinaryHelper>([
   [
     "=",
@@ -333,7 +335,7 @@ function hasSqlIdentifierPrefix(source: string, start: number): boolean {
   return (
     isSqlIdentifierCharacter(source[start - 1]) ||
     previous === "." ||
-    previous === "\u0000"
+    previous === TEMPLATE_EXPRESSION_BOUNDARY
   );
 }
 
@@ -425,8 +427,8 @@ function sqlCodeMask(source: string): string {
   let state: SqlLexicalState = { kind: "code" };
   let offset = 0;
   while (offset < source.length) {
-    if (source[offset] === "\u0000") {
-      mask[offset] = "\u0000";
+    if (source[offset] === TEMPLATE_EXPRESSION_BOUNDARY) {
+      mask[offset] = TEMPLATE_EXPRESSION_BOUNDARY;
       offset += 1;
       continue;
     }
@@ -1372,8 +1374,10 @@ export const preferDrizzleApis = createRule({
         }
 
         const quasis = node.quasi.quasis.map(quasiText);
-        const syntaxSource = sqlCodeMask(quasis.join("\u0000"));
-        const syntaxQuasis = syntaxSource.split("\u0000");
+        const syntaxSource = sqlCodeMask(
+          quasis.join(TEMPLATE_EXPRESSION_BOUNDARY),
+        );
+        const syntaxQuasis = syntaxSource.split(TEMPLATE_EXPRESSION_BOUNDARY);
         const expressions = node.quasi.expressions;
         if (
           expressions.length === 0 &&
@@ -1526,7 +1530,7 @@ export const preferDrizzleApis = createRule({
 
           const aggregate = aggregateMatch(prefix);
           const aggregateSuffix = aggregateRemainder(
-            syntaxQuasis.slice(index + 1).join("\u0000"),
+            syntaxQuasis.slice(index + 1).join(TEMPLATE_EXPRESSION_BOUNDARY),
           );
           if (
             aggregate === undefined ||
