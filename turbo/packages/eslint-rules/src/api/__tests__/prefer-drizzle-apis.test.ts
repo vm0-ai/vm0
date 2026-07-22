@@ -133,8 +133,158 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         void mutableList;
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .as("selected_users");
+        sql\` \`;
+        sql\`true::boolean\`;
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`);
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`)
+          .where(or(isNotNull(selected.id), eq(users.id, 1)));
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`)
+          .where(
+            and(or(isNotNull(selected.id), eq(users.id, 1)), eq(users.id, 2)),
+          );
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`)
+          .where(and(isNotNull(users.deletedAt), eq(users.id, 1)));
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, eq(selected.id, users.id));
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .as("selected_users");
+        function isNotNull(value: unknown): SQL {
+          return sql\`\${value}\`;
+        }
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`)
+          .where(isNotNull(selected.id));
+      `,
+    },
+    {
+      code: `
+        function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+          return { strings, values };
+        }
+        const builder = {
+          innerJoinLateral(relation: unknown, condition: unknown) {
+            return { relation, condition };
+          },
+        };
+        sql\`\`;
+        builder.innerJoinLateral({}, sql\`true\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`\`;
+      `,
+      errors: [{ messageId: "emptyFragment" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        query\`\`;
+        drizzle.sql\`\`;
+        const tag = drizzle.sql;
+        tag\`\`;
+      `,
+      errors: [
+        { messageId: "emptyFragment" },
+        { messageId: "emptyFragment" },
+        { messageId: "emptyFragment" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { isNotNull, sql } from "drizzle-orm";
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .as("selected_users");
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, sql\`true\`);
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, sql\`true\`)
+          .where(isNotNull(selected.id));
+      `,
+      errors: [
+        { messageId: "crossJoinLateral" },
+        { messageId: "crossJoinLateral" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .as("selected_users");
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, query\` true \`);
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, drizzle.sql\`TRUE\`);
+      `,
+      errors: [
+        { messageId: "crossJoinLateral" },
+        { messageId: "crossJoinLateral" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import {
+          and as all,
+          eq,
+          isNotNull as present,
+          sql as query,
+        } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .as("selected_users");
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, query\`true\`)
+          .where(present(selected.id));
+        db.select()
+          .from(users)
+          .leftJoinLateral(selected, drizzle.sql\` TRUE \`)
+          .where(all(eq(users.id, 1), drizzle.isNotNull(selected.id)));
+      `,
+      errors: [
+        { messageId: "crossJoinLateral" },
+        { messageId: "crossJoinLateral" },
+      ],
+    },
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
