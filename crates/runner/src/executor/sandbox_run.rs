@@ -8,7 +8,7 @@ use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
     SandboxFactory, SandboxId, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
-    SandboxNbdNetlinkConnectStage,
+    SandboxNbdNetlinkConnectStage, SandboxStartObserver, SandboxStartStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -115,6 +115,15 @@ const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_MULTIPLE: &str =
     "runner_fresh_sandbox_factory_nbd_size_zero_retries_multiple";
 const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
+const RUNNER_FRESH_SANDBOX_START_BACKEND_LAUNCH: &str = "runner_fresh_sandbox_start_backend_launch";
+const RUNNER_FRESH_SANDBOX_START_SNAPSHOT_LOAD_RESUME: &str =
+    "runner_fresh_sandbox_start_snapshot_load_resume";
+const RUNNER_FRESH_SANDBOX_START_GUEST_CONNECTION_WAIT: &str =
+    "runner_fresh_sandbox_start_guest_connection_wait";
+const RUNNER_FRESH_SANDBOX_START_GUEST_DNS_READINESS: &str =
+    "runner_fresh_sandbox_start_guest_dns_readiness";
+const RUNNER_FRESH_SANDBOX_START_RUNTIME_FINALIZE: &str =
+    "runner_fresh_sandbox_start_runtime_finalize";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
     "runner_fresh_sandbox_retry_without_workspace_image";
 const RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY: &str = "runner_fresh_sandbox_dns_readiness_retry";
@@ -128,11 +137,38 @@ const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
 const SANDBOX_FACTORY_CREATE_STAGE_FAILED: &str = "sandbox_factory_create_stage_failed";
 const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
+const SANDBOX_START_STAGE_FAILED: &str = "sandbox_start_stage_failed";
 const DNS_READINESS_RETRY_PREPARE_FAILED: &str = "replacement_prepare_failed";
 const SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN: &str = "cleanup_uncertain";
 
 struct FreshSandboxFactoryCreateObserver<'a> {
     telemetry: &'a mut JobTelemetry,
+}
+
+struct FreshSandboxStartObserver<'a> {
+    telemetry: &'a mut JobTelemetry,
+}
+
+impl SandboxStartObserver for FreshSandboxStartObserver<'_> {
+    fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool) {
+        let error = (!success).then_some(SANDBOX_START_STAGE_FAILED);
+        self.telemetry.record(
+            fresh_sandbox_start_stage_action(stage),
+            duration,
+            success,
+            error,
+        );
+    }
+}
+
+fn fresh_sandbox_start_stage_action(stage: SandboxStartStage) -> &'static str {
+    match stage {
+        SandboxStartStage::BackendLaunch => RUNNER_FRESH_SANDBOX_START_BACKEND_LAUNCH,
+        SandboxStartStage::SnapshotLoadResume => RUNNER_FRESH_SANDBOX_START_SNAPSHOT_LOAD_RESUME,
+        SandboxStartStage::GuestConnectionWait => RUNNER_FRESH_SANDBOX_START_GUEST_CONNECTION_WAIT,
+        SandboxStartStage::GuestDnsReadiness => RUNNER_FRESH_SANDBOX_START_GUEST_DNS_READINESS,
+        SandboxStartStage::RuntimeFinalize => RUNNER_FRESH_SANDBOX_START_RUNTIME_FINALIZE,
+    }
 }
 
 impl SandboxCreateObserver for FreshSandboxFactoryCreateObserver<'_> {
@@ -927,7 +963,11 @@ async fn create_started_sandbox(
         }
     };
     let sandbox_start_started = Instant::now();
-    if let Err(e) = sandbox.start().await {
+    let start_result = {
+        let mut observer = FreshSandboxStartObserver { telemetry };
+        sandbox.start_with_observer(&mut observer).await
+    };
+    if let Err(e) = start_result {
         let guest_dns_readiness = matches!(&e, SandboxError::GuestDnsReadiness { .. });
         telemetry.record(
             RUNNER_FRESH_SANDBOX_START,

@@ -35,6 +35,66 @@ impl SandboxParkNonReusableReason {
     }
 }
 
+/// Fixed low-cardinality stages on the sandbox start critical path.
+///
+/// Providers report only stages that apply to a start. The snapshot stage is
+/// absent for a fresh boot, and the DNS stage is absent when the provider does
+/// not perform a guest DNS readiness check. On a successful start, reported
+/// stages are ordered, non-overlapping wall-clock intervals. Concurrent work
+/// belongs to the interval that contains it; for example, guest connection
+/// waiting measures only the residual wait after backend startup completes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxStartStage {
+    /// Prepares and launches the backend through its control API readiness.
+    BackendLaunch,
+    /// Loads and resumes an applicable backend snapshot.
+    SnapshotLoadResume,
+    /// Waits for the residual guest control connection after backend startup.
+    GuestConnectionWait,
+    /// Proves that the configured guest DNS path is ready.
+    GuestDnsReadiness,
+    /// Publishes the guest and starts the remaining host runtime services.
+    RuntimeFinalize,
+}
+
+impl SandboxStartStage {
+    /// All start stages in stable catalog order.
+    ///
+    /// Providers can omit stages that do not apply. This order describes the
+    /// successful critical path, not a completeness guarantee after failure or
+    /// cancellation.
+    pub const ALL: [Self; 5] = [
+        Self::BackendLaunch,
+        Self::SnapshotLoadResume,
+        Self::GuestConnectionWait,
+        Self::GuestDnsReadiness,
+        Self::RuntimeFinalize,
+    ];
+}
+
+/// Receives optional low-cardinality sandbox start timing records.
+///
+/// Providers that override [`Sandbox::start_with_observer`] invoke the callback
+/// for every applicable stage when it resolves, before running failure
+/// diagnostics or cleanup. Earlier successful callbacks remain valid when a
+/// later stage fails. Cancellation can leave a completed prefix without a
+/// callback for the in-progress stage. Implementations using the default method
+/// report no stages.
+///
+/// For an overriding implementation, successful start stages are
+/// non-overlapping and cover the provider start critical path after lifecycle
+/// precondition checks. A failed parent start can additionally include
+/// diagnostics and cleanup after the failed stage callback. Observer callbacks
+/// are informational and never own lifecycle transitions or cleanup.
+pub trait SandboxStartObserver: Send {
+    /// Records one completed start stage.
+    ///
+    /// `success` is the result of this stage, not the final result of the full
+    /// start. A provider invokes this callback at most once per applicable
+    /// stage.
+    fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool);
+}
+
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
 /// Implementations are created by a [`SandboxFactory`](crate::SandboxFactory)
@@ -103,6 +163,19 @@ pub trait Sandbox: Send + Sync + Any {
     /// `start` is equivalent to a sandbox that was never started, and
     /// the caller may drop the instance without calling `stop`/`kill`.
     async fn start(&mut self) -> Result<()>;
+    /// Start the sandbox while reporting provider-supported phase timings.
+    ///
+    /// This has the same lifecycle, success, failure, and cleanup contract as
+    /// [`start`](Self::start). An overriding implementation reports each stage
+    /// applicable to its provider and must not use observer callbacks as
+    /// cleanup authority. The default implementation preserves existing
+    /// provider behavior and emits no callbacks.
+    async fn start_with_observer(
+        &mut self,
+        _observer: &mut dyn SandboxStartObserver,
+    ) -> Result<()> {
+        self.start().await
+    }
     /// Shut the guest down gracefully, then terminate the backing process.
     ///
     /// The guest is first notified via the IPC channel (with an

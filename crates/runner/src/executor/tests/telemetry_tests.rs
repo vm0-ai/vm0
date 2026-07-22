@@ -1,10 +1,13 @@
+use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxCreateObserver,
-    SandboxCreateStage, SandboxError, SandboxFactory, SandboxId, SandboxInitializationPhase,
-    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
+    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
+    SandboxFactory, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
+    SandboxStartStage, StartProcessRequest,
 };
 use sandbox_mock::MockSandboxFactory;
 
@@ -99,11 +102,135 @@ fn assert_action_outcome(
     assert_eq!(op.2.as_deref(), error, "{action} error");
 }
 
+fn assert_action_duration(telemetry: &JobTelemetry, action: &str, duration_ms: u64) {
+    let ops = telemetry.pending_ops_with_duration_snapshot();
+    let op = ops
+        .iter()
+        .find(|op| op.0 == action)
+        .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
+    assert_eq!(op.1, duration_ms, "{action} duration");
+}
+
+struct ObservedStartSandbox {
+    inner: Box<dyn Sandbox>,
+    failed_stage: Option<SandboxStartStage>,
+    omit_optional_stages: bool,
+}
+
+#[async_trait]
+impl Sandbox for ObservedStartSandbox {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    fn source_ip(&self) -> &str {
+        self.inner.source_ip()
+    }
+
+    fn host_process_pid(&self) -> Option<u32> {
+        self.inner.host_process_pid()
+    }
+
+    async fn start(&mut self) -> sandbox::Result<()> {
+        self.inner.start().await
+    }
+
+    async fn start_with_observer(
+        &mut self,
+        observer: &mut dyn SandboxStartObserver,
+    ) -> sandbox::Result<()> {
+        for (index, stage) in SandboxStartStage::ALL.iter().copied().enumerate() {
+            if self.omit_optional_stages
+                && matches!(
+                    stage,
+                    SandboxStartStage::SnapshotLoadResume | SandboxStartStage::GuestDnsReadiness
+                )
+            {
+                continue;
+            }
+            let success = self.failed_stage != Some(stage);
+            observer.record_stage(stage, Duration::from_millis(index as u64 + 30), success);
+            if !success {
+                return Err(SandboxError::Start {
+                    message: "observed mock start failure".to_string(),
+                });
+            }
+        }
+        self.inner.start().await
+    }
+
+    async fn stop(&mut self) -> sandbox::Result<()> {
+        self.inner.stop().await
+    }
+
+    async fn kill(&mut self) -> sandbox::Result<()> {
+        self.inner.kill().await
+    }
+
+    async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
+        self.inner.park().await
+    }
+
+    async fn unpark(&mut self) -> sandbox::Result<()> {
+        self.inner.unpark().await
+    }
+
+    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+        self.inner.exec(request).await
+    }
+
+    async fn exec_with_diagnostic_label(
+        &self,
+        request: &ExecRequest<'_>,
+        label: &'static str,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.exec_with_diagnostic_label(request, label).await
+    }
+
+    async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+        self.inner.read_file(path, max_bytes).await
+    }
+
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> sandbox::Result<sandbox::CopyFileResult> {
+        self.inner.copy_file(path, host_path, options).await
+    }
+
+    async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_file(path, content).await
+    }
+
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_private_file(path, content).await
+    }
+
+    async fn start_process(
+        &self,
+        request: &StartProcessRequest<'_>,
+    ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+        self.inner.start_process(request).await
+    }
+
+    async fn wait_process(
+        &self,
+        handle: sandbox::GuestProcessHandle,
+        timeout: Duration,
+    ) -> sandbox::Result<ProcessExit> {
+        self.inner.wait_process(handle, timeout).await
+    }
+}
+
 struct ObservedMockSandboxFactory {
     inner: MockSandboxFactory,
     failed_stage: Option<SandboxCreateStage>,
     failed_nbd_cow_stage: Option<SandboxNbdCowCreateStage>,
     failed_nbd_netlink_connect_stage: Option<SandboxNbdNetlinkConnectStage>,
+    failed_start_stage: Option<SandboxStartStage>,
+    omit_optional_start_stages: bool,
 }
 
 impl ObservedMockSandboxFactory {
@@ -113,6 +240,8 @@ impl ObservedMockSandboxFactory {
             failed_stage: None,
             failed_nbd_cow_stage: None,
             failed_nbd_netlink_connect_stage: None,
+            failed_start_stage: None,
+            omit_optional_start_stages: false,
         }
     }
 
@@ -122,6 +251,8 @@ impl ObservedMockSandboxFactory {
             failed_stage: Some(stage),
             failed_nbd_cow_stage: None,
             failed_nbd_netlink_connect_stage: None,
+            failed_start_stage: None,
+            omit_optional_start_stages: false,
         }
     }
 
@@ -131,6 +262,8 @@ impl ObservedMockSandboxFactory {
             failed_stage: None,
             failed_nbd_cow_stage: Some(stage),
             failed_nbd_netlink_connect_stage: None,
+            failed_start_stage: None,
+            omit_optional_start_stages: false,
         }
     }
 
@@ -140,6 +273,30 @@ impl ObservedMockSandboxFactory {
             failed_stage: None,
             failed_nbd_cow_stage: None,
             failed_nbd_netlink_connect_stage: Some(stage),
+            failed_start_stage: None,
+            omit_optional_start_stages: false,
+        }
+    }
+
+    fn with_failed_start_stage(stage: SandboxStartStage) -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: None,
+            failed_nbd_cow_stage: None,
+            failed_nbd_netlink_connect_stage: None,
+            failed_start_stage: Some(stage),
+            omit_optional_start_stages: false,
+        }
+    }
+
+    fn without_optional_start_stages() -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: None,
+            failed_nbd_cow_stage: None,
+            failed_nbd_netlink_connect_stage: None,
+            failed_start_stage: None,
+            omit_optional_start_stages: true,
         }
     }
 }
@@ -155,7 +312,12 @@ impl SandboxFactory for ObservedMockSandboxFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
-        self.inner.create(config).await
+        let inner = self.inner.create(config).await?;
+        Ok(Box::new(ObservedStartSandbox {
+            inner,
+            failed_stage: self.failed_start_stage,
+            omit_optional_stages: self.omit_optional_start_stages,
+        }))
     }
 
     async fn create_with_observer(
@@ -226,7 +388,7 @@ impl SandboxFactory for ObservedMockSandboxFactory {
         ] {
             observer.record_nbd_cow_outcome(outcome);
         }
-        self.inner.create(config).await
+        self.create(config).await
     }
 
     async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
@@ -271,6 +433,14 @@ const FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_factory_nbd_acquire_source_demand_scan",
     "runner_fresh_sandbox_factory_nbd_ebusy_retries_none",
     "runner_fresh_sandbox_factory_nbd_size_zero_retries_none",
+];
+
+const FRESH_SANDBOX_START_STAGE_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_start_backend_launch",
+    "runner_fresh_sandbox_start_snapshot_load_resume",
+    "runner_fresh_sandbox_start_guest_connection_wait",
+    "runner_fresh_sandbox_start_guest_dns_readiness",
+    "runner_fresh_sandbox_start_runtime_finalize",
 ];
 
 const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
@@ -368,6 +538,10 @@ async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
     assert_lacks_action(&telemetry, "runner_claim_to_executor_start");
     assert_lacks_action(&telemetry, "runner_claim_resume_session_validation");
     assert_lacks_action(&telemetry, "runner_claim_task_schedule_wait");
+    assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+    for action in FRESH_SANDBOX_START_STAGE_ACTIONS {
+        assert_lacks_action(&telemetry, action);
+    }
 }
 
 #[tokio::test]
@@ -469,6 +643,10 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
         assert_action_success(&telemetry, action, true);
     }
+    for (index, action) in FRESH_SANDBOX_START_STAGE_ACTIONS.iter().enumerate() {
+        assert_action_success(&telemetry, action, true);
+        assert_action_duration(&telemetry, action, index as u64 + 30);
+    }
     let operations = telemetry.pending_ops_with_duration_snapshot();
     for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
         let matching: Vec<_> = operations
@@ -482,6 +660,95 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_omits_inapplicable_sandbox_start_stages() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::without_optional_start_stages();
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    for action in [
+        "runner_fresh_sandbox_start_backend_launch",
+        "runner_fresh_sandbox_start_guest_connection_wait",
+        "runner_fresh_sandbox_start_runtime_finalize",
+    ] {
+        assert_action_success(&telemetry, action, true);
+    }
+    assert_lacks_action(
+        &telemetry,
+        "runner_fresh_sandbox_start_snapshot_load_resume",
+    );
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
+    assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+}
+
+#[tokio::test]
+async fn execute_job_records_failed_sandbox_start_stage_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory =
+        ObservedMockSandboxFactory::with_failed_start_stage(SandboxStartStage::GuestConnectionWait);
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    assert!(
+        outcome
+            .error()
+            .is_some_and(|error| error.contains("observed mock start failure"))
+    );
+
+    for action in [
+        "runner_fresh_sandbox_start_backend_launch",
+        "runner_fresh_sandbox_start_snapshot_load_resume",
+    ] {
+        assert_action_success(&telemetry, action, true);
+    }
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_connection_wait",
+        false,
+        Some("sandbox_start_stage_failed"),
+    );
+    assert_action_duration(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_connection_wait",
+        32,
+    );
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_runtime_finalize");
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_start",
+        false,
+        Some("sandbox_start_failed"),
+    );
 }
 
 #[tokio::test]
