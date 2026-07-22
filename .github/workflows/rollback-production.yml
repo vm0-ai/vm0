@@ -27,21 +27,33 @@ on:
           - "yes"
         default: "no"
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 jobs:
+  queue-production-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - name: Wait for older production deployment workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/wait-production-deploy-queue.sh
+
   resolve-target:
+    needs: queue-production-deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
     environment: production
     outputs:
-      api_deployment_url: ${{ steps.api.outputs.deployment_url }}
-      runner_matrix: ${{ steps.groups.outputs.matrix }}
-      runner_version: ${{ steps.runner.outputs.version }}
-      target_commit: ${{ steps.target.outputs.commit }}
+      api_deployment_url: ${{ steps.resolve.outputs.api_deployment_url }}
+      runner_matrix: ${{ steps.resolve.outputs.runner_matrix }}
+      runner_version: ${{ steps.resolve.outputs.runner_version }}
+      target_commit: ${{ steps.resolve.outputs.target_commit }}
     steps:
       - name: Gate confirmed compatibility
         if: inputs.confirmed_compatible != 'yes'
@@ -56,112 +68,6 @@ jobs:
           fetch-depth: 0
           ref: main
 
-      - name: Validate release target
-        id: target
-        env:
-          TARGET_COMMIT: ${{ inputs.target_commit }}
-        run: |
-          set -euo pipefail
-
-          if [[ ! "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::target_commit must be a full lowercase SHA-1: $TARGET_COMMIT"
-            exit 1
-          fi
-
-          git fetch --force --tags origin main
-          git cat-file -e "${TARGET_COMMIT}^{commit}"
-          if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
-            echo "::error::Target commit is not reachable from main: $TARGET_COMMIT"
-            exit 1
-          fi
-
-          release_tags=$(git tag --points-at "$TARGET_COMMIT" | grep -E -- '-v[0-9]' || true)
-          if [ -z "$release_tags" ]; then
-            echo "::error::Target commit has no release tags: $TARGET_COMMIT"
-            exit 1
-          fi
-
-          echo "commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "Release target: $TARGET_COMMIT"
-          printf '%s\n' "$release_tags"
-
-      - name: Resolve API deployment
-        id: api
-        env:
-          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          deployments=$(curl -fsS --get "https://api.vercel.com/v6/deployments" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            --data-urlencode "teamId=${VERCEL_ORG_ID}" \
-            --data-urlencode "projectId=${VERCEL_PROJECT_ID}" \
-            --data-urlencode "target=production" \
-            --data-urlencode "state=READY" \
-            --data-urlencode "meta-githubCommitSha=${TARGET_COMMIT}" \
-            --data-urlencode "limit=100")
-
-          matches=$(jq -c --arg sha "$TARGET_COMMIT" '[
-            .deployments[]
-            | select(.meta.githubCommitSha == $sha)
-            | select(.state == "READY")
-            | select(.target == "production")
-          ]' <<<"$deployments")
-          match_count=$(jq -r 'length' <<<"$matches")
-          if [ "$match_count" -ne 1 ]; then
-            echo "::error::Expected exactly one READY production API deployment for $TARGET_COMMIT, found $match_count."
-            exit 1
-          fi
-
-          deployment_url="https://$(jq -r '.[0].url' <<<"$matches")"
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-          echo "API target: $deployment_url"
-
-      - name: Verify App artifact
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
-          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
-        run: |
-          set -euo pipefail
-
-          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          ready_file=$(mktemp)
-          aws s3 cp \
-            "s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}/ready.json" \
-            "$ready_file" \
-            --endpoint-url "$r2_endpoint"
-          jq -e --arg sha "$TARGET_COMMIT" '.commitSha == $sha' "$ready_file" >/dev/null
-          echo "App target: s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}/"
-
-      - name: Resolve Runner version
-        id: runner
-        env:
-          TARGET_COMMIT: ${{ steps.target.outputs.commit }}
-        run: |
-          set -euo pipefail
-          . .github/scripts/runner-image-target.sh
-
-          version=$(git show "${TARGET_COMMIT}:crates/runner/Cargo.toml" \
-            | sed -nE 's/^version = "([^"]+)"/\1/p' \
-            | head -1)
-          tag=$(runner_image_release_tag "$version")
-          tag_commit=$(git rev-list -n 1 "$tag")
-          if [ -z "$tag_commit" ] || ! git merge-base --is-ancestor "$tag_commit" "$TARGET_COMMIT"; then
-            echo "::error::Runner release $tag is not reachable from $TARGET_COMMIT."
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Runner target: $tag"
-
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
@@ -169,51 +75,22 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Resolve production Runner host groups
-        id: groups
+      - name: Resolve and verify rollback target
+        id: resolve
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-        run: |
-          set -euo pipefail
-
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh target-matrix)
-          group_count=$(jq -r 'length' <<<"$matrix")
-          if [ "$group_count" -lt 1 ]; then
-            echo "::error::No production Runner host groups found."
-            exit 1
-          fi
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          jq . <<<"$matrix"
-
-      - name: Verify Runner release assets
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUNNER_MATRIX: ${{ steps.groups.outputs.matrix }}
-          RUNNER_TAG: ${{ steps.runner.outputs.tag }}
-          RUNNER_VERSION: ${{ steps.runner.outputs.version }}
-        run: |
-          set -euo pipefail
-          . .github/scripts/runner-image-target.sh
-
-          assets=$(curl -fsSL \
-            --retry 5 \
-            --retry-delay 2 \
-            --retry-max-time 60 \
-            --retry-all-errors \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RUNNER_TAG}" \
-            | jq -r '.assets[].name')
-
-          while IFS= read -r target; do
-            asset_name=$(runner_image_release_asset_name "$RUNNER_VERSION" "$target")
-            if ! grep -qx "$asset_name" <<<"$assets"; then
-              echo "::error::Runner release $RUNNER_TAG is missing $asset_name."
-              exit 1
-            fi
-          done < <(jq -r '.[].target' <<<"$RUNNER_MATRIX")
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+          TARGET_COMMIT: ${{ inputs.target_commit }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash .github/scripts/resolve-production-rollback-target.sh
 
   rollback-app:
     name: Roll back App

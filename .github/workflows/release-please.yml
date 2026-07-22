@@ -7,11 +7,8 @@ on:
     types:
       - completed
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   issues: write
@@ -19,7 +16,24 @@ permissions:
   checks: write
 
 jobs:
+  queue-production-deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - name: Wait for older production deployment workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/wait-production-deploy-queue.sh
+
   release-please:
+    needs: queue-production-deploy
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
