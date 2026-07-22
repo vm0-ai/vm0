@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.615.0](https://github.com/vm0-ai/vm0/compare/app-v0.614.0...app-v0.615.0) (2026-07-22)
+
+
+### Features
+
+* show next scheduled morning brief send time in settings ([#22515](https://github.com/vm0-ai/vm0/issues/22515)) ([2c5052f](https://github.com/vm0-ai/vm0/commit/2c5052f41d9ff64bfb1b60f525930b3bdbf6706e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+
 ## [0.614.0](https://github.com/vm0-ai/vm0/compare/app-v0.613.6...app-v0.614.0) (2026-07-22)
 
 
