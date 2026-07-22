@@ -1326,8 +1326,8 @@ async fn delete_network_resources_with_ops(
         .await;
     if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
         warn!(
-            count,
-            "namespace resource batch cleanup was abandoned; startup orphan reconciliation will retry"
+            namespace_count = count,
+            "network resource batch cleanup was abandoned; startup orphan reconciliation will retry"
         );
     }
     outcome
