@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
+  useLoadableState,
   useLastLoadable,
   useLastResolved,
   useLoadable,
@@ -2737,7 +2738,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const threadSettledInServer =
     useLastResolved(thread.threadSettledInServer$) ?? false;
   const hasMessages = useLastResolved(thread.hasMessages$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasMessages !== false) {
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  if (
+    !renderedGroupsReady ||
+    !threadSettledInServer ||
+    hasMessages !== false ||
+    hasNewMessagesState === "loading"
+  ) {
     return null;
   }
   return (
@@ -3500,7 +3507,10 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
     threadSettledInServerLoadable,
     renderedGroupsReadyLoadable,
   );
-  const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
+  const hasMessages = useLastResolved(thread.hasMessages$);
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  const skeletonVisible =
+    hasMessages === false && hasNewMessagesState === "loading";
   if (!skeletonVisible || sessionError) {
     return null;
   }

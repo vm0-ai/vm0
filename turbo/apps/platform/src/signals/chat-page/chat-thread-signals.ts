@@ -139,6 +139,7 @@ export interface ChatThreadSignals {
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   hasMessages$: Computed<Promise<boolean>>;
+  hasNewMessages$: Computed<Promise<boolean>>;
   hasQueuedMessages$: Computed<Promise<boolean>>;
   queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
   emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
