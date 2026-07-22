@@ -29,7 +29,7 @@ export function buildMorningBriefUnsubscribeUrl(
   orgId: string,
   userId: string,
 ): string {
-  return `${env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
+  return `${env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
 }
 
 /**

@@ -53,6 +53,7 @@ export const ROUTES = {
   exportData: "/export",
   reportError: "/runs/:runId/report-error",
   redeemCampaign: "/redeem/:campaign",
+  emailUnsubscribe: "/email/unsubscribe",
   skeleton: "/_/skeleton",
   error: "/_/error",
 } as const;

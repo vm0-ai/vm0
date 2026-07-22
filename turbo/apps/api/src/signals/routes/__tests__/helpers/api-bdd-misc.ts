@@ -301,7 +301,7 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async requestEmailUnsubscribePage(
       token: string | undefined,
-      statuses: readonly (200 | 400)[],
+      statuses: readonly (302 | 400)[],
     ) {
       return await accept(
         setupApp({ context })(emailUnsubscribeContract).get({
