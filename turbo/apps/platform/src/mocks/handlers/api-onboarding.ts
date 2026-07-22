@@ -1,4 +1,5 @@
 import {
+  onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
@@ -32,5 +33,18 @@ export const apiOnboardingHandlers = [
   // GET /api/zero/onboarding/status
   mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
     return respond(200, mockOnboardingStatus);
+  }),
+
+  // POST /api/zero/onboarding/complete
+  mockApi(onboardingCompleteContract.complete, ({ respond }) => {
+    mockOnboardingStatus = {
+      ...mockOnboardingStatus,
+      needsOnboarding: false,
+      onboardingComplete: true,
+    };
+    return respond(200, {
+      onboardingComplete: true,
+      needsOnboarding: false,
+    });
   }),
 ];

@@ -51,10 +51,7 @@ import {
   setScopeReviewConnectorRef$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
-  getOnlyAvailableStatusBrowserAuthMethodDetail,
-  getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusAuthMethod,
-  getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   type ConnectorsConnectionFilter,
@@ -70,6 +67,7 @@ import {
 } from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { launchConnectorConnect } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
@@ -976,39 +974,30 @@ export function ZeroConnectorsPage() {
     if (!ct) {
       return;
     }
-    const launchMode = getConnectorStatusConnectLaunchMode(ct);
-    if (launchMode === "modal") {
-      setSelected(connectorRef);
-      return;
-    }
-    if (launchMode === "browser-auth") {
-      const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(ct);
-      if (!authMethod) {
+    launchConnectorConnect({
+      connector: ct,
+      openModal: () => {
         setSelected(connectorRef);
-        return;
-      }
-      detach(
-        connect(connectorRef, authMethod, { connectorLabel: ct.label }, signal),
-        Reason.DomCallback,
-      );
-      return;
-    }
-    const authMethod = getOnlyAvailableStatusNoAuthMethod(ct);
-    if (!authMethod) {
-      setSelected(connectorRef);
-      return;
-    }
-    detach(
-      connectNoAuth(
-        {
+      },
+      connectBrowserAuth: (authMethod) => {
+        return connect(
           connectorRef,
           authMethod,
-          options: { connectorLabel: ct.label },
-        },
-        signal,
-      ),
-      Reason.DomCallback,
-    );
+          { connectorLabel: ct.label },
+          signal,
+        );
+      },
+      connectNoAuth: (authMethod) => {
+        return connectNoAuth(
+          {
+            connectorRef,
+            authMethod,
+            options: { connectorLabel: ct.label },
+          },
+          signal,
+        );
+      },
+    });
   };
 
   const disconnectHandler = async (

@@ -40,7 +40,17 @@ import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
-import { setupOnboardingRedirectPage$ } from "./zero-page/onboard-guard.ts";
+import {
+  setupOnboardingImageRunPage$,
+  setupOnboardingImageTemplatePage$,
+  setupOnboardingMakePage$,
+  setupOnboardingPresentationRunPage$,
+  setupOnboardingPresentationTemplatePage$,
+  setupOnboardingVideoRunPage$,
+  setupOnboardingVideoTemplatePage$,
+  setupOnboardingWorkflowPickerPage$,
+  setupOnboardingWorkflowRunPage$,
+} from "./onboarding/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
@@ -289,7 +299,39 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.onboarding,
-    setup: setupAuthPageWrapper(setupOnboardingRedirectPage$),
+    setup: setupAuthPageWrapper(setupOnboardingMakePage$),
+  },
+  {
+    path: ROUTES.onboardingWorkflowPicker,
+    setup: setupAuthPageWrapper(setupOnboardingWorkflowPickerPage$),
+  },
+  {
+    path: ROUTES.onboardingWorkflowRun,
+    setup: setupAuthPageWrapper(setupOnboardingWorkflowRunPage$),
+  },
+  {
+    path: ROUTES.onboardingPresentationTemplate,
+    setup: setupAuthPageWrapper(setupOnboardingPresentationTemplatePage$),
+  },
+  {
+    path: ROUTES.onboardingPresentationRun,
+    setup: setupAuthPageWrapper(setupOnboardingPresentationRunPage$),
+  },
+  {
+    path: ROUTES.onboardingImageTemplate,
+    setup: setupAuthPageWrapper(setupOnboardingImageTemplatePage$),
+  },
+  {
+    path: ROUTES.onboardingImageRun,
+    setup: setupAuthPageWrapper(setupOnboardingImageRunPage$),
+  },
+  {
+    path: ROUTES.onboardingVideoTemplate,
+    setup: setupAuthPageWrapper(setupOnboardingVideoTemplatePage$),
+  },
+  {
+    path: ROUTES.onboardingVideoRun,
+    setup: setupAuthPageWrapper(setupOnboardingVideoRunPage$),
   },
   {
     path: ROUTES.signInToken,
