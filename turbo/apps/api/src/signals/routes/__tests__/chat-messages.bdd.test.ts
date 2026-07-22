@@ -660,6 +660,7 @@ async function upsertOrgModelProvider(
     readonly type:
       | "anthropic-api-key"
       | "deepseek-api-key"
+      | "openai-api-key"
       | "openrouter-api-key"
       | "vm0";
     readonly secret?: string;
@@ -1031,7 +1032,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
 
 describe("CHAT-02: queueing and recalling messages", () => {
   it("queues, retries, and recalls messages behind an active run", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
@@ -1054,6 +1055,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected the queued send to be accepted");
     }
     expect(queued.body.runId).toBeNull();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
     const queuedRetry = await chat.requestSendMessage(
       actor,
       {
@@ -1065,9 +1075,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       [201],
     );
     expect(queuedRetry.body).toStrictEqual(queued.body);
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-opus-4-6",
+    );
 
     // Another user's send cannot claim the queued message's client id.
     const stranger = bdd.user();
+    await api.ensureOrgModelProvider(stranger);
     const strangerAgent = await bdd.createAgent(stranger, {
       displayName: "Cross-user client-id agent",
     });
@@ -1895,6 +1911,169 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
+  it("recovers a removed thread model through the current workspace route", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start before the thread model is removed",
+      model: "claude-sonnet-4-6",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    expect(firstClaim.claim.cliAgentType).toBe("claude-code");
+    expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+
+    await seedVm0ManagedModelKey("gpt-5.6-terra");
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const recovered = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue through the current workspace default",
+    });
+    const recoveredClaim = await claimChatRun(runnerGroup, recovered.runId);
+    expect(recoveredClaim.claim.cliAgentType).toBe("codex");
+    expect(recoveredClaim.claim.resumeSession).toBeNull();
+    const recoveredEnvironment = claimEnvironment(recoveredClaim.claim);
+    expect(recoveredEnvironment.OPENAI_MODEL).toBe("gpt-5.6-terra");
+    expect(recoveredEnvironment.ANTHROPIC_MODEL).toBeUndefined();
+
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(
+      threadEvents.body.events.filter((event) => {
+        return (
+          event.kind === "model_selection_updated" &&
+          event.chatThreadId === first.threadId &&
+          event.selectedModel === "gpt-5.6-terra"
+        );
+      }),
+    ).toHaveLength(1);
+
+    await cancelChatRun(actor, recovered.runId);
+  }, 90_000);
+
+  it("does not overwrite a concurrent explicit thread model selection", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    const thread = await chat.createThread(actor, {
+      agentId,
+      model: "claude-sonnet-4-6",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-5",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const [sent, updated] = await Promise.all([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "send while choosing a new sticky model",
+        },
+        [201],
+      ),
+      chat.requestUpdateThreadModelSelection(
+        actor,
+        thread.id,
+        "claude-sonnet-5",
+        [204],
+      ),
+    ]);
+    expect(updated.status).toBe(204);
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the concurrent send to create a run");
+    }
+    const racedClaim = await claimChatRun(runnerGroup, sent.body.runId);
+    expect(["claude-opus-4-6", "claude-sonnet-5"]).toContain(
+      claimEnvironment(racedClaim.claim).ANTHROPIC_MODEL,
+    );
+    await cancelChatRun(actor, sent.body.runId);
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "continue on the explicit sticky model",
+    });
+    const followUpClaim = await claimChatRun(runnerGroup, followUp.runId);
+    expect(claimEnvironment(followUpClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-5",
+    );
+
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(
+      events.body.events.filter((event) => {
+        return (
+          event.kind === "model_selection_updated" &&
+          event.chatThreadId === thread.id &&
+          event.selectedModel === "claude-sonnet-5"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      events.body.events.filter((event) => {
+        return (
+          event.kind === "model_selection_updated" &&
+          event.chatThreadId === thread.id &&
+          event.selectedModel === "claude-opus-4-6"
+        );
+      }).length,
+    ).toBeLessThanOrEqual(1);
+    await cancelChatRun(actor, followUp.runId);
+  }, 90_000);
+
   it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT 5.5 and GPT 5.6 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2057,6 +2236,84 @@ describe("CHAT-02: model-first provider policies", () => {
       "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
     await chat.requestReadThread(actor, rejectedThreadId, [404]);
+  }, 90_000);
+
+  it("normalizes persisted fast mode after the current provider route changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    const { providerId: openAiProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openai-api-key",
+        secret: "rerouted-openai-key",
+      },
+    );
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.CodexFastMode]: true },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start fast before the provider route changes",
+      model: "gpt-5.5",
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: openAiProviderId,
+      },
+    ]);
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue from a client that still has fast cached",
+      runOptions: { codexServiceTier: "fast" },
+    });
+    const followUpClaim = await claimChatRun(runnerGroup, followUp.runId);
+    const environment = claimEnvironment(followUpClaim.claim);
+    expect(environment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("openai-api-key", "OPENAI_API_KEY"),
+    );
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
+    expect(
+      (await chat.readThread(actor, first.threadId)).codexServiceTier,
+    ).toBeNull();
+    await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.5");
+    await cancelChatRun(actor, followUp.runId);
   }, 90_000);
 
   it("routes OpenRouter provider pins through runtime model aliases and firewall auth", async () => {
@@ -2552,9 +2809,8 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
-  it("uses the stored provider pin on follow-up sends", async () => {
-    const { actor, agentId, runnerGroup, providerId } =
-      await entitledChatActor();
+  it("re-resolves a sticky model through the current provider policy", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
@@ -2574,24 +2830,36 @@ describe("CHAT-02: run-level model overrides", () => {
       "claude-sonnet-4-6",
     );
 
-    // Org providers are per-type singletons, so the public rotation surface
-    // is re-upserting the same provider with a new secret. Follow-up sends use
-    // the stored provider pin and pick up the rotated provider configuration.
-    const rotated = await upsertOrgModelProvider(actor, {
-      type: "anthropic-api-key",
-      secret: "rotated-anthropic-key",
-    });
-    expect(rotated).toStrictEqual({ providerId, created: false });
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "claude-code-oauth-token",
+        secret: "rerouted-claude-oauth-token",
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "claude-code-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
 
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "follow up after the provider rotation",
+      prompt: "follow up after the provider policy reroute",
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     const environment = claimEnvironment(secondClaim.claim);
-    expect(environment.ANTHROPIC_API_KEY).toBe(
-      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
+    expect(environment.CLAUDE_CODE_OAUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "claude-code-oauth-token",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+      ),
     );
     expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
@@ -2605,12 +2873,56 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await cancelChatRun(actor, second.runId);
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+
+    const { providerId: openRouterProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openrouter-api-key",
+        secret: "rerouted-openrouter-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: openRouterProviderId,
+      },
+    ]);
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "follow up after the upstream provider changes",
+    });
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
+    await cancelChatRun(actor, third.runId);
   }, 90_000);
 
   it("rejects invalid model selections without creating visible state", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
+    await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid model selection agent",
     });
@@ -2632,6 +2944,23 @@ describe("CHAT-02: run-level model overrides", () => {
       "model: Invalid model selection",
     );
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
+
+    const unavailableThreadId = randomUUID();
+    const unavailable = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use a supported model outside workspace policy",
+        clientThreadId: unavailableThreadId,
+        model: "gpt-5.6-terra",
+      },
+      [400],
+    );
+    expectApiError(unavailable.body);
+    expect(unavailable.body.error.message).toBe(
+      "The selected model is not available in this workspace",
+    );
+    await chat.requestReadThread(actor, unavailableThreadId, [404]);
 
     // Removed sentinel models fail contract validation.
     for (const selectedModel of [
@@ -3571,6 +3900,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
   it("rejects unusable computer-use host selections", async () => {
     const actor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(actor, {
       displayName: "Computer-use guard agent",

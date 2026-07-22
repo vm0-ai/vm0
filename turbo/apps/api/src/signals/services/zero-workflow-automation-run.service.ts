@@ -14,12 +14,9 @@ import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   postRunUserMessage,
-  resolveRunChatThreadModelPin,
+  resolveRunChatThreadModelContext,
 } from "./zero-chat-run-message.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -74,6 +71,7 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
+      readonly codexServiceTier: "fast" | undefined;
     }
   | { readonly ok: false; readonly failure: RunFailure };
 
@@ -218,30 +216,27 @@ async function resolveModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ModelContext> {
-  const threadModelPin = await resolveRunChatThreadModelPin({
+  const threadModelContext = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
     threadId: args.chatThreadId,
   });
   args.signal.throwIfAborted();
-  if ("status" in threadModelPin) {
+  if ("status" in threadModelContext) {
     return {
       ok: false,
       failure: {
         kind: "run_error",
-        response: { status: 400, body: threadModelPin.body },
+        response: {
+          status: threadModelContext.status,
+          body: threadModelContext.body,
+        },
       },
     };
   }
 
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    modelPin: threadModelPin,
-    requestedModelProvider: undefined,
-  });
+  const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
   args.signal.throwIfAborted();
   if (providerAdmission.error) {
     return {
@@ -252,8 +247,9 @@ async function resolveModelContext(args: {
 
   return {
     ok: true,
-    modelPin: threadModelPin,
+    modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    codexServiceTier: runCodexServiceTier,
   };
 }
 
@@ -545,7 +541,7 @@ export const runWorkflowAutomationNow$ = command(
     if (!modelContext.ok) {
       return modelContext.failure;
     }
-    const { modelPin, effectiveModelProvider } = modelContext;
+    const { modelPin, effectiveModelProvider, codexServiceTier } = modelContext;
 
     const computerUseHostGrant = await loadComputerUseHostGrantForAutoSend({
       db,
@@ -595,6 +591,7 @@ export const runWorkflowAutomationNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,

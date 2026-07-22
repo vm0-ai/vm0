@@ -16,6 +16,7 @@ import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -41,7 +42,10 @@ import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { postRunUserMessage } from "../services/zero-chat-run-message.service";
+import {
+  postRunUserMessage,
+  resolveRunChatThreadModelContext,
+} from "../services/zero-chat-run-message.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
@@ -1103,6 +1107,21 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
 
+  const modelContext = await resolveRunChatThreadModelContext({
+    db: writeDb,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    threadId: chatThreadId,
+  });
+  signal.throwIfAborted();
+  if ("status" in modelContext) {
+    return modelContext;
+  }
+  const { pin, providerAdmission, runCodexServiceTier } = modelContext;
+  if (providerAdmission.error) {
+    return providerAdmission.error;
+  }
+
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
   const result = await set(
@@ -1114,11 +1133,22 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         userId: auth.userId,
         tokenType: "session",
       },
-      body: { prompt, agentId: agent.id },
+      body: {
+        prompt,
+        agentId: agent.id,
+        ...(providerAdmission.effectiveModelProvider
+          ? { modelProvider: providerAdmission.effectiveModelProvider }
+          : {}),
+      },
       apiStartTime: now.getTime(),
       triggerSource: "web",
       zeroPreCreateSource: "workflow_slash_command",
       chatThreadId,
+      modelProviderId: pin.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        pin.modelProviderCredentialScope ?? undefined,
+      selectedModelOverride: pin.selectedModel ?? undefined,
+      codexServiceTier: runCodexServiceTier,
       callbacks: [
         {
           internalKind: "chat",
@@ -1144,6 +1174,17 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     prompt,
     appendQueueMarker: result.body.status === "queued",
   });
+  signal.throwIfAborted();
+
+  await writeDb
+    .update(zeroRuns)
+    .set({
+      modelProvider: providerAdmission.effectiveModelProvider,
+      modelProviderId: pin.modelProviderId,
+      modelProviderCredentialScope: pin.modelProviderCredentialScope,
+      selectedModel: pin.selectedModel,
+    })
+    .where(eq(zeroRuns.id, result.body.runId));
   signal.throwIfAborted();
 
   return {
