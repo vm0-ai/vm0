@@ -7628,7 +7628,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
     });
     const agent = await bdd.createAgent(actor, {
@@ -7845,13 +7844,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("does not advertise scrape when only web search is enabled", async () => {
+  it("advertises scrape when web search is disabled", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroWebSearch]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -7861,8 +7856,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").not.toContain(
+      "zero web-search --help",
+    );
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -7951,7 +7948,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain(
       "zero web-search --help",
     );
