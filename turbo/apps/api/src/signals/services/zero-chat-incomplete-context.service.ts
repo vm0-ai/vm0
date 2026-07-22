@@ -85,7 +85,7 @@ async function selectIncompleteRoundFrontier(
           AND NOT (
             ${chatMessages.runId} = ANY(incomplete_frontier.seen_run_ids)
           )
-          AND ${visibleChatMessageCondition()}
+          AND ${visibleChatMessageCondition(db)}
           AND (
             (${isSuccessfulRun})
             OR (
@@ -176,7 +176,7 @@ async function loadSelectedIncompleteRounds(
         eq(chatMessages.chatThreadId, threadId),
         inArray(chatMessages.runId, runIds),
         inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(),
+        visibleChatMessageCondition(db),
         ...(selection.successfulRunId === null
           ? []
           : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),

@@ -529,17 +529,21 @@ function recordPollTimingMetrics(args: {
   ]);
 }
 
-function runnerPollPriorityOrder(args: {
-  readonly runnerId: string | undefined;
-  readonly runnerGroup: string;
-  readonly currentDate: Date;
-}): SQL[] {
+function runnerPollPriorityOrder(
+  db: Pick<Db, "select">,
+  args: {
+    readonly runnerId: string | undefined;
+    readonly runnerGroup: string;
+    readonly currentDate: Date;
+  },
+): SQL[] {
   if (!args.runnerId) {
     return [];
   }
   return [
     desc(
       runnerSessionAffinityPollPriority({
+        db,
         runnerId: args.runnerId,
         runnerGroup: args.runnerGroup,
         currentDate: args.currentDate,
@@ -587,7 +591,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const sessionAffinityPriorityOrder = runnerPollPriorityOrder({
+  const sessionAffinityPriorityOrder = runnerPollPriorityOrder(db, {
     runnerId: body.data.runnerId,
     runnerGroup: group,
     currentDate,

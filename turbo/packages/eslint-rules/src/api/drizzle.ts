@@ -128,6 +128,27 @@ export function isDrizzleColumnType(
   return brandType?.isStringLiteral() === true && brandType.value === "Column";
 }
 
+export function isDrizzleTableType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  if (type.isUnion()) {
+    return type.types.every((member) => {
+      return isDrizzleTableType(checker, member, location);
+    });
+  }
+  if (!isDrizzleWrapperType(checker, type)) {
+    return false;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return false;
+  }
+  const brandType = propertyType(checker, metadataType, "brand", location);
+  return brandType?.isStringLiteral() === true && brandType.value === "Table";
+}
+
 export function isDrizzleArrayColumnType(
   checker: TypeChecker,
   type: Type,
