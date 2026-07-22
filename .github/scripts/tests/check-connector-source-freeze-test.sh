@@ -91,6 +91,14 @@ commit_case "rename connector"
 expect_fail "a connector rename" "turbo/packages/connectors/src/connectors/renamed.ts"
 
 start_case
+mkdir -p "${repo}/archive"
+mv "${connector_dir}/example.ts" "${repo}/archive/example.ts"
+commit_case "rename connector outside frozen directories"
+expect_fail \
+  "a connector rename outside the frozen directories" \
+  "turbo/packages/connectors/src/connectors/example.ts -> archive/example.ts"
+
+start_case
 printf 'export const firewall = "new";\n' > "${firewall_dir}/new.ts"
 commit_case "add firewall source"
 expect_fail "a firewall source addition" "turbo/packages/firewalls-generator/src/new.ts"
