@@ -1,11 +1,11 @@
 import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
 import { cn } from "@vm0/ui";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import {
   currentMailDraftId$,
@@ -16,8 +16,6 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 interface MailDraftCardProps {
   readonly signals: MailDraftSignals;
 }
-
-const GMAIL_ICON = getStaticConnectorIconMetadata("gmail");
 
 function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
@@ -49,8 +47,13 @@ function MailDraftCardSkeleton() {
 
 function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const draftLoadable = useLoadable(signals.draft$);
+  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
   const selectedMailDraftId = useGet(currentMailDraftId$);
   const openSidebar = useSet(openMailDraftSidebar$);
+  const gmailIcon =
+    catalogByRefLoadable.state === "hasData"
+      ? catalogByRefLoadable.data.get("gmail")?.icon
+      : undefined;
 
   if (draftLoadable.state === "loading") {
     return <MailDraftCardSkeleton />;
@@ -66,7 +69,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const content = (
     <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-        <ConnectorIcon icon={GMAIL_ICON} size={23} />
+        <ConnectorIcon icon={gmailIcon} size={23} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-5 text-foreground">
