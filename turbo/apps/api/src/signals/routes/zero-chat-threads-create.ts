@@ -13,6 +13,7 @@ import { notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/zero-chat-thread.service";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import { resolveModelSelectionPin } from "../services/zero-model-selection.service";
+import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
@@ -63,10 +64,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       title: body.data.title,
       clientThreadId: body.data.clientThreadId,
       eventId: body.data.eventId,
-      modelProviderId: pin.modelProviderId,
-      modelProviderType: pin.modelProviderType,
-      modelProviderCredentialScope: pin.modelProviderCredentialScope,
-      selectedModel: pin.selectedModel,
+      ...chatThreadModelPinColumns(pin),
     },
     signal,
   );
