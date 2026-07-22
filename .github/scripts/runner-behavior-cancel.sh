@@ -42,8 +42,6 @@ RECONCILE_LOCK_INFO="$RECONCILE_TEST_DIR/pool-indexes"
 RECONCILE_IDLE_RELEASE="$RECONCILE_TEST_DIR/release-idle"
 RECONCILE_IDLE_RELEASED="$RECONCILE_TEST_DIR/idle-released"
 RECONCILE_ACTIVE_RELEASE="$RECONCILE_TEST_DIR/release-active"
-RECONCILE_SNAPSHOT_READY="$RECONCILE_TEST_DIR/snapshot-ready"
-RECONCILE_SNAPSHOT_RELEASE="$RECONCILE_TEST_DIR/release-snapshot"
 RECONCILE_LOCK_HOLDER_PID=""
 
 fail() { echo "FAIL: $1"; exit 1; }
@@ -63,8 +61,7 @@ cleanup_submit_pid() {
 cleanup() {
   local status=$?
   trap - EXIT
-  touch "$RECONCILE_IDLE_RELEASE" "$RECONCILE_ACTIVE_RELEASE" \
-    "$RECONCILE_SNAPSHOT_RELEASE"
+  touch "$RECONCILE_IDLE_RELEASE" "$RECONCILE_ACTIVE_RELEASE"
   if [ "$status" -ne 0 ]; then
     print_service_logs
   fi
@@ -89,8 +86,8 @@ REAL_IP6TABLES_SAVE=$(command -v ip6tables-save)
 
 # Reserve four pool indexes before the runner starts. Two become clean
 # historical indexes, one owns a synthetic firewall-only orphan, and one
-# remains active throughout reconciliation. The namespace-list wrapper gates
-# the snapshot so the first three locks are released only after the runner has
+# remains active throughout reconciliation. The first three locks are released
+# during own-index cleanup, after the runner has captured their resources and
 # acquired a different index.
 sudo bash -s -- \
   "$RECONCILE_LOCK_INFO" \
@@ -241,10 +238,6 @@ case "$COMMAND_NAME" in
   ip)
     if [ "${1:-}" = "netns" ] && [ "${2:-}" = "list" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.netns-list"
-      if mkdir "$VM0_RECONCILE_COUNT_DIR/netns-list-gate" 2>/dev/null; then
-        touch "$VM0_RECONCILE_SNAPSHOT_READY"
-        while [ ! -e "$VM0_RECONCILE_SNAPSHOT_RELEASE" ]; do sleep 0.05; done
-      fi
       if REAL_OUTPUT=$("$VM0_RECONCILE_REAL_IP" "$@"); then
         STATUS=0
       else
@@ -275,6 +268,12 @@ case "$COMMAND_NAME" in
     if [ "${1:-}" = "netns" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ns-${OWN_POOL_HEX}-fd" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-netns-delete"
+      touch "$VM0_RECONCILE_IDLE_RELEASE"
+      for _ in $(seq 1 200); do
+        [ -e "$VM0_RECONCILE_IDLE_RELEASED" ] && break
+        sleep 0.05
+      done
+      [ -e "$VM0_RECONCILE_IDLE_RELEASED" ] || exit 1
       exec "$VM0_RECONCILE_REAL_IP" "$@"
     fi
     if contains_argument "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@" \
@@ -307,23 +306,8 @@ sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --env "VM0_RECONCILE_REAL_IP6TABLES_SAVE=$REAL_IP6TABLES_SAVE" \
   --env "VM0_RECONCILE_FIREWALL_POOL_HEX=$RECONCILE_FIREWALL_POOL_HEX" \
   --env "VM0_RECONCILE_ACTIVE_POOL_HEX=$RECONCILE_ACTIVE_POOL_HEX" \
-  --env "VM0_RECONCILE_SNAPSHOT_READY=$RECONCILE_SNAPSHOT_READY" \
-  --env "VM0_RECONCILE_SNAPSHOT_RELEASE=$RECONCILE_SNAPSHOT_RELEASE"
-
-for _ in $(seq 1 200); do
-  [ -e "$RECONCILE_SNAPSHOT_READY" ] && break
-  sleep 0.05
-done
-[ -e "$RECONCILE_SNAPSHOT_READY" ] \
-  || fail "runner did not begin namespace reconciliation snapshot"
-touch "$RECONCILE_IDLE_RELEASE"
-for _ in $(seq 1 200); do
-  [ -e "$RECONCILE_IDLE_RELEASED" ] && break
-  sleep 0.05
-done
-[ -e "$RECONCILE_IDLE_RELEASED" ] \
-  || fail "timed out releasing idle namespace pool indexes"
-touch "$RECONCILE_SNAPSHOT_RELEASE"
+  --env "VM0_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
+  --env "VM0_RECONCILE_IDLE_RELEASED=$RECONCILE_IDLE_RELEASED"
 
 # Submit a long-running job in background
 echo "--- Submitting long-running job ---"
