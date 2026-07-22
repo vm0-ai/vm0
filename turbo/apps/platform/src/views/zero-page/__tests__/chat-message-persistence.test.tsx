@@ -203,6 +203,7 @@ describe("chat message persistence", () => {
     const threadId = "b0000000-0000-4000-a000-000000000734";
     const remoteMessage = "Reloaded after invalid structured cache";
     const cachedMessage = "Invalid cached structured message";
+    const remoteMessagesCaughtUp = context.mocks.deferred<void>();
     const testDb = await openChatIdb(userId, orgId);
     await testDb.put(CHAT_MESSAGES_STORE, {
       id: "00000000-0000-4000-8000-000000000734",
@@ -220,6 +221,9 @@ describe("chat message persistence", () => {
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {
+        if (!remoteMessagesCaughtUp.settled()) {
+          remoteMessagesCaughtUp.resolve();
+        }
         return respond(200, { messages: [] });
       }
       return respond(200, {
@@ -246,6 +250,7 @@ describe("chat message persistence", () => {
         },
       });
 
+      await remoteMessagesCaughtUp.promise;
       await expect(
         screen.findByText(remoteMessage),
       ).resolves.toBeInTheDocument();
