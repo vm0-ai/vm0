@@ -32,6 +32,74 @@ CREATE TRIGGER "sync_legacy_org_plan_entitlement_can_buy_credits"
 BEFORE INSERT OR UPDATE OF "plan_key" ON "org_plan_entitlements"
 FOR EACH ROW EXECUTE FUNCTION "sync_legacy_org_plan_entitlement_can_buy_credits"();
 --> statement-breakpoint
+-- Backfill orgs created by metadata-only writers before this migration. The
+-- entitlement read path is enabled globally with this release and treats an
+-- existing org_metadata row without an entitlement as an invariant violation.
+INSERT INTO "org_plan_entitlements" (
+	"org_id",
+	"plan_key",
+	"plan_rank",
+	"source",
+	"status",
+	"base_concurrency_limit",
+	"can_buy_concurrency",
+	"can_buy_credits",
+	"auto_recharge_allowed",
+	"support_byok",
+	"restricted_vm0_models",
+	"video_generation_allowed",
+	"workflow_webhook_trigger_allowed",
+	"audio_lifetime_limit",
+	"audio_daily_rate_limit",
+	"audio_daily_duration_seconds"
+)
+SELECT
+	metadata."org_id",
+	plans."plan_key",
+	plans."plan_rank",
+	'org_metadata_migration',
+	plans."status",
+	plans."base_concurrency_limit",
+	plans."can_buy_concurrency",
+	plans."can_buy_credits",
+	plans."auto_recharge_allowed",
+	plans."support_byok",
+	plans."restricted_vm0_models",
+	plans."video_generation_allowed",
+	plans."workflow_webhook_trigger_allowed",
+	plans."audio_lifetime_limit",
+	plans."audio_daily_rate_limit",
+	plans."audio_daily_duration_seconds"
+FROM "org_metadata" AS metadata
+JOIN (
+	VALUES
+		('free', 0, 'active', 1, false, true, false, true, false, true, false, 10, 10, 600),
+		('limited-free-1', 0, 'active', 1, false, false, false, false, true, false, false, 10, 10, 600),
+		('pro-suspend', 0, 'suspended', 0, false, false, false, false, true, false, false, 0, 0, 0),
+		('pro', 1, 'active', 2, false, true, true, true, false, true, false, NULL, 300, 12000),
+		('team', 2, 'active', 10, true, true, true, true, false, true, true, NULL, 500, 30000),
+		('custom', 3, 'active', 10, true, true, true, true, false, true, true, NULL, 500, 30000)
+) AS plans(
+	"plan_key",
+	"plan_rank",
+	"status",
+	"base_concurrency_limit",
+	"can_buy_concurrency",
+	"can_buy_credits",
+	"auto_recharge_allowed",
+	"support_byok",
+	"restricted_vm0_models",
+	"video_generation_allowed",
+	"workflow_webhook_trigger_allowed",
+	"audio_lifetime_limit",
+	"audio_daily_rate_limit",
+	"audio_daily_duration_seconds"
+) ON plans."plan_key" = metadata."tier"
+LEFT JOIN "org_plan_entitlements" AS entitlement
+	ON entitlement."org_id" = metadata."org_id"
+WHERE entitlement."org_id" IS NULL
+ON CONFLICT ("org_id") DO NOTHING;
+--> statement-breakpoint
 -- Some pre-0640 writers only create org_metadata because plan entitlements
 -- were not required by those code paths. Materialize the tier snapshot at the
 -- database boundary so an org created during the rolling deployment never
