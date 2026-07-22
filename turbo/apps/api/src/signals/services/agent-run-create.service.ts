@@ -547,6 +547,13 @@ interface BuiltStoredExecutionContext {
   readonly secretValues: readonly string[];
 }
 
+type BuiltStoredExecutionContextDraft = Omit<
+  BuiltStoredExecutionContext,
+  "context"
+> & {
+  readonly context: Omit<StoredExecutionContext, "storageManifest">;
+};
+
 type ApiErrorResponse<Status extends number, Code extends string> = {
   readonly status: Status;
   readonly body: {
@@ -4902,7 +4909,7 @@ async function insertQueuedRunRecord(
   return run;
 }
 
-async function buildStoredExecutionContext(args: {
+async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -4917,12 +4924,11 @@ async function buildStoredExecutionContext(args: {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
   readonly apiStartTime: number;
-  readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<BuiltStoredExecutionContext> {
+}): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
@@ -4963,7 +4969,6 @@ async function buildStoredExecutionContext(args: {
 
   return {
     context: {
-      storageManifest: args.storageManifest,
       environment,
       secretValueEnvironmentKeys,
       vars: args.connectorContext.vars ?? null,
@@ -4992,6 +4997,30 @@ async function buildStoredExecutionContext(args: {
     },
     secretNames,
     secretValues,
+  };
+}
+
+async function resolveBuiltStoredExecutionContext(
+  storageManifestPromise: Promise<StorageManifest>,
+  builtContextDraftPromise: Promise<BuiltStoredExecutionContextDraft>,
+): Promise<BuiltStoredExecutionContext> {
+  const [storageManifestResult, builtContextDraftResult] =
+    await Promise.allSettled([
+      storageManifestPromise,
+      builtContextDraftPromise,
+    ]);
+  if (storageManifestResult.status === "rejected") {
+    throw storageManifestResult.reason;
+  }
+  if (builtContextDraftResult.status === "rejected") {
+    throw builtContextDraftResult.reason;
+  }
+  return {
+    ...builtContextDraftResult.value,
+    context: {
+      ...builtContextDraftResult.value.context,
+      storageManifest: storageManifestResult.value,
+    },
   };
 }
 
@@ -5408,7 +5437,7 @@ function buildRunnerJobPayload(
     const storageManifestStats = args.timing
       ? new StorageManifestBuildStats()
       : undefined;
-    const storageManifest = await measureApiDispatchTiming(
+    const storageManifestPromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
       "nested",
@@ -5435,21 +5464,21 @@ function buildRunnerJobPayload(
         return storageManifestStats?.overallDimensions();
       },
     );
-    const builtContext = await measureApiDispatchTiming(
+    const builtContextDraftPromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_build_stored_execution_context",
       "nested",
       async () => {
-        return await buildStoredExecutionContext({
+        return await buildStoredExecutionContextDraft({
           ...args,
           body,
           runId: args.run.id,
-          chatThreadId: args.chatThreadId,
-          storageManifest,
-          userTimezone: args.userTimezone,
-          featureSwitchContext: args.featureSwitchContext,
         });
       },
+    );
+    const builtContext = await resolveBuiltStoredExecutionContext(
+      storageManifestPromise,
+      builtContextDraftPromise,
     );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,

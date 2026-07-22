@@ -34,7 +34,9 @@ jobs:
             "$CF_PAGES_PROJECT_NAME" \
             "pr-${PR_NUMBER}-app.${CF_PAGES_PREVIEW_DOMAIN}"
 
-  cleanup-preview-www:
+  # Deletion-only drain for WWW resources created before PR previews stopped
+  # provisioning them. Remove this job after all such PRs have closed.
+  cleanup-legacy-preview-www:
     runs-on: ubuntu-latest
     concurrency:
       group: provision-preview-www-pr-${{ github.event.pull_request.number }}
@@ -42,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Delete Cloudflare WWW Worker Route and Worker
+      - name: Delete legacy Cloudflare WWW Worker route and Worker
         env:
           CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
           CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
@@ -65,7 +67,7 @@ jobs:
             "$CLOUDFLARE_ACCOUNT_ID" \
             "$worker_name"
 
-      - name: Delete Cloudflare WWW Pages domain and DNS
+      - name: Delete legacy Cloudflare WWW Pages domain and DNS
         env:
           CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
           CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}

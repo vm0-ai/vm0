@@ -19,6 +19,12 @@ export interface EditorDocumentContext {
   readonly attachments?: readonly PersistedAttachment[];
 }
 
+export interface EditorDocumentSnapshot {
+  readonly toMessageDocument: (
+    context?: EditorDocumentContext,
+  ) => UserMessageDocument | null;
+}
+
 function appendTextPart(parts: UserMessagePart[], text: string): void {
   if (text.length === 0) {
     return;
@@ -176,6 +182,21 @@ export function editorDocToMessageDocument(
 
   const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Freezes the immutable ProseMirror document selected for one submission while
+ * allowing external attachment ids to be supplied after upload/model filtering
+ * settles. The returned value never crosses an API or persistence boundary.
+ */
+export function createEditorDocumentSnapshot(
+  document: ProseMirrorNode,
+): EditorDocumentSnapshot {
+  return Object.freeze({
+    toMessageDocument(context: EditorDocumentContext = {}) {
+      return editorDocToMessageDocument(document, context);
+    },
+  });
 }
 
 function templateCategory(type: GenerationTemplateType): string {

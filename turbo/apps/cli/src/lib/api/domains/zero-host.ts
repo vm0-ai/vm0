@@ -2,6 +2,7 @@ import type {
   HostedSitePrepareRequest,
   HostedSitePrepareResponse,
   HostedSiteCompleteResponse,
+  HostedSiteDeploymentsResponse,
   HostedSiteFilesResponse,
 } from "@vm0/api-contracts/contracts/zero-host";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
@@ -104,11 +105,37 @@ export async function completeHostedSite(
 
 export async function getHostedSiteFiles(
   publicSlug: string,
+  version?: number,
 ): Promise<HostedSiteFilesResponse> {
+  const { baseUrl, token } = await getAuthContext();
+  const url = new URL(
+    `/api/zero/host/sites/${encodeURIComponent(publicSlug)}/files`,
+    baseUrl,
+  );
+  if (version !== undefined) {
+    url.searchParams.set("version", String(version));
+  }
+  const response = await fetch(url, {
+    method: "GET",
+    headers: headersWithCliClientHeaders(authHeaders(token)),
+  });
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to get hosted-site files",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return (await response.json()) as HostedSiteFilesResponse;
+}
+
+export async function getHostedSiteDeployments(
+  site: string,
+): Promise<HostedSiteDeploymentsResponse> {
   const { baseUrl, token } = await getAuthContext();
   const response = await fetch(
     new URL(
-      `/api/zero/host/sites/${encodeURIComponent(publicSlug)}/files`,
+      `/api/zero/host/sites/${encodeURIComponent(site)}/deployments`,
       baseUrl,
     ),
     {
@@ -119,9 +146,9 @@ export async function getHostedSiteFiles(
   if (!response.ok) {
     const { message, code } = await parseErrorBody(
       response,
-      "Failed to get hosted-site files",
+      "Failed to list hosted-site deployments",
     );
     throw new ApiRequestError(message, code, response.status);
   }
-  return (await response.json()) as HostedSiteFilesResponse;
+  return (await response.json()) as HostedSiteDeploymentsResponse;
 }

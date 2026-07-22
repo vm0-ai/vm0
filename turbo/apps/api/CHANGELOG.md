@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.301.0](https://github.com/vm0-ai/vm0/compare/api-v1.300.2...api-v1.301.0) (2026-07-22)
+
+
+### Features
+
+* **billing:** use org plan entitlements for gated actions ([#22498](https://github.com/vm0-ai/vm0/issues/22498)) ([4d2c428](https://github.com/vm0-ai/vm0/commit/4d2c428c66178ec65cae0ff2fb9483a3f3643097))
+
+
+### Bug Fixes
+
+* **chat:** timestamp queued messages when claimed ([#22561](https://github.com/vm0-ai/vm0/issues/22561)) ([b727717](https://github.com/vm0-ai/vm0/commit/b727717fb6df997d6b68bbd52e4b9082246005ea))
+* stop app asset misses from using spa fallback ([#22463](https://github.com/vm0-ai/vm0/issues/22463)) ([4ac650f](https://github.com/vm0-ai/vm0/commit/4ac650fbd2c216b727934975a276e71fd31b08db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.213.0
+    * @vm0/connectors bumped to 1.178.2
+    * @vm0/core bumped to 8.450.0
+    * @vm0/db bumped to 1.126.0
+
 ## [1.300.2](https://github.com/vm0-ai/vm0/compare/api-v1.300.1...api-v1.300.2) (2026-07-22)
 
 

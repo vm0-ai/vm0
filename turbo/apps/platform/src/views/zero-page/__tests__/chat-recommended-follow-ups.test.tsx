@@ -4,6 +4,7 @@ import {
   chatThreadArtifactsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { click } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
@@ -51,6 +52,7 @@ describe("chat lifecycle", () => {
     const sentMessages: {
       prompt?: string;
       revokesMessageId?: string;
+      structuredPrompt?: unknown;
     }[] = [];
 
     mockChatLifecycle(context, {
@@ -119,6 +121,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -149,6 +152,7 @@ describe("chat lifecycle", () => {
     });
     expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
+    expect(sentMessages[0]?.structuredPrompt).toBeUndefined();
   });
 
   it("shows recommended follow-ups after a completed marker update event", async () => {

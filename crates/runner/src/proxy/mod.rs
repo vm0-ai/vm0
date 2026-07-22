@@ -31,13 +31,18 @@
 //! Usage drain is a shutdown path for billing and usage reports, while JSONL
 //! flush is a per-upload network-log path.
 //!
-//! `MitmProxy::new` prepares addon files, an empty registry, crash channel, and
-//! initial usage state. `start` spawns `mitmdump` and monitor tasks. Unexpected
-//! stdout close notifies the runner unless the child is stopping gracefully.
-//! `begin_restart` kills the old child, permanently silences its monitor, and
-//! returns fresh spawn parameters; `complete_restart` stores the new child.
-//! Shutdown writes a usage flush request, signals the addon, waits boundedly
-//! for `usage-pending`, then calls `stop`.
+//! `MitmProxy::new` exclusively locks the runner-local proxy runtime, removes
+//! stale private launch directories after terminating their marked processes,
+//! and prepares addon files, an empty registry, crash channel, and initial
+//! usage state. `start` gives each `mitmdump` process group a private `TMPDIR`
+//! and starts monitor tasks. Unexpected stdout close notifies the runner unless
+//! the child is stopping gracefully. `begin_restart` terminates the old process
+//! group, removes its private launch directory, permanently silences its
+//! monitor, and returns fresh spawn parameters; `complete_restart` stores the
+//! new child. Shutdown writes a usage flush request, signals the addon, waits
+//! boundedly for `usage-pending`, then calls `stop`. Recovery and shutdown only
+//! act on runner-owned private paths and marked processes; legacy shared
+//! `/tmp/_MEI*` paths are deliberately left untouched.
 //!
 //! Addon-side details live in `crates/runner/mitm-addon/src/mitm_addon.py`
 //! (mitmproxy hook orchestration),
@@ -49,13 +54,16 @@
 //! semantics).
 
 mod flush;
+mod managed_process;
 mod process;
 mod registry;
+mod runtime;
 mod stderr;
 
 pub use flush::{
     MitmJsonlFlushHandle, USAGE_FLUSH_TIMEOUT, wait_usage_flush_requesting,
     write_usage_flush_request,
 };
+pub(crate) use managed_process::ManagedMitmdump;
 pub use process::{MitmProxy, ProxyConfig};
 pub use registry::{ProxyRegistryHandle, VmRegistration};

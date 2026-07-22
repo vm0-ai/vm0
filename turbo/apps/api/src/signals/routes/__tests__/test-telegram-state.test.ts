@@ -542,11 +542,13 @@ describe("POST /api/test/telegram-state", () => {
     const orgId = uniqueId("org");
     const botId = uniqueId("bot");
     const telegramUserId = uniqueId("telegram");
+    const email = `${userId}@example.test`;
     mockClerkTestUser({ userId, orgId });
 
     const first = await postTelegramState({
       bot_id: botId,
       telegram_user_id: telegramUserId,
+      email,
     });
     expect(first.status).toBe(200);
     const firstBody = await readJson<TestTelegramStateSeedResponse>(first);
@@ -563,6 +565,7 @@ describe("POST /api/test/telegram-state", () => {
     const second = await postTelegramState({
       bot_id: botId,
       telegram_user_id: telegramUserId,
+      email,
       seed_link: false,
     });
     expect(second.status).toBe(200);

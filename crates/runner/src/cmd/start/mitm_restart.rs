@@ -13,7 +13,7 @@ pub(super) const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// Stop retrying mitmproxy after this many consecutive failures.
 pub(super) const MITM_MAX_CONSECUTIVE_FAILURES: u32 = 20;
 
-pub(super) type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
+pub(super) type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<proxy::ManagedMitmdump>>;
 
 /// Spawn a background mitm restart task when the backoff timer fires
 /// and no restart is already in flight.
@@ -33,13 +33,15 @@ pub(super) async fn maybe_spawn_mitm_restart(
     // `stopping` Arc, locked to `true` before kill — so this only
     // sweeps pre-existing entries.
     while crash_rx.try_recv().is_ok() {}
-    let params = mitm.begin_restart().await;
-    retry.handle = Some(tokio::spawn(params.spawn()));
+    retry.handle = Some(match mitm.begin_restart().await {
+        Ok(params) => tokio::spawn(params.spawn()),
+        Err(error) => tokio::spawn(async move { Err(error) }),
+    });
 }
 
 /// Handle the result of a background mitm restart task.
 pub(super) fn handle_mitm_restart_result(
-    result: Result<tokio::process::Child, String>,
+    result: Result<proxy::ManagedMitmdump, String>,
     mitm: &mut proxy::MitmProxy,
     retry: &mut RetryState<MitmRestartHandle>,
 ) {
@@ -134,6 +136,8 @@ mod tests {
             builtin_firewall_catalog_cache_path: dir
                 .path()
                 .join("builtin-firewall-catalog-cache.json"),
+            runtime_dir: dir.path().join("mitmdump-runtime"),
+            runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
         })
@@ -160,7 +164,11 @@ mod tests {
             .spawn()
             .unwrap();
 
-        handle_mitm_restart_result(Ok(child), &mut mitm, &mut retry);
+        handle_mitm_restart_result(
+            Ok(proxy::ManagedMitmdump::unmanaged(child)),
+            &mut mitm,
+            &mut retry,
+        );
 
         assert_eq!(retry.backoff, MITM_BACKOFF_INITIAL);
         assert_eq!(retry.consecutive_failures, 0);
@@ -235,7 +243,9 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        retry.handle = Some(tokio::spawn(async move { Ok(child) }));
+        retry.handle = Some(tokio::spawn(async move {
+            Ok(proxy::ManagedMitmdump::unmanaged(child))
+        }));
 
         finish_mitm_restart_before_shutdown(&mut mitm, &mut retry).await;
 

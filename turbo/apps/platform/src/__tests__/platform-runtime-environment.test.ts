@@ -154,6 +154,7 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(
       runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
@@ -211,6 +212,9 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe(
       "https://pr-21537-api.vm6.ai",
     );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-21537-api.vm6.ai",
+    );
     expect(runtime.auth.resolveWebOrigin()).toBe(
       "https://pr-21537-www.omby.ai",
     );
@@ -238,6 +242,26 @@ describe("portable platform runtime environment", () => {
         environment: "preview",
       }),
     );
+  });
+
+  it("keeps preview WWW on omby.ai while routing API through vm6.ai", async () => {
+    setBrowserUrl("https://pr-22085-app.omby.ai/agents");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-22085-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-22085-api.vm6.ai",
+    );
+    expect(runtime.auth.resolveWebOrigin()).toBe(
+      "https://pr-22085-www.omby.ai",
+    );
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "preview",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
+      vapidPublicKey: PREVIEW_VAPID_KEY,
+    });
   });
 
   it("keeps unrecognized provider hosts on the same origin", async () => {

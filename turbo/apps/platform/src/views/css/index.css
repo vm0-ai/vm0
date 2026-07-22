@@ -1292,3 +1292,474 @@ details[open] > summary > span:first-child {
   content: "";
   transition: height 0.12s ease;
 }
+
+/* Onboarding workflow preview diagram (owf-) */
+.owf-diagram-wrap {
+  --owf-scale: 0.6;
+  position: relative;
+  width: calc(614px * var(--owf-scale));
+  height: calc(470px * var(--owf-scale));
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.owf-diagram {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--owf-scale));
+  transform-origin: top left;
+  --workflow-dot-size: 8px;
+  --workflow-top-line-y: 81px;
+  --workflow-source-icon-left: 107px;
+  --workflow-source-icon-top: 55px;
+  --workflow-node-icon-size: 56px;
+  --workflow-zero-left: 277px;
+  --workflow-zero-size: 72px;
+  --workflow-output-icon-left: 457.5px;
+  --workflow-output-icon-top: 53px;
+  --workflow-source-dot-x: calc(
+    var(--workflow-source-icon-left) + var(--workflow-node-icon-size) + 3px
+  );
+  --workflow-zero-left-edge-x: var(--workflow-zero-left);
+  --workflow-zero-right-edge-x: calc(
+    var(--workflow-zero-left) + var(--workflow-zero-size)
+  );
+  --workflow-destination-in-dot-x: 455px;
+  --workflow-destination-down-dot-x: calc(
+    var(--workflow-output-icon-left) + calc(var(--workflow-node-icon-size) / 2)
+  );
+  --workflow-destination-down-dot-y: calc(
+    var(--workflow-output-icon-top) + var(--workflow-node-icon-size) + 3px
+  );
+  --workflow-action-left: 142px;
+  --workflow-action-one-width: 339px;
+  --workflow-action-two-width: 341px;
+  --workflow-action-height: 79px;
+  --workflow-action-one-center-x: calc(
+    var(--workflow-action-left) + calc(var(--workflow-action-one-width) / 2)
+  );
+  --workflow-action-two-center-x: calc(
+    var(--workflow-action-left) + calc(var(--workflow-action-two-width) / 2)
+  );
+  --workflow-action-one-top: 224px;
+  --workflow-action-two-top: 352px;
+  --workflow-action-top-dot-y: 223px;
+  --workflow-action-vertical-top-dot-y: calc(
+    var(--workflow-action-one-top) + var(--workflow-action-height)
+  );
+  --workflow-action-vertical-bottom-dot-y: var(--workflow-action-two-top);
+  --workflow-diagram-grid-dot: hsl(var(--gray-500) / 0.55);
+  --workflow-diagram-node-fg: hsl(var(--foreground));
+  --workflow-diagram-tile-bg: hsl(var(--card));
+  --workflow-diagram-tile-border: hsl(var(--border));
+  --workflow-diagram-tile-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.5);
+  --workflow-diagram-stack-border: hsl(var(--border));
+  --workflow-diagram-action-title: hsl(var(--foreground));
+  --workflow-diagram-action-muted: hsl(var(--muted-foreground));
+  width: 614px;
+  height: 470px;
+  min-height: 0;
+  align-self: start;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.owf-diagram-grid {
+  position: absolute;
+  top: 13px;
+  right: 17px;
+  bottom: 12px;
+  left: 16px;
+  background-image: radial-gradient(
+    var(--workflow-diagram-grid-dot) 1.5px,
+    transparent 1.5px
+  );
+  background-size: 34px 34px;
+  opacity: 0.8;
+}
+
+.owf-diagram-lines {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.owf-diagram-lines path {
+  stroke: #ed7a44;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.owf-diagram-beam {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  width: 42px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 24%,
+    rgba(255, 255, 255, 0.78) 52%,
+    rgba(255, 255, 255, 0.16) 78%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.75))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.35));
+  offset-anchor: center;
+  offset-distance: 0%;
+  offset-rotate: auto;
+  opacity: 0.92;
+  pointer-events: none;
+  animation: owf-beam-flow 2.8s linear infinite;
+}
+
+@keyframes owf-beam-flow {
+  to {
+    offset-distance: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owf-diagram-beam {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
+.owf-diagram-node {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  width: 94px;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: var(--workflow-diagram-node-fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+}
+
+.owf-diagram-icon-box {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--workflow-diagram-tile-border);
+  border-radius: 16px;
+  background: var(--workflow-diagram-tile-bg);
+  box-shadow: var(--workflow-diagram-tile-shadow);
+}
+
+.owf-diagram-icon-box img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.owf-diagram-icon-stack {
+  position: relative;
+  display: block;
+  width: 42px;
+  height: 42px;
+}
+
+.owf-diagram-icon-stack-item {
+  position: absolute;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--workflow-diagram-stack-border);
+  border-radius: 9px;
+  background: var(--workflow-diagram-tile-bg);
+  box-shadow: var(--workflow-diagram-tile-shadow);
+}
+
+.owf-diagram-icon-stack-item:nth-child(1) {
+  top: 0;
+  left: 0;
+}
+
+.owf-diagram-icon-stack-item:nth-child(2) {
+  top: 0;
+  right: 0;
+}
+
+.owf-diagram-icon-stack-item:nth-child(3) {
+  bottom: 0;
+  left: 7px;
+}
+
+.owf-diagram-icon-stack-item img {
+  width: 22px;
+  height: 22px;
+}
+
+.owf-diagram-icon-stack-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ffffff;
+  border-radius: 999px;
+  background: #29292e;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.owf-diagram-avatar {
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+}
+
+.owf-diagram-zero-icon {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+}
+
+.owf-diagram-zero-icon img {
+  position: absolute;
+  top: -9.73px;
+  left: -6.4px;
+  display: block;
+  width: 76.8px;
+  height: 76.8px;
+  max-width: none;
+  object-fit: fill;
+}
+
+.owf-diagram-node-source {
+  top: 34px;
+  left: 94px;
+  width: 82px;
+}
+
+.owf-diagram-node-zero {
+  top: 45px;
+  left: 277px;
+  width: 72px;
+}
+
+.owf-diagram-node-output {
+  top: 32px;
+  left: 455px;
+  width: 61px;
+  gap: 5px;
+}
+
+.owf-diagram-dot-source,
+.owf-diagram-dot-destination-in,
+.owf-diagram-dot-destination-down,
+.owf-diagram-dot-action-top,
+.owf-diagram-dot-action-middle,
+.owf-diagram-dot-action-bottom {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  width: var(--workflow-dot-size);
+  height: var(--workflow-dot-size);
+  border: 1.5px solid #ffffff;
+  border-radius: 999px;
+  background: #29292e;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.owf-diagram-dot-source {
+  top: var(--workflow-top-line-y);
+  left: var(--workflow-source-dot-x);
+}
+
+.owf-diagram-dot-destination-in {
+  top: var(--workflow-top-line-y);
+  left: var(--workflow-destination-in-dot-x);
+}
+
+.owf-diagram-dot-destination-down {
+  top: var(--workflow-destination-down-dot-y);
+  left: var(--workflow-destination-down-dot-x);
+}
+
+.owf-diagram-dot-action-top {
+  top: var(--workflow-action-top-dot-y);
+  left: var(--workflow-action-one-center-x);
+}
+
+.owf-diagram-dot-action-middle {
+  top: var(--workflow-action-vertical-top-dot-y);
+  left: var(--workflow-action-two-center-x);
+}
+
+.owf-diagram-dot-action-bottom {
+  top: var(--workflow-action-vertical-bottom-dot-y);
+  left: var(--workflow-action-two-center-x);
+}
+
+.owf-diagram-vertical-control {
+  position: absolute;
+  z-index: 3;
+  top: var(--workflow-action-vertical-top-dot-y);
+  left: var(--workflow-action-two-center-x);
+  width: 0;
+  height: calc(
+    var(--workflow-action-vertical-bottom-dot-y) -
+      var(--workflow-action-vertical-top-dot-y)
+  );
+  pointer-events: none;
+}
+
+.owf-diagram-vertical-control::before {
+  position: absolute;
+  top: calc(var(--workflow-dot-size) / 2);
+  bottom: calc(var(--workflow-dot-size) / 2);
+  left: -1px;
+  width: 2px;
+  border-radius: 999px;
+  background: #ed7a44;
+  content: "";
+}
+
+.owf-diagram-vertical-control::after {
+  display: none;
+}
+
+.owf-diagram-action {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  display: flex;
+  height: var(--workflow-action-height);
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  border: 1px solid var(--workflow-diagram-tile-border);
+  border-radius: 20px;
+  background: var(--workflow-diagram-tile-bg);
+  box-shadow: var(--workflow-diagram-tile-shadow);
+  padding: 15px 24px;
+}
+
+.owf-diagram-action-one {
+  top: var(--workflow-action-one-top);
+  left: var(--workflow-action-left);
+  width: var(--workflow-action-one-width);
+}
+
+.owf-diagram-action-two {
+  top: var(--workflow-action-two-top);
+  left: var(--workflow-action-left);
+  width: var(--workflow-action-two-width);
+}
+
+.owf-diagram-action-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f3f5f8;
+}
+
+.owf-diagram-action-icon-filed {
+  background: #1f2329;
+}
+
+.owf-diagram-action-icon-filed span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.owf-diagram-action-icon-complete {
+  background: #31a653;
+}
+
+.owf-diagram-action-icon-complete span {
+  position: relative;
+  width: 13px;
+  height: 10px;
+}
+
+.owf-diagram-action-icon-complete span::before,
+.owf-diagram-action-icon-complete span::after {
+  position: absolute;
+  background: #ffffff;
+  content: "";
+}
+
+.owf-diagram-action-icon-complete span::before {
+  top: 1px;
+  left: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+}
+
+.owf-diagram-action-icon-complete span::after {
+  right: 1px;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  border: 1.6px solid #ffffff;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.owf-diagram-action-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.owf-diagram-action-copy strong {
+  display: block;
+  overflow: hidden;
+  color: var(--workflow-diagram-action-title);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owf-diagram-action-copy span {
+  display: block;
+  overflow: hidden;
+  color: var(--workflow-diagram-action-muted);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

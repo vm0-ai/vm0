@@ -58,6 +58,7 @@ export interface ConnectorCatalogReleaseIdentity {
 
 export interface ValidatedConnectorCatalogCandidate {
   readonly identity: ConnectorCatalogReleaseIdentity;
+  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
   readonly publicCatalogText: string;
   readonly privateCatalogText: string;
   readonly privateFirewallsText: string;
@@ -413,6 +414,7 @@ export async function loadConnectorCatalogCandidate(args: {
   validateCatalogViews(views, integrity);
   return {
     identity: releaseIdentity(args.pointer, integrity),
+    privateArtifact: views.privateArtifact,
     publicCatalogText: views.publicCatalogText,
     privateCatalogText: views.privateCatalogText,
     privateFirewallsText: views.privateFirewallsText,
