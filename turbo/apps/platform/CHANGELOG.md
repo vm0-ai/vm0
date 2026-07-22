@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.613.3](https://github.com/vm0-ai/vm0/compare/app-v0.613.2...app-v0.613.3) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** remove redundant post-connect agent authorization dialog ([#22467](https://github.com/vm0-ai/vm0/issues/22467)) ([c067465](https://github.com/vm0-ai/vm0/commit/c067465aab7a2643851c3a97f9fc24a36df9eeec))
+
 ## [0.613.2](https://github.com/vm0-ai/vm0/compare/app-v0.613.1...app-v0.613.2) (2026-07-22)
 
 
