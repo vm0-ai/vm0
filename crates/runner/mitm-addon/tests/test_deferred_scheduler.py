@@ -22,15 +22,17 @@ async def _run_ready_tasks() -> None:
     await ready.wait()
 
 
-async def test_model_websocket_trim_uses_real_event_loop_scheduler(tmp_path, mitm_ctx, real_flow):
-    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-    mitm_addon.responseheaders(flow)
+async def test_registered_non_model_websocket_trim_uses_real_event_loop_scheduler(
+    mitm_ctx, real_flow
+):
+    flow = real_flow(with_response=False, host="example.com")
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
     old_client = append_websocket_message(flow, from_client=True, content=b"client-old")
     old_server = append_websocket_message(flow, from_client=False, content=b"server-old")
     latest_server = append_websocket_message(
         flow,
         from_client=False,
-        content=openai_websocket_usage_frame("resp_ws_latest"),
+        content=b"server-latest",
     )
     assert flow.websocket is not None
     messages = flow.websocket.messages

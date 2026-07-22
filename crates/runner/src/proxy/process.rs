@@ -953,6 +953,7 @@ PY
             "terminal_usage.py",
             "upstream_admission.py",
             "url_utils.py",
+            "websocket_retention.py",
             "logging_utils.py",
             "usage/__init__.py",
             "usage/anthropic_messages.py",
