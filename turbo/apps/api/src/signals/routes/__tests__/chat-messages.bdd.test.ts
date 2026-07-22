@@ -2864,7 +2864,45 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await cancelChatRun(actor, second.runId);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+
+    const { providerId: openRouterProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openrouter-api-key",
+        secret: "rerouted-openrouter-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: openRouterProviderId,
+      },
+    ]);
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "follow up after the upstream provider changes",
+    });
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
+    await cancelChatRun(actor, third.runId);
   }, 90_000);
 
   it("rejects invalid model selections without creating visible state", async () => {
