@@ -1529,6 +1529,11 @@ describe("connectors page", () => {
         connectorRef: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
+        icon: {
+          url: "https://icons.example.test/stripe-catalog.svg",
+          invertInDarkMode: true,
+          scale: 1.5,
+        },
         authMethods: [
           {
             id: "oauth",
@@ -1566,7 +1571,7 @@ describe("connectors page", () => {
       expect(startCount).toBe(1);
       expect(openMock.calls).toHaveLength(1);
       expect(openMock.calls[0]).toStrictEqual({
-        url: "/connectors/stripe/redirecting?label=Public+Stripe",
+        url: "/connectors/stripe/redirecting?label=Public+Stripe&iconUrl=https%3A%2F%2Ficons.example.test%2Fstripe-catalog.svg&iconInvertInDarkMode=true&iconScale=1.5",
         target: "_blank",
         features: "width=600,height=700",
       });
@@ -1626,6 +1631,10 @@ describe("connectors page", () => {
         connectorRef: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
+        icon: {
+          url: "https://icons.example.test/stripe-error.svg",
+          invertInDarkMode: false,
+        },
         authMethods: [
           {
             id: "oauth",
@@ -1657,7 +1666,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "/connectors/stripe/redirecting?label=Public+Stripe&status=error",
+        "/connectors/stripe/redirecting?label=Public+Stripe&iconUrl=https%3A%2F%2Ficons.example.test%2Fstripe-error.svg&iconInvertInDarkMode=false&status=error",
       );
       expect(authWindow.closed).toBeFalsy();
     });

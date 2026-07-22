@@ -1249,8 +1249,8 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
-const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 639;
-const LEGACY_MEMORY_CLEANUP_MIGRATION = 640;
+const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 640;
+const LEGACY_MEMORY_CLEANUP_MIGRATION = 641;
 
 const legacyMemoryCleanupFixture = {
   orgId: "legacy-memory-cleanup-org",
@@ -1484,7 +1484,7 @@ async function validateLegacyMemoryCleanup(): Promise<void> {
         `
           SELECT count(*)::integer AS "count"
           FROM "__drizzle_migrations"
-          WHERE "hash" = '0640_delete_legacy_memory_storages'
+          WHERE "hash" = '0641_delete_legacy_memory_storages'
         `,
       );
       assert.equal(migrationRecord.rows[0]?.count, 0);
