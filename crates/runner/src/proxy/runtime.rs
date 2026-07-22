@@ -231,7 +231,7 @@ impl MitmdumpRuntime {
             };
             let metadata = match entry.metadata().await {
                 Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) if process_disappeared(&error) => continue,
                 Err(error) => {
                     return Err(RunnerError::Internal(format!(
                         "inspect /proc/{pid} for mitmdump runtime owner: {error}"
@@ -256,6 +256,7 @@ impl MitmdumpRuntime {
             let before = match crate::process::read_process_stat_checked(pid).await {
                 ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
                 ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
+                ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
                 ProcessStatRead::Unreadable(error) => {
                     return Err(RunnerError::Internal(format!(
                         "read /proc/{pid}/stat for mitmdump runtime owner: {error}"
@@ -276,6 +277,7 @@ impl MitmdumpRuntime {
             let after = match crate::process::read_process_stat_checked(pid).await {
                 ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
                 ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
+                ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
                 ProcessStatRead::Unreadable(error) => {
                     return Err(RunnerError::Internal(format!(
                         "recheck /proc/{pid}/stat for mitmdump runtime owner: {error}"
@@ -309,7 +311,7 @@ impl MitmdumpRuntime {
 async fn read_process_environ(pid: u32) -> RunnerResult<Option<Vec<u8>>> {
     match tokio::fs::read(format!("/proc/{pid}/environ")).await {
         Ok(environ) => Ok(Some(environ)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) if process_disappeared(&error) => Ok(None),
         Err(error) if process_comm_is_mitmdump(pid).await? => Err(RunnerError::Internal(format!(
             "read /proc/{pid}/environ for mitmdump runtime owner: {error}"
         ))),
@@ -321,11 +323,15 @@ async fn process_comm_is_mitmdump(pid: u32) -> RunnerResult<bool> {
     let path = format!("/proc/{pid}/comm");
     match tokio::fs::read(&path).await {
         Ok(comm) => Ok(comm.strip_suffix(b"\n").unwrap_or(&comm) == b"mitmdump"),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) if process_disappeared(&error) => Ok(false),
         Err(error) => Err(RunnerError::Internal(format!(
             "read {path} after an unreadable process environment: {error}"
         ))),
     }
+}
+
+fn process_disappeared(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(nix::libc::ESRCH)
 }
 
 fn runtime_marker(environ: &[u8]) -> Option<&[u8]> {
@@ -342,6 +348,7 @@ async fn signal_stable_process(process: ProcessIdentity) -> RunnerResult<()> {
     let current = match crate::process::read_process_stat_checked(process.pid).await {
         ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
         ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(()),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(()),
         ProcessStatRead::Unreadable(error) => {
             return Err(RunnerError::Internal(format!(
                 "recheck /proc/{}/stat before mitmdump cleanup signal: {error}",
