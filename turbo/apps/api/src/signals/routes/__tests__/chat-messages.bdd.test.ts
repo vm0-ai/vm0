@@ -60,7 +60,7 @@ import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
-  holdChatMessageWritesFixture,
+  holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
@@ -4230,55 +4230,79 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // Stop the terminal drain at run admission until its preceding message
-    // writes are complete, then pause only the replacement insert. The claim
-    // holds the queue row while recall reaches the competing queue deletion.
+    // Pin the terminal drain ahead of the callback drain at run admission,
+    // then make the claim and recall queue behind the exact message row in a
+    // test-owned order.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
     });
-    onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
-    });
-
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    // The first waiter is the completion-triggered org run-queue drain; the
-    // second proves the callback's chat-message drain has finished its prior
-    // writes and is blocked at run admission before we pause its claim insert.
-    await expect.poll(admissionLock.waiterCount).toBe(2);
-
-    const messageWritesLock = await holdChatMessageWritesFixture({
+    const messageQueueLock = await holdChatMessageQueueItemFixture({
+      threadId: anchor.threadId,
+      messageId,
       signal: context.signal,
     });
+
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
-      messageWritesLock.release();
-      await messageWritesLock.done;
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
+      admissionLock.release();
+      messageQueueLock.release();
+      await Promise.all([admissionLock.done, messageQueueLock.done]);
     });
+
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "recall claim race complete")];
+      });
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
     await admissionLock.done;
-    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(1);
+    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
 
-    const recall = chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        revokesMessageId: messageId,
-        clientMessageId: randomUUID(),
-      },
-      [400],
-    );
-    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(2);
-    messageWritesLock.release();
+    const recall = Promise.allSettled([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          revokesMessageId: messageId,
+          clientMessageId: randomUUID(),
+        },
+        [400],
+      ),
+    ]);
+    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(2);
+    messageQueueLock.release();
 
-    const recalled = await recall;
+    const [recallResult] = await recall;
+    if (recallResult.status === "rejected") {
+      throw recallResult.reason;
+    }
+    const recalled = recallResult.value;
     expectApiError(recalled.body);
     expect(recalled.body.error.message).toBe(
       "Only queued user messages can be recalled",
     );
-    await messageWritesLock.done;
+    await messageQueueLock.done;
     await flushWaitUntilForTest();
 
     const messages = await waitForThreadMessages(
