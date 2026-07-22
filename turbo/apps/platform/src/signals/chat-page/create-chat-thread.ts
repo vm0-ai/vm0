@@ -1008,12 +1008,28 @@ function createDraftSync(
           size: r.attachment.size,
         };
       });
+      const features = get(featureSwitch$);
+      const editorDocument = set(draft.readEditorDocument$);
+      let structuredPrompt: UserMessageDocument | null = null;
+      if (
+        (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
+        editorDocument
+      ) {
+        structuredPrompt = editorDocument.toMessageDocument({
+          generationTemplate: get(draft.generationTemplate$),
+          attachments: persisted,
+        });
+        if (!structuredPrompt) {
+          throw new Error("Failed to serialize structured draft");
+        }
+      }
 
       await set(
         dataSource.patchDraft$,
         {
           threadId,
           content,
+          structuredPrompt,
           attachments: persisted.length > 0 ? persisted : null,
         },
         signal,
@@ -1042,7 +1058,12 @@ function createDraftSync(
       }
       await set(
         dataSource.patchDraft$,
-        { threadId, content: null, attachments: null },
+        {
+          threadId,
+          content: null,
+          structuredPrompt: null,
+          attachments: null,
+        },
         signal,
       );
     },
@@ -3637,7 +3658,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
           return candidate.id === messageId;
         },
       );
-      if (!message) {
+      if (!message || message.role !== "user") {
         return;
       }
 
@@ -3657,11 +3678,16 @@ function createRecallMessage(deps: RecallMessageDeps) {
           createdAt: nowDate().toISOString(),
         },
       });
-      set(
-        draft.seed$,
-        message.content ?? "",
-        (message.attachFiles ?? []).map(createRestoredAttachment),
-      );
+      const features = get(featureSwitch$);
+      set(draft.seed$, {
+        content: message.content ?? "",
+        structuredPrompt:
+          (features[FeatureSwitchKey.StructuredPrompt] ?? false)
+            ? (message.structuredPrompt ?? null)
+            : null,
+        generationTemplate: message.generationTemplate,
+        attachments: (message.attachFiles ?? []).map(createRestoredAttachment),
+      });
 
       const persistedMessage = await set(
         dataSource.recallMessage$,
