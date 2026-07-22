@@ -9,12 +9,13 @@ import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { writeDb$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import {
   activeCustomCreditPriceId,
   createCreditCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -43,6 +44,14 @@ const creditCheckoutAuthed$ = command(
       return bodyResult.response;
     }
     const { credits, successUrl, cancelUrl, autoRecharge } = bodyResult.data;
+
+    const capabilities = await loadOrgPlanCapabilities(get(db$), auth.orgId);
+    signal.throwIfAborted();
+    if (capabilities?.canBuyCredits === false) {
+      return badRequestMessage(
+        "Credit purchases are not available for this workspace",
+      );
+    }
 
     if (
       !billingRedirectAllowed(successUrl) ||

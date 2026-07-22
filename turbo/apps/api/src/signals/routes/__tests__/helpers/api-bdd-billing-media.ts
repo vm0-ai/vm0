@@ -348,6 +348,18 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
+    async requestCreditCheckout(
+      actor: ApiTestUser,
+      body: CreditCheckoutRequest,
+      statuses: readonly CheckoutStatus[],
+    ) {
+      const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+      return await accept(
+        client.create({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
     async openPortal(actor: ApiTestUser, body: PortalBody) {
       const client = setupApp({ context })(zeroBillingPortalContract);
       return await accept(

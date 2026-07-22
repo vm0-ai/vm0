@@ -165,9 +165,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       false,
     );

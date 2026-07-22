@@ -41,7 +41,10 @@ pub use factory::{
     SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
 pub use runtime::{RuntimeProvider, SandboxRuntime};
-pub use sandbox::{Sandbox, SandboxParkNonReusableReason, SandboxParkOutcome};
+pub use sandbox::{
+    Sandbox, SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver,
+    SandboxStartStage,
+};
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };

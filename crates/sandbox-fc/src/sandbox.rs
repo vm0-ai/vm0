@@ -4,7 +4,7 @@ use std::num::NonZeroU64;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
@@ -12,8 +12,8 @@ use sandbox::{
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
     SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, StartProcessRequest,
-    WriteFileEntry,
+    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver,
+    SandboxStartStage, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -85,6 +85,27 @@ const PROCESS_LOG_READER_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Timeout for guest lifecycle acknowledgements during same-session park/unpark.
 const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+struct SandboxStartTiming<'a> {
+    observer: Option<&'a mut dyn SandboxStartObserver>,
+}
+
+impl<'a> SandboxStartTiming<'a> {
+    fn new(observer: Option<&'a mut dyn SandboxStartObserver>) -> Self {
+        Self { observer }
+    }
+
+    fn record(&mut self, stage: SandboxStartStage, started: Instant, success: bool) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record_stage(stage, started.elapsed(), success);
+        }
+    }
+}
+
+struct SnapshotLoadPaths {
+    snapshot: String,
+    memory: String,
+}
 
 fn build_fresh_boot_firecracker_config(
     resources: &sandbox::ResourceLimits,
@@ -1008,11 +1029,11 @@ impl FirecrackerSandbox {
         Ok(client)
     }
 
-    /// Start from a snapshot using `--api-sock` and bind mounts.
-    async fn start_from_snapshot(
+    /// Launch from a snapshot using `--api-sock` and bind mounts.
+    async fn launch_from_snapshot(
         &mut self,
         runtime_cancel: CancellationToken,
-    ) -> sandbox::Result<ApiClient> {
+    ) -> sandbox::Result<(ApiClient, SnapshotLoadPaths)> {
         let snapshot =
             self.factory_config
                 .snapshot
@@ -1094,16 +1115,261 @@ impl FirecrackerSandbox {
             .spawn_and_wait_for_api(command, &api_sock, runtime_cancel, "snapshot restore")
             .await?;
 
-        load_snapshot_and_apply_rate_limits(
-            &client,
-            &snapshot_str,
-            &memory_str,
-            self.device_rate_limits.as_ref(),
-        )
-        .await?;
+        Ok((
+            client,
+            SnapshotLoadPaths {
+                snapshot: snapshot_str,
+                memory: memory_str,
+            },
+        ))
+    }
 
-        info!(id = %self.id, "snapshot loaded and resumed");
-        Ok(client)
+    async fn start_with_optional_observer(
+        &mut self,
+        observer: Option<&mut dyn SandboxStartObserver>,
+    ) -> sandbox::Result<()> {
+        if self.current_state() != SandboxState::Created {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Sandbox,
+                state: self.current_state().to_string(),
+                message: "sandbox already started".into(),
+            });
+        }
+
+        let mut timing = SandboxStartTiming::new(observer);
+        let backend_started = Instant::now();
+        if self.factory_config.dns_port.is_some()
+            && let Err(error) = self.network.mark_non_reusable()
+        {
+            timing.record(SandboxStartStage::BackendLaunch, backend_started, false);
+            return Err(error);
+        }
+
+        let runtime_cancel = CancellationToken::new();
+
+        // Start the vsock listener BEFORE launching Firecracker.
+        // The UDS must be bound before the guest tries to connect.
+        let vsock_path = self.sock_paths.vsock().display().to_string();
+        let mut vsock_task = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
+        });
+
+        let launch_result = if self.factory_config.snapshot.is_some() {
+            self.launch_from_snapshot(runtime_cancel.clone())
+                .await
+                .map(|(client, paths)| (client, Some(paths)))
+        } else {
+            self.start_fresh(runtime_cancel.clone())
+                .await
+                .map(|client| (client, None))
+        };
+
+        let (client, snapshot_paths) = match launch_result {
+            Ok(result) => {
+                timing.record(SandboxStartStage::BackendLaunch, backend_started, true);
+                result
+            }
+            Err(error) => {
+                timing.record(SandboxStartStage::BackendLaunch, backend_started, false);
+                abort_and_join(vsock_task).await;
+                self.runtime.kill_process().await;
+                return Err(error);
+            }
+        };
+
+        if let Some(paths) = snapshot_paths {
+            let snapshot_started = Instant::now();
+            let snapshot_result = load_snapshot_and_apply_rate_limits(
+                &client,
+                &paths.snapshot,
+                &paths.memory,
+                self.device_rate_limits.as_ref(),
+            )
+            .await;
+            match snapshot_result {
+                Ok(()) => {
+                    info!(id = %self.id, "snapshot loaded and resumed");
+                    timing.record(
+                        SandboxStartStage::SnapshotLoadResume,
+                        snapshot_started,
+                        true,
+                    );
+                }
+                Err(error) => {
+                    timing.record(
+                        SandboxStartStage::SnapshotLoadResume,
+                        snapshot_started,
+                        false,
+                    );
+                    abort_and_join(vsock_task).await;
+                    self.runtime.kill_process().await;
+                    return Err(error);
+                }
+            }
+        }
+
+        // The listener overlaps backend startup. Measure only the remaining
+        // critical-path wait after launch and optional snapshot restore.
+        let guest_connection_started = Instant::now();
+        let (guest_connection_result, abort_vsock_on_failure) = tokio::select! {
+            result = &mut vsock_task => {
+                let result = match result {
+                    Ok(Ok(guest)) => Ok(guest),
+                    Ok(Err(error)) => Err(SandboxError::Start {
+                        message: format!("vsock connection: {error}"),
+                    }),
+                    Err(error) => Err(SandboxError::Start {
+                        message: format!("vsock task: {error}"),
+                    }),
+                };
+                (result, false)
+            }
+            state = wait_for_process_exit(self.state_tx.subscribe()) => {
+                (
+                    Err(SandboxError::Start {
+                        message: format!("process exited before vsock connected (state={state})"),
+                    }),
+                    true,
+                )
+            }
+        };
+        let vsock_guest = match guest_connection_result {
+            Ok(guest) => {
+                timing.record(
+                    SandboxStartStage::GuestConnectionWait,
+                    guest_connection_started,
+                    true,
+                );
+                guest
+            }
+            Err(error) => {
+                timing.record(
+                    SandboxStartStage::GuestConnectionWait,
+                    guest_connection_started,
+                    false,
+                );
+                if abort_vsock_on_failure {
+                    abort_and_join(vsock_task).await;
+                }
+                self.runtime.kill_process().await;
+                return Err(error);
+            }
+        };
+
+        let vsock_guest = Arc::new(vsock_guest);
+
+        if let Some(dns_port) = self.factory_config.dns_port {
+            let dns_started = Instant::now();
+            match wait_for_guest_dns_readiness(&vsock_guest).await {
+                Ok(()) => {
+                    timing.record(SandboxStartStage::GuestDnsReadiness, dns_started, true);
+                }
+                Err(error) => {
+                    timing.record(SandboxStartStage::GuestDnsReadiness, dns_started, false);
+                    capture_guest_dns_failure_snapshot(
+                        vsock_guest.as_ref(),
+                        GuestDnsFailureDiagnosticContext {
+                            sandbox_id: &self.id,
+                            profile: &self.factory_config.profile,
+                            namespace: self.network.name(),
+                            host_device: self.network.host_device(),
+                            peer_ip: self.network.peer_ip(),
+                            dns_port,
+                        },
+                    )
+                    .await;
+                    warn!(
+                        id = %self.id,
+                        profile = %self.factory_config.profile,
+                        namespace = %self.network.name(),
+                        peer_ip = %self.network.peer_ip(),
+                        stage = "guest_dns_readiness",
+                        outcome = %error.last_failure,
+                        attempts = error.attempts,
+                        elapsed_ms = duration_ms(error.elapsed),
+                        "guest DNS readiness probe failed"
+                    );
+                    self.runtime.kill_process().await;
+                    return Err(SandboxError::GuestDnsReadiness {
+                        message: format!(
+                            "guest DNS readiness for namespace {}: {error}",
+                            self.network.name(),
+                        ),
+                    });
+                }
+            }
+        }
+
+        let finalize_started = Instant::now();
+        if self.factory_config.dns_port.is_some()
+            && let Err(error) = self.network.mark_reusable()
+        {
+            timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, false);
+            self.runtime.kill_process().await;
+            return Err(error);
+        }
+
+        *self.guest.lock().await = Some(vsock_guest);
+
+        let control_sock_path = self.sock_paths.control_sock();
+        let Some(termination_handle) = self
+            .runtime
+            .process_termination_handle(self.park_coordinator.clone())
+        else {
+            timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, false);
+            self.guest.lock().await.take();
+            self.runtime.kill_process().await;
+            return Err(SandboxError::Start {
+                message: "process monitor missing before control socket bind".into(),
+            });
+        };
+        let control_server = match control::bind_server(
+            control_sock_path.clone(),
+            self.guest_operation_start_gate(),
+            termination_handle,
+        ) {
+            Ok(server) => server,
+            Err(error) => {
+                timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, false);
+                self.guest.lock().await.take();
+                self.runtime.kill_process().await;
+                return Err(SandboxError::Start {
+                    message: format!(
+                        "control socket bind {}: {error}",
+                        control_sock_path.display()
+                    ),
+                });
+            }
+        };
+
+        // Use CAS to avoid overwriting Stopped if the process crashed between
+        // spawn and vsock connect (the process monitor may have already
+        // recorded process exit).
+        if !self.transition(SandboxState::Created, SandboxState::Running) {
+            timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, false);
+            self.guest.lock().await.take();
+            control_server.close();
+            self.runtime.kill_process().await;
+            return Err(SandboxError::Start {
+                message: "process exited during startup".into(),
+            });
+        }
+
+        // Start control socket server for `runner exec` and host-side
+        // termination requests.
+        self.runtime
+            .set_control(control_server.spawn(runtime_cancel));
+
+        // Spawn balloon controller to reclaim unused guest memory.
+        self.runtime.set_balloon(balloon::spawn(
+            client,
+            self.config.resources.memory_mb,
+            self.state_tx.subscribe(),
+        ));
+
+        info!(id = %self.id, "sandbox started");
+        timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, true);
+        Ok(())
     }
 }
 
@@ -1496,169 +1762,14 @@ impl Sandbox for FirecrackerSandbox {
     // -- lifecycle --
 
     async fn start(&mut self) -> sandbox::Result<()> {
-        if self.current_state() != SandboxState::Created {
-            return Err(SandboxError::InvalidState {
-                context: SandboxInvalidStateContext::Sandbox,
-                state: self.current_state().to_string(),
-                message: "sandbox already started".into(),
-            });
-        }
+        self.start_with_optional_observer(None).await
+    }
 
-        if self.factory_config.dns_port.is_some() {
-            self.network.mark_non_reusable()?;
-        }
-
-        let runtime_cancel = CancellationToken::new();
-
-        // Start the vsock listener BEFORE launching Firecracker.
-        // The UDS must be bound before the guest tries to connect.
-        let vsock_path = self.sock_paths.vsock().display().to_string();
-        let mut vsock_task = tokio::spawn(async move {
-            VsockHost::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
-        });
-
-        let start_result = if self.factory_config.snapshot.is_some() {
-            self.start_from_snapshot(runtime_cancel.clone()).await
-        } else {
-            self.start_fresh(runtime_cancel.clone()).await
-        };
-
-        let client = match start_result {
-            Ok(client) => client,
-            Err(e) => {
-                abort_and_join(vsock_task).await;
-                self.runtime.kill_process().await;
-                return Err(e);
-            }
-        };
-
-        // Wait for guest to connect via vsock.
-        let vsock_guest = tokio::select! {
-            result = &mut vsock_task => {
-                match result {
-                    Ok(Ok(g)) => g,
-                    Ok(Err(e)) => {
-                        self.runtime.kill_process().await;
-                        return Err(SandboxError::Start {
-                            message: format!("vsock connection: {e}"),
-                        });
-                    }
-                    Err(e) => {
-                        self.runtime.kill_process().await;
-                        return Err(SandboxError::Start {
-                            message: format!("vsock task: {e}"),
-                        });
-                    }
-                }
-            }
-            state = wait_for_process_exit(self.state_tx.subscribe()) => {
-                abort_and_join(vsock_task).await;
-                self.runtime.kill_process().await;
-                return Err(SandboxError::Start {
-                    message: format!("process exited before vsock connected (state={state})"),
-                });
-            }
-        };
-
-        let vsock_guest = Arc::new(vsock_guest);
-
-        if let Some(dns_port) = self.factory_config.dns_port {
-            match wait_for_guest_dns_readiness(&vsock_guest).await {
-                Ok(()) => {
-                    if let Err(error) = self.network.mark_reusable() {
-                        self.runtime.kill_process().await;
-                        return Err(error);
-                    }
-                }
-                Err(error) => {
-                    capture_guest_dns_failure_snapshot(
-                        vsock_guest.as_ref(),
-                        GuestDnsFailureDiagnosticContext {
-                            sandbox_id: &self.id,
-                            profile: &self.factory_config.profile,
-                            namespace: self.network.name(),
-                            host_device: self.network.host_device(),
-                            peer_ip: self.network.peer_ip(),
-                            dns_port,
-                        },
-                    )
-                    .await;
-                    warn!(
-                        id = %self.id,
-                        profile = %self.factory_config.profile,
-                        namespace = %self.network.name(),
-                        peer_ip = %self.network.peer_ip(),
-                        stage = "guest_dns_readiness",
-                        outcome = %error.last_failure,
-                        attempts = error.attempts,
-                        elapsed_ms = duration_ms(error.elapsed),
-                        "guest DNS readiness probe failed"
-                    );
-                    self.runtime.kill_process().await;
-                    return Err(SandboxError::GuestDnsReadiness {
-                        message: format!(
-                            "guest DNS readiness for namespace {}: {error}",
-                            self.network.name(),
-                        ),
-                    });
-                }
-            }
-        }
-
-        *self.guest.lock().await = Some(vsock_guest);
-
-        let control_sock_path = self.sock_paths.control_sock();
-        let Some(termination_handle) = self
-            .runtime
-            .process_termination_handle(self.park_coordinator.clone())
-        else {
-            self.guest.lock().await.take();
-            self.runtime.kill_process().await;
-            return Err(SandboxError::Start {
-                message: "process monitor missing before control socket bind".into(),
-            });
-        };
-        let control_server = match control::bind_server(
-            control_sock_path.clone(),
-            self.guest_operation_start_gate(),
-            termination_handle,
-        ) {
-            Ok(server) => server,
-            Err(e) => {
-                self.guest.lock().await.take();
-                self.runtime.kill_process().await;
-                return Err(SandboxError::Start {
-                    message: format!("control socket bind {}: {e}", control_sock_path.display()),
-                });
-            }
-        };
-
-        // Use CAS to avoid overwriting Stopped if the process crashed between
-        // spawn and vsock connect (the process monitor may have already
-        // recorded process exit).
-        if !self.transition(SandboxState::Created, SandboxState::Running) {
-            self.guest.lock().await.take();
-            control_server.close();
-            self.runtime.kill_process().await;
-            return Err(SandboxError::Start {
-                message: "process exited during startup".into(),
-            });
-        }
-
-        // Start control socket server for `runner exec` and host-side
-        // termination requests.
-        self.runtime
-            .set_control(control_server.spawn(runtime_cancel));
-
-        // Spawn balloon controller to reclaim unused guest memory.
-        self.runtime.set_balloon(balloon::spawn(
-            client,
-            self.config.resources.memory_mb,
-            self.state_tx.subscribe(),
-        ));
-
-        info!(id = %self.id, "sandbox started");
-        Ok(())
+    async fn start_with_observer(
+        &mut self,
+        observer: &mut dyn SandboxStartObserver,
+    ) -> sandbox::Result<()> {
+        self.start_with_optional_observer(Some(observer)).await
     }
 
     async fn stop(&mut self) -> sandbox::Result<()> {
