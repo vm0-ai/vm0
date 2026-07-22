@@ -308,6 +308,7 @@ for namespace in "$ATTACKER_NS" "$VICTIM_NS"; do
     || fail "pre-submit namespace unexpectedly active: $namespace"
 done
 RUNNER_POOL_PREFIX="${ATTACKER_NS%-*}-"
+RUNNER_VETH_PREFIX=${RUNNER_POOL_PREFIX/vm0-ns-/vm0-ve-}
 ATTACKER_IF=${ATTACKER_NS/vm0-ns-/vm0-ve-}
 VICTIM_IF=${VICTIM_NS/vm0-ns-/vm0-ve-}
 
@@ -979,6 +980,25 @@ LEAKED_SOURCE_GUARDS=$(printf '%s\n' "$RAW_RULES_AFTER_STOP" \
   | grep -F -- "$RUNNER_POOL_PREFIX" || true)
 [ -z "$LEAKED_SOURCE_GUARDS" ] \
   || fail "IPv4 source guards leaked after runner stop: $LEAKED_SOURCE_GUARDS"
+NAMESPACES_AFTER_STOP=$(sudo ip netns list) \
+  || fail "failed to read network namespaces after runner stop"
+LEAKED_NAMESPACES=$(printf '%s\n' "$NAMESPACES_AFTER_STOP" \
+  | awk -v prefix="$RUNNER_POOL_PREFIX" 'index($1, prefix) == 1') \
+  || fail "failed to inspect network namespaces after runner stop"
+[ -z "$LEAKED_NAMESPACES" ] \
+  || fail "network namespaces leaked after runner stop: $LEAKED_NAMESPACES"
+LINKS_AFTER_STOP=$(sudo ip -o link show) \
+  || fail "failed to read network links after runner stop"
+LEAKED_HOST_VETHS=$(printf '%s\n' "$LINKS_AFTER_STOP" \
+  | awk -F ': ' -v prefix="$RUNNER_VETH_PREFIX" '
+      {
+        name = $2
+        sub(/@.*/, "", name)
+        if (index(name, prefix) == 1) print name
+      }
+    ') || fail "failed to inspect network links after runner stop"
+[ -z "$LEAKED_HOST_VETHS" ] \
+  || fail "host veth devices leaked after runner stop: $LEAKED_HOST_VETHS"
 cleanup_submit_pid "$SUBMIT_PID"
 SUBMIT_PID=""
 trap - EXIT
