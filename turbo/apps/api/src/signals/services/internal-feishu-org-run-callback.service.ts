@@ -9,7 +9,6 @@ import { feishuOrgThreadSessions } from "@vm0/db/schema/feishu-org-thread-sessio
 import { replyToFeishuMessage } from "../external/feishu-client";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
-import { feishuConfig } from "./feishu-config";
 import {
   feishuOrgCallbackPayloadSchema,
   type FeishuOrgCallbackPayload,
@@ -80,10 +79,6 @@ async function handleFeishuCallback(args: {
   if (!parsed.success) {
     return { success: false, error: "Invalid Feishu callback payload" };
   }
-  const config = feishuConfig();
-  if (!config) {
-    return { success: false, error: "Feishu integration is not configured" };
-  }
   const run = await loadRun(args.db, args.callback.runId);
   args.signal.throwIfAborted();
   if (!run) {
@@ -94,7 +89,7 @@ async function handleFeishuCallback(args: {
     .from(feishuOrgInstallations)
     .where(
       and(
-        eq(feishuOrgInstallations.feishuTenantKey, parsed.data.tenantKey),
+        eq(feishuOrgInstallations.id, parsed.data.installationId),
         eq(feishuOrgInstallations.orgId, run.orgId),
       ),
     )
@@ -109,7 +104,7 @@ async function handleFeishuCallback(args: {
     .where(
       and(
         eq(feishuOrgConnections.id, parsed.data.connectionId),
-        eq(feishuOrgConnections.feishuTenantKey, parsed.data.tenantKey),
+        eq(feishuOrgConnections.installationId, parsed.data.installationId),
       ),
     )
     .limit(1);
@@ -137,8 +132,7 @@ async function handleFeishuCallback(args: {
   args.signal.throwIfAborted();
   await replyToFeishuMessage({
     db: args.db,
-    config,
-    tenantKey: parsed.data.tenantKey,
+    installationId: parsed.data.installationId,
     messageId: parsed.data.messageId,
     text: responseText,
     signal: args.signal,

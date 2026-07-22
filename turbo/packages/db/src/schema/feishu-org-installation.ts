@@ -1,33 +1,46 @@
-import { sql } from "drizzle-orm";
 import {
   index,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+import { agentComposes } from "./agent-compose";
 
 export const feishuOrgInstallations = pgTable(
   "feishu_org_installations",
   {
-    feishuTenantKey: varchar("feishu_tenant_key", { length: 255 })
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    appId: varchar("app_id", { length: 255 }).notNull(),
+    encryptedAppSecret: text("encrypted_app_secret").notNull(),
+    encryptedVerificationToken: text("encrypted_verification_token").notNull(),
+    encryptedEncryptKey: text("encrypted_encrypt_key").notNull(),
+    defaultComposeId: uuid("default_compose_id")
       .notNull()
-      .primaryKey(),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    feishuTenantKey: varchar("feishu_tenant_key", { length: 255 }),
     feishuTenantName: varchar("feishu_tenant_name", { length: 255 }),
-    feishuAppId: varchar("feishu_app_id", { length: 255 }).notNull(),
-    orgId: text("org_id"),
     encryptedTenantAccessToken: text("encrypted_tenant_access_token"),
     tenantAccessTokenExpiresAt: timestamp("tenant_access_token_expires_at"),
+    callbackVerifiedAt: timestamp("callback_verified_at"),
+    messageReceivedAt: timestamp("message_received_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      index("idx_feishu_org_installations_org").on(table.orgId),
-      uniqueIndex("idx_feishu_org_installations_org_unique")
-        .on(table.orgId)
-        .where(sql`org_id IS NOT NULL`),
+      uniqueIndex("idx_feishu_org_installations_org").on(table.orgId),
+      uniqueIndex("idx_feishu_org_installations_app").on(table.appId),
+      index("idx_feishu_org_installations_tenant").on(table.feishuTenantKey),
     ];
   },
 );

@@ -1,55 +1,62 @@
-import { env } from "../../lib/env";
+import { eq } from "drizzle-orm";
+import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
-const REQUIRED_SECRETS = [
-  "FEISHU_APP_SECRET",
-  "FEISHU_VERIFICATION_TOKEN",
-  "FEISHU_ENCRYPT_KEY",
-] as const;
-const REQUIRED_VARS = ["FEISHU_APP_ID", "FEISHU_APP_INSTALL_URL"] as const;
+import { env, optionalEnv } from "../../lib/env";
+import type { Db } from "../external/db";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
-export interface FeishuConfig {
+export interface FeishuInstallationConfig {
+  readonly id: string;
+  readonly orgId: string;
   readonly appId: string;
   readonly appSecret: string;
   readonly verificationToken: string;
   readonly encryptKey: string;
 }
 
-export function feishuEnvironmentStatus(): {
-  readonly requiredSecrets: string[];
-  readonly requiredVars: string[];
-  readonly missingSecrets: string[];
-  readonly missingVars: string[];
-} {
-  const values = {
-    FEISHU_APP_ID: env("FEISHU_APP_ID"),
-    FEISHU_APP_SECRET: env("FEISHU_APP_SECRET"),
-    FEISHU_VERIFICATION_TOKEN: env("FEISHU_VERIFICATION_TOKEN"),
-    FEISHU_ENCRYPT_KEY: env("FEISHU_ENCRYPT_KEY"),
-    FEISHU_APP_INSTALL_URL: env("FEISHU_APP_INSTALL_URL"),
-  };
-  return {
-    requiredSecrets: [...REQUIRED_SECRETS],
-    requiredVars: [...REQUIRED_VARS],
-    missingSecrets: REQUIRED_SECRETS.filter((name) => {
-      return !values[name];
-    }),
-    missingVars: REQUIRED_VARS.filter((name) => {
-      return !values[name];
-    }),
-  };
-}
-
-export function feishuConfig(): FeishuConfig | null {
-  const appId = env("FEISHU_APP_ID");
-  const appSecret = env("FEISHU_APP_SECRET");
-  const verificationToken = env("FEISHU_VERIFICATION_TOKEN");
-  const encryptKey = env("FEISHU_ENCRYPT_KEY");
-  if (!appId || !appSecret || !verificationToken || !encryptKey) {
+export async function loadFeishuInstallationConfig(
+  db: Db,
+  installationId: string,
+): Promise<FeishuInstallationConfig | null> {
+  const [installation] = await db
+    .select({
+      id: feishuOrgInstallations.id,
+      orgId: feishuOrgInstallations.orgId,
+      appId: feishuOrgInstallations.appId,
+      encryptedAppSecret: feishuOrgInstallations.encryptedAppSecret,
+      encryptedVerificationToken:
+        feishuOrgInstallations.encryptedVerificationToken,
+      encryptedEncryptKey: feishuOrgInstallations.encryptedEncryptKey,
+    })
+    .from(feishuOrgInstallations)
+    .where(eq(feishuOrgInstallations.id, installationId))
+    .limit(1);
+  if (!installation) {
     return null;
   }
-  return { appId, appSecret, verificationToken, encryptKey };
+  const context = { orgId: installation.orgId };
+  const [appSecret, verificationToken, encryptKey] = await Promise.all([
+    decryptPersistentSecretValue(installation.encryptedAppSecret, context),
+    decryptPersistentSecretValue(
+      installation.encryptedVerificationToken,
+      context,
+    ),
+    decryptPersistentSecretValue(installation.encryptedEncryptKey, context),
+  ]);
+  return {
+    id: installation.id,
+    orgId: installation.orgId,
+    appId: installation.appId,
+    appSecret,
+    verificationToken,
+    encryptKey,
+  };
 }
 
-export function feishuInstallUrl(): string | null {
-  return env("FEISHU_APP_INSTALL_URL") ?? null;
+export function feishuCallbackUrl(installationId: string): string {
+  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
+  return new URL(
+    `/api/zero/feishu/events/${encodeURIComponent(installationId)}`,
+    baseUrl,
+  ).toString();
 }

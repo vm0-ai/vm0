@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const feishuOrgCallbackPayloadSchema = z
   .object({
-    tenantKey: z.string(),
+    installationId: z.string().uuid(),
     chatId: z.string(),
     messageId: z.string(),
     connectionId: z.string(),

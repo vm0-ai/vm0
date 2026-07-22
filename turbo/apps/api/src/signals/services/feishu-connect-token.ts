@@ -6,13 +6,13 @@ import { now } from "../external/time";
 const CONNECT_LINK_MAX_AGE_SECONDS = 10 * 60;
 
 function payload(args: {
-  readonly tenantKey: string;
+  readonly installationId: string;
   readonly openId: string;
   readonly chatId: string;
   readonly timestamp: number;
 }): string {
   return JSON.stringify([
-    args.tenantKey,
+    args.installationId,
     args.openId,
     args.chatId,
     args.timestamp,
@@ -20,7 +20,7 @@ function payload(args: {
 }
 
 function signFeishuConnectToken(args: {
-  readonly tenantKey: string;
+  readonly installationId: string;
   readonly openId: string;
   readonly chatId: string;
   readonly timestamp: number;
@@ -31,7 +31,7 @@ function signFeishuConnectToken(args: {
 }
 
 export function verifyFeishuConnectToken(args: {
-  readonly tenantKey: string;
+  readonly installationId: string;
   readonly openId: string;
   readonly chatId: string;
   readonly timestamp: number;
@@ -46,7 +46,7 @@ export function verifyFeishuConnectToken(args: {
   }
   const expected = Buffer.from(
     signFeishuConnectToken({
-      tenantKey: args.tenantKey,
+      installationId: args.installationId,
       openId: args.openId,
       chatId: args.chatId,
       timestamp: args.timestamp,
@@ -58,13 +58,13 @@ export function verifyFeishuConnectToken(args: {
 }
 
 export function buildFeishuConnectUrl(args: {
-  readonly tenantKey: string;
+  readonly installationId: string;
   readonly openId: string;
   readonly chatId: string;
 }): string {
   const timestamp = Math.floor(now() / 1000);
   const params = new URLSearchParams({
-    tenantKey: args.tenantKey,
+    installationId: args.installationId,
     openId: args.openId,
     chatId: args.chatId,
     ts: String(timestamp),

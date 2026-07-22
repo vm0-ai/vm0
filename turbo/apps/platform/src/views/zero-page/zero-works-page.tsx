@@ -1,7 +1,6 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { TeamsConnectStatus } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import type { FeishuConnectStatus } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertTriangle,
@@ -40,10 +39,6 @@ import {
   setShowTeamsUninstallDialog$,
   uninstallTeamsOrg$,
 } from "../../signals/zero-page/zero-teams.ts";
-import {
-  disconnectFeishuOrg$,
-  feishuOrgData$,
-} from "../../signals/zero-page/zero-feishu.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -51,11 +46,11 @@ import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { FeishuCard } from "./feishu-card.tsx";
 
 const slackIconImg = settingsIconAssetUrl("slack");
 const teamsIconImg = settingsIconAssetUrl("teams");
 const telegramIconImg = settingsIconAssetUrl("telegram");
-const feishuIconImg = settingsIconAssetUrl("lark");
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
  *  carry it through to the Slack DM greeting. */
@@ -612,75 +607,6 @@ function TelegramCard() {
         </span>
       </div>
     </Link>
-  );
-}
-
-function FeishuCard() {
-  const dataLoadable = useLastLoadable(feishuOrgData$);
-  const data: FeishuConnectStatus | null =
-    dataLoadable.state === "hasData" ? dataLoadable.data : null;
-  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectFeishuOrg$);
-  const pageSignal = useGet(pageSignal$);
-  const isConnected = data?.isConnected ?? false;
-  const isInstalled = data?.isInstalled ?? false;
-  const isAdmin = data?.isAdmin ?? false;
-  const actionLabel = isInstalled ? "Open Feishu" : "Install in Feishu";
-
-  return (
-    <div className="zero-card flex items-center gap-4 p-4">
-      <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
-        <img src={feishuIconImg} alt="" className="h-7 w-7" />
-      </div>
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">Feishu</div>
-        <div className="text-sm text-muted-foreground">
-          {isConnected
-            ? "Direct messages are routed to your default agent"
-            : !isInstalled && !isAdmin
-              ? "Ask your admin to install and connect the Feishu integration"
-              : isInstalled
-                ? "Send the bot a direct message to connect"
-                : "Install the app, then send the bot a direct message to connect"}
-        </div>
-      </div>
-      {isConnected ? (
-        <span
-          data-testid="feishu-connected-indicator"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-        >
-          <IconCircleCheck className="h-3 w-3 text-green-600" />
-          Connected
-        </span>
-      ) : null}
-      {data?.installUrl && (isAdmin || isInstalled) ? (
-        <Button
-          data-testid="feishu-install-button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => {
-            window.open(data.installUrl ?? undefined, "_blank");
-          }}
-        >
-          <IconDownload size={14} stroke={1.5} />
-          {actionLabel}
-        </Button>
-      ) : null}
-      {isConnected ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={disconnectLoadable.state === "loading"}
-          onClick={() => {
-            return detach(disconnect(pageSignal), Reason.DomCallback);
-          }}
-        >
-          {disconnectLoadable.state === "loading"
-            ? "Disconnecting..."
-            : "Disconnect"}
-        </Button>
-      ) : null}
-    </div>
   );
 }
 

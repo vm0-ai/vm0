@@ -6,7 +6,6 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { feishuOrgThreadSessions } from "@vm0/db/schema/feishu-org-thread-session";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { now, nowDate } from "../external/time";
@@ -14,11 +13,11 @@ import { replyToFeishuMessage } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
-import { feishuConfig } from "./feishu-config";
 import { feishuOrgCallbackPayloadSchema } from "./feishu-org-callback-payload";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 export interface FeishuInboundMessage {
+  readonly installationId: string;
   readonly eventId: string;
   readonly tenantKey: string;
   readonly appId: string;
@@ -36,23 +35,14 @@ async function resolveAgent(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly agentId: string;
 }): Promise<FeishuAgent | null> {
-  const [metadata] = await args.db
-    .select({ defaultAgentId: orgMetadata.defaultAgentId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, args.orgId))
-    .limit(1);
-  if (!metadata?.defaultAgentId) {
-    return null;
-  }
   const [agent] = await args.db
-    .select({
-      id: zeroAgents.id,
-    })
+    .select({ id: zeroAgents.id })
     .from(zeroAgents)
     .where(
       and(
-        eq(zeroAgents.id, metadata.defaultAgentId),
+        eq(zeroAgents.id, args.agentId),
         eq(zeroAgents.orgId, args.orgId),
         or(
           eq(zeroAgents.visibility, "public"),
@@ -117,14 +107,9 @@ async function reply(args: {
   readonly text: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const config = feishuConfig();
-  if (!config) {
-    throw new Error("Feishu integration is not configured");
-  }
   await replyToFeishuMessage({
     db: args.db,
-    config,
-    tenantKey: args.message.tenantKey,
+    installationId: args.message.installationId,
     messageId: args.message.messageId,
     text: args.text,
     signal: args.signal,
@@ -138,39 +123,42 @@ export const dispatchFeishuMessage$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db
-      .insert(feishuOrgInstallations)
-      .values({
+    const [installation] = await db
+      .update(feishuOrgInstallations)
+      .set({
         feishuTenantKey: message.tenantKey,
-        feishuAppId: message.appId,
+        messageReceivedAt: nowDate(),
+        updatedAt: nowDate(),
       })
-      .onConflictDoUpdate({
-        target: feishuOrgInstallations.feishuTenantKey,
-        set: { feishuAppId: message.appId, updatedAt: nowDate() },
+      .where(
+        and(
+          eq(feishuOrgInstallations.id, message.installationId),
+          eq(feishuOrgInstallations.appId, message.appId),
+        ),
+      )
+      .returning({
+        orgId: feishuOrgInstallations.orgId,
+        defaultAgentId: feishuOrgInstallations.defaultComposeId,
       });
     signal.throwIfAborted();
-
-    const [installation] = await db
-      .select()
-      .from(feishuOrgInstallations)
-      .where(eq(feishuOrgInstallations.feishuTenantKey, message.tenantKey))
-      .limit(1);
-    signal.throwIfAborted();
+    if (!installation) {
+      throw new Error("Feishu installation not found");
+    }
     const [connection] = await db
       .select()
       .from(feishuOrgConnections)
       .where(
         and(
-          eq(feishuOrgConnections.feishuTenantKey, message.tenantKey),
+          eq(feishuOrgConnections.installationId, message.installationId),
           eq(feishuOrgConnections.feishuOpenId, message.openId),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
-    if (!installation?.orgId || !connection) {
+    if (!connection) {
       const connectUrl = buildFeishuConnectUrl({
-        tenantKey: message.tenantKey,
+        installationId: message.installationId,
         openId: message.openId,
         chatId: message.chatId,
       });
@@ -187,13 +175,14 @@ export const dispatchFeishuMessage$ = command(
       db,
       orgId: installation.orgId,
       userId: connection.vm0UserId,
+      agentId: installation.defaultAgentId,
     });
     signal.throwIfAborted();
     if (!agent) {
       await reply({
         db,
         message,
-        text: "No accessible default agent is configured for this organization. Please ask an admin to configure one.",
+        text: "The configured Feishu agent is not accessible to this user. Ask an admin to select another agent.",
         signal,
       });
       return;
@@ -223,7 +212,7 @@ export const dispatchFeishuMessage$ = command(
             internalKind: "feishu:org",
             secret: randomBytes(32).toString("hex"),
             payload: feishuOrgCallbackPayloadSchema.parse({
-              tenantKey: message.tenantKey,
+              installationId: message.installationId,
               chatId: message.chatId,
               messageId: message.messageId,
               connectionId: connection.id,

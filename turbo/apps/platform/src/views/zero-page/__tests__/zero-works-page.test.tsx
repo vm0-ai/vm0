@@ -61,16 +61,14 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
     isConnected: false,
     isInstalled: false,
     isAdmin: true,
-    installUrl: "https://applink.feishu.cn/client/bot",
+    appId: null,
+    callbackUrl: null,
+    callbackVerified: false,
+    messageReceived: false,
     tenantKey: null,
     tenantName: null,
+    defaultAgentId: null,
     defaultAgentName: "Okou",
-    environment: {
-      requiredSecrets: [],
-      requiredVars: [],
-      missingSecrets: [],
-      missingVars: [],
-    },
   };
   context.mocks.api(zeroFeishuConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
@@ -158,6 +156,11 @@ describe("works page", () => {
     mockFeishuAPI({
       isConnected: true,
       isInstalled: true,
+      appId: "cli_feishu",
+      callbackUrl:
+        "https://api.vm0.test/api/zero/feishu/events/00000000-0000-4000-8000-000000000001",
+      callbackVerified: true,
+      messageReceived: true,
       tenantKey: "tenant-feishu",
     });
 
@@ -169,6 +172,32 @@ describe("works page", () => {
         screen.getByTestId("feishu-connected-indicator"),
       ).toHaveTextContent("Connected");
     });
+
+    click(screen.getByTestId("feishu-setup-button"));
+
+    await expect(
+      screen.findByText("Connect a Feishu custom app"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Callback verified")).toBeInTheDocument();
+    expect(screen.getByText("Test message received")).toBeInTheDocument();
+    expect(screen.getByText(/im\.message\.receive_v1/u)).toBeInTheDocument();
+  });
+
+  it("shows the guided Feishu custom app setup for organization admins", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockFeishuAPI({ isAdmin: true });
+    setupWorksPage({ feishuEnabled: true });
+
+    click(await screen.findByTestId("feishu-setup-button"));
+
+    await expect(screen.findByLabelText("App ID")).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
+    expect(screen.getByLabelText("Verification Token")).toBeInTheDocument();
+    expect(screen.getByLabelText("Encrypt Key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default agent")).toBeInTheDocument();
+    expect(
+      screen.getByText("Download VM0 app icon").closest("a"),
+    ).toHaveAttribute("download", "vm0-feishu-app-icon.png");
   });
 
   it("does not show the Microsoft Teams tenant id when names are unavailable", async () => {

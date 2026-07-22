@@ -9,7 +9,7 @@ export const zeroFeishuBrowserConnectContract = c.router({
     method: "GET",
     path: "/api/zero/feishu/connect",
     query: z.object({
-      tenantKey: z.string().optional(),
+      installationId: z.string().uuid().optional(),
       openId: z.string().optional(),
       chatId: z.string().optional(),
       ts: z.coerce.number().int().optional(),

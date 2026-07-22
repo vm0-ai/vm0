@@ -56,7 +56,6 @@ import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
-import * as feishuAppCredentialSchema from "./schema/feishu-app-credential";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
 import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
@@ -144,7 +143,6 @@ export const schema = {
   ...teamsOrgConnectionSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
-  ...feishuAppCredentialSchema,
   ...feishuOrgInstallationSchema,
   ...feishuOrgConnectionSchema,
   ...feishuOrgThreadSessionSchema,

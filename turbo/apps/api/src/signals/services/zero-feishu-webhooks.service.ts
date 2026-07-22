@@ -3,17 +3,20 @@ import { createDecipheriv, createHash, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { feishuAppCredentials } from "@vm0/db/schema/feishu-app-credential";
+import { zeroFeishuEventsContract } from "@vm0/api-contracts/contracts/zero-feishu-events";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
+import { pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
-import { encryptPersistentSecretValue } from "./crypto.utils";
-import { feishuConfig, type FeishuConfig } from "./feishu-config";
+import {
+  loadFeishuInstallationConfig,
+  type FeishuInstallationConfig,
+} from "./feishu-config";
 import {
   dispatchFeishuMessage$,
   type FeishuInboundMessage,
@@ -52,20 +55,6 @@ const v2MessageEventSchema = z.object({
   }),
 });
 const textContentSchema = z.object({ text: z.string() });
-const legacyEventSchema = z
-  .object({
-    type: z.literal("event_callback"),
-    token: z.string(),
-    event: z
-      .object({
-        type: z.string(),
-        app_id: z.string(),
-        tenant_key: z.string().optional(),
-        app_ticket: z.string().optional(),
-      })
-      .passthrough(),
-  })
-  .passthrough();
 const FEISHU_REPLAY_WINDOW_SECONDS = 60 * 5;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -125,7 +114,7 @@ function decryptPayload(encrypted: string, encryptKey: string): unknown {
   return JSON.parse(decrypted) as unknown;
 }
 
-function parseBody(rawBody: string, config: FeishuConfig): unknown {
+function parseBody(rawBody: string, config: FeishuInstallationConfig): unknown {
   const parsed = JSON.parse(rawBody) as unknown;
   const encrypted = encryptedBodySchema.safeParse(parsed);
   return encrypted.success
@@ -133,73 +122,8 @@ function parseBody(rawBody: string, config: FeishuConfig): unknown {
     : parsed;
 }
 
-function validAppAndToken(
-  appId: string | undefined,
-  token: string,
-  config: FeishuConfig,
-): boolean {
-  return (
-    token === config.verificationToken && (!appId || appId === config.appId)
-  );
-}
-
-const storeAppTicket$ = command(
-  async (
-    { set },
-    args: { readonly appId: string; readonly appTicket: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const encryptedAppTicket = await encryptPersistentSecretValue(
-      args.appTicket,
-      {},
-    );
-    signal.throwIfAborted();
-    await set(writeDb$)
-      .insert(feishuAppCredentials)
-      .values({ appId: args.appId, encryptedAppTicket })
-      .onConflictDoUpdate({
-        target: feishuAppCredentials.appId,
-        set: {
-          encryptedAppTicket,
-          encryptedAppAccessToken: null,
-          appAccessTokenExpiresAt: null,
-          updatedAt: nowDate(),
-        },
-      });
-    signal.throwIfAborted();
-  },
-);
-
-const recordInstallation$ = command(
-  async (
-    { set },
-    args: { readonly appId: string; readonly tenantKey: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(writeDb$)
-      .insert(feishuOrgInstallations)
-      .values({
-        feishuTenantKey: args.tenantKey,
-        feishuAppId: args.appId,
-      })
-      .onConflictDoUpdate({
-        target: feishuOrgInstallations.feishuTenantKey,
-        set: { feishuAppId: args.appId, updatedAt: nowDate() },
-      });
-    signal.throwIfAborted();
-  },
-);
-
-const removeInstallation$ = command(
-  async ({ set }, tenantKey: string, signal: AbortSignal): Promise<void> => {
-    await set(writeDb$)
-      .delete(feishuOrgInstallations)
-      .where(eq(feishuOrgInstallations.feishuTenantKey, tenantKey));
-    signal.throwIfAborted();
-  },
-);
-
 function inboundMessage(
+  installationId: string,
   envelope: z.infer<typeof v2EnvelopeSchema>,
 ): FeishuInboundMessage | null {
   if (envelope.header.event_type !== "im.message.receive_v1") {
@@ -222,6 +146,7 @@ function inboundMessage(
     return null;
   }
   return {
+    installationId,
     eventId: envelope.header.event_id,
     tenantKey: envelope.header.tenant_key,
     appId: envelope.header.app_id,
@@ -234,14 +159,17 @@ function inboundMessage(
 
 export const handleZeroFeishuEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const config = feishuConfig();
-    if (!config) {
-      return jsonResponse(
-        { error: "Feishu integration is not configured" },
-        503,
-      );
-    }
     const request = get(request$);
+    const params = get(pathParamsOf(zeroFeishuEventsContract.post));
+    const db = set(writeDb$);
+    const config = await loadFeishuInstallationConfig(
+      db,
+      params.installationId,
+    );
+    signal.throwIfAborted();
+    if (!config) {
+      return jsonResponse({ error: "Feishu installation not found" }, 404);
+    }
     const rawBody = await request.text();
     signal.throwIfAborted();
     if (
@@ -265,84 +193,41 @@ export const handleZeroFeishuEvents$ = command(
     const payload = parsedBody.ok;
     const challenge = challengeSchema.safeParse(payload);
     if (challenge.success) {
-      if (!validAppAndToken(undefined, challenge.data.token, config)) {
+      if (challenge.data.token !== config.verificationToken) {
         return jsonResponse({ error: "Invalid Feishu token" }, 401);
       }
+      await db
+        .update(feishuOrgInstallations)
+        .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
+        .where(eq(feishuOrgInstallations.id, config.id));
+      signal.throwIfAborted();
       return jsonResponse({ challenge: challenge.data.challenge });
     }
 
     const v2 = v2EnvelopeSchema.safeParse(payload);
-    if (v2.success) {
-      if (
-        !validAppAndToken(v2.data.header.app_id, v2.data.header.token, config)
-      ) {
-        return jsonResponse({ error: "Invalid Feishu token" }, 401);
-      }
-      const message = inboundMessage(v2.data);
-      if (message) {
-        waitUntil(
-          tapError(set(dispatchFeishuMessage$, message, signal), (error) => {
-            L.error("Failed to dispatch Feishu message", {
-              error,
-              eventId: message.eventId,
-            });
-          }),
-        );
-      }
-      return textResponse("OK");
-    }
-
-    const legacy = legacyEventSchema.safeParse(payload);
-    if (!legacy.success) {
+    if (!v2.success) {
       return jsonResponse({ error: "Invalid Feishu event" }, 400);
     }
-    const legacyEvent = legacy.data.event;
-    if (!validAppAndToken(legacyEvent.app_id, legacy.data.token, config)) {
+    if (
+      v2.data.header.app_id !== config.appId ||
+      v2.data.header.token !== config.verificationToken
+    ) {
       return jsonResponse({ error: "Invalid Feishu token" }, 401);
     }
-    if (legacyEvent.type === "app_ticket" && legacyEvent.app_ticket) {
+    await db
+      .update(feishuOrgInstallations)
+      .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
+      .where(eq(feishuOrgInstallations.id, config.id));
+    signal.throwIfAborted();
+    const message = inboundMessage(config.id, v2.data);
+    if (message) {
       waitUntil(
-        tapError(
-          set(
-            storeAppTicket$,
-            {
-              appId: legacyEvent.app_id,
-              appTicket: legacyEvent.app_ticket,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Failed to store Feishu app ticket", { error });
-          },
-        ),
-      );
-    } else if (legacyEvent.type === "app_open" && legacyEvent.tenant_key) {
-      waitUntil(
-        tapError(
-          set(
-            recordInstallation$,
-            {
-              appId: legacyEvent.app_id,
-              tenantKey: legacyEvent.tenant_key,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Failed to record Feishu installation", { error });
-          },
-        ),
-      );
-    } else if (
-      legacyEvent.type === "app_uninstalled" &&
-      legacyEvent.tenant_key
-    ) {
-      waitUntil(
-        tapError(
-          set(removeInstallation$, legacyEvent.tenant_key, signal),
-          (error) => {
-            L.error("Failed to remove Feishu installation", { error });
-          },
-        ),
+        tapError(set(dispatchFeishuMessage$, message, signal), (error) => {
+          L.error("Failed to dispatch Feishu message", {
+            error,
+            eventId: message.eventId,
+          });
+        }),
       );
     }
     return textResponse("OK");

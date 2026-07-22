@@ -14,15 +14,15 @@ export const feishuOrgConnections = pgTable(
   "feishu_org_connections",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
-    feishuTenantKey: varchar("feishu_tenant_key", { length: 255 })
+    installationId: uuid("installation_id")
       .notNull()
       .references(
         () => {
-          return feishuOrgInstallations.feishuTenantKey;
+          return feishuOrgInstallations.id;
         },
         { onDelete: "cascade" },
       ),
+    feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -30,15 +30,15 @@ export const feishuOrgConnections = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_feishu_org_connections_user_tenant").on(
+      uniqueIndex("idx_feishu_org_connections_user_installation").on(
         table.feishuOpenId,
-        table.feishuTenantKey,
+        table.installationId,
       ),
-      index("idx_feishu_org_connections_vm0_tenant").on(
+      index("idx_feishu_org_connections_vm0_installation").on(
         table.vm0UserId,
-        table.feishuTenantKey,
+        table.installationId,
       ),
-      index("idx_feishu_org_connections_tenant").on(table.feishuTenantKey),
+      index("idx_feishu_org_connections_installation").on(table.installationId),
     ];
   },
 );

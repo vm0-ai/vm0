@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
@@ -9,7 +9,6 @@ import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
 
@@ -35,15 +34,15 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     return redirect(signIn.toString());
   }
   const query = get(queryOf(zeroFeishuBrowserConnectContract.connect));
-  const { tenantKey, openId, chatId, ts, sig } = query;
+  const { installationId, openId, chatId, ts, sig } = query;
   if (
-    !tenantKey ||
+    !installationId ||
     !openId ||
     !chatId ||
     ts === undefined ||
     !sig ||
     !verifyFeishuConnectToken({
-      tenantKey,
+      installationId,
       openId,
       chatId,
       timestamp: ts,
@@ -57,45 +56,13 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [installation] = await db
     .select()
     .from(feishuOrgInstallations)
-    .where(eq(feishuOrgInstallations.feishuTenantKey, tenantKey))
+    .where(eq(feishuOrgInstallations.id, installationId))
     .limit(1);
   signal.throwIfAborted();
   if (!installation) {
     return worksRedirect({ feishuError: "Feishu installation not found" });
   }
-  if (!installation.orgId) {
-    if (!auth.orgId || auth.orgRole !== "admin") {
-      return worksRedirect({
-        feishuError: "Ask your organization admin to connect first",
-      });
-    }
-    const [claimed] = await db
-      .update(feishuOrgInstallations)
-      .set({ orgId: auth.orgId, updatedAt: nowDate() })
-      .where(
-        and(
-          eq(feishuOrgInstallations.feishuTenantKey, tenantKey),
-          eq(feishuOrgInstallations.feishuAppId, installation.feishuAppId),
-          isNull(feishuOrgInstallations.orgId),
-        ),
-      )
-      .returning({ orgId: feishuOrgInstallations.orgId });
-    signal.throwIfAborted();
-    if (!claimed) {
-      const [current] = await db
-        .select({ orgId: feishuOrgInstallations.orgId })
-        .from(feishuOrgInstallations)
-        .where(eq(feishuOrgInstallations.feishuTenantKey, tenantKey))
-        .limit(1);
-      signal.throwIfAborted();
-      if (current?.orgId !== auth.orgId) {
-        return worksRedirect({
-          feishuError:
-            "Switch to the organization connected to this Feishu tenant",
-        });
-      }
-    }
-  } else if (!auth.orgId || auth.orgId !== installation.orgId) {
+  if (!auth.orgId || auth.orgId !== installation.orgId) {
     return worksRedirect({
       feishuError: "Switch to the organization connected to this Feishu tenant",
     });
@@ -105,13 +72,13 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     .insert(feishuOrgConnections)
     .values({
       feishuOpenId: openId,
-      feishuTenantKey: tenantKey,
+      installationId,
       vm0UserId: auth.userId,
     })
     .onConflictDoNothing({
       target: [
         feishuOrgConnections.feishuOpenId,
-        feishuOrgConnections.feishuTenantKey,
+        feishuOrgConnections.installationId,
       ],
     })
     .returning({ vm0UserId: feishuOrgConnections.vm0UserId });
@@ -122,7 +89,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       .from(feishuOrgConnections)
       .where(
         and(
-          eq(feishuOrgConnections.feishuTenantKey, tenantKey),
+          eq(feishuOrgConnections.installationId, installationId),
           eq(feishuOrgConnections.feishuOpenId, openId),
         ),
       )

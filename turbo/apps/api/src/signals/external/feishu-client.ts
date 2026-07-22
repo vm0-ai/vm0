@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { feishuAppCredentials } from "@vm0/db/schema/feishu-app-credential";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import type { Db } from "./db";
@@ -9,17 +8,9 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "../services/crypto.utils";
-import type { FeishuConfig } from "../services/feishu-config";
 
 const FEISHU_API_ORIGIN = "https://open.feishu.cn";
 const TOKEN_REFRESH_WINDOW_MS = 3 * 60 * 1000;
-
-const appAccessTokenResponseSchema = z.object({
-  code: z.number(),
-  msg: z.string().optional(),
-  app_access_token: z.string().optional(),
-  expire: z.number().optional(),
-});
 
 const tenantAccessTokenResponseSchema = z.object({
   code: z.number(),
@@ -32,6 +23,13 @@ const feishuResponseSchema = z.object({
   code: z.number(),
   msg: z.string().optional(),
 });
+
+interface FeishuTenantAccessToken {
+  readonly token: string;
+  readonly expiresInSeconds: number;
+}
+
+export class InvalidFeishuCredentialsError extends Error {}
 
 function tokenIsFresh(expiresAt: Date | null): boolean {
   return (
@@ -48,103 +46,19 @@ async function readJson(response: Response): Promise<unknown> {
   return body;
 }
 
-async function loadAppAccessToken(args: {
-  readonly db: Db;
-  readonly config: FeishuConfig;
+export async function fetchFeishuTenantAccessToken(args: {
+  readonly appId: string;
+  readonly appSecret: string;
   readonly signal: AbortSignal;
-}): Promise<string> {
-  const [credential] = await args.db
-    .select()
-    .from(feishuAppCredentials)
-    .where(eq(feishuAppCredentials.appId, args.config.appId))
-    .limit(1);
-  args.signal.throwIfAborted();
-  if (!credential) {
-    throw new Error("Feishu app_ticket has not been received yet");
-  }
-  if (
-    credential.encryptedAppAccessToken &&
-    tokenIsFresh(credential.appAccessTokenExpiresAt)
-  ) {
-    return await decryptPersistentSecretValue(
-      credential.encryptedAppAccessToken,
-      {},
-    );
-  }
-
-  const appTicket = await decryptPersistentSecretValue(
-    credential.encryptedAppTicket,
-    {},
-  );
+}): Promise<FeishuTenantAccessToken> {
   const response = await fetch(
-    `${FEISHU_API_ORIGIN}/open-apis/auth/v3/app_access_token`,
+    `${FEISHU_API_ORIGIN}/open-apis/auth/v3/tenant_access_token/internal`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        app_id: args.config.appId,
-        app_secret: args.config.appSecret,
-        app_ticket: appTicket,
-      }),
-      signal: args.signal,
-    },
-  );
-  const parsed = appAccessTokenResponseSchema.parse(await readJson(response));
-  if (parsed.code !== 0 || !parsed.app_access_token || !parsed.expire) {
-    throw new Error(parsed.msg ?? "Feishu app access token request failed");
-  }
-  const encryptedToken = await encryptPersistentSecretValue(
-    parsed.app_access_token,
-    {},
-  );
-  await args.db
-    .update(feishuAppCredentials)
-    .set({
-      encryptedAppAccessToken: encryptedToken,
-      appAccessTokenExpiresAt: new Date(
-        nowDate().getTime() + parsed.expire * 1000,
-      ),
-      updatedAt: nowDate(),
-    })
-    .where(eq(feishuAppCredentials.appId, args.config.appId));
-  args.signal.throwIfAborted();
-  return parsed.app_access_token;
-}
-
-async function getFeishuTenantAccessToken(args: {
-  readonly db: Db;
-  readonly config: FeishuConfig;
-  readonly tenantKey: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
-  const [installation] = await args.db
-    .select()
-    .from(feishuOrgInstallations)
-    .where(eq(feishuOrgInstallations.feishuTenantKey, args.tenantKey))
-    .limit(1);
-  args.signal.throwIfAborted();
-  if (!installation) {
-    throw new Error("Feishu installation not found");
-  }
-  if (
-    installation.encryptedTenantAccessToken &&
-    tokenIsFresh(installation.tenantAccessTokenExpiresAt)
-  ) {
-    return await decryptPersistentSecretValue(
-      installation.encryptedTenantAccessToken,
-      {},
-    );
-  }
-
-  const appAccessToken = await loadAppAccessToken(args);
-  const response = await fetch(
-    `${FEISHU_API_ORIGIN}/open-apis/auth/v3/tenant_access_token`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        app_access_token: appAccessToken,
-        tenant_key: args.tenantKey,
+        app_id: args.appId,
+        app_secret: args.appSecret,
       }),
       signal: args.signal,
     },
@@ -152,31 +66,75 @@ async function getFeishuTenantAccessToken(args: {
   const parsed = tenantAccessTokenResponseSchema.parse(
     await readJson(response),
   );
-  if (parsed.code !== 0 || !parsed.tenant_access_token || !parsed.expire) {
-    throw new Error(parsed.msg ?? "Feishu tenant access token request failed");
+  if (parsed.code !== 0) {
+    throw new InvalidFeishuCredentialsError(
+      parsed.msg ?? "Feishu rejected the app credentials",
+    );
   }
+  if (!parsed.tenant_access_token || !parsed.expire) {
+    throw new Error("Feishu tenant access token response is incomplete");
+  }
+  return {
+    token: parsed.tenant_access_token,
+    expiresInSeconds: parsed.expire,
+  };
+}
+
+async function getFeishuTenantAccessToken(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const [installation] = await args.db
+    .select()
+    .from(feishuOrgInstallations)
+    .where(eq(feishuOrgInstallations.id, args.installationId))
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!installation) {
+    throw new Error("Feishu installation not found");
+  }
+  const context = { orgId: installation.orgId };
+  if (
+    installation.encryptedTenantAccessToken &&
+    tokenIsFresh(installation.tenantAccessTokenExpiresAt)
+  ) {
+    return await decryptPersistentSecretValue(
+      installation.encryptedTenantAccessToken,
+      context,
+    );
+  }
+
+  const appSecret = await decryptPersistentSecretValue(
+    installation.encryptedAppSecret,
+    context,
+  );
+  const token = await fetchFeishuTenantAccessToken({
+    appId: installation.appId,
+    appSecret,
+    signal: args.signal,
+  });
   const encryptedToken = await encryptPersistentSecretValue(
-    parsed.tenant_access_token,
-    {},
+    token.token,
+    context,
   );
   await args.db
     .update(feishuOrgInstallations)
     .set({
       encryptedTenantAccessToken: encryptedToken,
       tenantAccessTokenExpiresAt: new Date(
-        nowDate().getTime() + parsed.expire * 1000,
+        nowDate().getTime() + token.expiresInSeconds * 1000,
       ),
       updatedAt: nowDate(),
     })
-    .where(eq(feishuOrgInstallations.feishuTenantKey, args.tenantKey));
+    .where(eq(feishuOrgInstallations.id, args.installationId));
   args.signal.throwIfAborted();
-  return parsed.tenant_access_token;
+  return token.token;
 }
 
 export async function replyToFeishuMessage(args: {
   readonly db: Db;
-  readonly config: FeishuConfig;
-  readonly tenantKey: string;
+  readonly installationId: string;
   readonly messageId: string;
   readonly text: string;
   readonly signal: AbortSignal;
