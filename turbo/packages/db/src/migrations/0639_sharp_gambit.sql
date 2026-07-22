@@ -1,0 +1,1 @@
+ALTER TABLE "agent_run_callbacks" ALTER COLUMN "encrypted_secret" DROP NOT NULL;

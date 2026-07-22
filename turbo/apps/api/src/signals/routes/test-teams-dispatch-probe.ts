@@ -94,6 +94,7 @@ function buildActivity(body: TestTeamsDispatchProbeBody): TeamsInboundActivity {
     conversationId: body.conversation_id,
     conversationType,
     teamId: body.team_id ?? null,
+    teamAadGroupId: body.team_id ?? null,
     teamName: body.team_name ?? null,
     channelId: body.channel_id ?? null,
     timestamp: new Date(now()).toISOString(),
