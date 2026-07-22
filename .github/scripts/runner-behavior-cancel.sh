@@ -220,7 +220,7 @@ case "$COMMAND_NAME" in
     exit "$STATUS"
     ;;
   iptables)
-    OWN_POOL_HEX=$(find_own_pool_hex)
+    OWN_POOL_HEX=$(<"$VM0_RECONCILE_COUNT_DIR/own-pool")
     if contains_argument VM0-RECONCILE-OWN "$@" \
       && contains_argument "vm0-ns-${OWN_POOL_HEX}-fd" "$@"; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.own-delete"
@@ -261,7 +261,7 @@ case "$COMMAND_NAME" in
       exit "$STATUS"
     fi
 
-    OWN_POOL_HEX=$(find_own_pool_hex)
+    OWN_POOL_HEX=$(<"$VM0_RECONCILE_COUNT_DIR/own-pool")
     if [ "${1:-}" = "link" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ve-${OWN_POOL_HEX}-fd" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-link-delete"
