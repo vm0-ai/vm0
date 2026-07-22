@@ -387,8 +387,6 @@ jobs:
         include: ${{ fromJSON(needs.prepare.outputs.runner-host-groups-matrix) }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Resolve runner binary input
         id: binary-input
