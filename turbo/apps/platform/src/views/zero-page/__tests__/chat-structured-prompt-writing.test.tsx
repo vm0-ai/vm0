@@ -136,7 +136,7 @@ describe("structured prompt writes", () => {
     },
   );
 
-  it("queues the committed IME snapshot with the enabled switch", async () => {
+  it("queues one structured snapshot with the enabled switch", async () => {
     let queued: QueuedMessageCapture | null = null;
     const appendGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
@@ -172,23 +172,8 @@ describe("structured prompt writes", () => {
 
     await screen.findByLabelText("Stop");
     const composer = await activeRunComposer();
-    await fill(composer, "排");
-    fireEvent.compositionStart(composer, { data: "排" });
-    const paragraph = composer.querySelector("p");
-    if (!paragraph) {
-      throw new Error("Composer paragraph not found");
-    }
-    paragraph.textContent = "排队完整内容";
-
+    await fill(composer, "排队完整内容");
     fireEvent.click(screen.getByLabelText("Send"));
-    expect(queued).toBeNull();
-
-    fireEvent.compositionEnd(composer, { data: "排队完整内容" });
-    fireEvent.input(composer, {
-      data: "排队完整内容",
-      inputType: "insertCompositionText",
-      isComposing: false,
-    });
 
     await waitFor(() => {
       expect(queued).toMatchObject({

@@ -1873,7 +1873,7 @@ async function resolveQueuedRuntimePrompt(args: {
   return args.sourcePrompt ?? canonicalPrompt;
 }
 
-async function buildCreateQueuedChatRunInput(args: {
+interface BuildCreateQueuedChatRunInputArgs {
   readonly db: Db;
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly threadId: string;
@@ -1881,7 +1881,11 @@ async function buildCreateQueuedChatRunInput(args: {
   readonly agent: AgentForAutoSend;
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreateQueuedChatRunInput> {
+}
+
+async function buildCreateQueuedChatRunInput(
+  args: BuildCreateQueuedChatRunInputArgs,
+): Promise<CreateQueuedChatRunInput> {
   const sourceParams = await decryptQueuedUserMessageRunParams(
     args.queuedMessage.encryptedParams,
     { orgId: args.agent.orgId, userId: args.userId },

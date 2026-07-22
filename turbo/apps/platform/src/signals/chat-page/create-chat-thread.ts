@@ -3070,12 +3070,14 @@ function structuredPromptForSend({
   if (!enabled || !editorDocument) {
     return undefined;
   }
-  return (
-    editorDocument.toMessageDocument({
-      generationTemplate,
-      attachments,
-    }) ?? undefined
-  );
+  const structuredPrompt = editorDocument.toMessageDocument({
+    generationTemplate,
+    attachments,
+  });
+  if (!structuredPrompt) {
+    throw new Error("Failed to serialize structured prompt");
+  }
+  return structuredPrompt;
 }
 
 function queueStructured(
@@ -3513,7 +3515,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       options: QueueMessageOptions,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
         L.debug("queueMessage$ optimistic thread create unsettled, abort", {
           threadId,
@@ -3545,7 +3546,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         signal,
       );
       if (!result) {
-        L.debug("queueMessage$ prepare returned null, abort", { threadId });
         return false;
       }
       signal.throwIfAborted();
@@ -3616,7 +3616,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       await set(writePersistentMessages$, [persistedMessage], signal);
       signal.throwIfAborted();
 
-      L.debug("queueMessage$ done", { threadId });
       return true;
     },
   );

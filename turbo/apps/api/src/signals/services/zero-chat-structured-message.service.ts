@@ -25,6 +25,13 @@ function webFilePrompt(part: {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
 }
 
+function generationTemplatePrompt(part: {
+  readonly titleSnapshot: string;
+  readonly template: GenerationTemplateRequest;
+}): string {
+  return `Select ${part.titleSnapshot} ${part.template.type} template`;
+}
+
 /**
  * Projects one validated business document into the server-owned runtime
  * representations. File blocks remain in authoritative `parts` order while
@@ -67,6 +74,8 @@ export function projectStructuredUserMessage(
       hasFile = true;
       continue;
     }
+    flushInlinePrompt();
+    promptBlocks.push(generationTemplatePrompt(part));
     generationTemplate ??= part.template;
   }
   flushInlinePrompt();

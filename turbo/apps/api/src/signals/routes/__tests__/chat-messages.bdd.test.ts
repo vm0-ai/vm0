@@ -2956,6 +2956,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       parts: [
         {
           type: "template",
+          titleSnapshot: style.title,
           template: generationTemplate,
         },
         {
@@ -2992,6 +2993,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
+        `Select ${style.title} illustration template`,
         `[Web file] brief.pdf (application/pdf)\n   [ID] ${fileId}`,
         prompt,
       ].join("\n\n"),

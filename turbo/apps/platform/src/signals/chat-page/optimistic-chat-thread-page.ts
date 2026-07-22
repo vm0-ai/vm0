@@ -463,14 +463,22 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
+    const structuredPromptEnabled =
+      features[FeatureSwitchKey.StructuredPrompt] ?? false;
     const structuredPrompt =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-      request.editorDocument
-        ? (request.editorDocument.toMessageDocument({
+      structuredPromptEnabled && request.editorDocument
+        ? request.editorDocument.toMessageDocument({
             generationTemplate,
             attachments: prepared.attachments,
-          }) ?? undefined)
+          })
         : undefined;
+    if (
+      structuredPromptEnabled &&
+      request.editorDocument &&
+      !structuredPrompt
+    ) {
+      throw new Error("Failed to serialize structured prompt");
+    }
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -482,7 +490,7 @@ const sendNewThreadMessage$ = command(
           clientMessageId,
           prepared,
           generationTemplate,
-          structuredPrompt,
+          structuredPrompt: structuredPrompt ?? undefined,
         }),
       ),
     );
@@ -523,7 +531,7 @@ const sendNewThreadMessage$ = command(
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
       generationTemplate,
-      structuredPrompt,
+      structuredPrompt: structuredPrompt ?? undefined,
       computerUseHostId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
