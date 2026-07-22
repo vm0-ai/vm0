@@ -198,6 +198,47 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         builder.innerJoinLateral({}, sql\`true\`);
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const condition = eq(users.id, 1);
+        const rawRelation = sql\`jsonb_array_elements(\${users.tags}) AS item\`;
+        sql\`EXISTS (SELECT 1 FROM \${rawRelation} WHERE \${condition})\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} AS u WHERE \${condition})\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE TRUE)\`;
+        sql\`EXISTS (SELECT \${users.id} FROM \${users} WHERE \${condition})\`;
+        sql\`EXISTS (SELECT 1 FROM \${users})\`;
+        sql\`EXISTS (
+          SELECT 1 FROM \${users}
+          LEFT JOIN \${otherUsers} ON \${condition}
+          WHERE \${condition}
+        )\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} OR \${condition})\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} FOR UPDATE)\`;
+        sql\`EXISTS (
+          SELECT 1 FROM \${users}
+          WHERE EXISTS (SELECT 1 FROM \${otherUsers} WHERE \${condition})
+        )\`;
+        sql\`SELECT EXISTS (SELECT 1 FROM \${users} WHERE \${condition})\`;
+        sql\`NOT EXISTS (SELECT 1 FROM \${users} WHERE \${condition}) AND \${condition}\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition}); SELECT 1\`;
+        sql\`WITH selected AS (SELECT 1) SELECT EXISTS (
+          SELECT 1 FROM \${users} WHERE \${condition}
+        )\`;
+      `,
+    },
+    {
+      code: `
+        function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+          return { strings, values };
+        }
+        const table = { getSQL() {} };
+        const predicate = { getSQL() {} };
+        sql\`EXISTS (SELECT 1 FROM \${table} WHERE \${predicate})\`;
+      `,
+    },
   ],
   invalid: [
     {
@@ -221,6 +262,61 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "emptyFragment" },
         { messageId: "emptyFragment" },
       ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { and, eq, isNotNull, sql } from "drizzle-orm";
+        sql\`EXISTS (
+          SELECT 1
+          FROM \${users}
+          WHERE \${eq(users.id, 1)}
+            AND \${isNotNull(users.name)}
+        )\`;
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, isNotNull, sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const tag = drizzle.sql;
+        query\` not   exists(
+          select 1 from \${users}
+          inner join \${otherUsers} on \${eq(otherUsers.id, users.id)}
+          where \${eq(users.id, 1)} and \${isNotNull(otherUsers.name)}
+          limit 1
+        ) \`;
+        drizzle.sql\`EXISTS (SELECT 1 FROM \${otherUsers} WHERE \${eq(otherUsers.id, 1)})\`;
+        tag\`NOT EXISTS (SELECT 1 FROM \${users} WHERE \${eq(users.id, 1)})\`;
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "notExists" },
+        },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "notExists" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${users.id} = \${1})\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
     },
     {
       code: `${drizzlePreamble}
