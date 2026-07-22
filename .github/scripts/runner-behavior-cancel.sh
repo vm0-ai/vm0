@@ -214,7 +214,8 @@ case "$COMMAND_NAME" in
       if [ "$COMMAND_NAME" = "iptables-save" ]; then
         printf '%s\n' \
           "-A VM0-RECONCILE-OWN -m comment --comment \"vm0-ns-${OWN_POOL_HEX}-fd\" -j ACCEPT" \
-          "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT"
+          "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT" \
+          "-A VM0-RECONCILE-DECOY -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns-extra\" -j REJECT"
       fi
     fi
     exit "$STATUS"
@@ -229,6 +230,10 @@ case "$COMMAND_NAME" in
     if contains_argument VM0-RECONCILE-IDLE "$@" \
       && contains_argument "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns" "$@"; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
+      exit 0
+    fi
+    if contains_argument VM0-RECONCILE-DECOY "$@"; then
+      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.decoy-delete"
       exit 0
     fi
     exec "$VM0_RECONCILE_REAL_IPTABLES" "$@"
@@ -375,6 +380,7 @@ assert_reconcile_count iptables.own-delete 1
 assert_reconcile_count ip.own-link-delete 1
 assert_reconcile_count ip.own-netns-delete 1
 assert_reconcile_count iptables.firewall-only-delete 1
+assert_reconcile_count iptables.decoy-delete 0
 assert_reconcile_count ip.active-delete 0
 echo "PASS: startup reconciled one snapshot without modifying the active pool"
 
