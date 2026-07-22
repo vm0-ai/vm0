@@ -9,6 +9,7 @@ let mockPreferences: UserPreferencesResponse = {
   pinnedAgentIds: [],
   sendMode: "enter",
   morningBriefEnabled: false,
+  morningBriefNextRunAt: null,
   captureNetworkBodiesRemaining: 0,
 };
 
@@ -22,6 +23,7 @@ export function resetMockUserPreferences(): void {
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
+    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
   };
 }

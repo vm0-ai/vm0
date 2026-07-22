@@ -19,13 +19,14 @@ import type {
   VariableListResponse,
   VariableResponse,
 } from "@vm0/api-contracts/contracts/variables";
+import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
@@ -64,6 +65,24 @@ function parseSecretType(value: string): SecretType {
   throw new Error(`Unexpected secret type: ${value}`);
 }
 
+async function loadMorningBriefNextRunAt(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ nextRunAt: morningBriefSchedules.nextRunAt })
+    .from(morningBriefSchedules)
+    .where(
+      and(
+        eq(morningBriefSchedules.orgId, orgId),
+        eq(morningBriefSchedules.userId, userId),
+      ),
+    )
+    .limit(1);
+  return row?.nextRunAt?.toISOString() ?? null;
+}
+
 export function userPreferences({
   orgId,
   userId,
@@ -94,6 +113,7 @@ export function userPreferences({
         pinnedAgentIds: [],
         sendMode: "enter",
         morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
       };
     }
@@ -105,6 +125,7 @@ export function userPreferences({
       ),
       sendMode: parseSendMode(row.sendMode),
       morningBriefEnabled: row.morningBriefEnabled,
+      morningBriefNextRunAt: await loadMorningBriefNextRunAt(db, orgId, userId),
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -170,7 +191,7 @@ export const updateUserPreferences$ = command(
     );
     signal.throwIfAborted();
 
-    const merged: UserPreferencesResponse = {
+    const merged: Omit<UserPreferencesResponse, "morningBriefNextRunAt"> = {
       timezone:
         preferences.timezone !== undefined
           ? preferences.timezone
@@ -246,7 +267,17 @@ export const updateUserPreferences$ = command(
       signal.throwIfAborted();
     }
 
-    return { ok: true, data: merged };
+    return {
+      ok: true,
+      data: {
+        ...merged,
+        morningBriefNextRunAt: await loadMorningBriefNextRunAt(
+          writeDb,
+          args.orgId,
+          args.userId,
+        ),
+      },
+    };
   },
 );
 

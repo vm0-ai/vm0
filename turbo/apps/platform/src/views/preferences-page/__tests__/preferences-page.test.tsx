@@ -29,6 +29,7 @@ function createMockPreferences(
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
+    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
     ...overrides,
   };
