@@ -6,6 +6,10 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  chatThreadsContract,
+  type ChatThreadEvent,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -19,7 +23,6 @@ import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/ze
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
-import { touchOptimisticChatThreadSort$ } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import {
   resetChatPageModelSelection$,
@@ -2047,6 +2050,7 @@ describe("chat composer models", () => {
     const authorizationAgentIds: string[] = [];
     const workflowAgentIds: string[] = [];
     const permissionGrantAgentIds: string[] = [];
+    let persistedThreadEvent: ChatThreadEvent | null = null;
     let updatedAuthorizationAgentId: string | undefined;
     let appliedPermissionAgentId: string | undefined;
 
@@ -2062,6 +2066,12 @@ describe("chat composer models", () => {
         title: "Other agent thread",
       },
     ]);
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: persistedThreadEvent ? [persistedThreadEvent] : [],
+        hasMore: false,
+      });
+    });
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
@@ -2133,14 +2143,20 @@ describe("chat composer models", () => {
     });
     const authorizationRequestCount = authorizationAgentIds.length;
     const workflowRequestCount = workflowAgentIds.length;
-    await act(async () => {
-      context.store.set(touchOptimisticChatThreadSort$, {
-        id: "d0000000-0000-4000-a000-000000000099",
-        threadId: OTHER_AGENT_THREAD_ID,
-        agentId: OTHER_AGENT_ID,
-        createdAt: "2026-07-22T09:00:00.000Z",
-      });
-      await Promise.resolve();
+    persistedThreadEvent = {
+      id: "d0000000-0000-4000-a000-000000000099",
+      kind: "renamed",
+      chatThreadId: OTHER_AGENT_THREAD_ID,
+      agentId: OTHER_AGENT_ID,
+      title: "Renamed other agent thread",
+      selectedModel: null,
+      createdAt: "2026-07-22T09:00:00.000Z",
+    };
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        within(sideThread).getByText("Renamed other agent thread"),
+      ).toBeInTheDocument();
     });
     expect(authorizationAgentIds).toHaveLength(authorizationRequestCount);
     expect(workflowAgentIds).toHaveLength(workflowRequestCount);
