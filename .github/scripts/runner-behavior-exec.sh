@@ -730,7 +730,7 @@ echo "PASS: environment variables"
 # Test 9: verify HTTPS works through proxy for each runtime
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
-TLS_URL="https://www.vm0.ai"
+TLS_URL="https://www.google.com"
 tls_check() {
   local label=$1 cmd=$2 t=${3:-15}
   local output status
