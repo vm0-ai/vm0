@@ -49,6 +49,7 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
+import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
@@ -293,6 +294,11 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.signInToken,
     setup: setupSignInTokenPage$,
+  },
+  {
+    // Public route: opened from the Morning Brief email, no auth guard.
+    path: ROUTES.morningBriefUnsubscribe,
+    setup: setupMorningBriefUnsubscribePage$,
   },
   {
     path: ROUTES.redeemCampaign,

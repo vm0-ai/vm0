@@ -89,6 +89,7 @@ import {
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
+import { apiEmailMorningBriefUnsubscribeHandlers } from "./api-email-morning-brief-unsubscribe.ts";
 import { resetMockWorkflowAutomations } from "./workflow-automations-store.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
@@ -133,6 +134,7 @@ export const handlers = [
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
   ...apiAttributionHandlers,
+  ...apiEmailMorningBriefUnsubscribeHandlers,
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,

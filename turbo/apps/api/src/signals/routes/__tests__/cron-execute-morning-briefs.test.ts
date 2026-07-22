@@ -533,7 +533,8 @@ describe("cron execute morning briefs", () => {
       "/api/email/morning-brief/unsubscribe",
     );
 
-    // The one-click unsubscribe link turns the preference off.
+    // The email body links to the platform unsubscribe page, which performs
+    // the actual unsubscribe through the one-click POST endpoint.
     const manageUrlMatch = email.html.match(
       /href="([^"]*morning-brief\/unsubscribe[^"]*)"/u,
     );
@@ -541,9 +542,23 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected the manage link in the email");
     }
     const manageUrl = new URL(manageUrlMatch[1].replaceAll("&amp;", "&"));
+    expect(manageUrl.pathname).toBe("/email/morning-brief/unsubscribe");
+    const token = manageUrl.searchParams.get("token");
+    expect(token).toBeTruthy();
+
+    // Legacy links in already-sent emails hit the API GET route, which now
+    // forwards to the platform page with the token preserved.
+    const legacyResponse = await createApp({ signal: context.signal }).request(
+      `/api/email/morning-brief/unsubscribe?token=${token}`,
+    );
+    expect(legacyResponse.status).toBe(302);
+    expect(legacyResponse.headers.get("Location")).toBe(manageUrl.toString());
+
     const unsubscribeResponse = await createApp({
       signal: context.signal,
-    }).request(`${manageUrl.pathname}${manageUrl.search}`);
+    }).request(`/api/email/morning-brief/unsubscribe?token=${token}`, {
+      method: "POST",
+    });
     expect(unsubscribeResponse.status).toBe(200);
 
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);

@@ -18,37 +18,6 @@ function invalidTokenResponse() {
   return { status: 400 as const, body: { error: "Invalid token" } };
 }
 
-function confirmationHtmlResponse(): Response {
-  const appUrl = env("APP_URL");
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Morning Brief turned off - VM0</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f6f9fc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-    .card { background: #fff; padding: 32px; border-radius: 8px; max-width: 480px; text-align: center; }
-    h1 { font-size: 20px; color: #111827; margin: 0 0 12px; }
-    p { font-size: 14px; color: #6b7280; line-height: 1.6; margin: 0 0 20px; }
-    a { color: #2563eb; text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Morning Brief turned off</h1>
-    <p>You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.</p>
-    <p><a href="${appUrl}/settings">Manage preferences</a></p>
-  </div>
-</body>
-</html>`;
-
-  return new Response(html, {
-    status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
-}
-
 const disableMorningBrief$ = command(
   async (
     { set },
@@ -82,18 +51,32 @@ const disableMorningBrief$ = command(
   },
 );
 
+// Links in already-sent emails point at this API route. The unsubscribe page
+// now lives in the platform app, so forward the browser there with the token.
+// Rollout compatibility: the API can go live before the platform bundle that
+// serves the target route, so a valid token is still unsubscribed here before
+// redirecting; the platform page's POST is an idempotent no-op afterwards.
+// Remove the side effect once the platform route has fully rolled out.
 const getMorningBriefUnsubscribe$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const query = get(queryOf(emailMorningBriefUnsubscribeContract.get));
-    if (!query.token) {
-      return missingTokenResponse();
+    if (query.token) {
+      const verified = verifyMorningBriefUnsubscribeToken(query.token);
+      if (verified) {
+        await set(disableMorningBrief$, verified, signal);
+      }
     }
-    const verified = verifyMorningBriefUnsubscribeToken(query.token);
-    if (!verified) {
-      return invalidTokenResponse();
+    const target = new URL(`${env("APP_URL")}/email/morning-brief/unsubscribe`);
+    if (query.token) {
+      target.searchParams.set("token", query.token);
     }
-    await set(disableMorningBrief$, verified, signal);
-    return confirmationHtmlResponse();
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: target.toString(),
+        "Cache-Control": "no-store",
+      },
+    });
   },
 );
 
