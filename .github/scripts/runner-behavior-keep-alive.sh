@@ -188,7 +188,10 @@ done
 echo "--- Starting independently owned runner exec ---"
 sudo timeout 90 "$BIN_DIR/runner" exec --timeout 80 \
   --sandbox "$OVERLAP_SANDBOX_ID" -- sh -c \
-  'touch /tmp/keepalive-overlap-exec-ready; sleep 60' &
+  'rm -f /tmp/keepalive-overlap-exec-release
+mkfifo /tmp/keepalive-overlap-exec-release
+touch /tmp/keepalive-overlap-exec-ready
+cat /tmp/keepalive-overlap-exec-release >/dev/null' &
 OVERLAP_EXEC_PID=$!
 
 EXEC_READY=false
