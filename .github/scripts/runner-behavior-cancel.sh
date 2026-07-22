@@ -213,19 +213,21 @@ case "$COMMAND_NAME" in
       printf '%s\n' "$OWN_POOL_HEX" >"$VM0_RECONCILE_COUNT_DIR/own-pool"
       if [ "$COMMAND_NAME" = "iptables-save" ]; then
         printf '%s\n' \
-          "-A FORWARD -m comment --comment \"vm0-ns-${OWN_POOL_HEX}-fd\" -j ACCEPT" \
-          "-A INPUT -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT"
+          "-A VM0-RECONCILE-OWN -m comment --comment \"vm0-ns-${OWN_POOL_HEX}-fd\" -j ACCEPT" \
+          "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT"
       fi
     fi
     exit "$STATUS"
     ;;
   iptables)
     OWN_POOL_HEX=$(find_own_pool_hex)
-    if contains_argument "vm0-ns-${OWN_POOL_HEX}-fd" "$@"; then
+    if contains_argument VM0-RECONCILE-OWN "$@" \
+      && contains_argument "vm0-ns-${OWN_POOL_HEX}-fd" "$@"; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.own-delete"
       exit 0
     fi
-    if contains_argument "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns" "$@"; then
+    if contains_argument VM0-RECONCILE-IDLE "$@" \
+      && contains_argument "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns" "$@"; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
       exit 0
     fi
@@ -238,7 +240,7 @@ case "$COMMAND_NAME" in
         touch "$VM0_RECONCILE_SNAPSHOT_READY"
         while [ ! -e "$VM0_RECONCILE_SNAPSHOT_RELEASE" ]; do sleep 0.05; done
       fi
-      if "$VM0_RECONCILE_REAL_IP" "$@"; then
+      if REAL_OUTPUT=$("$VM0_RECONCILE_REAL_IP" "$@"); then
         STATUS=0
       else
         STATUS=$?
@@ -246,9 +248,15 @@ case "$COMMAND_NAME" in
       if [ "$STATUS" -eq 0 ]; then
         OWN_POOL_HEX=$(find_own_pool_hex)
         printf '%s\n' "$OWN_POOL_HEX" >"$VM0_RECONCILE_COUNT_DIR/own-pool"
-        printf '%s\n' \
-          "vm0-ns-${OWN_POOL_HEX}-fd" \
-          "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc"
+        [ -z "$REAL_OUTPUT" ] || printf '%s\n' "$REAL_OUTPUT"
+        if ! awk -v name="vm0-ns-${OWN_POOL_HEX}-fd" \
+          '$1 == name { found = 1 } END { exit !found }' <<<"$REAL_OUTPUT"; then
+          printf '%s\n' "vm0-ns-${OWN_POOL_HEX}-fd"
+        fi
+        if ! awk -v name="vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" \
+          '$1 == name { found = 1 } END { exit !found }' <<<"$REAL_OUTPUT"; then
+          printf '%s\n' "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc"
+        fi
       fi
       exit "$STATUS"
     fi
@@ -257,12 +265,12 @@ case "$COMMAND_NAME" in
     if [ "${1:-}" = "link" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ve-${OWN_POOL_HEX}-fd" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-link-delete"
-      exit 0
+      exec "$VM0_RECONCILE_REAL_IP" "$@"
     fi
     if [ "${1:-}" = "netns" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ns-${OWN_POOL_HEX}-fd" ]; then
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-netns-delete"
-      exit 0
+      exec "$VM0_RECONCILE_REAL_IP" "$@"
     fi
     if contains_argument "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@" \
       || contains_argument "vm0-ve-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@"; then
