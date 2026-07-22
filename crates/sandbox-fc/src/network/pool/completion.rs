@@ -100,7 +100,10 @@ impl CreationNotifier {
                         host_device = %ns.host_device,
                         "namespace creation completed after pool receiver dropped; deleting"
                     );
-                    let outcome = (self.ops.delete_namespace)(ns.clone()).await;
+                    let outcome = self
+                        .ops
+                        .delete_network_resources(vec![ns.clone()], None)
+                        .await;
                     if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
                         warn!(
                             name = %ns.name,
