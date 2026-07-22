@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.141](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.140...sandbox-fc-v0.37.141) (2026-07-22)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** wait for legacy xtables lock ([#22484](https://github.com/vm0-ai/vm0/issues/22484)) ([8ec23c1](https://github.com/vm0-ai/vm0/commit/8ec23c14812cc77b0dba0c99b64bc938ca775ee3))
+
 ## [0.37.140](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.139...sandbox-fc-v0.37.140) (2026-07-21)
 
 
