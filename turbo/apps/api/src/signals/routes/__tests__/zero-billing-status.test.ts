@@ -14,6 +14,8 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   deleteOrgPlanEntitlementFixture,
+  insertOrgMetadataAsLegacyWriterFixture,
+  updateOrgPlanKeyAsLegacyWriterFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
 import {
@@ -31,7 +33,6 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -261,25 +262,30 @@ describe("GET /api/zero/billing/status", () => {
     expect(Number.isFinite(response.body.concurrencyLimit)).toBeTruthy();
   });
 
-  it("caps the staff entitlement base concurrency limit in billing status", async () => {
+  it("returns entitlement capabilities for a non-staff org", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "3");
     const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
     onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
+      orgId,
       tier: "pro",
       credits: 0,
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      canBuyCredits: false,
+      autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: true,
+      workflowWebhookAutomationAllowed: true,
     });
-    mocks.clerk.session(userId, STAFF_ORG_ID);
+    mocks.clerk.session(userId, orgId);
 
     const response = await accept(
       setupApp({ context })(zeroBillingStatusContract).get({
@@ -289,9 +295,47 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.canBuyConcurrency).toBeTruthy();
+    expect(response.body.canBuyCredits).toBeFalsy();
+    expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
+    expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
+  });
+
+  it("keeps credit purchase capability accurate for legacy rollout writes", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(orgId);
+    });
+    await insertOrgMetadataAsLegacyWriterFixture({
+      orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+    const initialResponse = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(initialResponse.body.canBuyCredits).toBeFalsy();
+
+    await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
+
+    const updatedResponse = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(updatedResponse.body.tier).toBe("limited-free-1");
+    expect(updatedResponse.body.canBuyCredits).toBeTruthy();
   });
 
   it("includes active concurrency subscription slots", async () => {

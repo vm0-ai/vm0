@@ -21,7 +21,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { conversations } from "@vm0/db/schema/conversation";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -115,6 +114,7 @@ import {
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -2600,15 +2600,11 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
 }): Promise<string> {
-  const [org] = await params.db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, params.orgId))
-    .limit(1);
+  const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL").replace(/\/$/, "");
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing`;
-  if (org?.tier === "free" || org?.tier === "pro-suspend" || !org) {
+  if (capabilities?.canBuyCredits !== true) {
     return [
       "Insufficient credits. This workspace has no spendable credits right now.",
       "",

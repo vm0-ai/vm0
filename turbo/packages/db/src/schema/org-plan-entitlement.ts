@@ -31,6 +31,7 @@ export const orgPlanEntitlements = pgTable(
       .notNull()
       .default(0),
     canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
+    canBuyCredits: boolean("can_buy_credits").notNull().default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),

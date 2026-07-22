@@ -3053,6 +3053,40 @@ async fn process_monitor_reports_startup_exit_as_stopped() {
     handle.wait().await;
 }
 
+#[derive(Default)]
+struct RecordingSandboxStartObserver {
+    records: Vec<(SandboxStartStage, bool)>,
+}
+
+impl SandboxStartObserver for RecordingSandboxStartObserver {
+    fn record_stage(&mut self, stage: SandboxStartStage, _duration: Duration, success: bool) {
+        self.records.push((stage, success));
+    }
+}
+
+#[tokio::test]
+async fn start_with_observer_reports_backend_launch_failure() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut sandbox = test_sandbox_with_state(SandboxState::Created);
+    sandbox.sandbox_paths = SandboxPaths::new(workspace.path().join("workspace"));
+    sandbox.sock_paths = SockPaths::new(workspace.path().join("sock"));
+    let mut observer = RecordingSandboxStartObserver::default();
+
+    let error = sandbox
+        .start_with_observer(&mut observer)
+        .await
+        .unwrap_err();
+
+    let SandboxError::Start { message } = error else {
+        panic!("expected startup error");
+    };
+    assert!(message.contains("COW device missing before sandbox start"));
+    assert_eq!(
+        observer.records,
+        vec![(SandboxStartStage::BackendLaunch, false)]
+    );
+}
+
 #[tokio::test]
 async fn spawn_and_wait_for_api_adopts_process_and_secures_socket() {
     let workspace = tempfile::tempdir().unwrap();

@@ -11,7 +11,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Input, Switch } from "@vm0/ui";
 import {
-  type BillingTier,
   autoRechargeConfig$,
   autoRechargeDirty$,
   discardAutoRecharge$,
@@ -32,10 +31,10 @@ const settingsCardBorder = {
 } as const;
 
 export function AutoRechargeSection({
-  currentTier,
+  allowed,
   loading = false,
 }: {
-  currentTier: BillingTier;
+  allowed: boolean;
   loading?: boolean;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -58,11 +57,7 @@ export function AutoRechargeSection({
   const [saveLoadable, doSave] = useLoadableSet(saveAutoRecharge$);
   const saving = saveLoadable.state === "loading";
 
-  if (
-    currentTier === "free" ||
-    currentTier === "limited-free-1" ||
-    currentTier === "pro-suspend"
-  ) {
+  if (!allowed) {
     return null;
   }
 

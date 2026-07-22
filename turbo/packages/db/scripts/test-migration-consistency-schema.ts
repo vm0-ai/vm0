@@ -2009,6 +2009,160 @@ async function validateSlackChatThreadRouteBackfill(): Promise<void> {
   }
 }
 
+async function validateOrgPlanEntitlementBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
+  );
+  const testDb = "migration_org_plan_entitlement_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 641);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "org_metadata" ("org_id", "tier", "credits")
+        VALUES
+          ('entitlement-backfill-1', 'free', 0),
+          ('entitlement-backfill-2', 'limited-free-1', 0),
+          ('entitlement-backfill-3', 'pro-suspend', 0),
+          ('entitlement-backfill-4', 'pro', 0),
+          ('entitlement-backfill-5', 'team', 0),
+          ('entitlement-backfill-6', 'custom', 0)
+      `);
+
+      await applyMigrationsUpTo(client, 642);
+
+      const entitlements = await client.query<{
+        autoRechargeAllowed: boolean;
+        baseConcurrencyLimit: number;
+        canBuyConcurrency: boolean;
+        canBuyCredits: boolean;
+        orgId: string;
+        planKey: string;
+        restrictedVm0Models: boolean;
+        source: string;
+        status: string;
+        supportByok: boolean;
+        videoGenerationAllowed: boolean;
+        workflowWebhookTriggerAllowed: boolean;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "plan_key" AS "planKey",
+          "source",
+          "status",
+          "base_concurrency_limit" AS "baseConcurrencyLimit",
+          "can_buy_concurrency" AS "canBuyConcurrency",
+          "can_buy_credits" AS "canBuyCredits",
+          "auto_recharge_allowed" AS "autoRechargeAllowed",
+          "support_byok" AS "supportByok",
+          "restricted_vm0_models" AS "restrictedVm0Models",
+          "video_generation_allowed" AS "videoGenerationAllowed",
+          "workflow_webhook_trigger_allowed" AS "workflowWebhookTriggerAllowed"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'entitlement-backfill-%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          orgId: "entitlement-backfill-1",
+          planKey: "free",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 1,
+          canBuyConcurrency: false,
+          canBuyCredits: true,
+          autoRechargeAllowed: false,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-2",
+          planKey: "limited-free-1",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 1,
+          canBuyConcurrency: false,
+          canBuyCredits: false,
+          autoRechargeAllowed: false,
+          supportByok: false,
+          restrictedVm0Models: true,
+          videoGenerationAllowed: false,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-3",
+          planKey: "pro-suspend",
+          source: "org_metadata_migration",
+          status: "suspended",
+          baseConcurrencyLimit: 0,
+          canBuyConcurrency: false,
+          canBuyCredits: false,
+          autoRechargeAllowed: false,
+          supportByok: false,
+          restrictedVm0Models: true,
+          videoGenerationAllowed: false,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-4",
+          planKey: "pro",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 2,
+          canBuyConcurrency: false,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-5",
+          planKey: "team",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 10,
+          canBuyConcurrency: true,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: true,
+        },
+        {
+          orgId: "entitlement-backfill-6",
+          planKey: "custom",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 10,
+          canBuyConcurrency: true,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: true,
+        },
+      ]);
+      console.log(
+        "   ✅ Existing metadata-only orgs receive complete plan entitlements\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -2184,6 +2338,7 @@ async function main(): Promise<void> {
     await validateStorageArchiveSizeFinalization();
     await validateLegacyMemoryCleanup();
     await validateSlackChatThreadRouteBackfill();
+    await validateOrgPlanEntitlementBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

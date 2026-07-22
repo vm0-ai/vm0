@@ -170,7 +170,7 @@ import {
 } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
-import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
 import {
   connectGithubInstallation$,
   githubIntegrationData$,
@@ -584,11 +584,9 @@ function AutomationCreateAction() {
     setWorkflowWebhookUpgradeDialogOpen$,
   );
   const features = useGet(featureSwitch$);
-  const billing = useLastResolved(billingStatusAsync$);
+  const capabilities = useLastResolved(orgPlanCapabilities$);
   const webhookTierEligible =
-    billing === undefined ||
-    billing.tier === "team" ||
-    billing.tier === "custom";
+    capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
 

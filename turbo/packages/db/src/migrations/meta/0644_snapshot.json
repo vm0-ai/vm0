@@ -1,6 +1,6 @@
 {
-  "id": "53f9b040-6bfc-4486-88ab-0cbad7876e12",
-  "prevId": "97f09e2f-41f3-4c18-8691-3d42946cd8e4",
+  "id": "104b84c9-4d5c-4a44-8033-3baaf095f170",
+  "prevId": "1c47fb7c-62e7-4bd5-8eb6-495342f9084c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5924,13 +5924,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "purpose": {
-          "name": "purpose",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'cli'"
-        },
         "status": {
           "name": "status",
           "type": "device_code_status",
@@ -5948,48 +5941,6 @@
         "org_id": {
           "name": "org_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ble_session_nonce": {
-          "name": "ble_session_nonce",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "poll_token_hash": {
-          "name": "poll_token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "poll_interval_seconds": {
-          "name": "poll_interval_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cli_token_id": {
-          "name": "cli_token_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approved_at": {
-          "name": "approved_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consumed_at": {
-          "name": "consumed_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -13483,13 +13434,15 @@
           "name": "heartbeat_generation",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
         },
         "heartbeat_sequence": {
           "name": "heartbeat_sequence",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
         },
         "total_vcpu": {
           "name": "total_vcpu",
@@ -19740,9 +19693,6 @@
       "values": [
         "pending",
         "authenticated",
-        "approved",
-        "consumed",
-        "expired",
         "denied"
       ]
     },

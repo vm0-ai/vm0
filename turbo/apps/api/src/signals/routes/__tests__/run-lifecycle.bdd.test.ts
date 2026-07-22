@@ -4142,6 +4142,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       tier: "limited-free-1",
       credits: 20_000,
     });
+    // The metadata fixture keeps the production tier/entitlement invariant.
+    // Restore the deliberate staff-only divergence exercised by this test.
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,

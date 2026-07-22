@@ -76,8 +76,9 @@ function detachedSetupWorkflowDetailPage(
   path: string,
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
   billingTier = "team",
+  billingCapabilities: Partial<BillingStatusResponse> = {},
 ) {
-  mockBillingTier(billingTier);
+  mockBillingTier(billingTier, billingCapabilities);
   detachedSetupPage({
     context,
     path,
@@ -87,7 +88,10 @@ function detachedSetupWorkflowDetailPage(
   });
 }
 
-function billingStatus(tier: string): BillingStatusResponse {
+function billingStatus(
+  tier: string,
+  capabilities: Partial<BillingStatusResponse> = {},
+): BillingStatusResponse {
   return {
     tier,
     credits: 20_000,
@@ -103,12 +107,16 @@ function billingStatus(tier: string): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 0,
     concurrencySubscriptions: [],
+    ...capabilities,
   };
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingTier(
+  tier: string,
+  capabilities: Partial<BillingStatusResponse> = {},
+): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, billingStatus(tier));
+    return respond(200, billingStatus(tier, capabilities));
   });
 }
 
@@ -2541,6 +2549,36 @@ describe("workflow detail page", () => {
       ),
     ).toBeInTheDocument();
     expect(buttonByText("Upgrade to Team")).toBeInTheDocument();
+  });
+
+  it("allows webhook creation when the plan capability overrides the tier", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(
+      workflowDetailPath("automations"),
+      {},
+      "pro",
+      { workflowWebhookAutomationAllowed: true },
+    );
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    const webhookCard = buttonByText(/^Webhook/u, picker);
+    expect(within(webhookCard).queryByText("Team")).not.toBeInTheDocument();
+    click(webhookCard);
+
+    await expect(
+      screen.findByText("Create webhook"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("Upgrade for webhook automations"),
+    ).not.toBeInTheDocument();
   });
 
   it("asks non-admins to contact an admin for webhook access", async () => {
