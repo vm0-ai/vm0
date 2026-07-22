@@ -12,6 +12,7 @@ export const testComputerUseStatePostBodySchema = z.object({
   user_id: z.string().optional(),
   org_id: z.string().optional(),
   trigger_source: z.enum(["web", "slack", "teams"]).optional(),
+  canonical_thread: z.boolean().optional(),
 });
 
 export const testComputerUseStatePostResponseSchema = z.object({

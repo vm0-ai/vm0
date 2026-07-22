@@ -122,6 +122,7 @@ const trackComputerUseRun = createFixtureTracker(deleteComputerUseRunFixture);
 async function seedZeroRun(args: {
   readonly actor: ApiTestUser;
   readonly triggerSource: "web" | "slack";
+  readonly canonicalThread?: boolean;
 }): Promise<ComputerUseRunFixture> {
   const response = await requestComputerUseState(COMPUTER_USE_STATE_ROUTE, {
     method: "POST",
@@ -130,6 +131,7 @@ async function seedZeroRun(args: {
       user_id: args.actor.userId,
       org_id: requireOrg(args.actor),
       trigger_source: args.triggerSource,
+      canonical_thread: args.canonicalThread,
     }),
   });
   expect(response.status).toBe(200);
@@ -351,6 +353,52 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(applied).toStrictEqual({
       ok: true,
       source: "slack",
+      computerUseHostId: host.hostId,
+    });
+
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "slack",
+      computer_use_host_id: host.hostId,
+    });
+  });
+
+  it("uses chat-thread authorization for a canonical Slack run", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const actor = bdd.user({ orgId });
+    const run = await seedZeroRun({
+      actor,
+      triggerSource: "slack",
+      canonicalThread: true,
+    });
+    if (!run.threadId) {
+      throw new Error("Expected canonical Slack run to use a chat thread");
+    }
+
+    const host = await api.startComputerUseHost(actor, {
+      hostName: "Canonical Slack Desktop",
+    });
+    mockClerkMembership(context, actor, "org:admin");
+    const token = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId,
+      runId: run.runId,
+      capabilities: ["connector:read"],
+    }).token;
+
+    const created = await api.createComputerUseAuthorizationRequest({
+      bearer: token,
+    });
+    expect(created.source).toBe("chat");
+
+    const requestToken = requestTokenFromUrl(created.authorizationUrl);
+    const applied = await api.applyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      host.hostId,
+    );
+    expect(applied).toStrictEqual({
+      ok: true,
+      source: "chat",
       computerUseHostId: host.hostId,
     });
 
@@ -803,7 +851,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
     expectApiError(missingCapability.body);
     expect(missingCapability.body.error.message).toBe(
-      "Missing required capability: computer-use:write",
+      "Computer Use is not authorized for this run. Authorize a computer once in the conversation, then retry.",
     );
 
     const ungranted = await api.requestCreateComputerUseReadCommand(

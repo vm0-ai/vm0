@@ -142,6 +142,7 @@ import {
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -151,11 +152,10 @@ import {
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   matchesConnectorSearch,
-  justConnectedTypes$,
-  pollingOAuthAuthCodeConnectorType$,
-  type ConnectorTypeWithStatus,
+  justConnectedRefs$,
+  pollingOAuthAuthCodeConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -414,18 +414,9 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface ComposerConnectorItem {
-  type: ConnectorRef;
-  label: string;
-  helpText: string;
-  icon: ConnectorTypeWithStatus["icon"];
-  tags: readonly string[];
-  connected: boolean;
-  authorized: boolean;
-  available: boolean;
-  /** True when this connector exposes configurable firewall permissions. */
-  hasPermissions: boolean;
-}
+type ComposerConnectorItem = PublicConnectorCatalogStatusItem & {
+  readonly authorized: boolean;
+};
 
 function resolveComposerModelForSelection(
   modelPicker: ComposerModelPicker | undefined,
@@ -1376,10 +1367,10 @@ function WorkflowTemplateConnectorIcons({
   limit?: number;
   withDivider?: boolean;
 }) {
-  const catalogConnectors = useLastResolved(allConnectorTypes$);
+  const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
   const visibleConnectors = connectors.flatMap((connectorRef) => {
     const connector = catalogConnectors?.find((candidate) => {
-      return candidate.type === connectorRef;
+      return candidate.connectorRef === connectorRef;
     });
     return connector ? [connector] : [];
   });
@@ -1403,7 +1394,7 @@ function WorkflowTemplateConnectorIcons({
         {displayedConnectors.map((connector) => {
           return (
             <span
-              key={connector.type}
+              key={connector.connectorRef}
               className={cn(
                 "flex shrink-0 items-center justify-center border border-border/60 bg-background",
                 compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
@@ -5507,7 +5498,7 @@ function ConnectorTriggerIcons({
     <span className="flex items-center -space-x-2 sm:-space-x-1.5">
       {enabled.map((c) => {
         return (
-          <span key={c.type} className="relative shrink-0">
+          <span key={c.connectorRef} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
               <ConnectorIcon icon={c.icon} size={16} />
             </span>
@@ -5528,15 +5519,15 @@ function ConnectorTriggerIcons({
 function AddConnectorsDialog({
   signals,
   unconnected,
-  pollingType,
+  pollingConnectorRef,
   onClose,
   onSelect,
 }: {
   signals: ComposerConnectorSignals;
-  unconnected: ConnectorTypeWithStatus[];
-  pollingType: string | null;
+  unconnected: PublicConnectorCatalogStatusItem[];
+  pollingConnectorRef: ConnectorRef | null;
   onClose: () => void;
-  onSelect: (type: ConnectorRef) => void;
+  onSelect: (connectorRef: ConnectorRef) => void;
 }) {
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
@@ -5577,11 +5568,11 @@ function AddConnectorsDialog({
               return (
                 <button
                   type="button"
-                  key={item.type}
+                  key={item.connectorRef}
                   onClick={() => {
-                    return onSelect(item.type);
+                    return onSelect(item.connectorRef);
                   }}
-                  disabled={pollingType === item.type}
+                  disabled={pollingConnectorRef === item.connectorRef}
                   aria-label={`Connect ${item.label}`}
                   className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
                   style={{ border: "0.7px solid hsl(var(--gray-400))" }}
@@ -5593,7 +5584,7 @@ function AddConnectorsDialog({
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
                       {item.label}
                     </span>
-                    {pollingType === item.type ? (
+                    {pollingConnectorRef === item.connectorRef ? (
                       <IconLoader2
                         size={16}
                         stroke={1.5}
@@ -5607,7 +5598,7 @@ function AddConnectorsDialog({
                   </div>
                   <div className="px-4 pb-4 pt-1">
                     <div className="text-xs text-muted-foreground line-clamp-2">
-                      {item.helpText}
+                      {item.description}
                     </div>
                   </div>
                 </button>
@@ -5756,7 +5747,7 @@ function ComposerConnectorPermissionDialog({
   return (
     <PermissionsDialog
       agentId={agentId}
-      connectorType={connector.type}
+      connectorRef={connector.connectorRef}
       connectorLabel={connector.label}
       metadata$={signals.permissionMetadata$}
       displayName={agentDisplayName}
@@ -5767,7 +5758,7 @@ function ComposerConnectorPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId },
-          connectorRef: connector.type,
+          connectorRef: connector.connectorRef,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -5788,7 +5779,7 @@ function ConnectorsPopoverButton({
   agentDisplayName,
   agentConnectors,
   connectorsLoading,
-  savingType,
+  savingConnectorRef,
   computerUse,
   onOpenAddDialog,
   onToggle,
@@ -5798,10 +5789,13 @@ function ConnectorsPopoverButton({
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
   connectorsLoading: boolean;
-  savingType: string | null;
+  savingConnectorRef: ConnectorRef | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
-  onToggle: (type: ConnectorRef, checked: boolean) => void | Promise<void>;
+  onToggle: (
+    connectorRef: ConnectorRef,
+    checked: boolean,
+  ) => void | Promise<void>;
 }) {
   const search = useGet(signals.popoverSearch$);
   const setSearch = useSet(signals.setPopoverSearch$);
@@ -5812,21 +5806,21 @@ function ConnectorsPopoverButton({
     signals.setComputerUseDownloadDialogOpen$,
   );
   const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
-  const permissionConnectorType = useGet(signals.permissionConnector$);
-  const setPermissionConnectorType = useSet(signals.setPermissionConnector$);
+  const permissionConnectorRef = useGet(signals.permissionConnectorRef$);
+  const setPermissionConnectorRef = useSet(signals.setPermissionConnectorRef$);
   const showSearch = agentConnectors.length > 20;
   const permissionConnector =
-    permissionEntryEnabled && permissionConnectorType
+    permissionEntryEnabled && permissionConnectorRef
       ? agentConnectors.find((c) => {
-          return c.type === permissionConnectorType;
+          return c.connectorRef === permissionConnectorRef;
         })
       : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
     ? [...agentConnectors].sort((a, b) => {
-        const ai = sortOrder.indexOf(a.type);
-        const bi = sortOrder.indexOf(b.type);
+        const ai = sortOrder.indexOf(a.connectorRef);
+        const bi = sortOrder.indexOf(b.connectorRef);
         if (ai === -1 && bi === -1) {
           return 0;
         }
@@ -5851,7 +5845,7 @@ function ConnectorsPopoverButton({
     if (open) {
       // Snapshot the sort order when popover opens
       const freshSort = agentConnectors.map((c) => {
-        return c.type;
+        return c.connectorRef;
       });
       setSortOrder(freshSort);
     } else {
@@ -5923,7 +5917,7 @@ function ConnectorsPopoverButton({
                 {visibleConnectors.map((item) => {
                   return (
                     <label
-                      key={item.type}
+                      key={item.connectorRef}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -5935,13 +5929,13 @@ function ConnectorsPopoverButton({
                       {permissionEntryEnabled &&
                         agentId &&
                         item.authorized &&
-                        item.hasPermissions && (
+                        item.permissionSummary.hasPermissions && (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorType(item.type);
+                              setPermissionConnectorRef(item.connectorRef);
                             }}
                             aria-label={`Configure ${item.label} permissions`}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -5952,9 +5946,9 @@ function ConnectorsPopoverButton({
                       <LoadingSwitch
                         checked={item.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(item.type, checked);
+                          await onToggle(item.connectorRef, checked);
                         })}
-                        loading={savingType === item.type}
+                        loading={savingConnectorRef === item.connectorRef}
                         ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
                       />
@@ -6005,7 +5999,7 @@ function ConnectorsPopoverButton({
           agentDisplayName={agentDisplayName}
           connector={permissionConnector}
           onClose={() => {
-            setPermissionConnectorType(null);
+            setPermissionConnectorRef(null);
           }}
         />
       )}
@@ -6920,40 +6914,46 @@ export function useZeroChatComposer({
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const connectorCatalogItemsLoadable = useLastLoadable(
+    allConnectorCatalogItems$,
+  );
   const authorizedConnectorsLoadable = useLastLoadable(
     composerConnectors.authorizedConnectors$,
     { equalityFn: equalArrays },
   );
   const pageSignal = useGet(pageSignal$);
-  const selectedConnType = useGet(composerConnectors.selectedConnectType$);
-  const pendingConnectType = useGet(composerConnectors.pendingConnectType$);
-  const setPendingConnectType = useSet(
-    composerConnectors.setPendingConnectType$,
+  const selectedConnectorRef = useGet(composerConnectors.selectedConnectorRef$);
+  const pendingConnectorRef = useGet(composerConnectors.pendingConnectorRef$);
+  const setPendingConnectorRef = useSet(
+    composerConnectors.setPendingConnectorRef$,
   );
-  const setSelectedConnType = useSet(
-    composerConnectors.setSelectedConnectType$,
+  const setSelectedConnectorRef = useSet(
+    composerConnectors.setSelectedConnectorRef$,
   );
-  const pollingConnType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
-  const optimisticConnected = useGet(justConnectedTypes$);
+  const optimisticConnected = useGet(justConnectedRefs$);
 
-  const savingType = useGet(composerConnectors.savingType$);
-  const setSavingType = useSet(composerConnectors.setSavingType$);
+  const savingConnectorRef = useGet(composerConnectors.savingConnectorRef$);
+  const setSavingConnectorRef = useSet(
+    composerConnectors.setSavingConnectorRef$,
+  );
   const agentRecordId = loadableDataOrNull(
     useLastLoadable(composerConnectors.agentId$),
   );
 
   const connectorsLoading =
-    allTypesLoadable.state !== "hasData" ||
+    connectorCatalogItemsLoadable.state !== "hasData" ||
     authorizedConnectorsLoadable.state !== "hasData";
 
-  const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const connectorCatalogItems =
+    connectorCatalogItemsLoadable.state === "hasData"
+      ? connectorCatalogItemsLoadable.data
+      : [];
   const connectorMap = new Map(
-    allConnectors.map((c) => {
-      return [c.type, c];
+    connectorCatalogItems.map((connector) => {
+      return [connector.connectorRef, connector];
     }),
   );
   const authorizedConnectors =
@@ -6962,43 +6962,37 @@ export function useZeroChatComposer({
       : [];
   const authorizedSet = new Set(authorizedConnectors);
 
-  const unconnectedConnectors = allConnectors.filter((c) => {
-    return !c.connected;
+  const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
+    return (
+      !connector.connected && !optimisticConnected.has(connector.connectorRef)
+    );
   });
 
   // Show all org-connected services so user can toggle authorization on/off per agent.
-  // available = connected ∧ authorized → the connector is actually usable in this agent.
-  const connectedTypes = allConnectors.filter((c) => {
-    return c.connected || optimisticConnected.has(c.type);
+  const connectedCatalogItems = connectorCatalogItems.filter((connector) => {
+    return (
+      connector.connected || optimisticConnected.has(connector.connectorRef)
+    );
   });
-  const agentConnectors: ComposerConnectorItem[] = connectedTypes.map((c) => {
-    const connected = c.connected || optimisticConnected.has(c.type);
-    const authorized = authorizedSet.has(c.type);
-    return {
-      type: c.type,
-      label: c.label,
-      helpText: c.helpText,
-      icon: c.icon,
-      tags: c.tags,
-      connected,
-      authorized,
-      available: connected && authorized,
-      hasPermissions: c.permissionSummary.hasPermissions,
-    };
-  });
+  const agentConnectors: ComposerConnectorItem[] = connectedCatalogItems.map(
+    (connector) => {
+      const authorized = authorizedSet.has(connector.connectorRef);
+      return { ...connector, authorized };
+    },
+  );
 
-  const handleConnectSuccess = async (type: ConnectorRef) => {
-    const label = connectorMap.get(type)?.label ?? type;
+  const handleConnectSuccess = async (connectorRef: ConnectorRef) => {
+    const label = connectorMap.get(connectorRef)?.label ?? connectorRef;
     const authorized = await tapError(
       (async () => {
-        await authorizeFn(type, pageSignal);
+        await authorizeFn(connectorRef, pageSignal);
         return true;
       })(),
       () => {
         toast.error(
           `${label} connected but could not be authorized for ${displayName}`,
           {
-            id: `connector-save-error-${type}`,
+            id: `connector-save-error-${connectorRef}`,
           },
         );
       },
@@ -7007,17 +7001,19 @@ export function useZeroChatComposer({
       return false;
     }
     toast.success(`${label} connected and authorized for ${displayName}`, {
-      id: `connector-connected-${type}`,
+      id: `connector-connected-${connectorRef}`,
     });
     return true;
   };
 
-  const handleToggle = async (type: ConnectorRef, checked: boolean) => {
-    setSavingType(type);
+  const handleToggle = async (connectorRef: ConnectorRef, checked: boolean) => {
+    setSavingConnectorRef(connectorRef);
     await bestEffort(
-      checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),
+      checked
+        ? authorizeFn(connectorRef, pageSignal)
+        : deauthorizeFn(connectorRef, pageSignal),
     );
-    setSavingType(null);
+    setSavingConnectorRef(null);
   };
 
   const handleSend = () => {
@@ -7221,7 +7217,7 @@ export function useZeroChatComposer({
                     agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
-                    savingType={savingType}
+                    savingConnectorRef={savingConnectorRef}
                     computerUse={computerUse}
                     onOpenAddDialog={() => {
                       return setShowAddDialog(true);
@@ -7267,23 +7263,23 @@ export function useZeroChatComposer({
         <ActiveGoalObjectiveDialog threadId={chatThreadId} />
         <WebsiteTemplatePreviewDialogSlot />
       </div>
-      {selectedConnType && (
+      {selectedConnectorRef && (
         <ConnectModal
-          selectedType={selectedConnType}
+          selectedConnectorRef={selectedConnectorRef}
           agentId={nullToUndefined(agentRecordId)}
           onClose={() => {
-            return setSelectedConnType(null);
+            return setSelectedConnectorRef(null);
           }}
           onSuccess={async () => {
-            const type = pendingConnectType ?? selectedConnType;
-            if (type && !authorizedSet.has(type)) {
-              const authorized = await handleConnectSuccess(type);
+            const connectorRef = pendingConnectorRef ?? selectedConnectorRef;
+            if (connectorRef && !authorizedSet.has(connectorRef)) {
+              const authorized = await handleConnectSuccess(connectorRef);
               if (!authorized) {
-                setPendingConnectType(null);
+                setPendingConnectorRef(null);
                 return;
               }
             }
-            setPendingConnectType(null);
+            setPendingConnectorRef(null);
             setShowAddDialog(false);
           }}
         />
@@ -7292,14 +7288,14 @@ export function useZeroChatComposer({
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
-          pollingType={pollingConnType}
+          pollingConnectorRef={pollingConnectorRef}
           onClose={() => {
-            setPendingConnectType(null);
+            setPendingConnectorRef(null);
             return setShowAddDialog(false);
           }}
-          onSelect={(type) => {
-            setPendingConnectType(type);
-            setSelectedConnType(type);
+          onSelect={(connectorRef) => {
+            setPendingConnectorRef(connectorRef);
+            setSelectedConnectorRef(connectorRef);
           }}
         />
       )}
