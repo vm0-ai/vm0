@@ -194,6 +194,11 @@ manifest_validate() {
   emit "object-size-bytes" "$REUSABLE_OBJECT_SIZE"
 }
 
+reusable_artifact_name() {
+  local target=$1 digest=$2
+  printf 'runner-binary-asset-%s-%s\n' "$target" "$digest"
+}
+
 artifact_name() {
   require_env EXPECTED_TARGET
   require_env EXPECTED_BINARY_INPUT_DIGEST
@@ -202,7 +207,7 @@ artifact_name() {
     echo "invalid runner binary input digest: ${EXPECTED_BINARY_INPUT_DIGEST}" >&2
     exit 2
   fi
-  emit "artifact-name" "runner-binary-asset-${EXPECTED_TARGET}-${EXPECTED_BINARY_INPUT_DIGEST}"
+  emit "artifact-name" "$(reusable_artifact_name "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST")"
 }
 
 publish_soft_failure() {
@@ -210,6 +215,95 @@ publish_soft_failure() {
   echo "::warning::Runner binary cache publication skipped (${reason}): ${message}"
   emit "published" "false"
   emit "publish-reason" "$reason"
+}
+
+fetch_verified_r2_runner() {
+  local object_key=$1
+  local expected_object_size=$2
+  local expected_runner_size=$3
+  local expected_runner_sha=$4
+  local compressed_path=$5
+  local runner_path=$6
+  local endpoint head_json observed_object_size downloaded_size decompressed_size actual_sha
+  local get_status=0 decompress_status=0
+  local aws_error_log="${compressed_path}.aws.err"
+  local zstd_error_log="${compressed_path}.zstd.err"
+
+  R2_VERIFICATION_REASON=""
+  R2_VERIFICATION_MESSAGE=""
+  R2_VERIFIED_OBJECT_SIZE=""
+  endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+  if ! head_json=$(aws s3api head-object \
+    --endpoint-url "$endpoint" \
+    --bucket "$R2_BUCKET_NAME" \
+    --key "$object_key" \
+    --output json \
+    --cli-connect-timeout 5 \
+    --cli-read-timeout 30 2>"$aws_error_log"); then
+    R2_VERIFICATION_REASON="head-failed"
+    R2_VERIFICATION_MESSAGE="the R2 object could not be inspected"
+    return 1
+  fi
+  if ! observed_object_size=$(jq -er '.ContentLength | select(type == "number" and floor == .)' \
+    <<<"$head_json" 2>/dev/null); then
+    R2_VERIFICATION_REASON="head-malformed"
+    R2_VERIFICATION_MESSAGE="the R2 object metadata was malformed"
+    return 1
+  fi
+  if [[ ! "$observed_object_size" =~ ^[1-9][0-9]*$ ]] ||
+    [ "$observed_object_size" -gt "$RUNNER_BINARY_MAX_COMPRESSED_BYTES" ]; then
+    R2_VERIFICATION_REASON="size-mismatch"
+    R2_VERIFICATION_MESSAGE="the R2 object is outside the configured bound"
+    return 1
+  fi
+  if [ -n "$expected_object_size" ] && [ "$observed_object_size" != "$expected_object_size" ]; then
+    R2_VERIFICATION_REASON="size-mismatch"
+    R2_VERIFICATION_MESSAGE="the R2 object size does not match the reusable manifest"
+    return 1
+  fi
+
+  aws s3api get-object \
+    --endpoint-url "$endpoint" \
+    --bucket "$R2_BUCKET_NAME" \
+    --key "$object_key" \
+    --range "bytes=0-${RUNNER_BINARY_MAX_COMPRESSED_BYTES}" \
+    --cli-connect-timeout 5 \
+    --cli-read-timeout 30 \
+    "$compressed_path" \
+    >/dev/null 2>"$aws_error_log" || get_status=$?
+  if [ "$get_status" -ne 0 ]; then
+    R2_VERIFICATION_REASON="get-failed"
+    R2_VERIFICATION_MESSAGE="the R2 object could not be downloaded"
+    return 1
+  fi
+  downloaded_size=$(stat -c '%s' "$compressed_path")
+  if [ "$downloaded_size" != "$observed_object_size" ]; then
+    R2_VERIFICATION_REASON="size-changed"
+    R2_VERIFICATION_MESSAGE="the R2 object changed during validation"
+    return 1
+  fi
+
+  zstd -q -d -c "$compressed_path" \
+    2>"$zstd_error_log" \
+    | head -c "$((RUNNER_BINARY_MAX_SIZE_BYTES + 1))" \
+      > "$runner_path" || decompress_status=$?
+  decompressed_size=$(stat -c '%s' "$runner_path")
+  if [ "$decompress_status" -ne 0 ] ||
+    [ "$decompressed_size" -gt "$RUNNER_BINARY_MAX_SIZE_BYTES" ]; then
+    R2_VERIFICATION_REASON="decompression-invalid"
+    R2_VERIFICATION_MESSAGE="the R2 object is not a bounded zstd runner"
+    return 1
+  fi
+  actual_sha=$(sha256sum "$runner_path" | awk '{print $1}')
+  if [ "$decompressed_size" != "$expected_runner_size" ] ||
+    [ "$actual_sha" != "$expected_runner_sha" ]; then
+    R2_VERIFICATION_REASON="content-mismatch"
+    R2_VERIFICATION_MESSAGE="the R2 object does not match the expected runner identity"
+    return 1
+  fi
+
+  R2_VERIFIED_OBJECT_SIZE="$observed_object_size"
 }
 
 validate_producer_inputs() {
@@ -309,60 +403,20 @@ publish() {
     return 0
   fi
 
-  local head_json retained_size get_status
-  if ! head_json=$(aws s3api head-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
-    --key "$object_key" \
-    --output json 2>"$error_log"); then
-    publish_soft_failure "head-failed" "the retained R2 object could not be inspected"
+  local retained_size publish_reason
+  if ! fetch_verified_r2_runner \
+    "$object_key" "" "$FRESH_RUNNER_SIZE" "$FRESH_RUNNER_SHA" \
+    "$retained" "$decompressed"; then
+    case "$R2_VERIFICATION_REASON" in
+      size-mismatch) publish_reason="retained-size-invalid" ;;
+      size-changed) publish_reason="retained-size-changed" ;;
+      content-mismatch) publish_reason="retained-content-mismatch" ;;
+      *) publish_reason="$R2_VERIFICATION_REASON" ;;
+    esac
+    publish_soft_failure "$publish_reason" "$R2_VERIFICATION_MESSAGE"
     return 0
   fi
-  if ! retained_size=$(jq -er '.ContentLength | select(type == "number" and floor == .)' \
-    <<<"$head_json" 2>/dev/null); then
-    publish_soft_failure "head-malformed" "the retained R2 object metadata was malformed"
-    return 0
-  fi
-  if [[ ! "$retained_size" =~ ^[1-9][0-9]*$ ]] || [ "$retained_size" -gt "$RUNNER_BINARY_MAX_COMPRESSED_BYTES" ]; then
-    publish_soft_failure "retained-size-invalid" "the retained R2 object is outside the configured bound"
-    return 0
-  fi
-
-  get_status=0
-  aws s3api get-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
-    --key "$object_key" \
-    --range "bytes=0-${RUNNER_BINARY_MAX_COMPRESSED_BYTES}" \
-    "$retained" \
-    >/dev/null 2>"$error_log" || get_status=$?
-  if [ "$get_status" -ne 0 ]; then
-    publish_soft_failure "get-failed" "the retained R2 object could not be downloaded"
-    return 0
-  fi
-  if [ "$(stat -c '%s' "$retained")" != "$retained_size" ]; then
-    publish_soft_failure "retained-size-changed" "the retained R2 object changed during validation"
-    return 0
-  fi
-
-  local decompress_status=0
-  set +e
-  set -o pipefail
-  zstd -q -d -c "$retained" \
-    2>"${temp_root}/zstd.err" \
-    | head -c "$((RUNNER_BINARY_MAX_SIZE_BYTES + 1))" \
-      > "$decompressed"
-  decompress_status=$?
-  set -e
-  if [ "$decompress_status" -ne 0 ] || [ "$(stat -c '%s' "$decompressed")" -gt "$RUNNER_BINARY_MAX_SIZE_BYTES" ]; then
-    publish_soft_failure "decompression-invalid" "the retained R2 object is not a bounded zstd runner"
-    return 0
-  fi
-  if [ "$(stat -c '%s' "$decompressed")" != "$FRESH_RUNNER_SIZE" ] ||
-    [ "$(sha256sum "$decompressed" | awk '{print $1}')" != "$FRESH_RUNNER_SHA" ]; then
-    publish_soft_failure "retained-content-mismatch" "the retained R2 object does not match the fresh runner identity"
-    return 0
-  fi
+  retained_size="$R2_VERIFIED_OBJECT_SIZE"
 
   local pr_number_json created_at manifest_tmp
   if [ -n "${PRODUCER_PR_NUMBER:-}" ]; then
@@ -468,7 +522,7 @@ collect_trusted_candidates() {
   mkdir -p "$output_dir"
 
   local artifact_name_value artifacts_json
-  artifact_name_value="runner-binary-asset-${expected_target}-${expected_digest}"
+  artifact_name_value=$(reusable_artifact_name "$expected_target" "$expected_digest")
   if ! artifacts_json=$(gh api --paginate --slurp \
     "repos/${REPO}/actions/artifacts?name=${artifact_name_value}&per_page=100" 2>/dev/null); then
     CANDIDATE_DISCOVERY_REASON="artifact-api-unavailable"
@@ -612,11 +666,8 @@ collect_trusted_candidates() {
       continue
     fi
 
-    local run_attempt run_event run_head_sha manifest_pr expected_pr_json
+    local run_attempt expected_pr_json
     run_attempt=$(jq -r '.run_attempt' <<<"$run_json")
-    run_event=$(jq -r '.event' <<<"$run_json")
-    run_head_sha=$(jq -r '.head_sha' <<<"$run_json")
-    manifest_pr=$(jq -r '.producer.prNumber // empty' "$manifest_path")
     if [ "$source" = "same-pr" ]; then
       expected_pr_json="$CURRENT_PR_NUMBER"
     else
@@ -626,7 +677,7 @@ collect_trusted_candidates() {
       --argjson run_id "$artifact_run_id" \
       --argjson run_attempt "$run_attempt" \
       --arg event "$run_event" \
-      --arg head_sha "$run_head_sha" \
+      --arg head_sha "$artifact_head_sha" \
       --argjson pr_number "$expected_pr_json" '
         .producer.runId == $run_id and
         .producer.runAttempt == $run_attempt and
@@ -634,9 +685,6 @@ collect_trusted_candidates() {
         .producer.headSha == $head_sha and
         .producer.prNumber == $pr_number
       ' "$manifest_path" >/dev/null; then
-      continue
-    fi
-    if [ "$source" = "same-pr" ] && [ "$manifest_pr" != "$CURRENT_PR_NUMBER" ]; then
       continue
     fi
 
@@ -779,12 +827,11 @@ active_resolve() {
     return 0
   fi
 
-  local output_parent temp_root candidate_dir error_log
+  local output_parent temp_root candidate_dir
   output_parent=$(dirname "$RESOLVE_OUTPUT_DIR")
   mkdir -p "$output_parent"
   temp_root=$(mktemp -d "${RUNNER_TEMP:-${output_parent}}/runner-binary-resolve.XXXXXX")
   candidate_dir="${temp_root}/candidates"
-  error_log="${temp_root}/remote.err"
   ACTIVE_RESOLVE_TEMP_ROOT="$temp_root"
   trap 'rm -rf "$ACTIVE_RESOLVE_TEMP_ROOT"' EXIT
 
@@ -805,70 +852,19 @@ active_resolve() {
   fi
   first_trusted_candidate
 
-  local object_key object_size runner_sha runner_size endpoint head_json retained_size
+  local object_key object_size runner_sha runner_size
   object_key=$(jq -r '.object.key' "$TRUSTED_MANIFEST_PATH")
   object_size=$(jq -r '.object.sizeBytes' "$TRUSTED_MANIFEST_PATH")
   runner_sha=$(jq -r '.runner.sha256' "$TRUSTED_MANIFEST_PATH")
   runner_size=$(jq -r '.runner.sizeBytes' "$TRUSTED_MANIFEST_PATH")
-  endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-  if ! head_json=$(aws s3api head-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
-    --key "$object_key" \
-    --output json \
-    --cli-connect-timeout 5 \
-    --cli-read-timeout 30 2>"$error_log"); then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-head-failed" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-  if ! retained_size=$(jq -er '.ContentLength | select(type == "number" and floor == .)' \
-    <<<"$head_json" 2>/dev/null); then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-head-malformed" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-  if [ "$retained_size" != "$object_size" ] ||
-    [ "$retained_size" -le 0 ] || [ "$retained_size" -gt "$RUNNER_BINARY_MAX_COMPRESSED_BYTES" ]; then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-size-mismatch" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-
-  local compressed decompressed get_status=0 decompress_status=0
+  local compressed decompressed
   compressed="${temp_root}/runner.zst"
   decompressed="${temp_root}/runner"
-  aws s3api get-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
-    --key "$object_key" \
-    --range "bytes=0-${RUNNER_BINARY_MAX_COMPRESSED_BYTES}" \
-    --cli-connect-timeout 5 \
-    --cli-read-timeout 30 \
-    "$compressed" \
-    >/dev/null 2>"$error_log" || get_status=$?
-  if [ "$get_status" -ne 0 ]; then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-get-failed" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-  if [ "$(stat -c '%s' "$compressed")" != "$object_size" ]; then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-size-changed" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-
-  set +e
-  set -o pipefail
-  zstd -q -d -c "$compressed" \
-    2>"${temp_root}/zstd.err" \
-    | head -c "$((RUNNER_BINARY_MAX_SIZE_BYTES + 1))" \
-      > "$decompressed"
-  decompress_status=$?
-  set -e
-  if [ "$decompress_status" -ne 0 ] ||
-    [ "$(stat -c '%s' "$decompressed")" -gt "$RUNNER_BINARY_MAX_SIZE_BYTES" ]; then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-decompression-invalid" "$TRUSTED_RUN_ID"
-    return 0
-  fi
-  if [ "$(stat -c '%s' "$decompressed")" != "$runner_size" ] ||
-    [ "$(sha256sum "$decompressed" | awk '{print $1}')" != "$runner_sha" ]; then
-    resolve_result "miss" "$TRUSTED_SOURCE" "r2-content-mismatch" "$TRUSTED_RUN_ID"
+  if ! fetch_verified_r2_runner \
+    "$object_key" "$object_size" "$runner_size" "$runner_sha" \
+    "$compressed" "$decompressed"; then
+    resolve_result "miss" "$TRUSTED_SOURCE" \
+      "r2-${R2_VERIFICATION_REASON}" "$TRUSTED_RUN_ID"
     return 0
   fi
 

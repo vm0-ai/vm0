@@ -185,6 +185,14 @@ assert_contains "$publish_out" "publish-reason=uploaded"
 [ -f "${TMPDIR}/published/manifest.json" ] || fail "expected reusable manifest"
 zstd -q -d -c "${TMPDIR}/store/object.zst" > "${TMPDIR}/stored-runner"
 cmp -s "$runner" "${TMPDIR}/stored-runner" || fail "R2 object must contain the fresh runner"
+if ! grep -F 's3api head-object' "${TMPDIR}/aws.log" |
+  grep -qF -- '--cli-connect-timeout 5 --cli-read-timeout 30'; then
+  fail "R2 HEAD validation must use bounded AWS timeouts"
+fi
+if ! grep -F 's3api get-object' "${TMPDIR}/aws.log" |
+  grep -qF -- '--cli-connect-timeout 5 --cli-read-timeout 30'; then
+  fail "R2 GET validation must use bounded AWS timeouts"
+fi
 
 MANIFEST_PATH="${TMPDIR}/published/manifest.json" \
 EXPECTED_TARGET="$target" \
@@ -289,6 +297,14 @@ corrupt_out=$(run_publish "${TMPDIR}/corrupt")
 assert_contains "$corrupt_out" "published=false"
 assert_contains "$corrupt_out" "publish-reason=decompression-invalid"
 [ ! -e "${TMPDIR}/corrupt/manifest.json" ] || fail "corrupt R2 bytes must not be advertised"
+
+printf 'different runner binary fixture\n' > "${TMPDIR}/different-runner"
+zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "${TMPDIR}/different-runner"
+content_mismatch_out=$(run_publish "${TMPDIR}/publish-content-mismatch")
+assert_contains "$content_mismatch_out" "published=false"
+assert_contains "$content_mismatch_out" "publish-reason=retained-content-mismatch"
+[ ! -e "${TMPDIR}/publish-content-mismatch/manifest.json" ] ||
+  fail "mismatched R2 bytes must not be advertised"
 
 rm -f "${TMPDIR}/store/object.zst"
 put_failure=$(run_publish "${TMPDIR}/put-failure" put-fail 2>&1)
