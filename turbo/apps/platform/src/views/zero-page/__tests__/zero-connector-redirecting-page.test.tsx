@@ -18,7 +18,7 @@ describe("connector redirecting page", () => {
       screen.findByRole("heading", { name: "Redirecting to GitHub…" }),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByText("You’ll continue on GitHub to authorize Zero."),
+      screen.getByText("You’ll continue on GitHub to authorize VM0."),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Preparing a secure connection"),
@@ -79,7 +79,7 @@ describe("connector redirecting page", () => {
       screen.findByRole("heading", { name: "Couldn’t open GitHub" }),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByText("Return to Zero and try connecting again."),
+      screen.getByText("Return to VM0 and try connecting again."),
     ).toBeInTheDocument();
     expect(screen.getByText("Close window")).toBeInTheDocument();
   });

@@ -1,107 +1,93 @@
+import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import {
-  IconCheck,
-  IconLoader2,
-  IconMoon,
-  IconSun,
-  IconX,
-} from "@tabler/icons-react";
-import { useGet, useSet } from "ccstate-react";
-import { setTheme$, theme$ } from "../../signals/theme.ts";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+  getStaticConnectorIconMetadata,
+  isStaticConnectorIconType,
+} from "@vm0/connectors/static-connector-icons";
+import { Button } from "@vm0/ui/components/ui/button";
+import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
 
 export function ZeroConnectorCallbackPage({
+  connectorRef,
   connectorLabel,
   status,
   username,
   errorMessage,
 }: {
+  readonly connectorRef: string | null;
   readonly connectorLabel: string;
   readonly status: ConnectorCallbackPageStatus;
   readonly username: string | null;
   readonly errorMessage: string | null;
 }): React.JSX.Element {
-  const theme = useGet(theme$);
-  const setTheme = useSet(setTheme$);
+  const connectorIcon =
+    connectorRef && isStaticConnectorIconType(connectorRef)
+      ? getStaticConnectorIconMetadata(connectorRef)
+      : undefined;
+  const title =
+    status === "success"
+      ? `${connectorLabel} connected`
+      : status === "error"
+        ? `Couldn’t connect ${connectorLabel}`
+        : `Connecting ${connectorLabel}…`;
+  const description =
+    status === "success" ? (
+      username ? (
+        <>
+          Connected as <strong>{username}</strong>. You can close this window.
+        </>
+      ) : (
+        "Your account has been connected. You can close this window."
+      )
+    ) : status === "error" ? (
+      <>
+        {errorMessage || "An error occurred during connection."} Close this
+        window and try again.
+      </>
+    ) : (
+      "Please wait while we finish connecting your account."
+    );
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <button
-        type="button"
-        onClick={() => {
-          setTheme(theme === "dark" ? "light" : "dark");
-        }}
-        className="fixed right-6 top-6 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
-        aria-label="Toggle theme"
-      >
-        {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}
-      </button>
-
-      <div className="min-h-[380px] w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col items-center p-10">
-          <div className="mb-8 flex items-center gap-2">
-            <VM0Logo />
-            <span className="text-2xl text-foreground">Platform</span>
-          </div>
-
+    <ZeroConnectorFlowCard
+      connectorIcon={connectorIcon}
+      title={title}
+      description={description}
+    >
+      {status === "loading" ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
+          <span>Finishing the secure connection</span>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-4">
           <div
-            className="mt-4 flex flex-col items-center gap-4"
-            aria-live="polite"
+            className={
+              status === "success"
+                ? "flex items-center gap-2 text-sm text-emerald-600"
+                : "flex items-center gap-2 text-sm text-destructive"
+            }
           >
             {status === "success" ? (
-              <IconCheck size={40} className="text-lime-600" stroke={1} />
-            ) : status === "error" ? (
-              <IconX size={40} className="text-red-500" stroke={1} />
+              <IconCheck size={16} aria-hidden="true" />
             ) : (
-              <IconLoader2
-                size={40}
-                className="animate-spin text-muted-foreground"
-                stroke={1}
-              />
+              <IconAlertCircle size={16} aria-hidden="true" />
             )}
-
-            <div className="flex flex-col items-center gap-2 text-center">
-              {status === "success" ? (
-                <>
-                  <h1 className="text-lg font-medium leading-7 text-foreground">
-                    {connectorLabel} connected successfully.
-                  </h1>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    {username ? (
-                      <>
-                        Connected as <strong>{username}</strong>.
-                      </>
-                    ) : (
-                      "Your account has been connected."
-                    )}{" "}
-                    You can close this tab now.
-                  </p>
-                </>
-              ) : status === "error" ? (
-                <>
-                  <h1 className="text-lg font-medium leading-7 text-foreground">
-                    {connectorLabel} connection failed.
-                  </h1>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    {errorMessage || "An error occurred during connection."}{" "}
-                    Please close this window and try again.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h1 className="text-lg font-medium leading-7 text-foreground">
-                    Connecting {connectorLabel}…
-                  </h1>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    Please wait while we finish connecting your account.
-                  </p>
-                </>
-              )}
-            </div>
+            <span>
+              {status === "success" ? "Connected" : "Connection failed"}
+            </span>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.close();
+            }}
+          >
+            Close window
+          </Button>
         </div>
-      </div>
-    </div>
+      )}
+    </ZeroConnectorFlowCard>
   );
 }

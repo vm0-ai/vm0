@@ -31,13 +31,11 @@ describe("connector callback page", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "GitHub connected successfully.",
+        name: "GitHub connected",
       }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("octocat")).toBeInTheDocument();
-    expect(
-      screen.getByText(/You can close this tab now\./),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/You can close this window\./)).toBeInTheDocument();
     expect(observedQuery).toMatchObject({
       code: "oauth-code",
       state: "oauth-state",
@@ -74,7 +72,7 @@ describe("connector callback page", () => {
     });
 
     await expect(
-      screen.findByRole("heading", { name: "NOTION connection failed." }),
+      screen.findByRole("heading", { name: "Couldn’t connect NOTION" }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText(/Provider denied access/)).toBeInTheDocument();
     await waitFor(() => {
@@ -97,7 +95,7 @@ describe("connector callback page", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "GitHub connected successfully.",
+        name: "GitHub connected",
       }),
     ).resolves.toBeInTheDocument();
   });
