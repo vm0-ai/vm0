@@ -166,6 +166,7 @@ const artifactListSqlRowSchema = z.object({
   preview_image_url: z.string().nullable(),
   metadata: z.unknown(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
+  updated_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
   cursor_updated_at: z.string().optional(),
   thread_id: z.string(),
@@ -1089,6 +1090,7 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     size: row.size_bytes ?? 0,
     url: row.url,
     createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
@@ -1265,6 +1267,7 @@ async function listChangedArtifacts(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
@@ -1337,6 +1340,7 @@ async function listArtifactHistory(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         ${chatThreads.id} AS thread_id,
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
