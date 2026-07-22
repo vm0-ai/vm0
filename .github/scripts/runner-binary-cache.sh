@@ -9,6 +9,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 RUNNER_BINARY_MAX_SIZE_BYTES=$((128 * 1024 * 1024))
 RUNNER_BINARY_MAX_COMPRESSED_BYTES=$((64 * 1024 * 1024))
+RUNNER_BINARY_MAX_MANIFEST_ARTIFACT_BYTES=$((1024 * 1024))
+RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS=8
+RUNNER_BINARY_MAX_TRUSTED_IDENTITIES=2
 RUNNER_BINARY_WORKFLOW_PATH=".github/workflows/runner-image.yml"
 
 emit() {
@@ -248,7 +251,7 @@ publish() {
   load_fresh
   validate_producer_inputs
   require_env OUTPUT_DIR
-  if [ "$OUTPUT_DIR" = "/" ]; then
+  if [ "${OUTPUT_DIR:?}" = "/" ]; then
     echo "refusing unsafe OUTPUT_DIR=/" >&2
     exit 2
   fi
@@ -442,69 +445,113 @@ shadow_result() {
   fi
 }
 
-shadow_resolve() {
-  load_fresh
+validate_resolution_context() {
   require_env REPO
   require_env CURRENT_RUN_ID
   require_env CURRENT_EVENT
   require_env DEFAULT_BRANCH
-  require_env SHADOW_OUTPUT_DIR
-  if [ "$SHADOW_OUTPUT_DIR" = "/" ]; then
-    echo "refusing unsafe SHADOW_OUTPUT_DIR=/" >&2
-    exit 2
-  fi
   case "$CURRENT_EVENT" in
     pull_request|merge_group)
       if [[ ! "${CURRENT_PR_NUMBER:-}" =~ ^[1-9][0-9]*$ ]]; then
-        echo "${CURRENT_EVENT} shadow resolution requires a current PR number" >&2
+        echo "${CURRENT_EVENT} runner binary resolution requires a current PR number" >&2
         exit 2
       fi
       ;;
     push) ;;
     *) echo "unsupported current event: ${CURRENT_EVENT}" >&2; exit 2 ;;
   esac
-  mkdir -p "$SHADOW_OUTPUT_DIR"
+}
+
+collect_trusted_candidates() {
+  local expected_target=$1 expected_digest=$2 output_dir=$3
+  validate_resolution_context
+  mkdir -p "$output_dir"
 
   local artifact_name_value artifacts_json
-  artifact_name_value="runner-binary-asset-${FRESH_TARGET}-${FRESH_BINARY_INPUT_DIGEST}"
+  artifact_name_value="runner-binary-asset-${expected_target}-${expected_digest}"
   if ! artifacts_json=$(gh api --paginate --slurp \
     "repos/${REPO}/actions/artifacts?name=${artifact_name_value}&per_page=100" 2>/dev/null); then
-    shadow_result "error" "" "artifact-api-unavailable"
-    return 0
+    CANDIDATE_DISCOVERY_REASON="artifact-api-unavailable"
+    return 1
   fi
   if ! jq -e 'type == "array" and all(.[]; type == "object" and (.artifacts | type == "array"))' \
     <<<"$artifacts_json" >/dev/null; then
-    shadow_result "error" "" "artifact-api-malformed"
-    return 0
+    CANDIDATE_DISCOVERY_REASON="artifact-api-malformed"
+    return 1
   fi
 
-  local candidates_file
-  candidates_file="${SHADOW_OUTPUT_DIR}/trusted-candidates.tsv"
-  : > "$candidates_file"
+  local potential_file sorted_potential trusted_file identities_file
+  potential_file="${output_dir}/potential-candidates.tsv"
+  sorted_potential="${output_dir}/potential-candidates-sorted.tsv"
+  trusted_file="${output_dir}/trusted-candidates.tsv"
+  identities_file="${output_dir}/trusted-identities.tsv"
+  : > "$potential_file"
+  : > "$trusted_file"
+  : > "$identities_file"
   while IFS= read -r artifact_encoded; do
     [ -n "$artifact_encoded" ] || continue
-    local artifact_json artifact_run_id artifact_id artifact_created artifact_branch artifact_head_sha
+    local artifact_json artifact_run_id artifact_id artifact_size artifact_created artifact_branch artifact_head_sha
     artifact_json=$(base64 -d <<<"$artifact_encoded")
     artifact_run_id=$(jq -r '.workflow_run.id // empty' <<<"$artifact_json")
     artifact_id=$(jq -r '.id // empty' <<<"$artifact_json")
+    artifact_size=$(jq -r '.size_in_bytes // empty' <<<"$artifact_json")
     artifact_created=$(jq -r '.created_at // empty' <<<"$artifact_json")
     artifact_branch=$(jq -r '.workflow_run.head_branch // empty' <<<"$artifact_json")
     artifact_head_sha=$(jq -r '.workflow_run.head_sha // empty' <<<"$artifact_json")
     if [[ ! "$artifact_run_id" =~ ^[1-9][0-9]*$ ]] ||
       [[ ! "$artifact_id" =~ ^[1-9][0-9]*$ ]] ||
+      [[ ! "$artifact_size" =~ ^[1-9][0-9]*$ ]] ||
+      [ "$artifact_size" -gt "$RUNNER_BINARY_MAX_MANIFEST_ARTIFACT_BYTES" ] ||
       [ "$artifact_run_id" = "$CURRENT_RUN_ID" ]; then
       continue
     fi
 
-    local branch_maybe_relevant=false
+    local source="" rank=""
     if [ "$artifact_branch" = "$DEFAULT_BRANCH" ]; then
-      branch_maybe_relevant=true
+      source="protected-main"
+      case "$CURRENT_EVENT" in
+        pull_request|push) rank=0 ;;
+        merge_group) rank=1 ;;
+      esac
     elif [ -n "${CURRENT_PR_HEAD_REF:-}" ] && [ "$artifact_branch" = "$CURRENT_PR_HEAD_REF" ]; then
-      branch_maybe_relevant=true
+      source="same-pr"
+      case "$CURRENT_EVENT" in
+        pull_request) rank=1 ;;
+        merge_group) rank=0 ;;
+        push) continue ;;
+      esac
     elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [[ "$artifact_branch" =~ (^|/)pr-${CURRENT_PR_NUMBER}- ]]; then
-      branch_maybe_relevant=true
+      source="same-pr"
+      case "$CURRENT_EVENT" in
+        pull_request) rank=1 ;;
+        merge_group) rank=0 ;;
+        push) continue ;;
+      esac
     fi
-    [ "$branch_maybe_relevant" = "true" ] || continue
+    [ -n "$source" ] || continue
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$rank" "$artifact_created" "$artifact_id" "$artifact_run_id" "$source" \
+      "$artifact_head_sha" >> "$potential_file"
+  done < <(jq -r \
+    --arg name "$artifact_name_value" '
+      .[] | .artifacts[]? |
+      select(.name == $name and .expired == false) |
+      @base64
+    ' <<<"$artifacts_json")
+
+  sort -t $'\t' -k1,1n -k2,2r "$potential_file" > "$sorted_potential"
+
+  local inspected=0 trusted_count=0 identity_count=0 limit_reached=false
+  local potential_count
+  potential_count=$(wc -l < "$sorted_potential" | tr -d ' ')
+  while IFS=$'\t' read -r rank artifact_created artifact_id artifact_run_id source artifact_head_sha; do
+    [ -n "$artifact_run_id" ] || continue
+    if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ]; then
+      limit_reached=true
+      break
+    fi
+    inspected=$((inspected + 1))
 
     local run_json
     if ! run_json=$(gh api "repos/${REPO}/actions/runs/${artifact_run_id}" 2>/dev/null); then
@@ -526,55 +573,25 @@ shadow_resolve() {
       continue
     fi
 
-    local source="" rank="" run_event run_branch
+    local actual_source="" run_event run_branch
     run_event=$(jq -r '.event' <<<"$run_json")
     run_branch=$(jq -r '.head_branch' <<<"$run_json")
     if [ "$run_event" = "push" ] && [ "$run_branch" = "$DEFAULT_BRANCH" ]; then
-      source="protected-main"
-      case "$CURRENT_EVENT" in
-        pull_request) rank=0 ;;
-        merge_group) rank=1 ;;
-        push) rank=0 ;;
-      esac
+      actual_source="protected-main"
     elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [ "$run_event" = "pull_request" ] &&
       jq -e --argjson pr "$CURRENT_PR_NUMBER" 'any(.pull_requests[]?; .number == $pr)' \
         <<<"$run_json" >/dev/null; then
-      source="same-pr"
-      case "$CURRENT_EVENT" in
-        pull_request) rank=1 ;;
-        merge_group) rank=0 ;;
-        push) continue ;;
-      esac
+      actual_source="same-pr"
     elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [ "$run_event" = "merge_group" ] &&
       [[ "$run_branch" =~ (^|/)pr-${CURRENT_PR_NUMBER}- ]]; then
-      source="same-pr"
-      case "$CURRENT_EVENT" in
-        pull_request) rank=1 ;;
-        merge_group) rank=0 ;;
-        push) continue ;;
-      esac
+      actual_source="same-pr"
     else
       continue
     fi
+    [ "$actual_source" = "$source" ] || continue
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$rank" "$artifact_created" "$artifact_id" "$artifact_run_id" "$source" \
-      "$(base64 -w0 <<<"$run_json")" >> "$candidates_file"
-  done < <(jq -r \
-    --arg name "$artifact_name_value" '
-      .[] | .artifacts[]? |
-      select(.name == $name and .expired == false) |
-      @base64
-    ' <<<"$artifacts_json")
-
-  local sorted_candidates
-  sorted_candidates="${SHADOW_OUTPUT_DIR}/trusted-candidates-sorted.tsv"
-  sort -t $'\t' -k1,1n -k2,2r "$candidates_file" > "$sorted_candidates"
-
-  while IFS=$'\t' read -r _rank _created artifact_id artifact_run_id source run_encoded; do
-    [ -n "$artifact_run_id" ] || continue
-    local candidate_dir manifest_path run_json
-    candidate_dir="${SHADOW_OUTPUT_DIR}/candidate-${artifact_id}"
+    local candidate_dir manifest_path
+    candidate_dir="${output_dir}/candidate-${artifact_id}"
     rm -rf "$candidate_dir"
     mkdir -p "$candidate_dir"
     if ! gh run download "$artifact_run_id" -n "$artifact_name_value" -D "$candidate_dir" \
@@ -586,10 +603,9 @@ shadow_resolve() {
       continue
     fi
     manifest_path="${manifest_candidates[0]}"
-    run_json=$(base64 -d <<<"$run_encoded")
     if ! MANIFEST_PATH="$manifest_path" \
-      EXPECTED_TARGET="$FRESH_TARGET" \
-      EXPECTED_BINARY_INPUT_DIGEST="$FRESH_BINARY_INPUT_DIGEST" \
+      EXPECTED_TARGET="$expected_target" \
+      EXPECTED_BINARY_INPUT_DIGEST="$expected_digest" \
       EXPECTED_REPOSITORY="$REPO" \
       EXPECTED_WORKFLOW_PATH="$RUNNER_BINARY_WORKFLOW_PATH" \
         "$0" manifest-validate >/dev/null 2>&1; then
@@ -624,28 +640,267 @@ shadow_resolve() {
       continue
     fi
 
-    local candidate_runner_sha candidate_runner_size candidate_guests
-    candidate_runner_sha=$(jq -r '.runner.sha256' "$manifest_path")
-    candidate_runner_size=$(jq -r '.runner.sizeBytes' "$manifest_path")
-    candidate_guests=$(jq -cS '.guests' "$manifest_path")
-    if [ "$candidate_runner_sha" != "$FRESH_RUNNER_SHA" ] ||
-      [ "$candidate_runner_size" != "$FRESH_RUNNER_SIZE" ] ||
-      [ "$candidate_guests" != "$FRESH_GUESTS" ]; then
-      shadow_result "conflict" "$source" "equal-input-output-mismatch" "$artifact_run_id"
-      echo "equal runner binary input digest produced conflicting output identity: current run ${CURRENT_RUN_ID}, candidate run ${artifact_run_id}" >&2
-      return 1
+    local identity identity_key
+    identity=$(jq -cS '{runner, guests}' "$manifest_path")
+    identity_key=$(sha256sum <<<"$identity" | awk '{print $1}')
+    if ! grep -qxF "$identity_key" "$identities_file"; then
+      printf '%s\n' "$identity_key" >> "$identities_file"
+      identity_count=$((identity_count + 1))
     fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$rank" "$artifact_created" "$artifact_id" "$artifact_run_id" "$source" \
+      "$manifest_path" >> "$trusted_file"
+    trusted_count=$((trusted_count + 1))
+    if [ "$identity_count" -ge "$RUNNER_BINARY_MAX_TRUSTED_IDENTITIES" ]; then
+      break
+    fi
+  done < "$sorted_potential"
 
-    shadow_result "hit" "$source" "equal-output" "$artifact_run_id"
+  if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ] &&
+    [ "$potential_count" -gt "$inspected" ]; then
+    limit_reached=true
+  fi
+
+  TRUSTED_CANDIDATES_FILE="$trusted_file"
+  TRUSTED_CANDIDATE_COUNT="$trusted_count"
+  TRUSTED_IDENTITY_COUNT="$identity_count"
+  TRUSTED_INSPECTION_COUNT="$inspected"
+  if [ "$trusted_count" -eq 0 ]; then
+    if [ "$limit_reached" = "true" ]; then
+      CANDIDATE_DISCOVERY_REASON="candidate-limit-exhausted"
+    else
+      CANDIDATE_DISCOVERY_REASON="no-trusted-candidate"
+    fi
+  elif [ "$identity_count" -gt 1 ]; then
+    CANDIDATE_DISCOVERY_REASON="trusted-output-conflict"
+  else
+    CANDIDATE_DISCOVERY_REASON="trusted-candidate"
+  fi
+}
+
+first_trusted_candidate() {
+  IFS=$'\t' read -r _ _ _ \
+    TRUSTED_RUN_ID TRUSTED_SOURCE TRUSTED_MANIFEST_PATH < "$TRUSTED_CANDIDATES_FILE"
+  [ -n "${TRUSTED_RUN_ID:-}" ]
+}
+
+shadow_resolve() {
+  load_fresh
+  require_env SHADOW_OUTPUT_DIR
+  if [ "$SHADOW_OUTPUT_DIR" = "/" ]; then
+    echo "refusing unsafe SHADOW_OUTPUT_DIR=/" >&2
+    exit 2
+  fi
+  mkdir -p "$SHADOW_OUTPUT_DIR"
+
+  if ! collect_trusted_candidates \
+    "$FRESH_TARGET" "$FRESH_BINARY_INPUT_DIGEST" "$SHADOW_OUTPUT_DIR"; then
+    shadow_result "error" "" "$CANDIDATE_DISCOVERY_REASON"
     return 0
-  done < "$sorted_candidates"
+  fi
+  if [ "$TRUSTED_IDENTITY_COUNT" -gt 1 ]; then
+    first_trusted_candidate
+    shadow_result "conflict" "$TRUSTED_SOURCE" \
+      "equal-input-output-mismatch" "$TRUSTED_RUN_ID"
+    echo "equal runner binary input digest produced conflicting output identity: current run ${CURRENT_RUN_ID}, candidate run ${TRUSTED_RUN_ID}" >&2
+    return 1
+  fi
+  if [ "$TRUSTED_CANDIDATE_COUNT" -eq 0 ]; then
+    shadow_result "miss" "" "$CANDIDATE_DISCOVERY_REASON"
+    return 0
+  fi
 
-  shadow_result "miss" "" "no-trusted-candidate"
+  first_trusted_candidate
+  local candidate_runner_sha candidate_runner_size candidate_guests
+  candidate_runner_sha=$(jq -r '.runner.sha256' "$TRUSTED_MANIFEST_PATH")
+  candidate_runner_size=$(jq -r '.runner.sizeBytes' "$TRUSTED_MANIFEST_PATH")
+  candidate_guests=$(jq -cS '.guests' "$TRUSTED_MANIFEST_PATH")
+  if [ "$candidate_runner_sha" != "$FRESH_RUNNER_SHA" ] ||
+    [ "$candidate_runner_size" != "$FRESH_RUNNER_SIZE" ] ||
+    [ "$candidate_guests" != "$FRESH_GUESTS" ]; then
+    shadow_result "conflict" "$TRUSTED_SOURCE" \
+      "equal-input-output-mismatch" "$TRUSTED_RUN_ID"
+    echo "equal runner binary input digest produced conflicting output identity: current run ${CURRENT_RUN_ID}, candidate run ${TRUSTED_RUN_ID}" >&2
+    return 1
+  fi
+
+  shadow_result "hit" "$TRUSTED_SOURCE" "equal-output" "$TRUSTED_RUN_ID"
+}
+
+resolve_result() {
+  local outcome=$1 source=$2 reason=$3 run_id=${4:-}
+  emit "resolve-outcome" "$outcome"
+  emit "resolve-source" "$source"
+  emit "resolve-reason" "$reason"
+  emit "resolve-producer-run-id" "$run_id"
+}
+
+active_resolve() {
+  require_env EXPECTED_TARGET
+  require_env EXPECTED_BINARY_INPUT_DIGEST
+  require_env RESOLVE_OUTPUT_DIR
+  runner_image_validate_target "$EXPECTED_TARGET"
+  if [[ ! "$EXPECTED_BINARY_INPUT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "invalid expected runner binary input digest: ${EXPECTED_BINARY_INPUT_DIGEST}" >&2
+    exit 2
+  fi
+  if [ "$RESOLVE_OUTPUT_DIR" = "/" ] || [ -e "$RESOLVE_OUTPUT_DIR" ] || [ -L "$RESOLVE_OUTPUT_DIR" ]; then
+    echo "runner binary resolve output already exists or is unsafe: ${RESOLVE_OUTPUT_DIR}" >&2
+    exit 2
+  fi
+  validate_resolution_context
+
+  case "${RUNNER_BINARY_CACHE_FORCE_MISS:-false}" in
+    true)
+      resolve_result "miss" "" "force-miss"
+      return 0
+      ;;
+    false|"") ;;
+    *)
+      echo "invalid RUNNER_BINARY_CACHE_FORCE_MISS: ${RUNNER_BINARY_CACHE_FORCE_MISS}" >&2
+      exit 2
+      ;;
+  esac
+  if [ "$CURRENT_EVENT" = "push" ]; then
+    resolve_result "miss" "" "protected-main-full-build"
+    return 0
+  fi
+  if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET_NAME:-}" ] ||
+    [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    resolve_result "miss" "" "missing-r2-config"
+    return 0
+  fi
+  if ! command -v aws >/dev/null; then
+    resolve_result "miss" "" "aws-unavailable"
+    return 0
+  fi
+  if ! command -v zstd >/dev/null; then
+    resolve_result "miss" "" "zstd-unavailable"
+    return 0
+  fi
+
+  local output_parent temp_root candidate_dir error_log
+  output_parent=$(dirname "$RESOLVE_OUTPUT_DIR")
+  mkdir -p "$output_parent"
+  temp_root=$(mktemp -d "${RUNNER_TEMP:-${output_parent}}/runner-binary-resolve.XXXXXX")
+  candidate_dir="${temp_root}/candidates"
+  error_log="${temp_root}/remote.err"
+  ACTIVE_RESOLVE_TEMP_ROOT="$temp_root"
+  trap 'rm -rf "$ACTIVE_RESOLVE_TEMP_ROOT"' EXIT
+
+  if ! collect_trusted_candidates \
+    "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST" "$candidate_dir"; then
+    emit "candidate-inspections" "0"
+    resolve_result "miss" "" "$CANDIDATE_DISCOVERY_REASON"
+    return 0
+  fi
+  emit "candidate-inspections" "$TRUSTED_INSPECTION_COUNT"
+  if [ "$TRUSTED_IDENTITY_COUNT" -gt 1 ]; then
+    resolve_result "miss" "" "trusted-output-conflict"
+    return 0
+  fi
+  if [ "$TRUSTED_CANDIDATE_COUNT" -eq 0 ]; then
+    resolve_result "miss" "" "$CANDIDATE_DISCOVERY_REASON"
+    return 0
+  fi
+  first_trusted_candidate
+
+  local object_key object_size runner_sha runner_size endpoint head_json retained_size
+  object_key=$(jq -r '.object.key' "$TRUSTED_MANIFEST_PATH")
+  object_size=$(jq -r '.object.sizeBytes' "$TRUSTED_MANIFEST_PATH")
+  runner_sha=$(jq -r '.runner.sha256' "$TRUSTED_MANIFEST_PATH")
+  runner_size=$(jq -r '.runner.sizeBytes' "$TRUSTED_MANIFEST_PATH")
+  endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+  if ! head_json=$(aws s3api head-object \
+    --endpoint-url "$endpoint" \
+    --bucket "$R2_BUCKET_NAME" \
+    --key "$object_key" \
+    --output json \
+    --cli-connect-timeout 5 \
+    --cli-read-timeout 30 2>"$error_log"); then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-head-failed" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+  if ! retained_size=$(jq -er '.ContentLength | select(type == "number" and floor == .)' \
+    <<<"$head_json" 2>/dev/null); then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-head-malformed" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+  if [ "$retained_size" != "$object_size" ] ||
+    [ "$retained_size" -le 0 ] || [ "$retained_size" -gt "$RUNNER_BINARY_MAX_COMPRESSED_BYTES" ]; then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-size-mismatch" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+
+  local compressed decompressed get_status=0 decompress_status=0
+  compressed="${temp_root}/runner.zst"
+  decompressed="${temp_root}/runner"
+  aws s3api get-object \
+    --endpoint-url "$endpoint" \
+    --bucket "$R2_BUCKET_NAME" \
+    --key "$object_key" \
+    --range "bytes=0-${RUNNER_BINARY_MAX_COMPRESSED_BYTES}" \
+    --cli-connect-timeout 5 \
+    --cli-read-timeout 30 \
+    "$compressed" \
+    >/dev/null 2>"$error_log" || get_status=$?
+  if [ "$get_status" -ne 0 ]; then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-get-failed" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+  if [ "$(stat -c '%s' "$compressed")" != "$object_size" ]; then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-size-changed" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+
+  set +e
+  set -o pipefail
+  zstd -q -d -c "$compressed" \
+    2>"${temp_root}/zstd.err" \
+    | head -c "$((RUNNER_BINARY_MAX_SIZE_BYTES + 1))" \
+      > "$decompressed"
+  decompress_status=$?
+  set -e
+  if [ "$decompress_status" -ne 0 ] ||
+    [ "$(stat -c '%s' "$decompressed")" -gt "$RUNNER_BINARY_MAX_SIZE_BYTES" ]; then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-decompression-invalid" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+  if [ "$(stat -c '%s' "$decompressed")" != "$runner_size" ] ||
+    [ "$(sha256sum "$decompressed" | awk '{print $1}')" != "$runner_sha" ]; then
+    resolve_result "miss" "$TRUSTED_SOURCE" "r2-content-mismatch" "$TRUSTED_RUN_ID"
+    return 0
+  fi
+
+  local transport_dir
+  transport_dir="${temp_root}/transport"
+  mkdir -p "$transport_dir"
+  install -m 755 "$decompressed" "${transport_dir}/runner"
+  jq '{
+    schemaVersion,
+    binaryInputDigest,
+    target,
+    toolchainImage,
+    runnerSha256: .runner.sha256,
+    runnerSizeBytes: .runner.sizeBytes,
+    guestSha256: .guests
+  }' "$TRUSTED_MANIFEST_PATH" > "${transport_dir}/metadata.json"
+  FRESH_METADATA_PATH="${transport_dir}/metadata.json" \
+  RUNNER_PATH="${transport_dir}/runner" \
+  EXPECTED_TARGET="$EXPECTED_TARGET" \
+  EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
+    "$0" fresh-validate >/dev/null
+  mv "$transport_dir" "$RESOLVE_OUTPUT_DIR"
+
+  emit "binary-input-digest" "$EXPECTED_BINARY_INPUT_DIGEST"
+  emit "runner-size-bytes" "$runner_size"
+  emit "object-size-bytes" "$object_size"
+  resolve_result "hit" "$TRUSTED_SOURCE" "validated" "$TRUSTED_RUN_ID"
 }
 
 usage() {
   cat <<'USAGE'
-Usage: runner-binary-cache.sh <fresh-validate|artifact-name|manifest-validate|publish|shadow-resolve>
+Usage: runner-binary-cache.sh <fresh-validate|artifact-name|manifest-validate|publish|shadow-resolve|active-resolve>
 USAGE
 }
 
@@ -655,6 +910,7 @@ case "${1:-}" in
   manifest-validate) manifest_validate ;;
   publish) publish ;;
   shadow-resolve) shadow_resolve ;;
+  active-resolve) active_resolve ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

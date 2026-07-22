@@ -369,16 +369,26 @@ if [ "$1" = "api" ]; then
     [ "${GH_SCENARIO:-rank}" != "api-fail" ] || exit 8
     case "${GH_SCENARIO:-rank}" in
       failed)
-        printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
         ;;
       untrusted)
-        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
         ;;
       empty)
         printf '[{"artifacts":[]}]\n'
         ;;
+      many-invalid)
+        printf '[{"artifacts":['
+        separator=""
+        for run_id in $(seq 30 38); do
+          printf '%s{"id":%s,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T%02d:00:00Z","workflow_run":{"id":%s,"head_branch":"main","head_sha":"%s"}}' \
+            "$separator" "$((run_id + 100))" "$EXPECTED_ARTIFACT_NAME" "$((run_id - 30))" "$run_id" "$MAIN_HEAD"
+          separator=,
+        done
+        printf ']}]\n'
+        ;;
       *)
-        printf '[{"artifacts":[{"id":199,"name":"%s","expired":false,"created_at":"2026-07-21T03:00:00Z","workflow_run":{"id":99,"head_branch":"feature","head_sha":"%s"}},{"id":130,"name":"%s","expired":false,"created_at":"2026-07-21T02:30:00Z","workflow_run":{"id":30,"head_branch":"other","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]},{"artifacts":[{"id":120,"name":"%s","expired":false,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' \
+        printf '[{"artifacts":[{"id":199,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T03:00:00Z","workflow_run":{"id":99,"head_branch":"feature","head_sha":"%s"}},{"id":130,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:30:00Z","workflow_run":{"id":30,"head_branch":"other","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]},{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' \
           "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
           "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
           "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
@@ -494,5 +504,86 @@ if run_shadow pull_request guest-conflict "${TMPDIR}/shadow-guest-conflict" \
 fi
 grep -q 'equal runner binary input digest produced conflicting output identity' \
   "${TMPDIR}/guest-conflict.err" || fail "expected guest conflict diagnostic"
+
+run_active() {
+  local current_event=$1 scenario=$2 output_dir=$3 aws_mode=${4:-success}
+  local current_pr_number=123 current_pr_head_ref=feature
+  if [ "$current_event" = "push" ]; then
+    current_pr_number=""
+    current_pr_head_ref=""
+  fi
+  PATH="${TMPDIR}/bin:${PATH}" \
+  GH_LOG="${TMPDIR}/gh.log" \
+  GH_SCENARIO="$scenario" \
+  GH_FIXTURES="$TMPDIR" \
+  EXPECTED_ARTIFACT_NAME="$expected_artifact" \
+  MAIN_HEAD="$main_head" \
+  PR_HEAD="$pr_head" \
+  AWS_LOG="${TMPDIR}/aws.log" \
+  AWS_MODE="$aws_mode" \
+  AWS_STORE="${TMPDIR}/store" \
+  AWS_ACCESS_KEY_ID=test-access \
+  AWS_SECRET_ACCESS_KEY=test-secret \
+  R2_ACCOUNT_ID=test-account \
+  R2_BUCKET_NAME=test-bucket \
+  RUNNER_TEMP="${TMPDIR}/runner-temp" \
+  EXPECTED_TARGET="$target" \
+  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  RESOLVE_OUTPUT_DIR="$output_dir" \
+  REPO=vm0-ai/vm0 \
+  CURRENT_RUN_ID=99 \
+  CURRENT_EVENT="$current_event" \
+  CURRENT_PR_NUMBER="$current_pr_number" \
+  CURRENT_PR_HEAD_REF="$current_pr_head_ref" \
+  DEFAULT_BRANCH=main \
+    "$CACHE" active-resolve
+}
+
+zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
+: > "${TMPDIR}/gh.log"
+active_hit=$(run_active pull_request rank "${TMPDIR}/active-hit")
+assert_contains "$active_hit" "resolve-outcome=hit"
+assert_contains "$active_hit" "resolve-source=protected-main"
+assert_contains "$active_hit" "resolve-producer-run-id=20"
+cmp -s "$runner" "${TMPDIR}/active-hit/runner" || fail "active hit must materialize verified runner bytes"
+FRESH_METADATA_PATH="${TMPDIR}/active-hit/metadata.json" \
+RUNNER_PATH="${TMPDIR}/active-hit/runner" \
+EXPECTED_TARGET="$target" \
+EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+  "$CACHE" fresh-validate >/dev/null
+
+: > "${TMPDIR}/gh.log"
+main_miss=$(run_active push rank "${TMPDIR}/active-main")
+assert_contains "$main_miss" "resolve-outcome=miss"
+assert_contains "$main_miss" "resolve-reason=protected-main-full-build"
+[ ! -s "${TMPDIR}/gh.log" ] || fail "protected main must bypass candidate lookup"
+
+: > "${TMPDIR}/gh.log"
+force_miss=$(RUNNER_BINARY_CACHE_FORCE_MISS=true \
+  run_active pull_request rank "${TMPDIR}/active-force")
+assert_contains "$force_miss" "resolve-reason=force-miss"
+[ ! -s "${TMPDIR}/gh.log" ] || fail "force miss must bypass candidate lookup"
+
+api_miss=$(run_active pull_request api-fail "${TMPDIR}/active-api-fail")
+assert_contains "$api_miss" "resolve-outcome=miss"
+assert_contains "$api_miss" "resolve-reason=artifact-api-unavailable"
+
+conflict_miss=$(run_active pull_request conflict "${TMPDIR}/active-conflict")
+assert_contains "$conflict_miss" "resolve-outcome=miss"
+assert_contains "$conflict_miss" "resolve-reason=trusted-output-conflict"
+
+compressed_size=$(stat -c '%s' "${TMPDIR}/store/object.zst")
+dd if=/dev/zero of="${TMPDIR}/store/object.zst" bs="$compressed_size" count=1 status=none
+corrupt_miss=$(run_active pull_request rank "${TMPDIR}/active-corrupt")
+assert_contains "$corrupt_miss" "resolve-outcome=miss"
+assert_contains "$corrupt_miss" "resolve-reason=r2-decompression-invalid"
+zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
+
+: > "${TMPDIR}/gh.log"
+bounded_miss=$(run_active pull_request many-invalid "${TMPDIR}/active-bounded")
+assert_contains "$bounded_miss" "resolve-outcome=miss"
+assert_contains "$bounded_miss" "resolve-reason=candidate-limit-exhausted"
+run_queries=$(grep -c 'actions/runs/' "${TMPDIR}/gh.log")
+[ "$run_queries" -eq 8 ] || fail "active resolution must inspect at most eight candidate runs"
 
 echo "runner-binary-cache-test: ok"
