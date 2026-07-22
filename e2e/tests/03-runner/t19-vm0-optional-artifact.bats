@@ -54,9 +54,9 @@ teardown_file() {
     run run_compose_fixture "$AGENT_NAME" "echo 'hello world' && pwd"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "hello world"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 
     [ -n "$(run_fixture_field "$output" '.sessionId')" ]
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
@@ -127,7 +127,7 @@ teardown_file() {
     run continue_run_fixture "$SESSION_ID" "echo 'continued from session'"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "continued from session"
 
     echo "# Verified: Continue works from session without artifact"

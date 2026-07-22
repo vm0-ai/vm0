@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { statusCommand } from "./status";
 import { setCommand } from "./set";
 import { listCommand } from "./list";
-import { useCommand } from "./use";
 import { membersCommand } from "./members";
 import { inviteCommand } from "./invite";
 import { removeCommand } from "./remove";
@@ -18,7 +17,6 @@ export const zeroOrgCommand = new Command()
   .addCommand(statusCommand)
   .addCommand(setCommand)
   .addCommand(listCommand)
-  .addCommand(useCommand)
   .addCommand(membersCommand)
   .addCommand(inviteCommand)
   .addCommand(removeCommand)

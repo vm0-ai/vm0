@@ -18,6 +18,24 @@ const TARGET_AGENT_ID = "33333333-3333-3333-3333-333333333333";
 const NEW_ID = "44444444-4444-4444-4444-444444444444";
 const SOURCE_AGENT_ID = "55555555-5555-4555-8555-555555555555";
 const RESOLVED_SOURCE_ID = "66666666-6666-4666-8666-666666666666";
+const AUTOMATION_ID = "77777777-7777-4777-8777-777777777777";
+const THREAD_ID = "88888888-8888-4888-8888-888888888888";
+
+const copiedAutomation = {
+  id: AUTOMATION_ID,
+  kind: "schedule",
+  ownerUserId: "user-123",
+  enabled: true,
+  chatThreadId: THREAD_ID,
+  nextRunAt: "2026-07-23T01:00:00Z",
+  lastRunAt: null,
+  schedule: {
+    type: "cron",
+    cronExpression: "0 9 * * *",
+    timezone: "Asia/Shanghai",
+  },
+  scheduleSummary: "0 9 * * * (Asia/Shanghai)",
+};
 
 function workflowSummary(overrides: Record<string, unknown> = {}) {
   return {
@@ -49,7 +67,7 @@ describe("zero workflow copy command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -75,7 +93,7 @@ describe("zero workflow copy command", () => {
                 agentDisplayName: "Target Agent",
                 name: "my-workflow",
                 displayName: "My Workflow",
-                description: null,
+                description: "Research customer activity",
                 visibility: "private",
                 ownerUserId: "user-123",
                 canManage: true,
@@ -83,6 +101,13 @@ describe("zero workflow copy command", () => {
               },
               { status: 201 },
             );
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          ({ params }) => {
+            expect(params.workflowId).toBe(NEW_ID);
+            return HttpResponse.json([copiedAutomation]);
           },
         ),
       );
@@ -99,8 +124,16 @@ describe("zero workflow copy command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("copied");
       expect(logCalls).toContain(NEW_ID);
+      expect(logCalls).toContain("Name:         my-workflow");
+      expect(logCalls).toContain("Visibility:   private");
       expect(logCalls).toContain("Agent Name:   Target Agent");
       expect(logCalls).toContain(`Agent ID:     ${TARGET_AGENT_ID}`);
+      expect(logCalls).toContain("Display Name: My Workflow");
+      expect(logCalls).toContain("Description:  Research customer activity");
+      expect(logCalls).toContain("Copied automations (1)");
+      expect(logCalls).toContain(AUTOMATION_ID);
+      expect(logCalls).toContain("enabled");
+      expect(logCalls).toContain("0 9 * * * (Asia/Shanghai)");
     });
 
     it("should resolve a source workflow name before copying", async () => {
@@ -131,6 +164,13 @@ describe("zero workflow copy command", () => {
             );
           },
         ),
+        http.get(
+          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          ({ params }) => {
+            expect(params.workflowId).toBe(NEW_ID);
+            return HttpResponse.json([]);
+          },
+        ),
       );
 
       await copyCommand.parseAsync([
@@ -144,6 +184,9 @@ describe("zero workflow copy command", () => {
       ]);
 
       expect(copiedWorkflowId).toBe(RESOLVED_SOURCE_ID);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Copied automations (0)");
+      expect(logCalls).toContain("No automations copied");
     });
   });
 

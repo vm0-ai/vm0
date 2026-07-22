@@ -12,6 +12,7 @@
 load '../../helpers/setup'
 
 setup() {
+    require_e2e_api_credentials
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-orphan-pipe-${UNIQUE_ID}"
@@ -24,10 +25,6 @@ teardown() {
 }
 
 @test "orphan-pipe drain deadline allows agent to exit" {
-    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
-        skip "Not authenticated"
-    fi
-
     cd "$TEST_DIR"
 
     cat > vm0.yaml <<EOF

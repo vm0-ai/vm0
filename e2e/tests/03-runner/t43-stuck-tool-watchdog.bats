@@ -9,6 +9,7 @@
 load '../../helpers/setup'
 
 setup() {
+    require_e2e_api_credentials
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-stuck-tool-${UNIQUE_ID}"
@@ -21,10 +22,6 @@ teardown() {
 }
 
 @test "stuck-tool watchdog kills agent when WebFetch hangs" {
-    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
-        skip "Not authenticated"
-    fi
-
     cd "$TEST_DIR"
 
     cat > vm0.yaml <<EOF

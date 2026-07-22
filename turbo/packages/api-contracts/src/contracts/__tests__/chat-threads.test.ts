@@ -320,6 +320,7 @@ describe("artifacts contract", () => {
       contentType: "text/html",
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-07T00:00:00.000Z",
     });
 
     expect(parsed.success).toBe(true);
@@ -340,6 +341,7 @@ describe("artifacts contract", () => {
       contentType: "text/html",
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-08T00:00:00.000Z",
       artifactKind: "hosted-site",
       googleDriveSync: {
         status: "synced",
@@ -361,6 +363,7 @@ describe("artifacts contract", () => {
       contentType: "text/html",
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-07T00:00:00.000Z",
     });
 
     expect(parsed.success).toBe(false);

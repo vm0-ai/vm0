@@ -283,6 +283,19 @@ function artifactIsHosted(item: ArtifactItem): boolean {
   );
 }
 
+function compareArtifactWinner(
+  left: ArtifactItem,
+  right: ArtifactItem,
+): number {
+  if (left.updatedAt !== right.updatedAt) {
+    return left.updatedAt.localeCompare(right.updatedAt);
+  }
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt.localeCompare(right.createdAt);
+  }
+  return left.artifactItemId.localeCompare(right.artifactItemId);
+}
+
 function mergeArtifactItems(
   cached: readonly ArtifactItem[],
   changed: readonly ArtifactItem[],
@@ -302,16 +315,23 @@ function mergeArtifactItems(
         return item.runId;
       }),
   );
-  return Array.from(byId.values())
-    .filter((item) => {
-      return !hostedRunIds.has(item.runId) || artifactIsHosted(item);
-    })
-    .sort((left, right) => {
-      if (left.createdAt !== right.createdAt) {
-        return right.createdAt.localeCompare(left.createdAt);
-      }
-      return right.artifactItemId.localeCompare(left.artifactItemId);
-    });
+  const byUrl = new Map<string, ArtifactItem>();
+  for (const item of byId.values()) {
+    if (hostedRunIds.has(item.runId) && !artifactIsHosted(item)) {
+      continue;
+    }
+    const current = byUrl.get(item.url);
+    if (!current || compareArtifactWinner(item, current) > 0) {
+      byUrl.set(item.url, item);
+    }
+  }
+
+  return Array.from(byUrl.values()).sort((left, right) => {
+    if (left.createdAt !== right.createdAt) {
+      return right.createdAt.localeCompare(left.createdAt);
+    }
+    return right.artifactItemId.localeCompare(left.artifactItemId);
+  });
 }
 
 // Remote source: read the last-known cache immediately, request only rows that
@@ -329,10 +349,7 @@ export const remoteArtifacts$ = computed(
       stores.readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT }),
       stores.readStore.readLastSyncedAt(),
     ]);
-    const updatedAfter =
-      cachedArtifacts.length === 0
-        ? undefined
-        : (lastSyncedAt ?? cachedArtifacts[0]?.createdAt);
+    const updatedAfter = lastSyncedAt ?? cachedArtifacts[0]?.createdAt;
     const remoteArtifacts: ArtifactItem[] = [];
     let cursor: string | undefined;
     let syncUntil: string | undefined;
@@ -373,6 +390,7 @@ export const remoteArtifacts$ = computed(
 // (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
+    get(internalArtifactsReload$);
     const dbPromise = get(chatIdb$);
     const artifacts = await artifactItemCacheStores(
       dbPromise,

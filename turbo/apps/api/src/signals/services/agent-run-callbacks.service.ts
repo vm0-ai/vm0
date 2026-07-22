@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -58,6 +58,10 @@ export const dispatchProgressCallbacks$ = command(
         and(
           eq(agentRunCallbacks.runId, runId),
           eq(agentRunCallbacks.status, "pending"),
+          or(
+            isNull(agentRunCallbacks.internalKind),
+            ne(agentRunCallbacks.internalKind, "slack:chat"),
+          ),
         ),
       );
     signal.throwIfAborted();
@@ -75,7 +79,7 @@ export const dispatchProgressCallbacks$ = command(
           status: "progress" as const,
           payload: callback.payload,
         };
-        if (internalKind === "chat") {
+        if (internalKind === "chat" || internalKind === "slack:chat") {
           return;
         }
         if (internalKind === "agentphone") {
@@ -102,6 +106,9 @@ export const dispatchProgressCallbacks$ = command(
           return;
         }
         if (!callback.url) {
+          return;
+        }
+        if (!callback.encryptedSecret) {
           return;
         }
         const body = JSON.stringify({

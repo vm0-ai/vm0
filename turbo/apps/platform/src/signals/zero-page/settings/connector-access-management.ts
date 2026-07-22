@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -22,24 +22,24 @@ export interface ConnectorAgentAccessRow {
 
 interface ConnectorAgentAuthorizationRow {
   readonly agent: TeamComposeItem;
-  readonly enabledTypes: readonly ConnectorType[];
+  readonly enabledTypes: readonly ConnectorRef[];
 }
 
 interface SetConnectorAgentAuthorizationParams {
   readonly agentId: string;
-  readonly connectorType: ConnectorType;
+  readonly connectorRef: ConnectorRef;
   readonly authorized: boolean;
 }
 
-const managedConnectorAccessTypeState$ = state<ConnectorType | null>(null);
+const managedConnectorAccessRefState$ = state<ConnectorRef | null>(null);
 const connectorAccessManagementSearchState$ = state("");
 const connectorAccessManagementSavingAgentIdState$ = state<string | null>(null);
 const connectorAccessManagementPermissionAgentIdState$ = state<string | null>(
   null,
 );
 
-export const managedConnectorAccessType$ = computed((get) => {
-  return get(managedConnectorAccessTypeState$);
+export const managedConnectorAccessRef$ = computed((get) => {
+  return get(managedConnectorAccessRefState$);
 });
 
 export const connectorAccessManagementSearch$ = computed((get) => {
@@ -54,14 +54,14 @@ export const connectorAccessManagementPermissionAgentId$ = computed((get) => {
   return get(connectorAccessManagementPermissionAgentIdState$);
 });
 
-export const setManagedConnectorAccessType$ = command(
-  ({ set }, connectorType: ConnectorType | null) => {
-    set(managedConnectorAccessTypeState$, connectorType);
+export const setManagedConnectorAccessRef$ = command(
+  ({ set }, connectorRef: ConnectorRef | null) => {
+    set(managedConnectorAccessRefState$, connectorRef);
   },
 );
 
 export const closeConnectorAccessManagement$ = command(({ set }) => {
-  set(managedConnectorAccessTypeState$, null);
+  set(managedConnectorAccessRefState$, null);
   set(connectorAccessManagementSearchState$, "");
   set(connectorAccessManagementSavingAgentIdState$, null);
   set(connectorAccessManagementPermissionAgentIdState$, null);
@@ -113,27 +113,27 @@ export const connectorAgentAuthorizations$ = computed(
   },
 );
 
-export const connectorAuthorizedAgentsByType$ = computed(
+export const connectorAuthorizedAgentsByRef$ = computed(
   async (
     get,
-  ): Promise<ReadonlyMap<ConnectorType, readonly TeamComposeItem[]>> => {
+  ): Promise<ReadonlyMap<ConnectorRef, readonly TeamComposeItem[]>> => {
     const authorizations = await get(connectorAgentAuthorizations$);
-    const agentsByType = new Map<ConnectorType, TeamComposeItem[]>();
+    const agentsByRef = new Map<ConnectorRef, TeamComposeItem[]>();
     for (const row of authorizations) {
-      for (const connectorType of row.enabledTypes) {
-        const agents = agentsByType.get(connectorType) ?? [];
+      for (const connectorRef of row.enabledTypes) {
+        const agents = agentsByRef.get(connectorRef) ?? [];
         agents.push(row.agent);
-        agentsByType.set(connectorType, agents);
+        agentsByRef.set(connectorRef, agents);
       }
     }
-    return agentsByType;
+    return agentsByRef;
   },
 );
 
 export const managedConnectorAgentAccessRows$ = computed(
   async (get): Promise<readonly ConnectorAgentAccessRow[]> => {
-    const connectorType = get(managedConnectorAccessType$);
-    if (!connectorType) {
+    const connectorRef = get(managedConnectorAccessRef$);
+    if (!connectorRef) {
       return [];
     }
     const authorizations = await get(connectorAgentAuthorizations$);
@@ -143,7 +143,7 @@ export const managedConnectorAgentAccessRows$ = computed(
           agent,
           enabledTypes,
         }): Promise<ConnectorAgentAccessRow | null> => {
-          const authorized = enabledTypes.includes(connectorType);
+          const authorized = enabledTypes.includes(connectorRef);
           let grants: readonly UserPermissionGrantResponse[] = [];
           if (authorized) {
             const loadedGrants = await get(
@@ -170,13 +170,11 @@ export const managedConnectorAgentAccessRows$ = computed(
 
 export const managedConnectorFirewallPermissionMetadata$ = computed(
   async (get) => {
-    const connectorType = get(managedConnectorAccessType$);
-    if (!connectorType) {
+    const connectorRef = get(managedConnectorAccessRef$);
+    if (!connectorRef) {
       return null;
     }
-    return await get(
-      firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
-    );
+    return await get(firewallPermissionMetadataByConnector({ connectorRef }));
   },
 );
 
@@ -192,7 +190,7 @@ export const setConnectorAgentAuthorization$ = command(
         client.update({
           params: { id: params.agentId },
           body: {
-            enabledTypes: [params.connectorType],
+            enabledTypes: [params.connectorRef],
             operation: params.authorized ? "add" : "remove",
           },
           fetchOptions: { signal },

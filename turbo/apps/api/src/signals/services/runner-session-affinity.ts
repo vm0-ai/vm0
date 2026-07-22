@@ -5,6 +5,7 @@ import {
   and,
   arrayContains,
   eq,
+  exists,
   gt,
   isNotNull,
   sql,
@@ -74,26 +75,30 @@ function capableWorkspaceCondition(args: {
 }
 
 function runnerStateHas(args: {
+  readonly db: Pick<Db, "select">;
   readonly runnerId?: string;
   readonly runnerGroup: string;
   readonly freshAfter: Date;
   readonly resourceCondition: SQL;
 }): SQL {
-  const runnerCondition = args.runnerId
-    ? sql`AND ${eq(runnerState.runnerId, args.runnerId)}`
-    : sql``;
-  return sql`EXISTS (
-    SELECT 1
-    FROM ${runnerState}
-    WHERE ${eq(runnerState.runnerGroup, args.runnerGroup)}
-      ${runnerCondition}
-      AND ${runnerState.mode} = 'running'
-      AND ${gt(runnerState.lastSeenAt, args.freshAfter)}
-      AND ${args.resourceCondition}
-  )`;
+  return exists(
+    args.db
+      .select({ runnerId: runnerState.runnerId })
+      .from(runnerState)
+      .where(
+        and(
+          eq(runnerState.runnerGroup, args.runnerGroup),
+          ...(args.runnerId ? [eq(runnerState.runnerId, args.runnerId)] : []),
+          eq(runnerState.mode, "running"),
+          gt(runnerState.lastSeenAt, args.freshAfter),
+          args.resourceCondition,
+        ),
+      ),
+  );
 }
 
 export function runnerSessionAffinityPollPriority(args: {
+  readonly db: Pick<Db, "select">;
   readonly runnerId: string;
   readonly runnerGroup: string;
   readonly currentDate: Date;
@@ -118,6 +123,7 @@ export function runnerSessionAffinityPollPriority(args: {
   const workspaceCondition = capableWorkspaceCondition({ sessionId, profile });
   const global = (resourceCondition: SQL) => {
     return runnerStateHas({
+      db: args.db,
       runnerGroup: args.runnerGroup,
       freshAfter,
       resourceCondition,
@@ -125,6 +131,7 @@ export function runnerSessionAffinityPollPriority(args: {
   };
   const local = (resourceCondition: SQL) => {
     return runnerStateHas({
+      db: args.db,
       runnerId: args.runnerId,
       runnerGroup: args.runnerGroup,
       freshAfter,

@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
@@ -10,7 +9,7 @@ import {
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, asc, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lte } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -27,7 +26,6 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   collectMorningBriefInput,
-  MORNING_BRIEF_CONNECTOR_REFS,
   type MorningBriefInput,
 } from "./morning-brief-collect.service";
 import {
@@ -110,26 +108,6 @@ async function claimSchedule(
   return claimed.length > 0;
 }
 
-async function connectedMorningBriefConnectors(
-  db: Db,
-  orgId: string,
-  userId: string,
-): Promise<readonly string[]> {
-  const rows = await db
-    .select({ type: connectors.type })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        inArray(connectors.type, [...MORNING_BRIEF_CONNECTOR_REFS]),
-      ),
-    );
-  return rows.map((row) => {
-    return row.type;
-  });
-}
-
 async function markDeliveryFailed(
   db: Db,
   deliveryId: string,
@@ -156,11 +134,12 @@ function buildMorningBriefAppendSystemPrompt(args: {
     "# Morning Brief run",
     `You are generating the user's Morning Brief for ${args.briefDate} (timezone ${args.timezone}).`,
     "",
-    "1. Download the collected data (GitHub, Gmail, Google Calendar) with an HTTP GET request to this URL (valid for 30 minutes):",
+    "1. Download the collected data (GitHub, Gmail, Google Calendar, unread vm0 chat threads) with an HTTP GET request to this URL (valid for 30 minutes):",
     args.inputUrl,
     "2. Analyze the data and write the brief. Only use predefined sections, omit empty ones, order by importance:",
     "   - `schedule`: today's meetings and events",
     "   - `needs_attention`: items that need the user's action or reply",
+    "   - `unread_threads`: vm0 chat threads with results the user has not read yet — summarize what each task produced while they were away",
     "   - `github_updates`: PRs, reviews, CI, mentions involving the user",
     "   - `email_updates`: notable email threads",
     "   - `suggestions`: at most 3 suggestions, each grounded in today's data",
@@ -171,9 +150,9 @@ function buildMorningBriefAppendSystemPrompt(args: {
     "   {",
     '     "version": 1,',
     '     "headline": "one-sentence generic summary without sensitive details",',
-    '     "sections": [{"key": "schedule|needs_attention|github_updates|email_updates|suggestions", "title": "string", "items": [{"title": "string", "detail": "string (optional)", "url": "https source link (optional)"}]}]',
+    '     "sections": [{"key": "schedule|needs_attention|unread_threads|github_updates|email_updates|suggestions", "title": "string", "items": [{"title": "string", "detail": "string (optional)", "url": "https source link (optional)"}]}]',
     "   }",
-    "   Item `url` values must point at the original Gmail message, Calendar event, or GitHub page.",
+    "   Item `url` values must point at the original Gmail message, Calendar event, GitHub page, or the vm0 chat thread `url` provided in the input.",
     "5. Also post the same brief as well-formatted Markdown in this chat so the user can read it here and ask follow-up questions.",
     "6. If a source in the input is marked failed, mention briefly in the brief that the source was unavailable.",
     "The email is assembled server-side from the uploaded JSON; do not try to send any email yourself.",
@@ -184,7 +163,8 @@ function allSourcesFailed(input: MorningBriefInput): boolean {
   return (
     !input.sources.github.ok &&
     !input.sources.gmail.ok &&
-    !input.sources.calendar.ok
+    !input.sources.calendar.ok &&
+    !input.sources.chatThreads.ok
   );
 }
 
@@ -196,7 +176,7 @@ interface ClaimedMorningBrief {
   readonly currentTime: Date;
 }
 
-/** Feature, connector, and once-per-local-date gates; claims the delivery row. */
+/** Feature and once-per-local-date gates; claims the delivery row. */
 async function admitMorningBriefDelivery(
   db: Db,
   row: DueMorningBriefRow,
@@ -215,16 +195,6 @@ async function admitMorningBriefDelivery(
   );
   signal.throwIfAborted();
   if (!isFeatureEnabled(FeatureSwitchKey.MorningBrief, featureSwitchContext)) {
-    return null;
-  }
-
-  const connected = await connectedMorningBriefConnectors(
-    db,
-    row.orgId,
-    row.userId,
-  );
-  signal.throwIfAborted();
-  if (connected.length === 0) {
     return null;
   }
 
@@ -286,6 +256,7 @@ const stageMorningBriefInput$ = command(
       until: currentTime,
       dayStart,
       dayEnd,
+      excludeChatThreadId: row.chatThreadId,
       signal,
     });
     signal.throwIfAborted();
@@ -294,7 +265,7 @@ const stageMorningBriefInput$ = command(
       await markDeliveryFailed(
         db,
         claimed.deliveryId,
-        "All connector sources failed",
+        "All morning brief sources failed",
         currentTime,
       );
       signal.throwIfAborted();
@@ -659,19 +630,6 @@ async function admitManualMorningBrief(
     };
   }
 
-  const connected = await connectedMorningBriefConnectors(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  signal.throwIfAborted();
-  if (connected.length === 0) {
-    return {
-      kind: "bad_request",
-      message: "Connect GitHub, Gmail, or Google Calendar first",
-    };
-  }
-
   // Ensure a schedule row exists so the created chat thread binding
   // persists across manual triggers (next_run_at stays untouched).
   await db
@@ -786,7 +744,10 @@ export const triggerMorningBriefNow$ = command(
 
     const staged = await set(stageMorningBriefInput$, claimed, signal);
     if (!staged) {
-      return { kind: "bad_request", message: "All connector sources failed" };
+      return {
+        kind: "bad_request",
+        message: "All morning brief sources failed",
+      };
     }
 
     const started = await set(

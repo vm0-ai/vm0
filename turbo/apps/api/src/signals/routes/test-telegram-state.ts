@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getProviderRuntimeModel,
@@ -35,10 +35,7 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import {
-  pgIntegerDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -243,7 +240,7 @@ async function loadComposeVersion(
 
 async function countMessages(db: ReadonlyDb, botId: string): Promise<number> {
   const [row] = await db
-    .select({ count: sql`count(*)::int`.mapWith(pgIntegerDecoder) })
+    .select({ count: count() })
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, botId));
   return row?.count ?? 0;
@@ -669,10 +666,12 @@ async function seedAgentRunCallbackForAction(
   if (!runId) {
     return actionBadRequest("run_id is required");
   }
-  const encryptedSecret = await encryptPersistentSecretValue(
-    readActionOptionalString(body, "secret") ?? "test-callback-secret",
-    {},
-  );
+  const encryptedSecret = readActionBoolean(body, "persist_secret", true)
+    ? await encryptPersistentSecretValue(
+        readActionOptionalString(body, "secret") ?? "test-callback-secret",
+        {},
+      )
+    : null;
   signal.throwIfAborted();
   const [row] = await db
     .insert(agentRunCallbacks)
@@ -1250,8 +1249,11 @@ async function getTelegramPostRunStateForAction(
         id: agentRunCallbacks.id,
         url: agentRunCallbacks.url,
         internalKind: agentRunCallbacks.internalKind,
+        encryptedSecret: agentRunCallbacks.encryptedSecret,
         payload: agentRunCallbacks.payload,
         status: agentRunCallbacks.status,
+        attempts: agentRunCallbacks.attempts,
+        lastError: agentRunCallbacks.lastError,
       })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, run.id)),
@@ -1266,7 +1268,18 @@ async function getTelegramPostRunStateForAction(
   return actionOk({
     run,
     zero_run: zeroRun ?? null,
-    callbacks,
+    callbacks: callbacks.map((callback) => {
+      return {
+        id: callback.id,
+        url: callback.url,
+        internalKind: callback.internalKind,
+        hasEncryptedSecret: callback.encryptedSecret !== null,
+        payload: callback.payload,
+        status: callback.status,
+        attempts: callback.attempts,
+        lastError: callback.lastError,
+      };
+    }),
     job_exists: job !== undefined,
   });
 }

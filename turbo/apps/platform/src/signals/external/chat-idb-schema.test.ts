@@ -313,8 +313,8 @@ describe("upgradeChatIdb local cache resets", () => {
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 
-  it("adds the artifact sync store when upgrading from v14", () => {
-    const { db, createObjectStore, deleteObjectStore } = fakeDb([
+  it("resets artifact items and adds the sync store when upgrading from v14", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
       CHAT_THREAD_EVENTS_STORE,
@@ -324,8 +324,30 @@ describe("upgradeChatIdb local cache resets", () => {
 
     upgradeChatIdb(db, 14);
 
-    expect(deleteObjectStore).not.toHaveBeenCalled();
-    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(deleteObjectStore).toHaveBeenCalledTimes(1);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(2);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+    expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
+  it("resets artifact caches when upgrading from v15", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 15);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(2);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_SYNC_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(2);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
     expectArtifactSyncStoreCreated(createObjectStore);
   });
 });

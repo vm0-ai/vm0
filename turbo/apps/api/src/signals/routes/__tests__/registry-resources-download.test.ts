@@ -60,7 +60,7 @@ describe("registry resource download", () => {
     });
   });
 
-  it("resolves every additive website v2 archive without changing the legacy default", () => {
+  it("resolves every refreshed additive website v2 archive", () => {
     const legacySha256 =
       "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3";
 
@@ -80,77 +80,77 @@ describe("registry resource download", () => {
       {
         id: "template:black-slabs-v2",
         versionId:
-          "3aefcd4de6a6e319ec88b19a1747d0940bcf9b0027298154572f99e4e3ff3697",
+          "bfdd76866483fc78cf49f1e05a55732c3001dc6edd0899433367773eb3ec2435",
         sha256:
           "0f12d8408536ce4e0178129db5ceecc3b7d77605eaff76bff8fab04fd6193c22",
       },
       {
         id: "template:blueprint-grid-v2",
         versionId:
-          "77980498c47758043a2f11d1eed6a65d2aad2cc4847ef6c51cb9dfd759fe52f2",
+          "d7b65f9e32a9dc691ba9f96dfc45945d034ee7e841d53ff904a41038574572a3",
         sha256:
           "38737948531b22ab5ae03c537464b948b48e139ca0362ea68e9dd3daaf6760b6",
       },
       {
         id: "template:coastal-hotel-v2",
         versionId:
-          "7367f07e13219a0b9c246440f9dcd13ed7840322a5912ec684b342185f7bc86c",
+          "9851c21802d2c96cb0d6a4b799f73249287b1ed8b46ab94cb719ce4d9f38c3e8",
         sha256:
           "5c8650684d247143e010859d957c58c3c77d2b4e3a5540dbb4c4961cc2d70d54",
       },
       {
         id: "template:dot-matrix-v2",
         versionId:
-          "108458f32cade6a87f76acd5308e23d2169544bb2591da285c629cfbcf6e9fbf",
+          "c3dc44d2445926f7bdc65e017028155aff73d7d59bc0deb783faf6ba689dcf5b",
         sha256:
           "20931f59434fea45e2772dd4a2a7790572f65b3514b84bfbb245968618f0ad44",
       },
       {
         id: "template:frame-stack-v2",
         versionId:
-          "892cbceb2ae49855637e4684821f2b5c5ac04769800527c3ca4f66e115d7c8d7",
+          "4b29a3ccedbd2259f2663e9bae60bafe0ca03ab98c415c0d2624f2dbd5379972",
         sha256:
           "628139021e196f12e06723d899d299a89dc16696870fede38fc9864b6ffff9c1",
       },
       {
         id: "template:frosted-scatter-v2",
         versionId:
-          "d6950c76df5ffa3f96336f68915fd0670de7ff0f73d07e97b82f63f934d856f3",
+          "5076edab7ea87ad666e04ce74e8781f19eda8c660c697834d97a4e0d161f3035",
         sha256:
           "3b0fab9f9f52434f37686377793dae2e467e818e48b85b6696f862d9e8e23232",
       },
       {
         id: "template:gallery-wall-v2",
         versionId:
-          "f4d62d5f46040c51fced1266dac6f590761bc102def7a89ce4cbdceb6bdbbcee",
+          "26e2033b18e1a1c2efed697b3b29b0f8e589c4556de34bd2caff1dc801b377e5",
         sha256:
           "df998b7ca480d24665b49e6c07f4e29eb8f26f3916ed3b8051f41e47535588ab",
       },
       {
         id: "template:glass-bloom-v2",
         versionId:
-          "dd233dec6bec872e173858b8788a22ed2fbfee0f6f687d74a42ba84947bbfb5c",
+          "3fc6629067c9581ccccd11b679e99e26dbbd45b9d15cce182ce4edb224216d1e",
         sha256:
           "b66ec9fda392e13a8f0c71c842cc0b2e655695cf60d7dd28e8db3b322ba35596",
       },
       {
         id: "template:serif-stack-v2",
         versionId:
-          "6b7d18315b6955ef27318546ed050ae2736386f80d29f8452f1d74855ef8531c",
+          "00b1f6cbce5f93d1df53adc3519b7f32ebc9c1417c78a88b7f2e98fa7aff231e",
         sha256:
           "0641c65b035abab0b53d3b345178688f1b4091083d1b7c574b640537b49ef3e5",
       },
       {
         id: "template:sticker-pop-v2",
         versionId:
-          "21c5247800c02f53b87d27d0970707f642a51dd56a9ef0a8fce68ca8ea677783",
+          "438eea8bf5a75642d2d645c035314416e1a0a44c9462d33b3fd6b36c6f21f673",
         sha256:
           "4b076e69118268108e550322cdfe9befd91378bee5d28bf73627df54ccbaacbd",
       },
       {
         id: "template:warm-cards-v2",
         versionId:
-          "040325e9aa9567d79532c61933d04fdb10e268d371dca30ae793585da1325eaf",
+          "736c14987395cb828dfa3626ace6ea947ca9852509b64d2867c6be105bdb8a12",
         sha256:
           "20f0a7fa09bf2653b55fb0323b050accaa565817587d105b98ada03243b75bf3",
       },

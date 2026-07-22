@@ -2,7 +2,7 @@ import type StripeSDK from "stripe";
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, exists, isNotNull, isNull, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -121,12 +121,17 @@ export const triggerAutoRecharge$ = command(
     }
 
     const planEligibility = orgPlanEntitlementReadsEnabled(orgId)
-      ? sql`EXISTS (
-          SELECT 1
-          FROM ${orgPlanEntitlements}
-          WHERE ${eq(orgPlanEntitlements.orgId, orgId)}
-            AND ${orgPlanEntitlements.autoRechargeAllowed} = true
-        )`
+      ? exists(
+          writeDb
+            .select({ orgId: orgPlanEntitlements.orgId })
+            .from(orgPlanEntitlements)
+            .where(
+              and(
+                eq(orgPlanEntitlements.orgId, orgId),
+                eq(orgPlanEntitlements.autoRechargeAllowed, true),
+              ),
+            ),
+        )
       : sql`${orgMetadata.tier} IN ('pro', 'team', 'custom')`;
 
     const clearPendingFlag = async (): Promise<void> => {

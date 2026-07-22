@@ -31,8 +31,9 @@ export const agentRunCallbacks = pgTable(
       ),
     url: text("url"),
     internalKind: varchar("internal_kind", { length: 64 }),
-    // Secret encrypted with the persistent-secret KMS rollout envelope.
-    encryptedSecret: text("encrypted_secret").notNull(),
+    // HTTP callback secret encrypted with the persistent-secret KMS envelope.
+    // Direct internal callbacks do not use HTTP authentication.
+    encryptedSecret: text("encrypted_secret"),
     // Arbitrary JSON payload to include in callback (e.g., Slack context)
     payload: jsonb("payload").$type<AgentRunCallbackPayload>(),
     // pending | delivered | failed

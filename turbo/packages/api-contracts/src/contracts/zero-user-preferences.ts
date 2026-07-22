@@ -17,6 +17,11 @@ export const userPreferencesResponseSchema = z.object({
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
   morningBriefEnabled: z.boolean(),
+  /**
+   * Next scheduled Morning Brief send (ISO instant), or null when no run is
+   * scheduled (preference off, timezone missing, or schedule not synced).
+   */
+  morningBriefNextRunAt: z.string().nullable(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 

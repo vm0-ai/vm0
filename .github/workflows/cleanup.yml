@@ -34,10 +34,10 @@ jobs:
             "$CF_PAGES_PROJECT_NAME" \
             "pr-${PR_NUMBER}-app.${CF_PAGES_PREVIEW_DOMAIN}"
 
-  cleanup-onboarding-www:
+  cleanup-preview-www:
     runs-on: ubuntu-latest
     concurrency:
-      group: provision-onboarding-www-pr-${{ github.event.pull_request.number }}
+      group: provision-preview-www-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7

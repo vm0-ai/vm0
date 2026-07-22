@@ -1,124 +1,52 @@
-import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
+import { searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-function setBrowserUrl(url: string): void {
-  window.location.href = url;
-}
-
 function mockOnboardingNeeded(): void {
-  context.mocks.api(onboardingStatusContract.getStatus, ({ respond }) => {
-    return respond(200, {
-      needsOnboarding: true,
-      onboardingComplete: false,
-      isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
-    });
+  context.mocks.data.onboardingStatus({
+    needsOnboarding: true,
+    onboardingComplete: false,
   });
 }
 
-describe("zero onboarding", () => {
-  it("redirects admins who need onboarding to external onboarding with query params", async () => {
+describe("zero onboarding routing", () => {
+  it("routes a new user into the internal prompt onboarding page", async () => {
     mockOnboardingNeeded();
-    mockedClerk.buildUrlWithAuth.mockImplementation((to) => {
-      const url = new URL(to);
-      url.searchParams.set("__clerk_db_jwt", "dvb_test_handoff");
-      return url.toString();
-    });
-    setBrowserUrl("https://app.vm7.ai:8443/");
 
     detachedSetupPage({
       context,
       path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
     });
 
-    await waitFor(() => {
-      const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/491858");
-      expect(url.searchParams.get("prompt")).toBe("hello world");
-      expect(url.searchParams.get("connector")).toBe("github");
-      expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.get("__clerk_db_jwt")).toBe("dvb_test_handoff");
-      expect(url.searchParams.has("domain")).toBeFalsy();
-    });
+    await expect(
+      screen.findByRole("heading", { name: "Try this prompt" }),
+    ).resolves.toBeInTheDocument();
+    expect(pathname()).toBe("/onboarding");
+    expect(context.store.get(searchParams$).get("prompt")).toBe("hello world");
+    expect(context.store.get(searchParams$).get("connector")).toBe("github");
+    expect(context.store.get(searchParams$).get("vm0_source")).toBe(
+      "presentation",
+    );
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      "hello world",
+    );
   });
 
-  it("opens the matching omby WWW preview without a Vercel bypass", async () => {
-    mockOnboardingNeeded();
-    mockedClerk.buildUrlWithAuth.mockImplementation((to) => {
-      const url = new URL(to);
-      url.searchParams.set("__clerk_db_jwt", "dvb_test_handoff");
-      return url.toString();
-    });
-    setBrowserUrl("https://pr-22085-app.omby.ai/");
-
+  it("does not register nested onboarding paths", async () => {
     detachedSetupPage({
       context,
-      path: "/?x-vercel-protection-bypass=preview-secret",
+      path: "/onboarding/unknown?vm0_source=homepage",
     });
 
-    await waitFor(() => {
-      const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://pr-22085-www.omby.ai");
-      expect(url.pathname).toBe("/onboarding/491858");
-      expect(url.searchParams.has("x-vercel-protection-bypass")).toBeFalsy();
-      expect(url.searchParams.get("__clerk_db_jwt")).toBe("dvb_test_handoff");
-    });
-  });
-
-  it("redirects direct onboarding visits to external onboarding", async () => {
-    setBrowserUrl("https://app.vm7.ai:8443/");
-    detachedSetupPage({
-      context,
-      path: "/onboarding/491858?prompt=hello%20world&connector=github&vm0_source=presentation",
-    });
-
-    await waitFor(() => {
-      const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/491858");
-      expect(url.searchParams.get("prompt")).toBe("hello world");
-      expect(url.searchParams.get("connector")).toBe("github");
-      expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.has("domain")).toBeFalsy();
-    });
-  });
-
-  it("redirects direct external onboarding without loading connectors first", async () => {
-    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
-      return respond(500, {
-        error: {
-          message: "Failed to load connectors",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      });
-    });
-    setBrowserUrl("https://app.vm7.ai:8443/");
-
-    detachedSetupPage({
-      context,
-      path: "/onboarding/491858?prompt=hello%20world&connector=github&vm0_source=presentation",
-    });
-
-    await waitFor(() => {
-      const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://www.vm7.ai:8443");
-      expect(url.pathname).toBe("/onboarding/491858");
-      expect(url.searchParams.get("prompt")).toBe("hello world");
-      expect(url.searchParams.get("connector")).toBe("github");
-      expect(url.searchParams.get("vm0_source")).toBe("presentation");
-      expect(url.searchParams.has("domain")).toBeFalsy();
-    });
+    await expect(
+      screen.findByRole("heading", { name: "Page not found" }),
+    ).resolves.toBeInTheDocument();
+    expect(pathname()).toBe("/onboarding/unknown");
   });
 });

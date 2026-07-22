@@ -5,6 +5,7 @@ import {
 } from "@typescript-eslint/utils";
 import {
   SymbolFlags,
+  TypeFlags,
   type Declaration,
   type Node,
   type Signature,
@@ -84,6 +85,12 @@ export function isDrizzleWrapperType(
   checker: TypeChecker,
   type: Type,
 ): boolean {
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return (
+      constraint !== undefined && isDrizzleWrapperType(checker, constraint)
+    );
+  }
   if (isDrizzleSymbol(checker, checker.getPropertyOfType(type, "getSQL"))) {
     return true;
   }
@@ -107,39 +114,102 @@ function propertyType(
     : checker.getTypeOfSymbolAtLocation(symbol, location);
 }
 
+function drizzleBrand(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): string | undefined {
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return undefined;
+  }
+  const brandType = propertyType(checker, metadataType, "brand", location);
+  return brandType?.isStringLiteral() === true ? brandType.value : undefined;
+}
+
+function everyConcreteType(
+  checker: TypeChecker,
+  type: Type,
+  predicate: (member: Type) => boolean,
+): boolean {
+  if (type.isUnion()) {
+    return type.types.every((member) => {
+      return everyConcreteType(checker, member, predicate);
+    });
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return (
+      constraint !== undefined &&
+      everyConcreteType(checker, constraint, predicate)
+    );
+  }
+  return predicate(type);
+}
+
 export function isDrizzleColumnType(
   checker: TypeChecker,
   type: Type,
   location: Node,
 ): boolean {
-  if (type.isUnion()) {
-    return type.types.every((member) => {
-      return isDrizzleColumnType(checker, member, location);
-    });
-  }
-  if (!isDrizzleWrapperType(checker, type)) {
-    return false;
-  }
-  const metadataType = propertyType(checker, type, "_", location);
-  if (metadataType === undefined) {
-    return false;
-  }
-  const brandType = propertyType(checker, metadataType, "brand", location);
-  return brandType?.isStringLiteral() === true && brandType.value === "Column";
+  return everyConcreteType(checker, type, (member) => {
+    return (
+      isDrizzleWrapperType(checker, member) &&
+      drizzleBrand(checker, member, location) === "Column"
+    );
+  });
 }
 
-export function isDrizzleArrayColumnType(
+export function isDrizzleTableType(
   checker: TypeChecker,
   type: Type,
   location: Node,
 ): boolean {
-  if (!isDrizzleColumnType(checker, type, location)) {
-    return false;
-  }
-  const metadataType = propertyType(checker, type, "_", location);
-  if (metadataType === undefined) {
-    return false;
-  }
-  const dataType = propertyType(checker, metadataType, "data", location);
-  return dataType !== undefined && checker.isArrayType(dataType);
+  return everyConcreteType(checker, type, (member) => {
+    return (
+      isDrizzleWrapperType(checker, member) &&
+      drizzleBrand(checker, member, location) === "Table"
+    );
+  });
+}
+
+export function isDrizzlePatternOperandType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    if (!isDrizzleWrapperType(checker, member)) {
+      return false;
+    }
+    const brand = drizzleBrand(checker, member, location);
+    return brand === "Column" || brand === "SQL" || brand === "SQL.Aliased";
+  });
+}
+
+export function isDrizzleArrayOperandType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    if (!isDrizzleWrapperType(checker, member)) {
+      return false;
+    }
+    const metadataType = propertyType(checker, member, "_", location);
+    if (metadataType === undefined) {
+      return false;
+    }
+    const brand = drizzleBrand(checker, member, location);
+    const valueType =
+      brand === "Column"
+        ? propertyType(checker, metadataType, "data", location)
+        : brand === "SQL" || brand === "SQL.Aliased"
+          ? propertyType(checker, metadataType, "type", location)
+          : undefined;
+    return (
+      valueType !== undefined &&
+      (checker.isArrayType(valueType) || checker.isTupleType(valueType))
+    );
+  });
 }

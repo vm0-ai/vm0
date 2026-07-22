@@ -359,8 +359,9 @@ function setupTeam(): void {
 }
 
 function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
+  const artifactItemId = overrides.artifactItemId ?? "run-1:file-1";
   return {
-    artifactItemId: "run-1:file-1",
+    artifactItemId,
     threadId: SOURCE_THREAD_ID,
     runId: "run-1",
     fileId: "file-1",
@@ -371,8 +372,13 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     filename: "launch-plan.html",
     contentType: "text/html",
     size: 9216,
-    url: "https://artifacts.example.com/launch-plan.html",
+    url:
+      overrides.url ??
+      (artifactItemId === "run-1:file-1"
+        ? "https://artifacts.example.com/launch-plan.html"
+        : `https://artifacts.example.com/${encodeURIComponent(artifactItemId)}`),
     createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",
     ...overrides,
   };
@@ -1522,6 +1528,37 @@ describe("artifacts page", () => {
     expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
+  it("renders the cache immediately when returning while the remote refresh is pending", async () => {
+    setupTeam();
+    const scope = testAuthScope("return-to-cache");
+    const artifact = createArtifact({
+      artifactItemId: "return-cache-run:file-1",
+      runId: "return-cache-run",
+      filename: "return-cache-summary.html",
+    });
+    mockArtifacts([artifact]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("return-cache-summary.html");
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        artifact.artifactItemId,
+      ]);
+    });
+
+    context.mocks.api(artifactsContract.list, ({ never }) => {
+      return never();
+    });
+    click(linkByText("Agents"));
+    await screen.findByRole("heading", { level: 1, name: /agents/i });
+    click(linkByText("Artifacts"));
+
+    await expect(
+      screen.findByText("return-cache-summary.html"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("normalizes older remote artifacts without a size", async () => {
     setupTeam();
     const scope = testAuthScope("remote-size-default");
@@ -1598,6 +1635,41 @@ describe("artifacts page", () => {
         resolvedChatIdb(db),
       ).readStore.readLastSyncedAt(),
     ).resolves.toBe("2026-01-04T00:00:00.000Z");
+  });
+
+  it("keeps the most recently updated artifact for a shared URL", async () => {
+    setupTeam();
+    const scope = testAuthScope("shared-url-winner");
+    const sharedUrl = "https://artifacts.example.com/shared.html";
+    const newestCreated = createArtifact({
+      artifactItemId: "newest-created:file-1",
+      threadId: "thread-newest-created",
+      runId: "newest-created",
+      filename: "newest-created.html",
+      url: sharedUrl,
+      createdAt: "2026-01-03T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z",
+    });
+    const newestUpdated = createArtifact({
+      artifactItemId: "newest-updated:file-1",
+      threadId: "thread-newest-updated",
+      runId: "newest-updated",
+      filename: "newest-updated.html",
+      url: sharedUrl,
+      createdAt: "2026-01-02T00:00:00Z",
+      updatedAt: "2026-01-04T00:00:00Z",
+    });
+    mockArtifacts([newestCreated, newestUpdated]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("newest-updated.html");
+    expect(screen.queryByText("newest-created.html")).not.toBeInTheDocument();
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        newestUpdated.artifactItemId,
+      ]);
+    });
   });
 
   it("replaces the cache when the server omits incremental sync metadata", async () => {

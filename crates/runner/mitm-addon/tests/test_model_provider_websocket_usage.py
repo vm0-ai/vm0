@@ -3,6 +3,7 @@
 import json
 import uuid
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from mitmproxy import http
@@ -32,22 +33,21 @@ def deferred_websocket_trim_scheduler(
     return capture_deferred_websocket_trims(monkeypatch)
 
 
-def _sum_quantities_by_category(events: list[dict]) -> dict[str, int]:
-    quantities: dict[str, int] = {}
-    for event in events:
-        category = event["category"]
-        quantities[category] = quantities.get(category, 0) + event["quantity"]
-    return quantities
+def _assert_usage_event_rows(
+    events: list[dict],
+    resource_field: Literal["provider", "model"],
+    expected_rows: list[tuple[str, str, int]],
+) -> None:
+    actual_rows = [
+        (event[resource_field], event["category"], event["quantity"]) for event in events
+    ]
+    assert len(events) == len(expected_rows)
+    assert sorted(actual_rows) == sorted(expected_rows)
 
-
-def _sum_quantities_by_field_and_category(
-    events: list[dict], field: str
-) -> dict[tuple[str, str], int]:
-    quantities: dict[tuple[str, str], int] = {}
-    for event in events:
-        key = (event[field], event["category"])
-        quantities[key] = quantities.get(key, 0) + event["quantity"]
-    return quantities
+    idempotency_keys = [event["idempotencyKey"] for event in events]
+    assert len(set(idempotency_keys)) == len(idempotency_keys)
+    for key in idempotency_keys:
+        uuid.UUID(key)
 
 
 def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = "gpt-5.5") -> bytes:
@@ -227,17 +227,18 @@ class TestModelProviderWebSocketUsage:
 
         webhook = self._run_websocket_message_and_end(flow)
 
-        events = webhook.usage_events()
-        by_category = _sum_quantities_by_category(events)
-        assert len(events) == len(by_category)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
-        assert by_category == {
-            "tokens.input": 25,
-            "tokens.output": 20,
-            "tokens.cache_read": 10,
-            "tokens.cache_creation": 15,
-        }
+        _assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", "tokens.input", 25),
+                ("gpt-5.5", "tokens.output", 20),
+                ("gpt-5.5", "tokens.cache_read", 10),
+                ("gpt-5.5", "tokens.cache_creation", 15),
+            ],
+        )
 
     def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -258,14 +259,14 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 13,
-            "tokens.output": 6,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 13,
-            "tokens.output": 6,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.output", 4),
+            ("gpt-5.5", "tokens.input", 3),
+            ("gpt-5.5", "tokens.output", 2),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_late_same_id_frame_after_release_is_duplicate(
         self, tmp_path, real_flow
@@ -288,14 +289,12 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 20),
+            ("gpt-5.5", "tokens.output", 12),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_late_same_id_frame_can_add_new_category_after_release(
         self, tmp_path, real_flow
@@ -328,14 +327,12 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 20),
+            ("gpt-5.5", "tokens.output", 12),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
         self, tmp_path, real_flow
@@ -427,20 +424,12 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert {
-            (event["provider"], event["category"]): event["quantity"]
-            for event in webhook.usage_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 20,
-            ("gpt-5.5", "tokens.output"): 12,
-        }
-        assert {
-            (event["model"], event["category"]): event["quantity"]
-            for event in webhook.model_usage_observation_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 20,
-            ("gpt-5.5", "tokens.output"): 12,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 20),
+            ("gpt-5.5", "tokens.output", 12),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_zero_frame_without_model_releases_source(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -525,20 +514,12 @@ class TestModelProviderWebSocketUsage:
         usage_sources = model_provider_usage_sources(flow)
         assert "resp_ws_zero_0" not in usage_sources
         assert usage_sources == {}
-        assert {
-            (event["provider"], event["category"]): event["quantity"]
-            for event in webhook.usage_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 20,
-            ("gpt-5.5", "tokens.output"): 12,
-        }
-        assert {
-            (event["model"], event["category"]): event["quantity"]
-            for event in webhook.model_usage_observation_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 20,
-            ("gpt-5.5", "tokens.output"): 12,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 20),
+            ("gpt-5.5", "tokens.output", 12),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -561,20 +542,12 @@ class TestModelProviderWebSocketUsage:
             usage.flush_usage_events(trigger="test")
 
         assert model_provider_usage_sources(flow) == {}
-        assert {
-            (event["provider"], event["category"]): event["quantity"]
-            for event in webhook.usage_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 3,
-            ("gpt-5.5", "tokens.output"): 2,
-        }
-        assert {
-            (event["model"], event["category"]): event["quantity"]
-            for event in webhook.model_usage_observation_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 3,
-            ("gpt-5.5", "tokens.output"): 2,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 3),
+            ("gpt-5.5", "tokens.output", 2),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
         self, tmp_path, real_flow
@@ -596,14 +569,12 @@ class TestModelProviderWebSocketUsage:
 
         assert model_provider_usage_sources(flow) == {}
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.output", 4),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_same_id_zero_after_positive_does_not_double_bill(
         self, tmp_path, real_flow
@@ -626,14 +597,12 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 20,
-            "tokens.output": 12,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 20),
+            ("gpt-5.5", "tokens.output", 12),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_full_pipeline_model_websocket_uses_context_model_for_response_ids(
         self, tmp_path, real_flow
@@ -658,16 +627,14 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_field_and_category(webhook.usage_events(), "provider") == {
-            ("gpt-5.5", "tokens.input"): 13,
-            ("gpt-5.5", "tokens.output"): 6,
-        }
-        assert _sum_quantities_by_field_and_category(
-            webhook.model_usage_observation_events(), "model"
-        ) == {
-            ("gpt-5.5", "tokens.input"): 13,
-            ("gpt-5.5", "tokens.output"): 6,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.output", 4),
+            ("gpt-5.5", "tokens.input", 3),
+            ("gpt-5.5", "tokens.output", 2),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_full_pipeline_model_websocket_reports_id_and_missing_id_usage(
         self, tmp_path, real_flow
@@ -700,14 +667,14 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 1,
         }
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 17,
-            "tokens.output": 5,
-        }
-        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
-            "tokens.input": 17,
-            "tokens.output": 5,
-        }
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 7),
+            ("gpt-5.5", "tokens.output", 1),
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.output", 4),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     @pytest.mark.parametrize(
         "later_cache_write_tokens",
@@ -819,18 +786,15 @@ class TestModelProviderWebSocketUsage:
             ).encode(),
         )
 
-        events = webhook.usage_events()
-        by_category = {event["category"]: event["quantity"] for event in events}
-        idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
         assert model_provider_usage_sources(flow) == {}
-        assert by_category == {
-            "tokens.input": 100,
-            "tokens.output": 40,
-        }
-        assert set(idempotency_by_category) == {"tokens.input", "tokens.output"}
-        for key in idempotency_by_category.values():
-            uuid.UUID(key)
-        assert {event["provider"] for event in events} == {"gpt-5.5"}
+        _assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", "tokens.input", 100),
+                ("gpt-5.5", "tokens.output", 40),
+            ],
+        )
 
     def test_model_websocket_ignores_client_messages(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)

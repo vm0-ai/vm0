@@ -10,7 +10,28 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_create_result(Err(sandbox_create_error("bad seed image")));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let server = httpmock::MockServer::start_async().await;
+    let body = b"workspace retry archive".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/workspace-retry.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
     let mut ctx = minimal_context();
+    let mut storage = api_storage(
+        "workspace-retry",
+        "/data",
+        "v1",
+        &server.url("/workspace-retry.tar.gz"),
+    );
+    storage.archive_size = Some(body.len() as u64);
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: Vec::new(),
+    });
     ctx.resume_session = Some(ResumeSession::inline(
         "sess-cache-hit".into(),
         r#"{"type":"init"}"#.into(),
@@ -85,6 +106,21 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
             (true, None)
         ]
     );
+    assert!(
+        (1..=2).contains(&full_get.calls_async().await),
+        "the cancelled owner may be stopped before its request reaches the fixture"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_eq!(
+        ops.iter()
+            .filter(|(action, _, _)| action == "storage_cache_fresh_delivery_single_request")
+            .count(),
+        2,
+        "workspace fallback must replace, not retain, the old owner: {ops:?}"
+    );
+    assert!(ops.iter().any(|(action, success, _)| {
+        action == "storage_cache_fresh_delivery_drained" && *success
+    }));
 }
 
 #[tokio::test]

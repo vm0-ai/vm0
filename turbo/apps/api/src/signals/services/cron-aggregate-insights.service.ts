@@ -1,4 +1,4 @@
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -58,7 +58,7 @@ type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
 
 interface NetworkInsightRow {
   readonly runId: string;
-  readonly firewallName: ConnectorCatalogRef;
+  readonly firewallName: ConnectorRef;
   readonly firewallPermission: string;
   readonly action: NetworkInsightAction;
 }
@@ -261,7 +261,7 @@ interface CurrentOrgMemberScope {
 }
 
 type PermissionLabelResolver = (
-  firewallName: ConnectorCatalogRef,
+  firewallName: ConnectorRef,
   permissionName: string,
 ) => Promise<string>;
 

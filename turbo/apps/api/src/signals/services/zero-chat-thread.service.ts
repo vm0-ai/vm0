@@ -52,6 +52,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   gt,
   gte,
   ilike,
@@ -59,6 +60,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  notExists,
   or,
   type SQL,
   sql,
@@ -107,6 +109,8 @@ const nullableTimestampDecoder = nullableDriverValueDecoder(
 );
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
+const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
+const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
 function chatMessageOrderSequenceSql() {
   return sql`CASE
@@ -166,6 +170,7 @@ const artifactListSqlRowSchema = z.object({
   preview_image_url: z.string().nullable(),
   metadata: z.unknown(),
   created_at: pgTimestampWithoutTimezoneToDateSchema,
+  updated_at: pgTimestampWithoutTimezoneToDateSchema,
   cursor_created_at: z.string(),
   cursor_updated_at: z.string().optional(),
   thread_id: z.string(),
@@ -239,12 +244,6 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`.mapWith(nullableTriggerSourceDecoder),
-  isGoalRun: sql`EXISTS (
-    SELECT 1
-    FROM ${zeroRuns}
-    WHERE ${eq(zeroRuns.id, chatMessages.runId)}
-      AND ${isNotNull(zeroRuns.goalId)}
-  )`.mapWith(pgBooleanDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
@@ -408,6 +407,20 @@ const messageColumns = {
     LIMIT 1
   )`.mapWith(nullableTextDecoder),
 } as const;
+
+function selectedMessageColumns(db: Pick<Db, "select">) {
+  return {
+    ...messageColumns,
+    isGoalRun: exists(
+      db
+        .select({ id: zeroRuns.id })
+        .from(zeroRuns)
+        .where(
+          and(eq(zeroRuns.id, chatMessages.runId), isNotNull(zeroRuns.goalId)),
+        ),
+    ).mapWith(pgBooleanDecoder),
+  } as const;
+}
 
 const searchMessageColumns = {
   messageId: chatMessages.id,
@@ -714,23 +727,33 @@ function toPagedMessage(
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
-function noActiveRunsForCurrentThreadCondition() {
-  return sql`NOT EXISTS (
-    SELECT 1
-    FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
-    WHERE ${eq(zeroRuns.chatThreadId, chatThreads.id)}
-      AND ${inArray(agentRuns.status, ACTIVE_RUN_STATUSES)}
-  )`;
+function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
+  return notExists(
+    db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(
+        and(
+          eq(zeroRuns.chatThreadId, chatThreads.id),
+          inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
+        ),
+      ),
+  );
 }
 
-function noActiveGoalsForCurrentThreadCondition() {
-  return sql`NOT EXISTS (
-    SELECT 1
-    FROM ${threadGoals}
-    WHERE ${eq(threadGoals.chatThreadId, chatThreads.id)}
-      AND ${threadGoals.status} = 'active'
-  )`;
+function noActiveGoalsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
+  return notExists(
+    db
+      .select({ id: threadGoals.id })
+      .from(threadGoals)
+      .where(
+        and(
+          eq(threadGoals.chatThreadId, chatThreads.id),
+          eq(threadGoals.status, "active"),
+        ),
+      ),
+  );
 }
 
 function ownedChatThreadDetail(
@@ -797,31 +820,24 @@ export function zeroChatThreadUnreads(args: {
         unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
-      .leftJoinLateral(lastRunFinish, sql`true`)
+      .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
-          noActiveRunsForCurrentThreadCondition(),
-          noActiveGoalsForCurrentThreadCondition(),
+          noActiveRunsForCurrentThreadCondition(db),
+          noActiveGoalsForCurrentThreadCondition(db),
           ...(args.includeCanonicalSlackThreads
             ? []
             : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
-    return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastRunFinish.createdAt) filter
-      // guarantees a joined row, but the left-lateral type keeps the column
-      // nullable.
-      if (row.unreadAt === null) {
-        return [];
-      }
-      return [{ threadId: row.threadId, unreadAt: row.unreadAt.toISOString() }];
+    return rows.map((row) => {
+      return { threadId: row.threadId, unreadAt: row.unreadAt.toISOString() };
     });
   });
 }
@@ -842,18 +858,17 @@ export function zeroChatThreadUnreadAgentIds(args: {
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoinLateral(lastRunFinish, sql`true`)
+      .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
-          noActiveRunsForCurrentThreadCondition(),
-          noActiveGoalsForCurrentThreadCondition(),
+          noActiveRunsForCurrentThreadCondition(db),
+          noActiveGoalsForCurrentThreadCondition(db),
           ...(args.includeCanonicalSlackThreads
             ? []
             : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
@@ -947,7 +962,8 @@ export function zeroChatThreadArtifacts(args: {
         return null;
       }
 
-      const rows = await get(db$)
+      const db = get(db$);
+      const rows = await db
         .select({
           runId: runUploadedFiles.runId,
           externalId: runUploadedFiles.externalId,
@@ -966,12 +982,17 @@ export function zeroChatThreadArtifacts(args: {
             eq(runUploadedFiles.userId, args.userId),
             or(
               eq(zeroRuns.chatThreadId, args.threadId),
-              sql`EXISTS (
-                SELECT 1
-                FROM ${chatMessages}
-                WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-                  AND ${eq(chatMessages.chatThreadId, args.threadId)}
-              )`,
+              exists(
+                db
+                  .select({ id: chatMessages.id })
+                  .from(chatMessages)
+                  .where(
+                    and(
+                      eq(chatMessages.runId, runUploadedFiles.runId),
+                      eq(chatMessages.chatThreadId, args.threadId),
+                    ),
+                  ),
+              ),
             ),
           ),
         )
@@ -1045,30 +1066,40 @@ function artifactCallerVisibilityConditions(args: {
   ];
 }
 
-function artifactFileVisibilityConditions(): SQL[] {
+function artifactFileVisibilityConditions(
+  db: Pick<Db, "select">,
+): (SQL | undefined)[] {
+  const hostedArtifactKind = sql`${hostedRunUploadedFiles.metadata}->>'artifactKind'`;
+  const artifactKind = sql`${runUploadedFiles.metadata}->>'artifactKind'`;
   return [
     isNotNull(runUploadedFiles.url),
-    sql`(
-      NOT EXISTS (
-        SELECT 1
-        FROM ${runUploadedFiles} hosted_files
-        WHERE hosted_files.run_id = ${runUploadedFiles.runId}
-          AND (
-            hosted_files.metadata->>'artifactKind' IN ('hosted-site', 'presentation-html')
-          )
-      )
-      OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-    )`,
+    or(
+      notExists(
+        db
+          .select({ id: hostedRunUploadedFiles.id })
+          .from(hostedRunUploadedFiles)
+          .where(
+            and(
+              eq(hostedRunUploadedFiles.runId, runUploadedFiles.runId),
+              inArray(hostedArtifactKind, HOSTED_ARTIFACT_KINDS),
+            ),
+          ),
+      ),
+      inArray(artifactKind, HOSTED_ARTIFACT_KINDS),
+    ),
   ];
 }
 
-function artifactVisibilityConditions(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): SQL[] {
+function artifactVisibilityConditions(
+  db: Pick<Db, "select">,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): (SQL | undefined)[] {
   return [
     ...artifactCallerVisibilityConditions(args),
-    ...artifactFileVisibilityConditions(),
+    ...artifactFileVisibilityConditions(db),
   ];
 }
 
@@ -1089,6 +1120,7 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     size: row.size_bytes ?? 0,
     url: row.url,
     createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
@@ -1209,7 +1241,7 @@ async function listChangedArtifacts(args: {
     ? sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
     : sql`${effectiveUpdatedAt} >= (${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`;
   const callerConditions = artifactCallerVisibilityConditions(args.query);
-  const fileConditions = artifactFileVisibilityConditions();
+  const fileConditions = artifactFileVisibilityConditions(args.db);
   const rows = await executeRawRows(
     args.db,
     sql`
@@ -1265,6 +1297,7 @@ async function listChangedArtifacts(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
@@ -1321,8 +1354,8 @@ async function listArtifactHistory(args: {
   // and hosted-run shadowing, so this query avoids a history-wide URL sort.
   const keysetClause = args.cursor
     ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql``;
-  const conditions = artifactVisibilityConditions(args.query);
+    : sql.empty();
+  const conditions = artifactVisibilityConditions(args.db, args.query);
   const rows = await executeRawRows(
     args.db,
     sql`
@@ -1337,6 +1370,7 @@ async function listArtifactHistory(args: {
         ${runUploadedFiles.previewImageUrl} AS preview_image_url,
         ${runUploadedFiles.metadata} AS metadata,
         ${runUploadedFiles.createdAt} AS created_at,
+        ${runUploadedFiles.updatedAt} AS updated_at,
         ${chatThreads.id} AS thread_id,
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
@@ -1467,11 +1501,11 @@ export const artifactFavoriteUrls$ = command(
 );
 
 async function artifactUrlIsVisible(
-  db: Pick<Db, "execute">,
+  db: Pick<Db, "execute" | "select">,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
-    ...artifactVisibilityConditions(args),
+    ...artifactVisibilityConditions(db, args),
     eq(runUploadedFiles.url, args.artifactUrl),
   ];
   const rows = await executeRawRows(
@@ -1604,7 +1638,7 @@ function chatSearchContextSideQuery(
           ? lt(chatMessages.createdAt, matchedChatMessage.createdAt)
           : gt(chatMessages.createdAt, matchedChatMessage.createdAt),
         isNotNull(chatMessages.content),
-        visibleChatMessageCondition(),
+        visibleChatMessageCondition(db),
         excludeGoalMarkerCondition(),
       ),
     )
@@ -1682,7 +1716,7 @@ async function loadChatSearchContexts(
       matchedChatMessage,
       sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
     )
-    .innerJoinLateral(context, sql`true`)
+    .crossJoinLateral(context)
     .orderBy(resultOrdinality, asc(context.createdAt));
 
   for (const row of rows) {
@@ -1728,7 +1762,7 @@ export function zeroChatSearch(args: {
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
-      visibleChatMessageCondition(),
+      visibleChatMessageCondition(db),
       excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
       ...(args.includeCanonicalSlackThreads
@@ -1814,7 +1848,7 @@ export function zeroChatThreadMessagesPage(args: {
 
     if (args.sinceId === undefined && args.beforeId === undefined) {
       const latestRows = await db
-        .select(messageColumns)
+        .select(selectedMessageColumns(db))
         .from(chatMessages)
         .where(threadFilter)
         .orderBy(
@@ -1857,7 +1891,7 @@ export function zeroChatThreadMessagesPage(args: {
 
       if (args.sinceId !== undefined) {
         rows = await db
-          .select(messageColumns)
+          .select(selectedMessageColumns(db))
           .from(chatMessages)
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
@@ -1868,7 +1902,7 @@ export function zeroChatThreadMessagesPage(args: {
           .limit(args.limit);
       } else {
         const previousRows = await db
-          .select(messageColumns)
+          .select(selectedMessageColumns(db))
           .from(chatMessages)
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
@@ -1906,7 +1940,7 @@ export function zeroChatThreadMessageById(args: {
 
     const db = get(db$);
     const [row] = await db
-      .select(messageColumns)
+      .select(selectedMessageColumns(db))
       .from(chatMessages)
       .where(
         and(

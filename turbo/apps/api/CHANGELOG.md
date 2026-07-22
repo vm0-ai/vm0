@@ -1,5 +1,122 @@
 # Changelog
 
+## [1.300.1](https://github.com/vm0-ai/vm0/compare/api-v1.300.0...api-v1.300.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
+
+### Performance Improvements
+
+* **api:** skip kms for internal run callbacks ([#22500](https://github.com/vm0-ai/vm0/issues/22500)) ([17e30fe](https://github.com/vm0-ai/vm0/commit/17e30fecd4462a3a05988924881d57b618e3b826))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.448.5
+    * @vm0/db bumped to 1.125.6
+
+## [1.300.0](https://github.com/vm0-ai/vm0/compare/api-v1.299.0...api-v1.300.0) (2026-07-22)
+
+
+### Features
+
+* show next scheduled morning brief send time in settings ([#22515](https://github.com/vm0-ai/vm0/issues/22515)) ([2c5052f](https://github.com/vm0-ai/vm0/commit/2c5052f41d9ff64bfb1b60f525930b3bdbf6706e))
+
+
+### Bug Fixes
+
+* **api:** extend sandbox token lifetime ([#22502](https://github.com/vm0-ai/vm0/issues/22502)) ([1782b92](https://github.com/vm0-ai/vm0/commit/1782b929542b4e829cc2203f3497ffd1d5aed8f3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+    * @vm0/db bumped to 1.125.5
+
+## [1.299.0](https://github.com/vm0-ai/vm0/compare/api-v1.298.0...api-v1.299.0) (2026-07-22)
+
+
+### Features
+
+* deliver canonical slack chat replies exactly once ([#22496](https://github.com/vm0-ai/vm0/issues/22496)) ([fb8bb00](https://github.com/vm0-ai/vm0/commit/fb8bb0076dd372cb6a23c46e233716d374ee21f1))
+* report unread chat threads in the morning brief email ([#22507](https://github.com/vm0-ai/vm0/issues/22507)) ([c94c2d3](https://github.com/vm0-ai/vm0/commit/c94c2d3372d4c79ec011c143a82f04155104636d))
+* serve the morning brief unsubscribe page from the platform app ([#22495](https://github.com/vm0-ai/vm0/issues/22495)) ([44b0f9a](https://github.com/vm0-ai/vm0/commit/44b0f9a4de8e8fb4456f80492c694fc38987f44e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+    * @vm0/db bumped to 1.125.4
+
+## [1.298.0](https://github.com/vm0-ai/vm0/compare/api-v1.297.1...api-v1.298.0) (2026-07-22)
+
+
+### Features
+
+* **computer-use:** share chat thread grants with automations ([#22485](https://github.com/vm0-ai/vm0/issues/22485)) ([482c97d](https://github.com/vm0-ai/vm0/commit/482c97d79d9be463b7794a293444dda612784c78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+    * @vm0/db bumped to 1.125.3
+
+## [1.297.1](https://github.com/vm0-ai/vm0/compare/api-v1.297.0...api-v1.297.1) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+    * @vm0/db bumped to 1.125.2
+
+## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** expose artifact update timestamps ([#22402](https://github.com/vm0-ai/vm0/issues/22402)) ([14cb524](https://github.com/vm0-ai/vm0/commit/14cb524e721340826b70c1c4c86633febab1e386))
+* **artifacts:** generate video posters on creation ([#22387](https://github.com/vm0-ai/vm0/issues/22387)) ([309920f](https://github.com/vm0-ai/vm0/commit/309920f74b9e17780f4d479b45ed70f1d3458986))
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+    * @vm0/db bumped to 1.125.1
+
+## [1.296.1](https://github.com/vm0-ai/vm0/compare/api-v1.296.0...api-v1.296.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* preserve github connection during morning brief ([#22457](https://github.com/vm0-ai/vm0/issues/22457)) ([735e24e](https://github.com/vm0-ai/vm0/commit/735e24e0f0a92f6ba95def54183d88255930d096))
+
 ## [1.296.0](https://github.com/vm0-ai/vm0/compare/api-v1.295.0...api-v1.296.0) (2026-07-21)
 
 

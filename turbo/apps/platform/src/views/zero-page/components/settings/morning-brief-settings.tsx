@@ -15,6 +15,30 @@ import {
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
 
+/**
+ * Human-readable next scheduled send, rendered in the member's preference
+ * timezone so the shown time matches the 7:00 local product promise.
+ */
+function nextRunLabel(
+  nextRunAt: string | null,
+  timezone: string | null,
+): string {
+  if (!nextRunAt) {
+    return "Next email: not scheduled yet — turn the switch off and on to reschedule";
+  }
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    ...(timezone ? { timeZone: timezone } : {}),
+  }).format(new Date(nextRunAt));
+  return timezone
+    ? `Next email: ${formatted} (${timezone})`
+    : `Next email: ${formatted}`;
+}
+
 export function MorningBriefSettings() {
   const features = useLastResolved(featureSwitch$);
   const preferences = useLastResolved(userPreferences$);
@@ -65,6 +89,14 @@ export function MorningBriefSettings() {
           A daily 7:00 AM email with your schedule, action items, and updates
           from connected GitHub, Gmail, and Google Calendar
         </div>
+        {preferences.morningBriefEnabled && (
+          <div className="text-xs text-muted-foreground">
+            {nextRunLabel(
+              preferences.morningBriefNextRunAt,
+              preferences.timezone,
+            )}
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {manualEnabled && (

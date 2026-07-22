@@ -221,7 +221,7 @@ original URL. Its signals combine several reactive reads and an action:
 
 ```ts
 interface ConnectorSignals extends ConnectorActionDescriptor {
-  displayMetadata$: Computed<Promise<ConnectorCatalogDisplayMetadata | null>>;
+  catalogItem$: Computed<Promise<PublicConnectorCatalogStatusItem | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
   authorized$: Computed<Promise<boolean>>;

@@ -6,9 +6,9 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
 import {
@@ -73,13 +73,13 @@ function stringError(status: 400 | 404, error: string) {
 }
 
 function parseConnectorRefs(connectorTypes: readonly string[]): {
-  readonly connectorRefs: readonly ConnectorCatalogRef[];
+  readonly connectorRefs: readonly ConnectorRef[];
   readonly invalidTypes: readonly string[];
 } {
-  const connectorRefs: ConnectorCatalogRef[] = [];
+  const connectorRefs: ConnectorRef[] = [];
   const invalidTypes: string[] = [];
   for (const type of connectorTypes) {
-    const result = connectorCatalogRefSchema.safeParse(type);
+    const result = connectorRefSchema.safeParse(type);
     if (result.success) {
       connectorRefs.push(result.data);
     } else {
@@ -94,8 +94,8 @@ function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
 }
 
 function testConnectorTokenOutputs(args: {
-  readonly connectorRef: ConnectorCatalogRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly connectorRef: ConnectorRef;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly accessToken: string;
   readonly refreshToken: string | undefined;
@@ -238,7 +238,7 @@ const createTestConnector$ = command(
       );
     }
 
-    const connectorParsed = connectorCatalogRefSchema.safeParse(
+    const connectorParsed = connectorRefSchema.safeParse(
       bodyResult.data.connectorName,
     );
     if (!connectorParsed.success) {

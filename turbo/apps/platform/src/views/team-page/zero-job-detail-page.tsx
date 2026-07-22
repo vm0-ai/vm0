@@ -20,7 +20,7 @@ import {
   IconMessageCircle,
   IconWand,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -91,9 +91,8 @@ import {
   currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   matchesConnectorSearch,
-  type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
   currentAgentVisibleWorkflows$,
@@ -101,18 +100,21 @@ import {
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  permConnectorType$,
+  permConnectorRef$,
   agentPermissionMetadata$,
-  setPermConnectorType$,
+  setPermConnectorRef$,
   permSearch$,
   setPermSearch$,
   permSearchActive$,
   setPermSearchActive$,
-  permSavingType$,
-  setPermSavingType$,
+  permSavingRef$,
+  setPermSavingRef$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type {
+  PublicConnectorCatalogPermissionDetail,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import {
@@ -322,7 +324,7 @@ function PermissionRow({
   onManage,
   isLast,
 }: {
-  connector: ConnectorTypeWithStatus;
+  connector: PublicConnectorCatalogStatusItem;
   enabled: boolean;
   onToggle: (checked: boolean) => void;
   loading?: boolean;
@@ -339,15 +341,15 @@ function PermissionRow({
             <span className="text-sm font-medium text-foreground">
               {connector.label}
             </span>
-            {connector.connector?.externalUsername && (
+            {connector.connection?.externalUsername && (
               <span className="text-xs text-muted-foreground">
-                @{connector.connector.externalUsername}
+                @{connector.connection.externalUsername}
               </span>
             )}
           </div>
-          {connector.helpText && (
+          {connector.description && (
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-              {connector.helpText
+              {connector.description
                 .replace(/^Connect your \w+ account to /i, "")
                 .replace(/^access /i, "")
                 .replace(/^create /i, "Create ")
@@ -470,21 +472,21 @@ export function ConnectedConnectorPermissions({
   setSearch,
   searchActive,
   setSearchActive,
-  savingType,
+  savingConnectorRef,
   canManagePermissions,
   onToggle,
   onManage,
 }: {
-  filteredConnectors: readonly ConnectorTypeWithStatus[];
+  filteredConnectors: readonly PublicConnectorCatalogStatusItem[];
   authorizedSet: ReadonlySet<string>;
   search: string;
   setSearch: (value: string) => void;
   searchActive: boolean;
   setSearchActive: (active: boolean) => void;
-  savingType: string | null;
+  savingConnectorRef: ConnectorRef | null;
   canManagePermissions: boolean;
-  onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
-  onManage: (type: ConnectorType) => void;
+  onToggle: (connectorRef: ConnectorRef, checked: boolean) => Promise<void>;
+  onManage: (connectorRef: ConnectorRef) => void;
 }) {
   return (
     <>
@@ -555,18 +557,18 @@ export function ConnectedConnectorPermissions({
           filteredConnectors.map((c, i) => {
             return (
               <PermissionRow
-                key={c.type}
+                key={c.connectorRef}
                 connector={c}
-                enabled={authorizedSet.has(c.type)}
+                enabled={authorizedSet.has(c.connectorRef)}
                 onToggle={onDomEventFn(async (checked) => {
-                  await onToggle(c.type, checked);
+                  await onToggle(c.connectorRef, checked);
                 })}
-                loading={savingType === c.type}
+                loading={savingConnectorRef === c.connectorRef}
                 showManage={
                   canManagePermissions && c.permissionSummary.hasPermissions
                 }
                 onManage={() => {
-                  return onManage(c.type);
+                  return onManage(c.connectorRef);
                 }}
                 isLast={i === filteredConnectors.length - 1}
               />
@@ -587,7 +589,7 @@ export function ConnectedConnectorPermissions({
 export function AgentPermissionsDrawer({
   targetId,
   targetKind = "agent",
-  connectorType,
+  connectorRef,
   connectorLabel,
   displayName,
   initialPolicies,
@@ -602,7 +604,7 @@ export function AgentPermissionsDrawer({
 }: {
   targetId: string;
   targetKind?: "agent" | "workflow";
-  connectorType: ConnectorType | null;
+  connectorRef: ConnectorRef | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -620,14 +622,14 @@ export function AgentPermissionsDrawer({
   ) => Promise<void>;
   onClose: () => void;
 }) {
-  if (!connectorType) {
+  if (!connectorRef) {
     return null;
   }
   return (
     <PermissionsDrawer
       agentId={targetId}
       targetKind={targetKind}
-      connectorType={connectorType}
+      connectorRef={connectorRef}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
@@ -676,55 +678,62 @@ function JobPermissionsTab({
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
-  const connectorType = useGet(permConnectorType$);
-  const setConnectorType = useSet(setPermConnectorType$);
+  const connectorRef = useGet(permConnectorRef$);
+  const setConnectorRef = useSet(setPermConnectorRef$);
   const search = useGet(permSearch$);
   const setSearch = useSet(setPermSearch$);
   const searchActive = useGet(permSearchActive$);
   const setSearchActive = useSet(setPermSearchActive$);
-  const savingType = useGet(permSavingType$);
-  const setSavingType = useSet(setPermSavingType$);
+  const savingRef = useGet(permSavingRef$);
+  const setSavingRef = useSet(setPermSavingRef$);
 
   const connectorsLoading = connectorsLoadable.state === "loading";
 
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const catalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
   const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+    catalogItemsLoadable.state === "hasData" ? catalogItemsLoadable.data : [];
   const canManagePermissions = true;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
   });
-  const connectorLabel = connectorType
+  const connectorLabel = connectorRef
     ? (allConnectors.find((connector) => {
-        return connector.type === connectorType;
-      })?.label ?? connectorType)
+        return connector.connectorRef === connectorRef;
+      })?.label ?? connectorRef)
     : "";
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
   });
   const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = async (type: ConnectorType, checked: boolean) => {
-    if (savingType !== null) {
+  const handleToggle = async (
+    targetConnectorRef: ConnectorRef,
+    checked: boolean,
+  ) => {
+    if (savingRef !== null) {
       return;
     }
     const modify = checked
-      ? authorizeFn(type, pageSignal)
-      : deauthorizeFn(type, pageSignal);
-    setSavingType(type);
+      ? authorizeFn(targetConnectorRef, pageSignal)
+      : deauthorizeFn(targetConnectorRef, pageSignal);
+    setSavingRef(targetConnectorRef);
     await bestEffort(
       (async () => {
         await modify;
-        await saveConnectors(type, checked ? "add" : "remove", pageSignal);
+        await saveConnectors(
+          targetConnectorRef,
+          checked ? "add" : "remove",
+          pageSignal,
+        );
         toast.success("Connectors saved");
       })(),
     );
-    setSavingType(null);
+    setSavingRef(null);
   };
 
   if (
-    allTypesLoadable.state !== "hasData" ||
+    catalogItemsLoadable.state !== "hasData" ||
     connectorsLoading ||
     userGrantsLoadable.state === "loading"
   ) {
@@ -748,14 +757,14 @@ function JobPermissionsTab({
             setSearch={setSearch}
             searchActive={searchActive}
             setSearchActive={setSearchActive}
-            savingType={savingType}
+            savingConnectorRef={savingRef}
             canManagePermissions={canManagePermissions}
             onToggle={handleToggle}
-            onManage={setConnectorType}
+            onManage={setConnectorRef}
           />
           <AgentPermissionsDrawer
             targetId={agentId}
-            connectorType={connectorType}
+            connectorRef={connectorRef}
             connectorLabel={connectorLabel}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
@@ -763,12 +772,12 @@ function JobPermissionsTab({
             resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
-              if (connectorType === null) {
+              if (connectorRef === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
               await savePermissionDraftPolicies({
                 scope: { agentId },
-                connectorRef: connectorType,
+                connectorRef,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: activeUserGrantSnapshot.grants,
@@ -779,7 +788,7 @@ function JobPermissionsTab({
               toast.success("Permissions updated");
             }}
             onClose={() => {
-              return setConnectorType(null);
+              return setConnectorRef(null);
             }}
           />
         </>

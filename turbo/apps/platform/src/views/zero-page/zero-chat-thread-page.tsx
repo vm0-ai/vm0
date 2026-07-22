@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
+  useLoadableState,
   useLastLoadable,
   useLastResolved,
   useLoadable,
@@ -2737,7 +2738,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const threadSettledInServer =
     useLastResolved(thread.threadSettledInServer$) ?? false;
   const hasMessages = useLastResolved(thread.hasMessages$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasMessages !== false) {
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  if (
+    !renderedGroupsReady ||
+    !threadSettledInServer ||
+    hasMessages !== false ||
+    hasNewMessagesState === "loading"
+  ) {
     return null;
   }
   return (
@@ -3500,7 +3507,10 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
     threadSettledInServerLoadable,
     renderedGroupsReadyLoadable,
   );
-  const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
+  const hasMessages = useLastResolved(thread.hasMessages$);
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  const skeletonVisible =
+    hasMessages === false && hasNewMessagesState === "loading";
   if (!skeletonVisible || sessionError) {
     return null;
   }
@@ -4771,12 +4781,12 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
-  const displayMetadata = useLastResolved(signals.displayMetadata$);
+  const catalogItem = useLastResolved(signals.catalogItem$);
   const [activateLoadable, activate] = useLoadableSet(signals.activate$);
   const loading =
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
-  if (!available || !displayMetadata) {
+  if (!available || !catalogItem) {
     return null;
   }
 
@@ -4787,14 +4797,14 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={displayMetadata.icon} size={22} />
+          <ConnectorIcon icon={catalogItem.icon} size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {displayMetadata.label}
+            {catalogItem.label}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {displayMetadata.helpText}
+            {catalogItem.description}
           </div>
         </div>
       </div>
@@ -4807,7 +4817,7 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Connected" : "Connect"}
+        {complete ? "Authorize" : "Connect"}
       </button>
     </div>
   );

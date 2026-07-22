@@ -52,11 +52,18 @@ _BASE_STATIC_SCORE_BONUS = 1
 
 class _BaseUrlParts(NamedTuple):
     scheme: str
-    authority: str
+    hostname: str
+    port: int | None
     path: str
     host_malformed: bool
     has_userinfo: bool
     port_malformed: bool
+
+    @property
+    def authority(self) -> str:
+        if self.port is None:
+            return self.hostname
+        return f"{self.hostname}:{self.port}"
 
 
 class _CompiledBase(NamedTuple):
@@ -181,9 +188,9 @@ def _split_base_match_url(
 
     Canonicalizes authority details that get_trusted_authority() also normalizes:
     trailing host dots are removed, default ports are omitted, and explicit ports
-    are rendered as integers. The returned path excludes query and fragment so
-    callers can apply base-path prefix semantics without accidentally comparing
-    query strings.
+    are rendered as integers. Hostname and port remain separate so host parameters
+    cannot consume port text. The returned path excludes query and fragment so callers
+    can apply base-path prefix semantics without accidentally comparing query strings.
 
     ``allow_runtime_backslash_syntax`` only bypasses the early backslash gate.
     Compiled firewall matching uses this so a backslash-bearing request can
@@ -232,13 +239,14 @@ def _split_base_match_url(
     )
     if authority_result is None:
         return None
-    authority, host_malformed = authority_result
+    hostname, normalized_port, host_malformed = authority_result
     if host_malformed and not allow_malformed_authority:
         return None
 
     return _BaseUrlParts(
         scheme=parts.scheme,
-        authority=authority,
+        hostname=hostname,
+        port=normalized_port,
         path=parts.path,
         host_malformed=host_malformed,
         has_userinfo=has_userinfo,
@@ -292,19 +300,15 @@ def _normalize_authority(
     port: int | None,
     *,
     allow_host_params: bool = False,
-) -> tuple[str, bool] | None:
+) -> tuple[str, int | None, bool] | None:
     if host is None:
         return None
     normalized_host, host_malformed = _normalize_authority_host(
         host,
         allow_host_params=allow_host_params,
     )
-    if port is None:
-        return normalized_host, host_malformed
-
-    if is_default_scheme_port(scheme, port):
-        return normalized_host, host_malformed
-    return f"{normalized_host}:{port}", host_malformed
+    normalized_port = None if port is None or is_default_scheme_port(scheme, port) else port
+    return normalized_host, normalized_port, host_malformed
 
 
 def _compile_base_segments_for_match(
@@ -560,7 +564,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
     path_segments: tuple[ParsedSegment, ...] = ()
     param_parse_malformed = False
     if has_params:
-        raw_host_segments = tuple(reversed(parts.authority.split(".")))
+        raw_host_segments = tuple(reversed(parts.hostname.split(".")))
         compiled_host, host_parse_malformed = _compile_base_segments_for_match(
             raw_host_segments,
             greedy_allowed_index=len(raw_host_segments) - 1,
@@ -613,8 +617,10 @@ def _match_compiled_base_url_parts(
 
     if url_parts.scheme.lower() != base.parts.scheme.lower():
         return None
+    if url_parts.port != base.parts.port:
+        return None
 
-    host_params = _match_compiled_host(url_parts.authority, base.host_segments)
+    host_params = _match_compiled_host(url_parts.hostname, base.host_segments)
     if host_params is None:
         return None
 
@@ -649,12 +655,13 @@ def _split_https_authority_parts(host: str, port: int) -> _BaseUrlParts | None:
     )
     if authority_result is None:
         return None
-    authority, host_malformed = authority_result
+    hostname, normalized_port, host_malformed = authority_result
     if host_malformed:
         return None
     return _BaseUrlParts(
         scheme="https",
-        authority=authority,
+        hostname=hostname,
+        port=normalized_port,
         path="/",
         host_malformed=False,
         has_userinfo=False,
@@ -667,7 +674,9 @@ def _match_compiled_base_authority(url_parts: _BaseUrlParts, base: _CompiledBase
         return False
     if not base.has_params:
         return url_parts.authority.lower() == base.parts.authority.lower()
-    return _match_compiled_host(url_parts.authority, base.host_segments) is not None
+    if url_parts.port != base.parts.port:
+        return False
+    return _match_compiled_host(url_parts.hostname, base.host_segments) is not None
 
 
 def match_base_url(url: str, base: str) -> tuple[str, dict] | None:

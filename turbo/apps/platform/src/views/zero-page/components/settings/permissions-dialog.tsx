@@ -23,7 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
@@ -104,7 +104,7 @@ interface ConnectorPermission {
 interface PermissionsDrawerProps {
   agentId: string;
   targetKind?: "agent" | "workflow";
-  connectorType: ConnectorType;
+  connectorRef: ConnectorRef;
   connectorLabel: string;
   metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
   displayName: string;
@@ -142,7 +142,7 @@ interface PermissionsDrawerFooterProps {
 }
 
 interface InitialPermissionDrawerState {
-  readonly ref: ConnectorType;
+  readonly ref: ConnectorRef;
   readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
   readonly initialPolicyKey: string;
 }
@@ -165,24 +165,24 @@ type LoadedPermissionsDrawerContentProps = Pick<
 
 function buildInitialPermissionDrawerState({
   agentId,
-  connectorType,
+  connectorRef,
   metadata,
   initialPolicies,
   initialGrants,
 }: Pick<
   PermissionsDrawerProps,
-  "agentId" | "connectorType" | "initialPolicies" | "initialGrants"
+  "agentId" | "connectorRef" | "initialPolicies" | "initialGrants"
 > & {
   readonly metadata: PublicConnectorCatalogPermissionDetail;
 }): InitialPermissionDrawerState {
-  const explicitGrants = buildExplicitGrantMap(connectorType, initialGrants);
+  const explicitGrants = buildExplicitGrantMap(connectorRef, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
   const context = createPermissionDraftContext({ metadata, initialPolicies });
   const initialPolicyStateKey = permissionDraftInitialPolicyKey(context);
   return {
-    ref: connectorType,
+    ref: connectorRef,
     explicitGrants,
-    initialPolicyKey: `${agentId}\u0000${connectorType}\u0000${permissionDraftMetadataKey(metadata)}\u0000${initialPolicyStateKey}\u0000${grantStateKey}`,
+    initialPolicyKey: `${agentId}\u0000${connectorRef}\u0000${permissionDraftMetadataKey(metadata)}\u0000${initialPolicyStateKey}\u0000${grantStateKey}`,
   };
 }
 
@@ -1551,7 +1551,7 @@ function PermissionsContent({
   const loadedInitialState = loadedMetadata
     ? buildInitialPermissionDrawerState({
         agentId: props.agentId,
-        connectorType: props.connectorType,
+        connectorRef: props.connectorRef,
         metadata: loadedMetadata,
         initialPolicies: props.initialPolicies,
         initialGrants: props.initialGrants,
@@ -1561,7 +1561,7 @@ function PermissionsContent({
   const message =
     metadataLoadable.state === "hasError"
       ? "Failed to load permission metadata"
-      : `No permission metadata found for ${props.connectorType}`;
+      : `No permission metadata found for ${props.connectorRef}`;
 
   return (
     <>

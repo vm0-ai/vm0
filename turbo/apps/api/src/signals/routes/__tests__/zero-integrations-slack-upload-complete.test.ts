@@ -1,14 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
+import { HttpResponse, http } from "msw";
 
 import { integrationsSlackUploadCompleteContract } from "@vm0/api-contracts/contracts/integrations";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -21,11 +26,13 @@ import {
   deleteUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 const chatApi = createChatFilesBddApi(context);
 const runsApi = createRunsApi(context);
 
@@ -331,6 +338,71 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       size: 42,
       url: `https://slack.example/files/${fileId}`,
     });
+  });
+
+  it("generates a poster immediately for a Slack video Artifact", async () => {
+    const { orgId, userId, runId } = await seedRunScoped();
+    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
+      [FeatureSwitchKey.VideoArtifactPosters]: true,
+    });
+    const fileId = `F-${randomUUID().slice(0, 8)}`;
+    const permalink = `https://slack.example/files/${fileId}`;
+    context.mocks.slack.files.info.mockResolvedValue({
+      ok: true,
+      file: {
+        id: fileId,
+        name: "demo.mp4",
+        title: "Demo video",
+        mimetype: "video/mp4",
+        filetype: "mp4",
+        size: 1024,
+        permalink,
+      },
+    });
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const frameRequests: string[] = [];
+    server.use(
+      http.get(
+        /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
+        ({ request }) => {
+          frameRequests.push(request.url);
+          return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
+            headers: { "Content-Type": "image/jpeg" },
+          });
+        },
+      ),
+    );
+    const token = zeroToken({ userId, orgId, runId });
+
+    const client = setupApp({ context })(
+      integrationsSlackUploadCompleteContract,
+    );
+    await accept(
+      client.complete({
+        body: { fileId, channel: "C123", title: "Demo video" },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toStrictEqual([
+      `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
+    ]);
+    expect(
+      objectStore.puts.some((put) => {
+        return (
+          put.bucket === "test-user-artifacts" &&
+          put.key.endsWith("/poster.jpg") &&
+          put.contentType === "image/jpeg"
+        );
+      }),
+    ).toBeTruthy();
+    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
+    const videoArtifact = artifacts.artifacts.find((artifact) => {
+      return artifact.fileId === fileId;
+    });
+    expect(videoArtifact?.previewImageUrl).toMatch(/\/poster\.jpg$/);
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {

@@ -69,6 +69,7 @@ const artifactItemSchema = z.object({
   url: z.string(),
   previewImageUrl: z.string().optional(),
   createdAt: z.string(),
+  updatedAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });

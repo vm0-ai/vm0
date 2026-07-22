@@ -47,7 +47,7 @@ describe("zero workflow create command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", "");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
 

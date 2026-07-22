@@ -22,13 +22,9 @@ export const emailMorningBriefUnsubscribeContract = c.router({
     path: "/api/email/morning-brief/unsubscribe",
     query: emailMorningBriefUnsubscribeQuerySchema,
     responses: {
-      200: c.otherResponse({
-        contentType: "text/html",
-        body: z.unknown(),
-      }),
-      400: emailMorningBriefUnsubscribeErrorSchema,
+      302: c.noBody(),
     },
-    summary: "Turn off the Morning Brief from an email link",
+    summary: "Redirect legacy email links to the platform unsubscribe page",
   },
   unsubscribe: {
     method: "POST",

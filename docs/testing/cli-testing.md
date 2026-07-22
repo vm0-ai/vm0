@@ -1,137 +1,41 @@
-# CLI Testing Patterns
+# Zero CLI Testing
 
 ## Principle
 
-In the CLI app (`turbo/apps/cli`), only write **CLI Command Integration Tests**. Test commands via `command.parseAsync()` with MSW mocking the Web API.
+The CLI package publishes one binary: `zero`. Command tests are integration
+tests that enter through Commander with `command.parseAsync()`.
 
-**Integration boundary:**
+- Mock the Web API with MSW.
+- Keep command parsing, validation, formatting, and filesystem behavior real.
+- Use temporary directories for filesystem state.
+- Do not mock internal CLI modules.
 
-- **Entry point**: Commander.js command action (`command.parseAsync()`)
-- **Mock (external)**: Web API via MSW, third-party packages (`ably`)
-- **Real (internal)**: All CLI code, filesystem, config, validators, domain logic
+The retired `vm0` binary and its commands are not compatibility surfaces and
+must not be recreated in tests.
 
----
+## Test location
 
-## File Location
+Place command tests in a neighboring `__tests__/` directory. A command file and
+its test should have matching names:
 
-Test files should be placed in `__tests__/` directories next to the command files. **Each subcommand should have its own test file with the same name as the command file.**
-
-```
-src/commands/
-├── artifact/
-│   ├── __tests__/
-│   │   ├── init.test.ts      # Tests for init.ts
-│   │   ├── push.test.ts      # Tests for push.ts
-│   │   ├── pull.test.ts      # Tests for pull.ts
-│   │   ├── status.test.ts    # Tests for status.ts
-│   │   ├── list.test.ts      # Tests for list.ts
-│   │   └── clone.test.ts     # Tests for clone.ts
-│   ├── index.ts              # Main command (artifactCommand)
-│   ├── init.ts
-│   ├── push.ts
-│   ├── pull.ts
-│   ├── status.ts
-│   ├── list.ts
-│   └── clone.ts
-├── compose/
-│   ├── __tests__/
-│   │   └── index.test.ts     # Single file command
-│   └── index.ts
+```text
+src/commands/zero/
+├── logs/
+│   ├── index.ts
+│   └── __tests__/
+│       └── view.test.ts
+└── whoami.ts
 ```
 
-**Naming Convention:**
+## Authentication and routing
 
-- Test file name = Command file name (e.g., `init.ts` → `init.test.ts`)
-- For single-file commands, use `index.test.ts`
-- Each test file focuses on one subcommand's complete behavior
-
----
-
-## Test File Structure
-
-```typescript
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server";
-import { composeCommand } from "../compose";
-import { mkdtempSync, rmSync } from "fs";
-import * as path from "path";
-import * as os from "os";
-
-describe("compose command", () => {
-  let tempDir: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup environment
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
-
-    // Setup temp directory
-    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
-    originalCwd = process.cwd();
-    process.chdir(tempDir);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    rmSync(tempDir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
-  });
-
-  it("should create compose successfully", async () => {
-    // Setup MSW handler
-    server.use(
-      http.post("http://localhost:3000/api/agent/composes", () => {
-        return HttpResponse.json({
-          composeId: "cmp-123",
-          name: "test-agent",
-          action: "created",
-        });
-      }),
-    );
-
-    // Create test file
-    await fs.writeFile(
-      path.join(tempDir, "vm0.yaml"),
-      'version: "1.0"\nagents:\n  test:\n    framework: claude-code',
-    );
-
-    // Execute command
-    await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-
-    // Assert on console output (CLI behavior)
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("Compose created"),
-    );
-  });
-});
-```
-
----
-
-## Environment Setup
-
-Use `vi.stubEnv()` to configure environment variables. Do NOT mock the config module.
-
-**Bad Case**
-
-```typescript
-// Mocking internal config module
-vi.mock("../../lib/api/config", () => ({
-  getApiUrl: vi.fn().mockResolvedValue("http://localhost:3000"),
-  getToken: vi.fn().mockResolvedValue("test-token"),
-}));
-```
-
-**Good Case**
+Product CLI requests use `ZERO_TOKEN` as their only authentication source.
+Tests should set it explicitly together with the API URL:
 
 ```typescript
 beforeEach(() => {
+  vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-  vi.stubEnv("VM0_TOKEN", "test-token");
 });
 
 afterEach(() => {
@@ -139,300 +43,105 @@ afterEach(() => {
 });
 ```
 
----
+Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
+Tests for missing authentication should leave `ZERO_TOKEN` unset and assert the
+resulting guidance.
 
-## Mock
-
-Only mock external services. The Web API is external to CLI.
-
-**Bad Case**
+## Command integration pattern
 
 ```typescript
-// Mocking internal modules
-vi.mock("../../lib/domain/yaml-validator");
-vi.mock("../../lib/storage/storage-utils");
-vi.mock("../../lib/api/config");
-```
-
-**Good Case**
-
-```typescript
-// MSW for Web API (external)
-import { server } from "../../mocks/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
+import { zeroLogsCommand } from "../index";
 
-server.use(
-  http.post("http://localhost:3000/api/agent/composes", () => {
-    return HttpResponse.json({ composeId: "cmp-123" });
-  }),
-);
+describe("zero logs", () => {
+  beforeEach(() => {
+    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+  });
 
-// Third-party packages (external)
-vi.mock("ably");
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("renders returned agent events", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextCursor: null,
+            framework: "claude-code",
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync([
+      "node",
+      "zero",
+      "00000000-0000-4000-8000-000000000000",
+      "--all",
+    ]);
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("No agent events"),
+    );
+  });
+});
 ```
 
----
+## External boundaries
 
-## Filesystem
+Mock only dependencies outside the CLI process:
 
-CLI uses filesystem as state storage. Use real filesystem with temp directories.
+- HTTP calls through MSW
+- third-party SDKs that perform external I/O
+- process exit and console output when required to observe command behavior
 
-**Setup Pattern**
+Avoid mocking validators, domain functions, API configuration, serializers, or
+other internal modules. Enter through the command and observe output, exit code,
+HTTP request, and filesystem changes.
+
+## Filesystem behavior
+
+Use the real filesystem under a temporary directory:
 
 ```typescript
-let tempDir: string;
-let originalCwd: string;
+const tempDir = mkdtempSync(path.join(os.tmpdir(), "zero-cli-test-"));
+const previousCwd = process.cwd();
+process.chdir(tempDir);
 
-beforeEach(() => {
-  tempDir = mkdtempSync(path.join(os.tmpdir(), "test-"));
-  originalCwd = process.cwd();
-  process.chdir(tempDir);
-});
-
-afterEach(() => {
-  process.chdir(originalCwd);
+try {
+  await command.parseAsync(["node", "zero", "..."]);
+} finally {
+  process.chdir(previousCwd);
   rmSync(tempDir, { recursive: true, force: true });
-});
+}
 ```
 
-**Creating Test Files**
+## Interactive commands
 
-```typescript
-// Create vm0.yaml for compose tests
-await fs.writeFile(
-  path.join(tempDir, "vm0.yaml"),
-  'version: "1.0"\nagents:\n  test:\n    framework: claude-code',
-);
+Use `prompts.inject()` to supply responses in order. This exercises the real
+prompt integration while keeping the test deterministic. Always restore TTY
+properties and injected state during teardown.
 
-// Create storage config for volume/artifact tests
-await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
-await fs.writeFile(
-  path.join(tempDir, ".vm0", "storage.yaml"),
-  "name: test-volume\ntype: volume",
-);
-```
+## Error behavior
 
----
+API failures should be represented with MSW responses and asserted through the
+command's user-visible error and exit code. Missing-token tests should verify
+the `ZERO_TOKEN` setup guidance; present-but-rejected token tests should verify
+the invalid-or-expired guidance.
 
-## CLI-Specific Assertions
+## What belongs elsewhere
 
-These patterns are valid for CLI testing because they test user-visible behavior.
+- API route behavior belongs in API integration tests.
+- Multi-service lifecycle behavior belongs in runner E2E tests.
+- Pure internal unit tests are reserved for security-critical logic,
+  algorithmically complex parsers, or state-transition matrices.
 
-### Console Output
-
-Console output IS the CLI user interface. Asserting on it is testing behavior.
-
-```typescript
-const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-const mockConsoleError = vi
-  .spyOn(console, "error")
-  .mockImplementation(() => {});
-
-// After command execution
-expect(mockConsoleLog).toHaveBeenCalledWith(
-  expect.stringContaining("Compose created: user/my-agent"),
-);
-expect(mockConsoleError).toHaveBeenCalledWith(
-  expect.stringContaining("Config file not found"),
-);
-```
-
-### Exit Codes
-
-Exit codes are how CLI communicates success/failure to the shell.
-
-```typescript
-const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-  throw new Error("process.exit called");
-}) as never);
-
-// Test error case
-await expect(async () => {
-  await command.parseAsync(["node", "cli", "invalid-arg"]);
-}).rejects.toThrow("process.exit called");
-
-expect(mockExit).toHaveBeenCalledWith(1);
-```
-
----
-
-## Interactive Prompts
-
-Test both interactive and non-interactive modes. Use `prompts.inject()` for interactive mode testing.
-
-### Non-Interactive Mode
-
-When `isInteractive()` returns `false` (non-TTY environment), prompts return `undefined` automatically. Test that commands handle this gracefully.
-
-```typescript
-// Test that command requires flags in non-interactive mode
-it("should require --name flag in non-interactive mode", async () => {
-  // Non-TTY by default in test environment
-  await expect(async () => {
-    await initCommand.parseAsync(["node", "cli"]);
-  }).rejects.toThrow("process.exit called");
-
-  expect(mockConsoleError).toHaveBeenCalledWith(
-    expect.stringContaining("--name flag is required"),
-  );
-});
-
-// Test with flag (works in both modes)
-it("should create files with --name flag", async () => {
-  await initCommand.parseAsync(["node", "cli", "--name", "my-agent"]);
-
-  expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
-});
-```
-
-### Interactive Mode
-
-Use `prompts.inject()` - the library's native testing feature - to simulate user responses. This is NOT mocking; it's using the official testing API provided by the `prompts` library.
-
-**Prerequisites**:
-
-1. Import prompts at top of file: `import prompts from "prompts"`
-2. Enable TTY mode (usually done in test file's `beforeEach`)
-3. Inject ALL prompt responses in the order they will be asked
-
-**Example**: Testing that onboard shows `vm0 init` when user skips plugin installation.
-
-```typescript
-import prompts from "prompts";
-
-it("should show vm0 init when plugin installation is skipped", async () => {
-  // Inject responses in order:
-  // 1. "my-vm0-agent" for agent name prompt
-  // 2. false for "Install VM0 Claude Plugin?" confirmation
-  prompts.inject(["my-vm0-agent", false]);
-
-  await onboardCommand.parseAsync(["node", "cli"]);
-
-  const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
-  expect(logCalls).toContain("cd my-vm0-agent && vm0 init");
-  expect(logCalls).not.toContain("/vm0-agent");
-});
-```
-
-**TTY Setup** (if not already in beforeEach):
-
-```typescript
-beforeEach(() => {
-  Object.defineProperty(process.stdout, "isTTY", {
-    value: true,
-    writable: true,
-    configurable: true,
-  });
-});
-```
-
-**Key Points**:
-
-- Use static import: `import prompts from "prompts"`
-- Inject ALL responses in prompt order - missing values will cause prompts to hang or return undefined
-- `prompts.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
-
----
-
-## Test Targets
-
-Only test at command integration level. Do not write separate unit tests for internal modules.
-
-**Bad Case**
-
-```typescript
-// Separate unit test files for internal modules
-// yaml-validator.test.ts
-// storage-utils.test.ts
-// cook-state.test.ts
-```
-
-**Good Case**
-
-```typescript
-// CLI Command Integration Tests that exercise internal modules
-describe("compose command", () => {
-  it("should reject invalid YAML", async () => {
-    await fs.writeFile(
-      path.join(tempDir, "vm0.yaml"),
-      "invalid: yaml: content:",
-    );
-
-    await expect(async () => {
-      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid YAML"),
-    );
-  });
-});
-```
-
----
-
-## MSW Server Setup
-
-The global test setup starts MSW server. Use `server.use()` to add handlers per test.
-
-**Global Setup** (`src/test/setup.ts`)
-
-```typescript
-import { server } from "../mocks/server";
-import { beforeAll, afterEach, afterAll, vi } from "vitest";
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-beforeEach(() => {
-  vi.stubEnv("VM0_API_BACKEND_URL", undefined);
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-});
-```
-
-**Per-Test Handlers**
-
-```typescript
-import { server } from "../../mocks/server";
-import { http, HttpResponse } from "msw";
-
-it("should handle API error", async () => {
-  server.use(
-    http.post("http://localhost:3000/api/agent/composes", () => {
-      return HttpResponse.json(
-        { error: { message: "Invalid compose", code: "INVALID" } },
-        { status: 400 },
-      );
-    }),
-  );
-
-  await expect(async () => {
-    await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-  }).rejects.toThrow("process.exit called");
-
-  expect(mockConsoleError).toHaveBeenCalledWith(
-    expect.stringContaining("Invalid compose"),
-  );
-});
-```
-
----
-
-## Comparison: Web vs CLI Testing
-
-| Aspect              | Web                | CLI                            |
-| ------------------- | ------------------ | ------------------------------ |
-| **Entry Point**     | API route handler  | `command.parseAsync()`         |
-| **External (Mock)** | Clerk, AWS         | Web API (MSW), Ably            |
-| **Internal (Real)** | Database, services | Filesystem, config, validators |
-| **State Storage**   | Database           | Filesystem (temp dirs)         |
-| **User Interface**  | HTTP response      | Console output + exit codes    |
-| **Auth Setup**      | Mock Clerk         | `vi.stubEnv("VM0_TOKEN", ...)` |
+See [CLI E2E Testing](./cli-e2e-testing.md) for the E2E-only credential and
+fixture boundary.

@@ -1,7 +1,7 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorManualGrantContract,
@@ -124,7 +124,7 @@ export async function diagnoseZeroConnectorCheck(
  * Returns null if not connected (404 response)
  */
 export async function getZeroConnector(
-  type: ConnectorCatalogRef,
+  type: ConnectorRef,
 ): Promise<ConnectorResponse | null> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorsByTypeContract, config);
@@ -145,8 +145,8 @@ export async function getZeroConnector(
 }
 
 export async function connectZeroConnectorManualGrant(
-  type: ConnectorCatalogRef,
-  authMethod: ConnectorCatalogAuthMethodId,
+  type: ConnectorRef,
+  authMethod: ConnectorAuthMethodId,
   values: Record<string, string>,
 ): Promise<ConnectorResponse> {
   const config = await getClientConfig();

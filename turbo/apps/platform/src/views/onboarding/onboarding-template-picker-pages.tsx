@@ -1,0 +1,538 @@
+import type { SyntheticEvent } from "react";
+import { useGet, useSet } from "ccstate-react";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconCircleCheckFilled,
+  IconEye,
+} from "@tabler/icons-react";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  r2ImageTransformUrl,
+  VIDEO_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
+  type PresentationTemplateItem,
+  type VideoTemplateItem,
+} from "@vm0/core";
+import { cn } from "@vm0/ui";
+import {
+  onboardingDraft$,
+  onboardingUi$,
+  setOnboardingImageVariant$,
+  updateOnboardingDraft$,
+  updateOnboardingUi$,
+} from "../../signals/onboarding/onboarding-state.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { useOnboardingNavigation } from "./onboarding-navigation.ts";
+import {
+  OnboardingDialog,
+  OnboardingFooter,
+  OnboardingShell,
+} from "./onboarding-shell.tsx";
+
+const PRESENTATION_TEMPLATES = PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(0, 11);
+
+function SelectionCheck({ selected }: { readonly selected: boolean }) {
+  return selected ? (
+    <IconCircleCheckFilled
+      size={18}
+      className="shrink-0 text-primary"
+      aria-hidden="true"
+    />
+  ) : null;
+}
+
+function PresentationPreview({
+  template,
+  activeSlide,
+  onSlideChange,
+  onClose,
+  onSelect,
+}: {
+  readonly template: PresentationTemplateItem;
+  readonly activeSlide: number;
+  readonly onSlideChange: (index: number) => void;
+  readonly onClose: () => void;
+  readonly onSelect: () => void;
+}) {
+  const slideCount = template.previewImages.length;
+  const activeImage = template.previewImages[activeSlide];
+  const move = (offset: number): void => {
+    onSlideChange((activeSlide + offset + slideCount) % slideCount);
+  };
+
+  return (
+    <OnboardingDialog
+      title={template.title}
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            className="h-9 rounded-[10px] border border-border bg-muted px-4 text-sm font-medium"
+            onClick={onClose}
+          >
+            Got it
+          </button>
+          <button
+            type="button"
+            className="h-9 rounded-[10px] bg-primary px-4 text-sm font-medium text-white"
+            onClick={onSelect}
+          >
+            Select this template
+          </button>
+        </>
+      }
+    >
+      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-muted/40">
+        {activeImage ? (
+          <img
+            src={r2ImageTransformUrl(activeImage, { width: 1200 })}
+            alt={`${template.title} slide ${activeSlide + 1}`}
+            className="h-full w-full object-contain"
+          />
+        ) : null}
+        <button
+          type="button"
+          className="absolute left-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background/90 shadow-sm"
+          aria-label="Show previous slide"
+          onClick={() => {
+            move(-1);
+          }}
+        >
+          <IconChevronLeft size={20} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="absolute right-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background/90 shadow-sm"
+          aria-label="Show next slide"
+          onClick={() => {
+            move(1);
+          }}
+        >
+          <IconChevronRight size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        {template.previewImages.map((image, index) => {
+          return (
+            <button
+              key={image}
+              type="button"
+              className={cn(
+                "relative h-14 w-24 shrink-0 overflow-hidden rounded-md border bg-muted",
+                index === activeSlide ? "border-primary" : "border-border",
+              )}
+              aria-label={`Show slide ${index + 1}`}
+              aria-current={index === activeSlide ? "true" : undefined}
+              onClick={() => {
+                onSlideChange(index);
+              }}
+            >
+              <img
+                src={r2ImageTransformUrl(image, { width: 128 })}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute bottom-0.5 right-1 text-[10px] font-medium text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+                {index + 1}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </OnboardingDialog>
+  );
+}
+
+function PresentationTemplateCard({
+  template,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  readonly template: PresentationTemplateItem;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+  readonly onPreview: () => void;
+}) {
+  const imageUrl = template.previewImages[0] ?? template.previewImage;
+  return (
+    <article
+      className={cn(
+        "group relative overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:border-primary hover:shadow-md",
+        selected && "border-primary shadow-md",
+      )}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 z-10 rounded-xl"
+        aria-label={`Select ${template.title} presentation template`}
+        aria-pressed={selected}
+        onClick={onSelect}
+      />
+      <div className="aspect-video overflow-hidden bg-muted">
+        <img
+          src={r2ImageTransformUrl(imageUrl, { width: 430 })}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-contain"
+        />
+      </div>
+      <button
+        type="button"
+        className="absolute right-1.5 top-1.5 z-20 inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-background opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        aria-label={`View ${template.title} presentation`}
+        onClick={onPreview}
+      >
+        <IconEye size={13} aria-hidden="true" />
+      </button>
+      <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-[9px]">
+        <span className="truncate text-[11px] font-semibold leading-4">
+          {template.title}
+        </span>
+        <SelectionCheck selected={selected} />
+      </div>
+    </article>
+  );
+}
+
+export function OnboardingPresentationTemplatePage() {
+  const draft = useGet(onboardingDraft$);
+  const ui = useGet(onboardingUi$);
+  const setDraft = useSet(updateOnboardingDraft$);
+  const setUi = useSet(updateOnboardingUi$);
+  const { navigateTo } = useOnboardingNavigation();
+  const previewTemplate = PRESENTATION_TEMPLATES.find((template) => {
+    return template.slug === ui.presentationPreviewSlug;
+  });
+  const selectedSlug =
+    draft.presentationTemplateSlug ?? PRESENTATION_TEMPLATES[0]?.slug ?? "";
+
+  const continueToRun = (): void => {
+    if (!selectedSlug) {
+      return;
+    }
+    setDraft({ presentationTemplateSlug: selectedSlug });
+    navigateTo(ROUTES.onboardingPresentationRun, {
+      updates: { template: selectedSlug },
+      remove: ["category", "workflow"],
+    });
+  };
+
+  return (
+    <>
+      <OnboardingShell
+        currentStep={2}
+        totalSteps={3}
+        title="Pick a presentation template to start from"
+        description="Use it as a reference for the deck you want to create."
+        footer={
+          <OnboardingFooter
+            onBack={() => {
+              navigateTo(ROUTES.onboarding);
+            }}
+            onPrimary={continueToRun}
+            primaryLabel="Continue"
+            primaryDisabled={!selectedSlug}
+          />
+        }
+      >
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          {PRESENTATION_TEMPLATES.map((template) => {
+            return (
+              <PresentationTemplateCard
+                key={template.slug}
+                template={template}
+                selected={template.slug === selectedSlug}
+                onSelect={() => {
+                  setDraft({ presentationTemplateSlug: template.slug });
+                }}
+                onPreview={() => {
+                  setUi({
+                    presentationPreviewSlug: template.slug,
+                    presentationSlideIndex: 0,
+                  });
+                }}
+              />
+            );
+          })}
+        </div>
+      </OnboardingShell>
+      {previewTemplate ? (
+        <PresentationPreview
+          template={previewTemplate}
+          activeSlide={ui.presentationSlideIndex}
+          onSlideChange={(presentationSlideIndex) => {
+            setUi({ presentationSlideIndex });
+          }}
+          onClose={() => {
+            setUi({ presentationPreviewSlug: null });
+          }}
+          onSelect={() => {
+            setDraft({ presentationTemplateSlug: previewTemplate.slug });
+            setUi({ presentationPreviewSlug: null });
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function IllustrationTemplateCard({
+  template,
+  selected,
+  variantIndex,
+  onSelect,
+  onVariantChange,
+}: {
+  readonly template: IllustrationTemplateItem;
+  readonly selected: boolean;
+  readonly variantIndex: number;
+  readonly onSelect: () => void;
+  readonly onVariantChange: (index: number) => void;
+}) {
+  const activeImage =
+    template.previewImages[variantIndex] ?? template.previewImage;
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={`Select ${template.title} illustration template`}
+      className={cn(
+        "mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:border-primary hover:shadow-md",
+        selected && "border-primary shadow-md",
+      )}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+    >
+      <div
+        className="w-full overflow-hidden bg-muted"
+        style={{ aspectRatio: `${template.width} / ${template.height}` }}
+      >
+        <img
+          src={r2ImageTransformUrl(activeImage, { width: 430 })}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto px-2.5 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {template.previewImages.map((image, index) => {
+          return (
+            <button
+              key={image}
+              type="button"
+              className={cn(
+                "h-[38px] w-[38px] shrink-0 overflow-hidden rounded-lg border p-px",
+                index === variantIndex
+                  ? "border-primary/70"
+                  : "border-transparent",
+              )}
+              aria-label={`Show ${template.title} variant ${index + 1}`}
+              aria-pressed={index === variantIndex}
+              onClick={(event) => {
+                event.stopPropagation();
+                onVariantChange(index);
+              }}
+            >
+              <img
+                src={r2ImageTransformUrl(image, { width: 76 })}
+                alt=""
+                loading="lazy"
+                className="h-full w-full rounded-md object-cover"
+              />
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-[9px]">
+        <span className="truncate text-[11px] font-semibold leading-4">
+          {template.title}
+        </span>
+        <SelectionCheck selected={selected} />
+      </div>
+    </article>
+  );
+}
+
+export function OnboardingImageTemplatePage() {
+  const draft = useGet(onboardingDraft$);
+  const ui = useGet(onboardingUi$);
+  const setDraft = useSet(updateOnboardingDraft$);
+  const setImageVariant = useSet(setOnboardingImageVariant$);
+  const { navigateTo } = useOnboardingNavigation();
+  const selectedSlug =
+    draft.imageTemplateSlug ?? ILLUSTRATION_TEMPLATE_ITEMS[0]?.slug ?? "";
+
+  const continueToRun = (): void => {
+    if (!selectedSlug) {
+      return;
+    }
+    setDraft({ imageTemplateSlug: selectedSlug });
+    navigateTo(ROUTES.onboardingImageRun, {
+      updates: { template: selectedSlug },
+      remove: ["category", "workflow"],
+    });
+  };
+
+  return (
+    <OnboardingShell
+      currentStep={2}
+      totalSteps={3}
+      title="Pick an illustration template to start from"
+      description="Use it as a reference for the image you want to create."
+      footer={
+        <OnboardingFooter
+          onBack={() => {
+            navigateTo(ROUTES.onboarding);
+          }}
+          onPrimary={continueToRun}
+          primaryLabel="Continue"
+          primaryDisabled={!selectedSlug}
+        />
+      }
+    >
+      <div className="mt-4 columns-1 gap-3 sm:columns-3">
+        {ILLUSTRATION_TEMPLATE_ITEMS.map((template) => {
+          return (
+            <IllustrationTemplateCard
+              key={template.slug}
+              template={template}
+              selected={template.slug === selectedSlug}
+              variantIndex={ui.imageVariantBySlug[template.slug] ?? 0}
+              onSelect={() => {
+                setDraft({ imageTemplateSlug: template.slug });
+              }}
+              onVariantChange={(index) => {
+                setImageVariant(template.slug, index);
+              }}
+            />
+          );
+        })}
+      </div>
+    </OnboardingShell>
+  );
+}
+
+function previewVideo(event: SyntheticEvent<HTMLButtonElement>): void {
+  const video = event.currentTarget.querySelector("video");
+  if (video) {
+    detach(video.play(), Reason.DomCallback);
+  }
+}
+
+function resetVideo(event: SyntheticEvent<HTMLButtonElement>): void {
+  const video = event.currentTarget.querySelector("video");
+  if (video) {
+    video.pause();
+    video.currentTime = 0;
+  }
+}
+
+function VideoTemplateCard({
+  template,
+  selected,
+  onSelect,
+}: {
+  readonly template: VideoTemplateItem;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`Select ${template.title} video template`}
+      className={cn(
+        "overflow-hidden rounded-xl border bg-background text-left shadow-sm transition-all hover:border-primary hover:shadow-md",
+        selected && "border-primary shadow-md",
+      )}
+      onClick={onSelect}
+      onFocus={previewVideo}
+      onBlur={resetVideo}
+      onMouseEnter={previewVideo}
+      onMouseLeave={resetVideo}
+    >
+      <span className="block aspect-[16/10] overflow-hidden bg-muted">
+        <video
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster={template.cardPreviewImage ?? template.previewImage}
+          className="h-full w-full object-cover"
+        >
+          <source src={template.previewWebm} type="video/webm; codecs=vp9" />
+        </video>
+      </span>
+      <span className="flex min-w-0 items-center justify-between gap-2 px-3 pb-3 pt-[11px]">
+        <span className="truncate text-sm font-semibold leading-5">
+          {template.title}
+        </span>
+        <SelectionCheck selected={selected} />
+      </span>
+    </button>
+  );
+}
+
+export function OnboardingVideoTemplatePage() {
+  const draft = useGet(onboardingDraft$);
+  const setDraft = useSet(updateOnboardingDraft$);
+  const { navigateTo } = useOnboardingNavigation();
+  const selectedSlug =
+    draft.videoTemplateSlug ?? VIDEO_TEMPLATE_ITEMS[0]?.slug ?? "";
+
+  const continueToRun = (): void => {
+    if (!selectedSlug) {
+      return;
+    }
+    setDraft({ videoTemplateSlug: selectedSlug });
+    navigateTo(ROUTES.onboardingVideoRun, {
+      updates: { template: selectedSlug },
+      remove: ["category", "workflow"],
+    });
+  };
+
+  return (
+    <OnboardingShell
+      currentStep={2}
+      totalSteps={3}
+      title="Pick a video template to start from"
+      description="Use it as a reference for the video you want to create."
+      footer={
+        <OnboardingFooter
+          onBack={() => {
+            navigateTo(ROUTES.onboarding);
+          }}
+          onPrimary={continueToRun}
+          primaryLabel="Continue"
+          primaryDisabled={!selectedSlug}
+        />
+      }
+    >
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {VIDEO_TEMPLATE_ITEMS.map((template) => {
+          return (
+            <VideoTemplateCard
+              key={template.id}
+              template={template}
+              selected={template.slug === selectedSlug}
+              onSelect={() => {
+                setDraft({ videoTemplateSlug: template.slug });
+              }}
+            />
+          );
+        })}
+      </div>
+    </OnboardingShell>
+  );
+}

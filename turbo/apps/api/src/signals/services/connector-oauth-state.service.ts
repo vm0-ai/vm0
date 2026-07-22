@@ -1,4 +1,4 @@
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
@@ -21,7 +21,7 @@ export async function getConnectorOAuthStateStatus(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: ConnectorCatalogRef;
+    readonly connectorType: ConnectorRef;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateStatus> {
@@ -55,7 +55,7 @@ export async function claimConnectorOAuthState(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: ConnectorCatalogRef;
+    readonly connectorType: ConnectorRef;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateClaimResult> {

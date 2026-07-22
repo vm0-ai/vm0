@@ -24,6 +24,7 @@ import {
   getUserEmail,
 } from "./zero-email-common.service";
 import {
+  buildMorningBriefUnsubscribePageUrl,
   buildMorningBriefUnsubscribeUrl,
   MORNING_BRIEF_PREHEADER,
 } from "./morning-brief-email-link.service";
@@ -39,6 +40,7 @@ const callbackPayloadSchema = z.object({
 const SECTION_KEYS = [
   "schedule",
   "needs_attention",
+  "unread_threads",
   "github_updates",
   "email_updates",
   "suggestions",
@@ -76,17 +78,20 @@ function isAllowedSourceHost(hostname: string): boolean {
   );
 }
 
-/** Only https links straight into Gmail, Calendar, or GitHub survive. */
+/** Only https links into Gmail, Calendar, GitHub, or the vm0 app survive. */
 function sanitizeSourceUrl(url: string | undefined): string | undefined {
   if (!url) {
     return undefined;
   }
   const parsed = safeUrlParse(url);
-  if (
-    !parsed ||
-    parsed.protocol !== "https:" ||
-    !isAllowedSourceHost(parsed.hostname)
-  ) {
+  if (!parsed || parsed.protocol !== "https:") {
+    return undefined;
+  }
+  const app = safeUrlParse(appUrl());
+  if (app && parsed.origin === app.origin) {
+    return url;
+  }
+  if (!isAllowedSourceHost(parsed.hostname)) {
     return undefined;
   }
   return url;
@@ -177,7 +182,7 @@ async function enqueueMorningBriefEmail(
     .limit(1);
 
   const dateLabel = morningBriefDateLabel(delivery.briefDate);
-  const manageUrl = buildMorningBriefUnsubscribeUrl(
+  const manageUrl = buildMorningBriefUnsubscribePageUrl(
     delivery.orgId,
     delivery.userId,
   );
@@ -189,7 +194,9 @@ async function enqueueMorningBriefEmail(
     fromAddress: buildFromAddress("zero"),
     toAddresses: userEmail,
     subject: `Morning Briefing - ${dateLabel}`,
-    headers: buildUnsubscribeHeaders(manageUrl),
+    headers: buildUnsubscribeHeaders(
+      buildMorningBriefUnsubscribeUrl(delivery.orgId, delivery.userId),
+    ),
     template: {
       template: "morning-brief",
       props: {

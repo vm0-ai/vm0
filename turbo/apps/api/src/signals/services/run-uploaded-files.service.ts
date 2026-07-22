@@ -1,8 +1,6 @@
 import { command } from "ccstate";
 import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
 import { eq, sql } from "drizzle-orm";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
@@ -11,7 +9,11 @@ import {
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { type Db, writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
+import {
+  scheduleVideoArtifactPreviewRender$,
+  type VideoArtifactPreviewRenderArgs,
+} from "./artifact-preview.service";
 
 interface RecordWebUploadedFileArgs {
   readonly runId: string | undefined;
@@ -52,51 +54,6 @@ function isRunUploadedFileSource(
   });
 }
 
-export async function publishArtifactsChangedForRun(
-  writeDb: Db,
-  runId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [zeroRunThread] = await writeDb
-    .select({
-      chatThreadId: zeroRuns.chatThreadId,
-      userId: chatThreads.userId,
-    })
-    .from(zeroRuns)
-    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (zeroRunThread?.chatThreadId) {
-    await publishUserSignal(
-      [zeroRunThread.userId],
-      `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-    return;
-  }
-
-  const [messageThread] = await writeDb
-    .select({
-      chatThreadId: chatMessages.chatThreadId,
-      userId: chatThreads.userId,
-    })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-    .where(eq(chatMessages.runId, runId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (messageThread) {
-    await publishUserSignal(
-      [messageThread.userId],
-      `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-  }
-}
-
 async function sourceForRun(
   writeDb: Db,
   runId: string,
@@ -112,6 +69,40 @@ async function sourceForRun(
   return isRunUploadedFileSource(run?.triggerSource)
     ? run.triggerSource
     : fallback;
+}
+
+interface RecordedUploadedFile {
+  readonly id: string;
+  readonly previewImageUrl: string | null;
+}
+
+function videoArtifactPreviewArgs(
+  args: {
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string | null | undefined;
+    readonly url: string | null;
+    readonly contentType: string | null;
+  },
+  row: RecordedUploadedFile | undefined,
+): VideoArtifactPreviewRenderArgs | null {
+  if (
+    !row ||
+    row.previewImageUrl ||
+    !args.orgId ||
+    !args.url ||
+    !args.contentType?.startsWith("video/")
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    runId: args.runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    url: args.url,
+    contentType: args.contentType,
+  };
 }
 
 /**
@@ -218,7 +209,7 @@ export const recordWebUploadedFile$ = command(
       s3Key: args.s3Key,
     };
 
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -248,10 +239,27 @@ export const recordWebUploadedFile$ = command(
           metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );
 
@@ -287,20 +295,9 @@ export const recordTelegramUploadedFile$ = command(
       return;
     }
     const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "telegram", signal);
 
-    const [run] = await writeDb
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    const source: RunUploadedFileSource = isRunUploadedFileSource(
-      run?.triggerSource,
-    )
-      ? run.triggerSource
-      : "telegram";
-
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -330,47 +327,27 @@ export const recordTelegramUploadedFile$ = command(
           metadata: args.metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
-    const [zeroRunThread] = await writeDb
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (zeroRunThread?.chatThreadId) {
-      await publishUserSignal(
-        [zeroRunThread.userId],
-        `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    const [messageThread] = await writeDb
-      .select({
-        chatThreadId: chatMessages.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-      .where(eq(chatMessages.runId, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (messageThread) {
-      await publishUserSignal(
-        [messageThread.userId],
-        `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-    }
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );
 
@@ -434,7 +411,7 @@ export const recordGithubUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "github", signal);
 
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -464,10 +441,27 @@ export const recordGithubUploadedFile$ = command(
           metadata: args.metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );
 
@@ -483,7 +477,7 @@ export const recordTeamsUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "teams", signal);
 
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -513,10 +507,27 @@ export const recordTeamsUploadedFile$ = command(
           metadata: args.metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );
 
@@ -536,20 +547,14 @@ export const recordAgentPhoneUploadedFile$ = command(
       return;
     }
     const writeDb = set(writeDb$);
+    const source = await sourceForRun(
+      writeDb,
+      args.runId,
+      "agentphone",
+      signal,
+    );
 
-    const [run] = await writeDb
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    const source: RunUploadedFileSource = isRunUploadedFileSource(
-      run?.triggerSource,
-    )
-      ? run.triggerSource
-      : "agentphone";
-
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -579,47 +584,27 @@ export const recordAgentPhoneUploadedFile$ = command(
           metadata: args.metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
-    const [zeroRunThread] = await writeDb
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (zeroRunThread?.chatThreadId) {
-      await publishUserSignal(
-        [zeroRunThread.userId],
-        `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    const [messageThread] = await writeDb
-      .select({
-        chatThreadId: chatMessages.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-      .where(eq(chatMessages.runId, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (messageThread) {
-      await publishUserSignal(
-        [messageThread.userId],
-        `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-    }
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );
 
@@ -644,20 +629,9 @@ export const recordSlackUploadedFile$ = command(
       return;
     }
     const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "slack", signal);
 
-    const [run] = await writeDb
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    const source: RunUploadedFileSource = isRunUploadedFileSource(
-      run?.triggerSource,
-    )
-      ? run.triggerSource
-      : "slack";
-
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -687,46 +661,26 @@ export const recordSlackUploadedFile$ = command(
           metadata: args.metadata,
           updatedAt: sql`now()`,
         },
+      })
+      .returning({
+        id: runUploadedFiles.id,
+        previewImageUrl: runUploadedFiles.previewImageUrl,
       });
     signal.throwIfAborted();
 
-    const [zeroRunThread] = await writeDb
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (zeroRunThread?.chatThreadId) {
-      await publishUserSignal(
-        [zeroRunThread.userId],
-        `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    const [messageThread] = await writeDb
-      .select({
-        chatThreadId: chatMessages.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-      .where(eq(chatMessages.runId, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (messageThread) {
-      await publishUserSignal(
-        [messageThread.userId],
-        `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-    }
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    set(
+      scheduleVideoArtifactPreviewRender$,
+      videoArtifactPreviewArgs(
+        {
+          runId: args.runId,
+          userId: args.userId,
+          orgId: args.orgId,
+          url: args.url,
+          contentType: args.contentType,
+        },
+        row,
+      ),
+    );
   },
 );

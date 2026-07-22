@@ -291,6 +291,10 @@ async function persistClaimedCanonicalSlackIngress(
         threadTs: ingress.threadTs,
         executionContext: context.executionContext,
       }),
+      slackDelivery: {
+        channelId: ingress.channelId,
+        threadTs: ingress.threadTs,
+      },
       userInfoExtras: enriched.userInfoExtras,
     },
     { orgId, userId: ingress.userId },

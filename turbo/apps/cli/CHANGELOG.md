@@ -1,5 +1,81 @@
 # Changelog
 
+## [9.245.7](https://github.com/vm0-ai/vm0/compare/cli-v9.245.6...cli-v9.245.7) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.448.5
+
+## [9.245.6](https://github.com/vm0-ai/vm0/compare/cli-v9.245.5...cli-v9.245.6) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+
+## [9.245.5](https://github.com/vm0-ai/vm0/compare/cli-v9.245.4...cli-v9.245.5) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+
+## [9.245.4](https://github.com/vm0-ai/vm0/compare/cli-v9.245.3...cli-v9.245.4) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+
+## [9.245.3](https://github.com/vm0-ai/vm0/compare/cli-v9.245.2...cli-v9.245.3) (2026-07-22)
+
+
+### Refactoring
+
+* **cli:** remove the vm0 binary and isolate e2e api auth ([#22431](https://github.com/vm0-ai/vm0/issues/22431)) ([2cbeb0d](https://github.com/vm0-ai/vm0/commit/2cbeb0de58e1947627e25ea9ceaf1a7f11d7edee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+
+## [9.245.2](https://github.com/vm0-ai/vm0/compare/cli-v9.245.1...cli-v9.245.2) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
 ## [9.245.1](https://github.com/vm0-ai/vm0/compare/cli-v9.245.0...cli-v9.245.1) (2026-07-21)
 
 

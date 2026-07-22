@@ -490,7 +490,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 
@@ -574,7 +574,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("dialog", { name: "Public Stripe" }),
@@ -853,7 +853,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       for (const card of connectorCards) {
-        expect(within(card).getByText("Connected")).toBeInTheDocument();
+        expect(within(card).getByText("Authorize")).toBeInTheDocument();
       }
     });
 
@@ -1179,7 +1179,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 
@@ -1349,7 +1349,7 @@ describe("chat message action cards", () => {
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 

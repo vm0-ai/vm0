@@ -1,29 +1,27 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 
 // ---------------------------------------------------------------------------
 // JobPermissionsTab UI state
 // ---------------------------------------------------------------------------
 
-const internalConnectorType$ = state<ConnectorType | null>(null);
-export const permConnectorType$ = computed((get) => {
-  return get(internalConnectorType$);
+const internalConnectorRef$ = state<ConnectorRef | null>(null);
+export const permConnectorRef$ = computed((get) => {
+  return get(internalConnectorRef$);
 });
-export const setPermConnectorType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    set(internalConnectorType$, type);
+export const setPermConnectorRef$ = command(
+  ({ set }, connectorRef: ConnectorRef | null) => {
+    set(internalConnectorRef$, connectorRef);
   },
 );
 
 export const agentPermissionMetadata$ = computed(async (get) => {
-  const connectorType = get(permConnectorType$);
-  if (!connectorType) {
+  const connectorRef = get(permConnectorRef$);
+  if (!connectorRef) {
     return null;
   }
-  return await get(
-    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
-  );
+  return await get(firewallPermissionMetadataByConnector({ connectorRef }));
 });
 
 const internalPermSearch$ = state("");
@@ -42,10 +40,12 @@ export const setPermSearchActive$ = command(({ set }, active: boolean) => {
   set(internalPermSearchActive$, active);
 });
 
-const internalPermSavingType$ = state<string | null>(null);
-export const permSavingType$ = computed((get) => {
-  return get(internalPermSavingType$);
+const internalPermSavingRef$ = state<ConnectorRef | null>(null);
+export const permSavingRef$ = computed((get) => {
+  return get(internalPermSavingRef$);
 });
-export const setPermSavingType$ = command(({ set }, type: string | null) => {
-  set(internalPermSavingType$, type);
-});
+export const setPermSavingRef$ = command(
+  ({ set }, connectorRef: ConnectorRef | null) => {
+    set(internalPermSavingRef$, connectorRef);
+  },
+);

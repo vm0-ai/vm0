@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.21...guest-agent-v0.53.22) (2026-07-22)
+
+
+### Bug Fixes
+
+* log codex quota exhaustion at info ([#22490](https://github.com/vm0-ai/vm0/issues/22490)) ([c858cd8](https://github.com/vm0-ai/vm0/commit/c858cd818f548d7423a2ba9513cef8fbe3329f9a))
+
 ## [0.53.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.20...guest-agent-v0.53.21) (2026-07-21)
 
 

@@ -263,6 +263,7 @@ fn build_mock_run_config_with_runtime(
             network_policy_refresh: None,
             session_history_cpu: executor::SessionHistoryCpuPool::with_capacity(1),
             session_history_probe: executor::SessionHistoryProbe::default(),
+            fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
             home,
             workspace_cache: None,
         }),

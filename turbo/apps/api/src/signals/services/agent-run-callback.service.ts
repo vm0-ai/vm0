@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, ne, or } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
@@ -60,7 +60,7 @@ interface CallbackRecord {
   readonly id: string;
   readonly url: string | null;
   readonly internalKind: string | null;
-  readonly encryptedSecret: string;
+  readonly encryptedSecret: string | null;
   readonly payload: unknown;
 }
 
@@ -173,6 +173,12 @@ const dispatchInternalCallback$ = command(
           input.envelope,
           signal,
         );
+      }
+      case "slack:chat": {
+        return {
+          success: false,
+          error: "Slack chat delivery callbacks are inline-only",
+        };
       }
       case "slack:org": {
         return await set(
@@ -313,6 +319,10 @@ async function dispatchRunCallbacks(
           eq(agentRunCallbacks.status, "pending"),
           eq(agentRunCallbacks.status, "failed"),
         ),
+        or(
+          isNull(agentRunCallbacks.internalKind),
+          ne(agentRunCallbacks.internalKind, "slack:chat"),
+        ),
       ),
     );
 
@@ -380,6 +390,10 @@ export const dispatchRunCallbacks$ = command(
           or(
             eq(agentRunCallbacks.status, "pending"),
             eq(agentRunCallbacks.status, "failed"),
+          ),
+          or(
+            isNull(agentRunCallbacks.internalKind),
+            ne(agentRunCallbacks.internalKind, "slack:chat"),
           ),
         ),
       );
@@ -527,6 +541,12 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
+    case "slack:chat": {
+      return {
+        success: false,
+        error: "Slack chat delivery callbacks are inline-only",
+      };
+    }
     case "slack:org": {
       return await handleSlackOrgInternalCallbackWithoutCcstate(
         input.db,
@@ -574,6 +594,11 @@ async function dispatchHttpCallback(
   const { db, callback, runId, status, result, error } = input;
   if (!callback.url) {
     const errorMessage = "Callback URL is missing";
+    await markCallbackFailed(db, callback.id, errorMessage);
+    return { callbackId: callback.id, success: false, error: errorMessage };
+  }
+  if (!callback.encryptedSecret) {
+    const errorMessage = "Callback secret is missing";
     await markCallbackFailed(db, callback.id, errorMessage);
     return { callbackId: callback.id, success: false, error: errorMessage };
   }

@@ -1,5 +1,101 @@
 # Changelog
 
+## [0.615.1](https://github.com/vm0-ai/vm0/compare/app-v0.615.0...app-v0.615.1) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.448.5
+
+## [0.615.0](https://github.com/vm0-ai/vm0/compare/app-v0.614.0...app-v0.615.0) (2026-07-22)
+
+
+### Features
+
+* show next scheduled morning brief send time in settings ([#22515](https://github.com/vm0-ai/vm0/issues/22515)) ([2c5052f](https://github.com/vm0-ai/vm0/commit/2c5052f41d9ff64bfb1b60f525930b3bdbf6706e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+
+## [0.614.0](https://github.com/vm0-ai/vm0/compare/app-v0.613.6...app-v0.614.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** rebuild cached items with latest url winners ([#22411](https://github.com/vm0-ai/vm0/issues/22411)) ([28251e2](https://github.com/vm0-ai/vm0/commit/28251e231c7ccc0b7a8b5f9272f547de062b888a))
+* serve the morning brief unsubscribe page from the platform app ([#22495](https://github.com/vm0-ai/vm0/issues/22495)) ([44b0f9a](https://github.com/vm0-ai/vm0/commit/44b0f9a4de8e8fb4456f80492c694fc38987f44e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+
+## [0.613.6](https://github.com/vm0-ai/vm0/compare/app-v0.613.5...app-v0.613.6) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** use canonical connector catalog items ([#22501](https://github.com/vm0-ai/vm0/issues/22501)) ([9fcde7f](https://github.com/vm0-ai/vm0/commit/9fcde7f4e7d05e5a6a54ef1457ea97399c452a7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+
+## [0.613.5](https://github.com/vm0-ai/vm0/compare/app-v0.613.4...app-v0.613.5) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+
+## [0.613.4](https://github.com/vm0-ai/vm0/compare/app-v0.613.3...app-v0.613.4) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
+## [0.613.3](https://github.com/vm0-ai/vm0/compare/app-v0.613.2...app-v0.613.3) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** remove redundant post-connect agent authorization dialog ([#22467](https://github.com/vm0-ai/vm0/issues/22467)) ([c067465](https://github.com/vm0-ai/vm0/commit/c067465aab7a2643851c3a97f9fc24a36df9eeec))
+
+## [0.613.2](https://github.com/vm0-ai/vm0/compare/app-v0.613.1...app-v0.613.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **platform:** show connector page before oauth redirect ([#22464](https://github.com/vm0-ai/vm0/issues/22464)) ([55710d7](https://github.com/vm0-ai/vm0/commit/55710d7d9153b8fbc9fe15c7419699c1d6eb6881))
+
 ## [0.613.1](https://github.com/vm0-ai/vm0/compare/app-v0.613.0...app-v0.613.1) (2026-07-21)
 
 

@@ -33,6 +33,12 @@ const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
   prompt: z.string(),
   appendSystemPrompt: z.string(),
+  slackDelivery: z
+    .object({
+      channelId: z.string(),
+      threadTs: z.string(),
+    })
+    .optional(),
   userInfoExtras: z
     .object({
       slackDisplayName: z.string().optional(),

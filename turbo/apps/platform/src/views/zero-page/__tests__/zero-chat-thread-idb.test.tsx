@@ -358,7 +358,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     expect(messageListRequests).toBeGreaterThan(0);
   });
 
-  it("renders the empty chat shell while remote messages are blocked after an IndexedDB miss", async () => {
+  it("shows the message skeleton until an uncached remote thread is confirmed empty", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -371,13 +371,32 @@ describe("zero chat thread IndexedDB fallback", () => {
       return respond(200, { messages: [], hasHistoryBefore: false });
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    try {
+      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
-      expect(messageListRequests).toBeGreaterThan(0);
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-    });
-    expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(messageListRequests).toBeGreaterThan(0);
+        expect(document.querySelector("[data-chat-skeleton]")).toBeInstanceOf(
+          HTMLElement,
+        );
+      });
+      expect(
+        screen.queryByText("Send a message to start the conversation"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+
+      initialMessageList.resolve();
+      await waitFor(() => {
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+        expect(
+          screen.getByText("Send a message to start the conversation"),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      if (!initialMessageList.settled()) {
+        initialMessageList.resolve();
+      }
+    }
   });
 
   it("keeps model and voice actions visible while uncached messages are blocked", async () => {
@@ -521,6 +540,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     await expect(
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     expect(threadDetailRequests).toBeGreaterThan(0);
     expect(messageListRequests).toBeGreaterThan(0);
     expect(threadEventRequests).toBeGreaterThan(0);

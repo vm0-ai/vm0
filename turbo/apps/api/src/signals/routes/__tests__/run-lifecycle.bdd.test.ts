@@ -22,6 +22,7 @@ import {
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
@@ -30,6 +31,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -61,6 +63,10 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import {
+  readAgentRunCallbacks$,
+  seedAgentRunCallback$,
+} from "./helpers/agent-run-callback";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
   deleteVm0ManagedDefaultModelKey,
@@ -89,6 +95,7 @@ import {
  */
 
 const context = testContext();
+const callbackStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -175,6 +182,7 @@ const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_run_admission",
+  "api_dispatch_prepare_run_callbacks",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
   "api_dispatch_prepare_context_resolve_compose",
@@ -1046,6 +1054,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       ["api_dispatch_check_run_admission"],
       "top_level",
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_run_callbacks",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        span_kind: "nested",
+        run_callback_internal_count_bucket: "0",
+        run_callback_http_count_bucket: "0",
+      }),
     );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",
@@ -8699,6 +8719,95 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
   });
 });
 
+describe("HOOK-01: callback authentication failures", () => {
+  it("fails closed without authentication material on progress and completion", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const prompt = `missing callback authentication ${randomUUID()}`;
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const callbackUrl = "https://callback.example/missing-authentication";
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: created.runId,
+        url: callbackUrl,
+        payload: {},
+        persistSecret: false,
+      },
+      context.signal,
+    );
+
+    let callbackRequests = 0;
+    server.use(
+      http.post(callbackUrl, () => {
+        callbackRequests += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, created.runId)}`,
+    };
+
+    await webhooks.requestAgentHeartbeat(
+      { runId: created.runId },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(0);
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          prompt,
+        },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        status: "pending",
+        attempts: 0,
+        lastError: null,
+      }),
+    ]);
+
+    await webhooks.requestAgentComplete(
+      { runId: created.runId, exitCode: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(0);
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          prompt,
+        },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        status: "failed",
+        attempts: 0,
+        lastError: "Callback secret is missing",
+      }),
+    ]);
+  });
+});
+
 describe("HOOK-02: event-consumer dispatch failures", () => {
   it("surfaces required event-consumer failures and recovers on retry", async () => {
     const api = createRunsApi(context);
@@ -9555,6 +9664,59 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("keeps claim auth valid through timeout completion and final telemetry", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const issuedAt = now();
+    mockNow(issuedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "time out after the runner execution budget",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    mockNow(issuedAt + 2 * 60 * 60 * 1000 + 60_000);
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 124,
+        error: "runner job timed out",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("runner job timed out");
+
+    const telemetry = await webhooks.requestAgentTelemetry(
+      { runId: run.runId },
+      sandboxHeaders,
+      [200],
+    );
+    expect(telemetry.body).toStrictEqual({ success: true, id: run.runId });
+
+    mockNow(issuedAt + 3 * 60 * 60 * 1000 + 1000);
+    const expiredTelemetry = await webhooks.requestAgentTelemetry(
+      { runId: run.runId },
+      sandboxHeaders,
+      [401],
+    );
+    expectApiError(expiredTelemetry.body);
+    expect(expiredTelemetry.body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
