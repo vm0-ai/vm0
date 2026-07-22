@@ -1464,10 +1464,15 @@ describe("CHAT-02: dispatch failure", () => {
     const { actor, agentId } = await entitledChatActor();
     const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    const messageId = randomUUID();
 
     const sent = await chat.requestSendMessage(
       actor,
-      { agentId, prompt: "fail before worker start" },
+      {
+        agentId,
+        prompt: "fail before worker start",
+        clientMessageId: messageId,
+      },
       [201],
     );
     if (sent.status !== 201 || sent.body.runId === null) {
@@ -1503,6 +1508,33 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected a failed lifecycle marker");
     }
     expect(failedMarker.error).toStrictEqual(expect.any(String));
+    expect(userMessages(messages.messages)).toContainEqual(
+      expect.objectContaining({
+        content: "fail before worker start",
+        revokesMessageId: messageId,
+        runId: sent.body.runId,
+      }),
+    );
+    const replay = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: sent.body.threadId,
+        prompt: "fail before worker start",
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(replay.body).toMatchObject({
+      runId: sent.body.runId,
+      threadId: sent.body.threadId,
+      status: "failed",
+    });
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: sent.body.runId }),
+    );
+    await api.requestClaimRunnerJob(true, sent.body.runId, [404]);
     expect(routeRequests()).toBe(0);
   }, 60_000);
 });
@@ -4237,7 +4269,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
 describe("CHAT-02: shared user message queue", () => {
   it("dispatches idle-thread sends by appending a run-associated replacement", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
@@ -4320,6 +4352,16 @@ describe("CHAT-02: shared user message queue", () => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return call[0] === `chatThreadMessageCreated:${sent.body.threadId}`;
         });
+      })
+      .toBe(true);
+
+    const claimedRun = await claimChatRun(runnerGroup, runId);
+    expect(claimedRun.claim.prompt).toBe("queue-first direct dispatch");
+    await expect
+      .poll(() => {
+        return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
+          "api_dispatch_claim_queue_first_message",
+        );
       })
       .toBe(true);
 
@@ -4596,7 +4638,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     // Hold the real org admission lock after the inline send has persisted its
     // queue-first row. This lets both the inline path and terminal callback
-    // drain reach run insertion before either can claim the message.
+    // drain reach the final atomic launch boundary before either can claim it.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
@@ -4689,17 +4731,12 @@ describe("CHAT-02: shared user message queue", () => {
     const candidates = runList.runs.filter((run) => {
       return run.prompt === prompt;
     });
-    expect(candidates).toHaveLength(2);
-    expect(
-      candidates.filter((run) => {
-        return ["queued", "pending", "running"].includes(run.status);
+    expect(candidates).toStrictEqual([
+      expect.objectContaining({
+        id: sent.body.runId,
+        status: expect.stringMatching(/^(queued|pending|running)$/),
       }),
-    ).toStrictEqual([expect.objectContaining({ id: sent.body.runId })]);
-    expect(
-      candidates.filter((run) => {
-        return run.id !== sent.body.runId;
-      }),
-    ).toStrictEqual([expect.objectContaining({ status: "cancelled" })]);
+    ]);
 
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);

@@ -23,10 +23,12 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   completeAgentRun$,
+  isQueueFirstRunClaimLost,
   prepareAgentRun$,
-  type BeforeRunDispatch,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
+  type QueueFirstRunClaimLost,
+  type ZeroRunModelPin,
 } from "./agent-run-create.service";
 import {
   ApiDispatchTimingCollector,
@@ -49,6 +51,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
+import type { QueueFirstRunAssociation } from "./zero-chat-queued-message.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -161,10 +164,22 @@ interface CreateZeroRunCommandArgs {
   readonly codexServiceTier?: "fast";
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-  readonly beforeDispatch?: BeforeRunDispatch;
+  readonly zeroRunModelPin?: ZeroRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
+
+interface CreateQueueFirstZeroRunCommandArgs extends Omit<
+  CreateZeroRunCommandArgs,
+  "zeroRunModelPin"
+> {
+  readonly queueFirstAssociation: QueueFirstRunAssociation;
+  readonly zeroRunModelPin: ZeroRunModelPin;
+}
+
+type AnyCreateZeroRunCommandArgs =
+  | CreateZeroRunCommandArgs
+  | CreateQueueFirstZeroRunCommandArgs;
 
 interface CreateZeroIntegrationRunCommandArgs {
   readonly userId: string;
@@ -565,7 +580,7 @@ function zeroBootstrapMaterializeTimingDimensions(
 }
 
 function zeroRunOrigin(args: {
-  readonly command: CreateZeroRunCommandArgs;
+  readonly command: AnyCreateZeroRunCommandArgs;
 }): ZeroRunOrigin {
   if (args.command.zeroRunMetadata?.workflowAutomationId) {
     return "workflow_automation";
@@ -697,7 +712,7 @@ function zeroServiceEntryTiming(args: {
 
 async function resolveZeroRunAgentId(
   db: Db,
-  args: CreateZeroRunCommandArgs,
+  args: AnyCreateZeroRunCommandArgs,
 ): Promise<string | null> {
   return (
     args.body.agentId ??
@@ -790,7 +805,7 @@ async function loadZeroRunPostAuthorizationContext(
 }
 
 function buildZeroCreateAgentRunArgs(args: {
-  readonly command: CreateZeroRunCommandArgs;
+  readonly command: AnyCreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly zeroWebSearchEnabled: boolean;
@@ -850,7 +865,12 @@ function buildZeroCreateAgentRunArgs(args: {
       triggerAgentId: args.triggerAgentId,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    beforeDispatch: command.beforeDispatch,
+    ...(command.zeroRunModelPin
+      ? { zeroRunModelPin: command.zeroRunModelPin }
+      : {}),
+    ...("queueFirstAssociation" in command
+      ? { queueFirstAssociation: command.queueFirstAssociation }
+      : {}),
     timing: args.timing,
     timingDimensions: zeroRunTimingDimensions({
       origin: zeroRunOrigin({
@@ -929,7 +949,7 @@ interface ZeroRunAfterPreCreateBase {
 
 interface RegularZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
   readonly kind: "regular";
-  readonly command: CreateZeroRunCommandArgs;
+  readonly command: AnyCreateZeroRunCommandArgs;
   readonly triggerAgentId: string | undefined;
 }
 
@@ -1042,7 +1062,7 @@ export const createZeroIntegrationRun$ = command(
       signal,
     );
 
-    return await set(
+    const result = await set(
       createAgentRunAfterZeroPreCreate$,
       {
         kind: "integration",
@@ -1061,11 +1081,15 @@ export const createZeroIntegrationRun$ = command(
       },
       signal,
     );
+    if (isQueueFirstRunClaimLost(result)) {
+      throw new Error("Integration run unexpectedly lost a queue-first claim");
+    }
+    return result;
   },
 );
 
-export const createZeroRun$ = command(
-  async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
+const createZeroRunInternal$ = command(
+  async ({ set }, args: AnyCreateZeroRunCommandArgs, signal: AbortSignal) => {
     const timing = zeroServiceEntryTiming({
       apiStartTime: args.apiStartTime,
       timing: args.timing,
@@ -1151,5 +1175,36 @@ export const createZeroRun$ = command(
       },
       signal,
     );
+  },
+);
+
+export const createZeroRun$ = command(
+  async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
+    const result = await set(createZeroRunInternal$, args, signal);
+    if (isQueueFirstRunClaimLost(result)) {
+      throw new Error("Zero run without a queue association lost a claim");
+    }
+    return result;
+  },
+);
+
+export const createQueueFirstZeroRun$ = command(
+  async (
+    { set },
+    args: CreateQueueFirstZeroRunCommandArgs,
+    signal: AbortSignal,
+  ) => {
+    const result = await set(createZeroRunInternal$, args, signal);
+    if (isQueueFirstRunClaimLost(result)) {
+      const lostResult: QueueFirstRunClaimLost = result;
+      return lostResult;
+    }
+    if (result.status !== 201) {
+      return result;
+    }
+    if (!result.queueFirstClaim) {
+      throw new Error("Queue-first run committed without claim metadata");
+    }
+    return { ...result, queueFirstClaim: result.queueFirstClaim };
   },
 );
