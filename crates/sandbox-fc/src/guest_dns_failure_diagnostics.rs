@@ -1,6 +1,5 @@
-//! Bounded passive evidence for terminal guest DNS readiness failures.
+//! Bounded evidence and namespace control for terminal guest DNS readiness failures.
 
-use std::future::Future;
 use std::time::{Duration, Instant};
 
 use tracing::warn;
@@ -47,39 +46,24 @@ pub(crate) async fn capture_guest_dns_failure_snapshot(
     guest: &VsockHost,
     context: GuestDnsFailureDiagnosticContext<'_>,
 ) {
-    capture_passive_then_control(
-        async {
-            if tokio::time::timeout(SNAPSHOT_TIMEOUT, capture_snapshot(guest, context))
-                .await
-                .is_err()
-            {
-                warn!(
-                    id = context.sandbox_id,
-                    profile = context.profile,
-                    namespace = context.namespace,
-                    host_device = context.host_device,
-                    peer_ip = context.peer_ip,
-                    dns_port = context.dns_port,
-                    attachment_generation = context.attachment_generation,
-                    startup_mode = context.startup_mode,
-                    timeout_ms = SNAPSHOT_TIMEOUT.as_millis() as u64,
-                    "guest DNS failure diagnostic snapshot timed out"
-                );
-            }
-        },
-        || capture_host_namespace_readiness(context),
-    )
-    .await;
-}
-
-async fn capture_passive_then_control<P, C, CF>(passive: P, control: C)
-where
-    P: Future<Output = ()>,
-    C: FnOnce() -> CF,
-    CF: Future<Output = ()>,
-{
-    passive.await;
-    control().await;
+    if tokio::time::timeout(SNAPSHOT_TIMEOUT, capture_snapshot(guest, context))
+        .await
+        .is_err()
+    {
+        warn!(
+            id = context.sandbox_id,
+            profile = context.profile,
+            namespace = context.namespace,
+            host_device = context.host_device,
+            peer_ip = context.peer_ip,
+            dns_port = context.dns_port,
+            attachment_generation = context.attachment_generation,
+            startup_mode = context.startup_mode,
+            timeout_ms = SNAPSHOT_TIMEOUT.as_millis() as u64,
+            "guest DNS failure diagnostic snapshot timed out"
+        );
+    }
+    capture_host_namespace_readiness(context).await;
 }
 
 async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticContext<'_>) {
@@ -350,62 +334,6 @@ fn log_component(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[tokio::test]
-    async fn control_probe_starts_only_after_passive_capture_finishes() {
-        let passive_entered = Arc::new(tokio::sync::Notify::new());
-        let passive_release = Arc::new(tokio::sync::Notify::new());
-        let control_started = Arc::new(AtomicUsize::new(0));
-        let entered = passive_entered.notified();
-        let task = tokio::spawn(capture_passive_then_control(
-            {
-                let passive_entered = Arc::clone(&passive_entered);
-                let passive_release = Arc::clone(&passive_release);
-                async move {
-                    passive_entered.notify_one();
-                    passive_release.notified().await;
-                }
-            },
-            {
-                let control_started = Arc::clone(&control_started);
-                move || async move {
-                    control_started.fetch_add(1, Ordering::SeqCst);
-                }
-            },
-        ));
-
-        entered.await;
-        assert_eq!(control_started.load(Ordering::SeqCst), 0);
-        passive_release.notify_one();
-        task.await.unwrap();
-        assert_eq!(control_started.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn control_probe_starts_after_passive_capture_times_out() {
-        let control_started = Arc::new(AtomicUsize::new(0));
-
-        capture_passive_then_control(
-            async {
-                assert!(
-                    tokio::time::timeout(Duration::from_millis(1), std::future::pending::<()>(),)
-                        .await
-                        .is_err()
-                );
-            },
-            {
-                let control_started = Arc::clone(&control_started);
-                move || async move {
-                    control_started.fetch_add(1, Ordering::SeqCst);
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(control_started.load(Ordering::SeqCst), 1);
-    }
 
     #[test]
     fn bounded_output_truncates_at_utf8_boundary() {

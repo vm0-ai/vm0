@@ -21,7 +21,7 @@ pub const DNS_READINESS_HOSTNAME: &str = "vm0-readiness.invalid";
 /// Local-only hostname reserved for post-failure namespace diagnostics.
 pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-diagnostic.invalid";
 
-/// TEST-NET address returned for [`DNS_READINESS_HOSTNAME`].
+/// TEST-NET address returned for the readiness and diagnostic hostnames.
 pub const DNS_READINESS_IPV4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 
 pub(super) const DNS_READINESS_OPERATION_TIMEOUT: Duration = Duration::from_secs(3);
