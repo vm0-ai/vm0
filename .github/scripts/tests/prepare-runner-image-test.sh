@@ -373,6 +373,15 @@ first_mutation_line=$(grep -n '^mutate ' "${success_case}/systemctl.log" | head 
 [ -n "$first_mutation_line" ] || fail "expected shared-path mutation after verification"
 [ "$last_show_line" -lt "$first_mutation_line" ] || fail "shared paths must not change before state verification"
 
+no_primary_case="${TMPDIR}/remote-no-primary"
+prepare_remote_case "$no_primary_case"
+set_unit_state "$no_primary_case" "vm0-runner-pr-123-exec.service" active
+run_remote_case "$no_primary_case"
+if grep -q '^stop ' "${no_primary_case}/systemctl.log"; then
+  fail "preparation without a primary runner must not stop auxiliary services"
+fi
+grep -q '^mutate rm ' "${no_primary_case}/systemctl.log" || fail "preparation without a primary runner must continue"
+
 discovery_failure_case="${TMPDIR}/remote-discovery-failure"
 prepare_remote_case "$discovery_failure_case"
 set_unit_state "$discovery_failure_case" "vm0-runner-pr-123-2.service" active
