@@ -50,6 +50,7 @@ import {
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type PagedChatMessage,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -122,6 +123,7 @@ import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
   MessageImageGroupProjection,
+  QueueMessageOptions,
   QueuedChatMessageItem,
   RecommendedFollowupSource,
   SendMessageOptions,
@@ -3064,12 +3066,64 @@ function prepareTextOnlyUserMessage(
   };
 }
 
+function structuredPromptForSend({
+  enabled,
+  editorDocument,
+  generationTemplate,
+  attachments,
+}: {
+  readonly enabled: boolean;
+  readonly editorDocument: SendMessageOptions["editorDocument"];
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly attachments: PagedChatMessage["attachFiles"];
+}): UserMessageDocument | undefined {
+  if (!enabled || !editorDocument) {
+    return undefined;
+  }
+  const structuredPrompt = editorDocument.toMessageDocument({
+    generationTemplate,
+    attachments,
+  });
+  if (!structuredPrompt) {
+    throw new Error("Failed to serialize structured prompt");
+  }
+  return structuredPrompt;
+}
+
+function queueStructured(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: QueueMessageOptions,
+  result: PreparedSendMessageResult,
+): UserMessageDocument | undefined {
+  return structuredPromptForSend({
+    enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+    editorDocument: options.editorDocument,
+    generationTemplate: options.generationTemplate,
+    attachments: result.attachments,
+  });
+}
+
+function queueRuntimeOptions(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+  modelSelection: ModelProviderSelection | null,
+) {
+  return {
+    runOptions: runOptionsFromModelProviderSelection(
+      modelSelection,
+      features[FeatureSwitchKey.CodexFastMode] ?? false,
+    ),
+    realAgentInPreviewEnabled:
+      features[FeatureSwitchKey.RealAgentInPreview] ?? false,
+  };
+}
+
 function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
   createdAt,
   result,
   generationTemplate,
+  structuredPrompt,
   options,
 }: {
   threadId: string;
@@ -3077,6 +3131,7 @@ function createSendOptimisticMessageEntry({
   createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
+  structuredPrompt: UserMessageDocument | undefined;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageInput {
   return {
@@ -3088,6 +3143,7 @@ function createSendOptimisticMessageEntry({
       content: result.prompt,
       attachFiles: result.attachments,
       generationTemplate,
+      ...(structuredPrompt ? { structuredPrompt } : {}),
       ...sendMessageRevocationPatch(options),
       createdAt,
     },
@@ -3112,6 +3168,7 @@ function sendMessageRequestBody(params: {
   readonly codexFastModeEnabled: boolean;
   readonly realAgentInPreviewEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly options: SendMessageOptions | undefined;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
@@ -3128,6 +3185,9 @@ function sendMessageRequestBody(params: {
     ...(runOptions ? { runOptions } : {}),
     ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate: params.generationTemplate,
+    ...(params.structuredPrompt
+      ? { structuredPrompt: params.structuredPrompt }
+      : {}),
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
       : {}),
@@ -3150,6 +3210,7 @@ function createAppendOptimisticSendMessage(
         readonly createdAt: string;
         readonly result: PreparedSendMessageResult;
         readonly generationTemplate: GenerationTemplateRequest | undefined;
+        readonly structuredPrompt: UserMessageDocument | undefined;
         readonly options: SendMessageOptions | undefined;
       },
     ) => {
@@ -3167,6 +3228,7 @@ function createAppendOptimisticSendMessage(
           createdAt: args.createdAt,
           result: args.result,
           generationTemplate: args.generationTemplate,
+          structuredPrompt: args.structuredPrompt,
           options: args.options,
         }),
       );
@@ -3228,6 +3290,7 @@ const postSendMessage$ = command(
       readonly result: PreparedSendMessageResult;
       readonly modelSelection: ModelProviderSelection | null;
       readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly structuredPrompt: UserMessageDocument | undefined;
       readonly options: SendMessageOptions | undefined;
       readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
     },
@@ -3253,6 +3316,7 @@ const postSendMessage$ = command(
             codexFastModeEnabled,
             realAgentInPreviewEnabled,
             generationTemplate: args.generationTemplate,
+            structuredPrompt: args.structuredPrompt,
             options: args.options,
           }),
           fetchOptions: { signal },
@@ -3284,7 +3348,9 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = request.options?.editorDocument
+        ? request.options.generationTemplate
+        : get(draft.generationTemplate$);
       const result =
         request.options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(request.prompt)
@@ -3305,6 +3371,13 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
+      const features = get(featureSwitch$);
+      const structuredPrompt = structuredPromptForSend({
+        enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        editorDocument: request.options?.editorDocument,
+        generationTemplate,
+        attachments: result.attachments,
+      });
       set(cancelDraftSync$);
       set(draft.clear$);
       const clientMessageId = crypto.randomUUID();
@@ -3318,6 +3391,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         createdAt,
         result,
         generationTemplate,
+        structuredPrompt,
         options: request.options,
       });
       animationFrame(
@@ -3336,6 +3410,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
           result,
           modelSelection: request.modelSelection,
           generationTemplate,
+          structuredPrompt,
           options: request.options,
           flushDraftClear$,
         },
@@ -3444,10 +3519,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      computerUseHostId: string | null | undefined,
+      options: QueueMessageOptions,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
         L.debug("queueMessage$ optimistic thread create unsettled, abort", {
           threadId,
@@ -3460,8 +3534,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
-      const generationTemplate = get(draft.generationTemplate$);
-
+      const generationTemplate = options.generationTemplate;
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
       const result = await set(
@@ -3476,10 +3549,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
         signal,
       );
       if (!result) {
-        L.debug("queueMessage$ prepare returned null, abort", { threadId });
         return false;
       }
       signal.throwIfAborted();
+
+      const features = get(featureSwitch$);
+      const structuredPrompt = queueStructured(features, options, result);
 
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -3502,6 +3577,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           content: result.prompt,
           attachFiles: result.attachments,
           generationTemplate,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
           createdAt: nowIso,
         },
       });
@@ -3512,14 +3588,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
-      const features = get(featureSwitch$);
-      const codexFastModeEnabled =
-        features[FeatureSwitchKey.CodexFastMode] ?? false;
-      const realAgentInPreviewEnabled =
-        features[FeatureSwitchKey.RealAgentInPreview] ?? false;
-      const runOptions = runOptionsFromModelProviderSelection(
+      const { runOptions, realAgentInPreviewEnabled } = queueRuntimeOptions(
+        features,
         modelSelection,
-        codexFastModeEnabled,
       );
       const [, persistedMessage] = await Promise.all([
         set(flushDraftClear$, signal),
@@ -3536,7 +3607,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(runOptions ? { runOptions } : {}),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             generationTemplate,
-            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+            ...(structuredPrompt ? { structuredPrompt } : {}),
+            ...(options.computerUseHostId === undefined
+              ? {}
+              : { computerUseHostId: options.computerUseHostId }),
           },
           signal,
         ),
@@ -3545,7 +3619,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       await set(writePersistentMessages$, [persistedMessage], signal);
       signal.throwIfAborted();
 
-      L.debug("queueMessage$ done", { threadId });
       return true;
     },
   );
