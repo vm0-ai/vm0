@@ -416,18 +416,13 @@ export function AutomationMenuButton({
   );
 }
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const threadTitleLoadable = useLastLoadable(thread.threadTitle$);
-  const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
-  const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
+  const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
+  const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
+  const threadTitleText = useGet(thread.threadTitleText$);
   const openRenameChatThreadDialog = useSet(
     openRenameChatThreadDialogForThreadId$,
   );
   const pageSignal = useGet(pageSignal$);
-  const threadTitle =
-    threadTitleLoadable.state === "hasData"
-      ? (threadTitleLoadable.data?.trim() ?? "")
-      : "";
-
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
     event.preventDefault();
     detach(
@@ -439,25 +434,19 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        {threadTitleLoadable.state === "loading" ? (
-          <Skeleton className="h-5 w-48 rounded" />
-        ) : (
-          <>
-            <ChatThreadEmojiMenuButton
-              threadId={thread.threadId}
-              title={threadTitle}
-              emoji={threadTitleEmoji}
-            />
-            {threadTitleText && (
-              <span
-                className="min-w-0 truncate text-sm font-medium text-foreground"
-                data-testid="chat-thread-header-title"
-                onDoubleClick={openRenameDialog}
-              >
-                {threadTitleText}
-              </span>
-            )}
-          </>
+        <ChatThreadEmojiMenuButton
+          threadId={thread.threadId}
+          title={threadTitle}
+          emoji={threadTitleEmoji}
+        />
+        {threadTitleText && (
+          <span
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+            data-testid="chat-thread-header-title"
+            onDoubleClick={openRenameDialog}
+          >
+            {threadTitleText}
+          </span>
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
@@ -2649,14 +2638,8 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  threadSettledInServerLoadable: LoadableValue<boolean>,
   renderedGroupsReadyLoadable: LoadableValue<boolean>,
 ): string | null {
-  if (threadSettledInServerLoadable.state === "hasError") {
-    return threadSettledInServerLoadable.error instanceof Error
-      ? threadSettledInServerLoadable.error.message
-      : "Failed to load chat";
-  }
   if (renderedGroupsReadyLoadable.state === "hasError") {
     return renderedGroupsReadyLoadable.error instanceof Error
       ? renderedGroupsReadyLoadable.error.message
@@ -2712,13 +2695,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   if (!sessionError) {
     return null;
   }
@@ -2735,8 +2712,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const threadSettledInServer =
-    useLastResolved(thread.threadSettledInServer$) ?? false;
+  const threadSettledInServer = useGet(thread.threadSettledInServer$);
   const hasMessages = useLastResolved(thread.hasMessages$);
   const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
   if (
@@ -3500,13 +3476,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   const hasMessages = useLastResolved(thread.hasMessages$);
   const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
   const skeletonVisible =
@@ -3583,13 +3553,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
 
   if (!awayFromBottom || skeletonVisible || sessionError) {
@@ -3939,9 +3903,8 @@ function useChatComposerModel(
   pageSignal: AbortSignal,
 ) {
   // Per-thread composer selection comes from the event projection. Read with
-  // useLastResolved so the picker keeps the previous value while realtime
-  // callbacks refetch the thread detail for non-selection fields.
-  const selectedModelResolved = useLastResolved(thread.selectedModel$);
+  // useGet because event-backed thread metadata is a synchronous projection.
+  const selectedModelResolved = useGet(thread.selectedModel$);
   const codexFastModeActive =
     useLastResolved(thread.codexFastModeActive$) ?? false;
   const baseModelSelection = selectedModelResolved
@@ -5888,7 +5851,7 @@ function AssistantErrorContent({ error }: { error: string }) {
 }
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useLastResolved(thread.agentId$) ?? "";
+  const agentId = useGet(thread.agentId$) ?? "";
   return (
     <Link
       pathname="/agents/:agentId"

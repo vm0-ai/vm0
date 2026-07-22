@@ -15,8 +15,10 @@ import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contr
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
+import { touchOptimisticChatThreadSort$ } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import {
   resetChatPageModelSelection$,
@@ -1972,6 +1974,7 @@ describe("chat composer models", () => {
       [OTHER_AGENT_ID, ["slack"]],
     ]);
     const authorizationAgentIds: string[] = [];
+    const workflowAgentIds: string[] = [];
     const permissionGrantAgentIds: string[] = [];
     let updatedAuthorizationAgentId: string | undefined;
     let appliedPermissionAgentId: string | undefined;
@@ -1994,6 +1997,15 @@ describe("chat composer models", () => {
         enabledTypes: enabledByAgent.get(params.id) ?? [],
       });
     });
+    context.mocks.api(
+      zeroWorkflowsCollectionContract.list,
+      ({ query, respond }) => {
+        if (query.agentId) {
+          workflowAgentIds.push(query.agentId);
+        }
+        return respond(200, []);
+      },
+    );
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
@@ -2044,7 +2056,23 @@ describe("chat composer models", () => {
       expect(new Set(authorizationAgentIds)).toStrictEqual(
         new Set([AGENT_ID, OTHER_AGENT_ID]),
       );
+      expect(new Set(workflowAgentIds)).toStrictEqual(
+        new Set([AGENT_ID, OTHER_AGENT_ID]),
+      );
     });
+    const authorizationRequestCount = authorizationAgentIds.length;
+    const workflowRequestCount = workflowAgentIds.length;
+    await act(async () => {
+      context.store.set(touchOptimisticChatThreadSort$, {
+        id: "d0000000-0000-4000-a000-000000000099",
+        threadId: OTHER_AGENT_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        createdAt: "2026-07-22T09:00:00.000Z",
+      });
+      await Promise.resolve();
+    });
+    expect(authorizationAgentIds).toHaveLength(authorizationRequestCount);
+    expect(workflowAgentIds).toHaveLength(workflowRequestCount);
     await user.click(within(sideComposer).getByLabelText("Connectors"));
     await user.click(
       await screen.findByLabelText("Configure Slack permissions"),

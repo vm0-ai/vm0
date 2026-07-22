@@ -205,9 +205,9 @@ describe("chat lifecycle", () => {
       throw new Error("Expected client thread id to be captured");
     }
 
-    await expect(
+    expect(
       context.store.get(eventDrivenChatThread(clientThreadId)),
-    ).resolves.toMatchObject({
+    ).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
     });
   });

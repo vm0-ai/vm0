@@ -956,7 +956,7 @@ function ArtifactPreviewDialogThreadResolver({
   thread: ChatThreadSignals;
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const agentId = useLastResolved(thread.agentId$);
+  const agentId = useGet(thread.agentId$);
   const messageGroups = useLastResolved(thread.messageImageGroups$, {
     equalityFn: equalMessageImageGroups,
   });

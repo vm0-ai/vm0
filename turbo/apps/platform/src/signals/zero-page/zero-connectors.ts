@@ -54,6 +54,8 @@ export interface ComposerConnectorSignals {
   >;
 }
 
+type AgentIdValue = string | null | Promise<string | null>;
+
 function createStateBinding<T>(initialValue: T) {
   const internal$ = state(initialValue);
   return {
@@ -174,9 +176,12 @@ function createConnectorAuthorizationSignals(
   };
 }
 
-export function createComposerConnectorSignals(
-  agentId$: Computed<Promise<string | null>>,
+export function createComposerConnectorSignals<T extends AgentIdValue>(
+  agentIdSource$: Computed<T>,
 ): ComposerConnectorSignals {
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    return await get(agentIdSource$);
+  });
   const authorization = createConnectorAuthorizationSignals(agentId$);
   const initial = initialComposerConnectorUiState();
   const showAddDialog = createStateBinding(initial.showAddDialog);
