@@ -216,6 +216,18 @@ describe("chat message action cards", () => {
     let sent = false;
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
 
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "gmail",
+        label: "Gmail",
+        icon: {
+          url: "https://icons.example.test/gmail-catalog.svg",
+          invertInDarkMode: true,
+          scale: 1.25,
+        },
+      }),
+    ]);
+
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
       draftRequests += 1;
       return respond(200, {
@@ -339,6 +351,11 @@ describe("chat message action cards", () => {
         within(card).getByText("To: recipient@example.com"),
       ).toBeInTheDocument();
       expect(within(card).queryByText("sender@example.com")).toBeNull();
+      const icon = card.querySelector<HTMLImageElement>(
+        'img[src="https://icons.example.test/gmail-catalog.svg"]',
+      );
+      expect(icon).toHaveClass("zero-icon-mono");
+      expect(icon).toHaveStyle({ transform: "scale(1.25)" });
     }
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted email";
@@ -590,6 +607,8 @@ describe("chat message action cards", () => {
     let deleted = false;
     let draftRequests = 0;
 
+    mockConnectorCatalogStatus([]);
+
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
       draftRequests += 1;
       if (deleted) {
@@ -645,6 +664,9 @@ describe("chat message action cards", () => {
     });
 
     const card = await screen.findByLabelText("Open draft email: Delete me");
+    expect(
+      within(card).getByLabelText("Connector icon unavailable"),
+    ).toBeInTheDocument();
     expect(draftRequests).toBe(1);
     await user.click(card);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");

@@ -983,7 +983,7 @@ export function ZeroConnectorsPage() {
         return connect(
           connectorRef,
           authMethod,
-          { connectorLabel: ct.label },
+          { connectorLabel: ct.label, connectorIcon: ct.icon },
           signal,
         );
       },
@@ -1175,7 +1175,10 @@ export function ZeroConnectorsPage() {
               connect(
                 connectorRef,
                 authMethod,
-                { connectorLabel: connector.label },
+                {
+                  connectorLabel: connector.label,
+                  connectorIcon: connector.icon,
+                },
                 signal,
               ),
               Reason.DomCallback,

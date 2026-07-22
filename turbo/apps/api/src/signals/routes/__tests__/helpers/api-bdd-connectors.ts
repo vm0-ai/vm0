@@ -38,6 +38,7 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOauthDeviceAuthSessionContract,
+  zeroConnectorOauthContinueContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
@@ -1301,6 +1302,28 @@ export function createConnectorBddApi(context: TestContext) {
       });
       expectStatus(response, 200);
       return response.body;
+    },
+
+    async continueOauth(
+      type: ConnectorRef,
+      continuationUrl: string,
+    ): Promise<URL> {
+      const state = new URL(continuationUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error(
+          "Expected connector OAuth handoff URL to include state",
+        );
+      }
+      const client = setupApp({ context })(zeroConnectorOauthContinueContract);
+      const response = await accept(
+        client.continue({ params: { type }, query: { state } }),
+        [307],
+      );
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error("Expected connector OAuth handoff to redirect");
+      }
+      return new URL(location);
     },
 
     async completeOauthCallback(type: string, query: CallbackQuery) {

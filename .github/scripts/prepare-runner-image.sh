@@ -25,8 +25,6 @@ PROFILE="${PROFILE:-vm0/default}"
 MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${job_ref}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${job_ref}"
-CARGO_TARGET_DIR="${REPO_ROOT}/crates/target"
-TARGET_DIR="${CARGO_TARGET_DIR}/${TARGET_TRIPLE}/ci"
 DERIVED_EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
 if [ "${EXPECTED_REMOTE_ARCH+x}" = "x" ]; then
   if [ -z "$EXPECTED_REMOTE_ARCH" ]; then
@@ -62,15 +60,20 @@ done
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
-FRESH_METADATA_PATH="${FRESH_METADATA_PATH:-runner-binary-fresh/metadata.json}"
+require_env RUNNER_PATH
+require_env FRESH_METADATA_PATH
+require_env EXPECTED_BINARY_INPUT_DIGEST
+if [[ "$RUNNER_PATH" != /* ]]; then
+  RUNNER_PATH="${REPO_ROOT}/${RUNNER_PATH}"
+fi
 if [[ "$FRESH_METADATA_PATH" != /* ]]; then
   FRESH_METADATA_PATH="${REPO_ROOT}/${FRESH_METADATA_PATH}"
 fi
-TARGET_TRIPLE="$TARGET_TRIPLE" \
-CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
-RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE="${RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE:-}" \
-RUNNER_BINARY_METADATA_PATH="$FRESH_METADATA_PATH" \
-  "${REPO_ROOT}/.github/scripts/runner-binary-build/build.sh" build
+FRESH_METADATA_PATH="$FRESH_METADATA_PATH" \
+RUNNER_PATH="$RUNNER_PATH" \
+EXPECTED_TARGET="$TARGET_TRIPLE" \
+EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
+  "${SCRIPT_DIR}/runner-binary-cache.sh" fresh-validate >/dev/null
 
 runner_sha=$(jq -r '.runnerSha256' "$FRESH_METADATA_PATH")
 guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
@@ -134,7 +137,7 @@ REMOTE_SCRIPT
   fi
 
   local tmp_runner="${BIN_DIR}/runner.${head_sha}.${host_index}.tmp"
-  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "${TARGET_DIR}/runner"; then
+  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "$RUNNER_PATH"; then
     return 1
   fi
 
