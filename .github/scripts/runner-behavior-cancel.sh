@@ -167,7 +167,7 @@ find_own_pool_hex() {
   for fd in /proc/"$PPID"/fd/*; do
     target=$(readlink "$fd" 2>/dev/null || true)
     case "$target" in
-      /var/lock/vm0-netns-pool-*.lock)
+      */vm0-netns-pool-*.lock)
         index=${target##*/vm0-netns-pool-}
         index=${index%.lock}
         case "$index" in
