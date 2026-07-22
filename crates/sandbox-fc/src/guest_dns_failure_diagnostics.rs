@@ -42,7 +42,7 @@ pub(crate) struct GuestDnsFailureDiagnosticContext<'a> {
     pub(crate) startup_mode: &'static str,
 }
 
-pub(crate) async fn capture_guest_dns_failure_snapshot(
+pub(crate) async fn capture_guest_dns_failure_diagnostics(
     guest: &VsockHost,
     context: GuestDnsFailureDiagnosticContext<'_>,
 ) {
@@ -63,7 +63,7 @@ pub(crate) async fn capture_guest_dns_failure_snapshot(
             "guest DNS failure diagnostic snapshot timed out"
         );
     }
-    capture_host_namespace_readiness(context).await;
+    run_host_namespace_control_probe(context).await;
 }
 
 async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticContext<'_>) {
@@ -195,7 +195,7 @@ async fn capture_pool_filter_rules(program: &str, args: &[&str], comment: Option
     )
 }
 
-async fn capture_host_namespace_readiness(context: GuestDnsFailureDiagnosticContext<'_>) {
+async fn run_host_namespace_control_probe(context: GuestDnsFailureDiagnosticContext<'_>) {
     let started = Instant::now();
     let output = match probe_namespace_dns_diagnostic(
         context.namespace.to_string(),

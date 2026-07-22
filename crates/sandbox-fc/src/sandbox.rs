@@ -39,7 +39,7 @@ use crate::exec_operation_result::{
 };
 use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
-    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_snapshot,
+    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
@@ -1270,7 +1270,7 @@ impl FirecrackerSandbox {
                 }
                 Err(error) => {
                     timing.record(SandboxStartStage::GuestDnsReadiness, dns_started, false);
-                    capture_guest_dns_failure_snapshot(
+                    capture_guest_dns_failure_diagnostics(
                         vsock_guest.as_ref(),
                         GuestDnsFailureDiagnosticContext {
                             sandbox_id: &self.id,
