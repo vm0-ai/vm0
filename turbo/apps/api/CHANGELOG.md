@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.300.2](https://github.com/vm0-ai/vm0/compare/api-v1.300.1...api-v1.300.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **connectors:** route browser oauth through api.vm0.ai ([#22407](https://github.com/vm0-ai/vm0/issues/22407)) ([141e70e](https://github.com/vm0-ai/vm0/commit/141e70e3c4b94f59ebdc5df480b33308781bb7e5))
+* enforce current policy for chat model routes ([#22549](https://github.com/vm0-ai/vm0/issues/22549)) ([aeed00d](https://github.com/vm0-ai/vm0/commit/aeed00db26f4beaf6c4a22e2caf17a2f5112afe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.1
+    * @vm0/core bumped to 8.449.0
+    * @vm0/db bumped to 1.125.7
+
 ## [1.300.1](https://github.com/vm0-ai/vm0/compare/api-v1.300.0...api-v1.300.1) (2026-07-22)
 
 
