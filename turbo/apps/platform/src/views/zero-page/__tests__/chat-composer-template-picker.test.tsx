@@ -45,6 +45,9 @@ beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
 
+const PRESENTATION_DECK_METADATA =
+  '<script id="vm0-deck-metadata" type="application/json">{"kind":"presentation-html","editProtocolVersion":1,"slides":{}}</script>';
+
 describe("chat composer templates", () => {
   it("prewarms template previews only after the template button is used", async () => {
     const imagePreloads = trackTemplatePreviewImagePreloads();
@@ -451,6 +454,7 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
+              ${PRESENTATION_DECK_METADATA}
               <section data-vm0-slide data-slide-id="slide-one">
                 <h1>Slide one</h1>
               </section>
@@ -662,7 +666,7 @@ describe("chat composer templates", () => {
     try {
       previewFetch.resolve(
         new Response(
-          `<!doctype html><html><body>${Array.from(
+          `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
             { length: slideCount },
             (_, index) => {
               const slideNumber = index + 1;
@@ -906,6 +910,7 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
+              ${PRESENTATION_DECK_METADATA}
               ${Array.from({ length: lastSlideNumber }, (_, index) => {
                 return `<section data-vm0-slide data-slide-id="slide-${String(
                   index + 1,
@@ -1076,9 +1081,10 @@ describe("chat composer templates", () => {
         previewFetchCount += 1;
         return previewFetch.promise;
       }
-      return new Response("<!doctype html><html><body></body></html>", {
-        headers: { "Content-Type": "text/html" },
-      });
+      return new Response(
+        `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}</body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1123,6 +1129,7 @@ describe("chat composer templates", () => {
             <!doctype html>
             <html>
               <body>
+                ${PRESENTATION_DECK_METADATA}
                 <section data-vm0-slide data-slide-id="slide-one">
                   <h1>Slide one</h1>
                 </section>
@@ -1173,7 +1180,7 @@ describe("chat composer templates", () => {
     vi.stubGlobal("vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
-        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${PRESENTATION_DECK_METADATA}${template.previewImages
           .map((_, index) => {
             return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
           })
