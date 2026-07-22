@@ -196,10 +196,21 @@ run_plan() {
 }
 
 : > "${TMPDIR}/gh.log"
-all_hit=$(run_plan all-hit "${TMPDIR}/all-hit")
+plan_output="${TMPDIR}/plan.output"
+plan_summary="${TMPDIR}/plan.summary"
+all_hit=$(GITHUB_OUTPUT="$plan_output" \
+  GITHUB_STEP_SUMMARY="$plan_summary" \
+  run_plan all-hit "${TMPDIR}/all-hit")
 assert_contains "$all_hit" 'compile-matrix=[]'
 assert_contains "$all_hit" 'hit-count=2'
 assert_contains "$all_hit" 'miss-count=0'
+assert_contains "$all_hit" 'resolution-json=['
+plan_output_keys=$(cut -d= -f1 "$plan_output" | LC_ALL=C sort -u | paste -sd, -)
+[ "$plan_output_keys" = "compile-matrix,hit-count,hit-targets,miss-count" ] ||
+  fail "unexpected plan output keys: ${plan_output_keys}"
+grep -qF '### Runner binary cache plan' "$plan_summary" || fail "expected plan summary"
+grep -qF "\`${arm_target}\`" "$plan_summary" || fail "expected arm target in plan summary"
+grep -qF "\`${x86_target}\`" "$plan_summary" || fail "expected x86 target in plan summary"
 cmp -s "$runner" "${TMPDIR}/all-hit/${arm_target}/runner" || fail "arm hit bytes were not staged"
 cmp -s "$runner" "${TMPDIR}/all-hit/${x86_target}/runner" || fail "x86 hit bytes were not staged"
 
