@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.0.4...host-worker-v1.1.0) (2026-07-22)
+
+
+### Features
+
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
 ## [1.0.4](https://github.com/vm0-ai/vm0/compare/host-worker-v1.0.3...host-worker-v1.0.4) (2026-07-22)
 
 

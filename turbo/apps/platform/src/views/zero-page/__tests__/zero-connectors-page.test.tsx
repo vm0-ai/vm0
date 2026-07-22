@@ -1467,8 +1467,9 @@ describe("connectors page", () => {
     context.mocks.browser.open(authWindow);
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
-      ({ params, respond }) => {
+      ({ body, params, respond }) => {
         expect(params.type).toBe("google-maps");
+        expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/google-maps/authorize",
         });

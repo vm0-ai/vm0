@@ -24,9 +24,8 @@ export const openRenameChatThreadDialogFromThreadMeta$ = command(
 );
 
 export const openRenameChatThreadDialogForThreadId$ = command(
-  async ({ get, set }, threadId: string, signal: AbortSignal) => {
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
-    signal.throwIfAborted();
+  ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const meta = get(chatThreadMetaMap$).get(threadId) ?? null;
     set(
       openRenameChatThreadDialogFromThreadMeta$,
       {
@@ -49,8 +48,7 @@ export const setChatThreadEmojiFromThreadMeta$ = command(
     }: { threadId: string; emoji: string; title?: string | null },
     signal: AbortSignal,
   ) => {
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
-    signal.throwIfAborted();
+    const meta = get(chatThreadMetaMap$).get(threadId) ?? null;
     const currentTitle = title !== undefined ? title : meta?.title;
     await set(
       renameChatThread$,
@@ -70,8 +68,7 @@ export const clearChatThreadEmojiFromThreadMeta$ = command(
     { threadId, title }: { threadId: string; title?: string | null },
     signal: AbortSignal,
   ) => {
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
-    signal.throwIfAborted();
+    const meta = get(chatThreadMetaMap$).get(threadId) ?? null;
     const currentTitle = title !== undefined ? title : meta?.title;
     const nextTitle = removeChatThreadEmoji(currentTitle);
     if (!nextTitle) {

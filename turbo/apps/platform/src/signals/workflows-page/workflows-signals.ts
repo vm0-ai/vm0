@@ -40,7 +40,6 @@ import {
   ROUTES,
   type RouteKey,
 } from "../route-paths.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { currentAgentId$ } from "../agent.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import {
@@ -641,23 +640,6 @@ export const currentAgentVisibleWorkflows$ = computed(
     if (!agentId) {
       return [];
     }
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(client.list({ query: { agentId } }), [200]);
-    return result.body;
-  },
-);
-
-/**
- * The current chat agent's visible workflows, used by the slash-workflow
- * composer. Empty until an agent is resolved.
- */
-export const composerWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    const agentId = await get(currentChatAgentRecordId$);
-    if (!agentId) {
-      return [];
-    }
-    get(workflowReloadVersion$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: { agentId } }), [200]);
     return result.body;

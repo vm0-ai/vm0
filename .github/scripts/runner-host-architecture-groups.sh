@@ -97,10 +97,11 @@ validate_host_entry() {
 
 validate_hosts_csv() {
   local hosts=$1
-  local host host_key
+  local host host_key host_lines
+  host_lines=$(printf '%s\n' "$hosts" | tr ',' '\n')
   while IFS= read -r host; do
     validate_host_entry "$host" || return $?
-  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+  done <<<"$host_lines"
 
   declare -A seen_hosts=()
   while IFS= read -r host; do
@@ -110,7 +111,7 @@ validate_hosts_csv() {
       return 2
     fi
     seen_hosts[$host_key]=1
-  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+  done <<<"$host_lines"
 }
 
 host_uname_m() {
@@ -131,7 +132,8 @@ emit_groups() {
   require_env METAL_USER
   validate_hosts_csv "$hosts" || return $?
 
-  local host uname_m target
+  local host host_lines uname_m target
+  host_lines=$(printf '%s\n' "$hosts" | tr ',' '\n')
   while IFS= read -r host; do
     uname_m=$(host_uname_m "$host")
     if ! target=$(runner_image_target_for_uname_m "$uname_m" 2>/dev/null); then
@@ -150,7 +152,7 @@ emit_groups() {
         return 2
         ;;
     esac
-  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+  done <<<"$host_lines"
 
   groups=$(jq -n -c '[]')
   groups=$(append_group "$groups" "arm64" "arm64" "$arm64_hosts" "aarch64-unknown-linux-musl")
@@ -258,12 +260,16 @@ emit_selected_host() {
   fi
 
   local -a host_list=()
-  mapfile -t host_list < <(
+  local normalized_hosts
+  normalized_hosts=$(
     printf '%s\n' "$hosts" \
       | tr ',' '\n' \
       | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
       | sed '/^$/d'
   )
+  if [ -n "$normalized_hosts" ]; then
+    mapfile -t host_list <<<"$normalized_hosts"
+  fi
 
   local host_count=${#host_list[@]}
   if [ "$host_count" -lt 1 ]; then

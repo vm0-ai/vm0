@@ -12,7 +12,6 @@ import type {
 import { accept } from "../../lib/accept.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
@@ -38,14 +37,8 @@ interface ChatThreadSnapshotData {
 }
 
 interface ChatThreadEventState {
-  readonly ownerKey: string;
   readonly snapshot: ChatThreadSnapshotData | null;
   readonly events: readonly ChatThreadEvent[];
-}
-
-interface ChatThreadEventStores {
-  readonly ownerKey: string;
-  readonly stores: Stores;
 }
 
 interface ChatThreadEventUpdate {
@@ -63,7 +56,10 @@ export interface ThreadMeta {
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
-const chatThreadEventState$ = state<ChatThreadEventState | null>(null);
+const chatThreadEventState$ = state<ChatThreadEventState>({
+  snapshot: null,
+  events: [],
+});
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
   return new Set(
@@ -91,7 +87,6 @@ function filterUnsettledOptimisticChatThreadEvents(
 }
 
 async function readChatThreadEventState(
-  ownerKey: string,
   store: Stores,
   signal?: AbortSignal,
 ): Promise<ChatThreadEventState> {
@@ -100,7 +95,6 @@ async function readChatThreadEventState(
     store.readStore.readEvents(signal),
   ]);
   return {
-    ownerKey,
     snapshot,
     events,
   };
@@ -115,23 +109,16 @@ export const sidebarActiveThreadIds$ = computed(
   },
 );
 
-const chatThreadEventStores$ = computed(
-  async (get): Promise<ChatThreadEventStores> => {
-    const identityPromise = get(authenticatedIdentity$);
-    const dbPromise = get(chatIdb$);
-    const { userId, orgId } = await identityPromise;
-    return {
-      ownerKey: `${userId}:${orgId}`,
-      stores: createIdbChatThreadEventStores(() => {
-        return dbPromise;
-      }),
-    };
-  },
-);
+const chatThreadEventStores$ = computed((get): Stores => {
+  const dbPromise = get(chatIdb$);
+  return createIdbChatThreadEventStores(() => {
+    return dbPromise;
+  });
+});
 
 const lastEventId$ = computed((get): string | null => {
   const state = get(chatThreadEventState$);
-  return state?.events.at(-1)?.id ?? state?.snapshot?.latestEventId ?? null;
+  return state.events.at(-1)?.id ?? state.snapshot?.latestEventId ?? null;
 });
 
 async function fetchRemoteSnapshot(
@@ -197,7 +184,6 @@ async function fetchChatThreadEventUpdate(
       }
       return {
         state: {
-          ownerKey: currentState.ownerKey,
           snapshot,
           events,
         },
@@ -211,7 +197,6 @@ async function fetchChatThreadEventUpdate(
   }
   return {
     state: {
-      ownerKey: currentState.ownerKey,
       snapshot,
       events,
     },
@@ -220,52 +205,27 @@ async function fetchChatThreadEventUpdate(
   };
 }
 
-const chatThreadEventData$ = computed(
-  async (get): Promise<ChatThreadEventData> => {
-    const storeContext = await get(chatThreadEventStores$);
-    const state = get(chatThreadEventState$);
-    if (state?.ownerKey !== storeContext.ownerKey) {
-      return { snapshot: [], events: [] };
-    }
-    return {
-      snapshot: state.snapshot?.chatThreads ?? [],
-      events: state.events,
-    };
-  },
-);
-
-const hydrateChatThreadEventState$ = command(
+const initializeChatThreadEventState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const storeContext = await get(chatThreadEventStores$);
-    signal.throwIfAborted();
-    const currentState = get(chatThreadEventState$);
-    if (currentState?.ownerKey === storeContext.ownerKey) {
-      return { state: currentState, store: storeContext.stores };
-    }
-
-    const state = await readChatThreadEventState(
-      storeContext.ownerKey,
-      storeContext.stores,
-      signal,
-    );
+    const store = get(chatThreadEventStores$);
+    const state = await readChatThreadEventState(store, signal);
     signal.throwIfAborted();
     set(chatThreadEventState$, state);
     set(reconcileOptimisticChatThreadEvents$, {
       snapshot: state.snapshot?.chatThreads ?? [],
       events: state.events,
     });
-    await set(syncCurrentChatThreadDocumentTitle$, signal);
-    return { state, store: storeContext.stores };
+    set(syncCurrentChatThreadDocumentTitle$, signal);
   },
 );
 
 export const syncEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const hydrated = await set(hydrateChatThreadEventState$, signal);
-    signal.throwIfAborted();
+    const store = get(chatThreadEventStores$);
+    const state = get(chatThreadEventState$);
     const client = get(zeroClient$)(chatThreadsContract);
     const update = await fetchChatThreadEventUpdate(
-      hydrated.state,
+      state,
       get(lastEventId$),
       client,
       signal,
@@ -276,18 +236,18 @@ export const syncEventDrivenChatThreads$ = command(
     }
 
     if (update.replacementSnapshot) {
-      await hydrated.store.writeStore.replaceFromSnapshot(
+      await store.writeStore.replaceFromSnapshot(
         update.replacementSnapshot,
         signal,
       );
     }
-    await hydrated.store.writeStore.upsertEvents(update.newEvents, signal);
+    await store.writeStore.upsertEvents(update.newEvents, signal);
     set(chatThreadEventState$, update.state);
     set(reconcileOptimisticChatThreadEvents$, {
       snapshot: update.state.snapshot?.chatThreads ?? [],
       events: update.state.events,
     });
-    await set(syncCurrentChatThreadDocumentTitle$, signal);
+    set(syncCurrentChatThreadDocumentTitle$, signal);
   },
 );
 
@@ -300,22 +260,30 @@ export const subscribeEventDrivenChatThreads$ = command(
       },
     );
 
-    await set(syncEventDrivenChatThreads$, signal);
+    await set(initializeChatThreadEventState$, signal);
     signal.throwIfAborted();
     await set(
       setAblyLoop$,
-      { topic: "threadListChanged", loopCommand$: syncOnThreadListChanged$ },
+      {
+        topic: "threadListChanged",
+        loopCommand$: syncOnThreadListChanged$,
+        options: { runOnSubscribe: true },
+      },
       signal,
     );
   },
 );
 
-const chatThreadsSnapshot$ = computed(async (get) => {
-  return (await get(chatThreadEventData$)).snapshot;
+const chatThreadsSnapshot$ = computed((get) => {
+  return get(chatThreadEventState$).snapshot?.chatThreads ?? [];
 });
 
-const allChatThreadsEvents$ = computed(async (get) => {
-  const persistedData = await get(chatThreadEventData$);
+const allChatThreadsEvents$ = computed((get) => {
+  const state = get(chatThreadEventState$);
+  const persistedData: ChatThreadEventData = {
+    snapshot: state.snapshot?.chatThreads ?? [],
+    events: state.events,
+  };
   const persisted = persistedData.events;
   const optimistic = filterUnsettledOptimisticChatThreadEvents(
     get(optimisticChatThreadEventsState$),
@@ -337,24 +305,24 @@ const allChatThreadsEvents$ = computed(async (get) => {
   });
 });
 
-export const eventDrivenChatThreads$ = computed(async (get) => {
+export const eventDrivenChatThreads$ = computed((get) => {
   return replayChatThreadEvents(
-    await get(chatThreadsSnapshot$),
-    await get(allChatThreadsEvents$),
+    get(chatThreadsSnapshot$),
+    get(allChatThreadsEvents$),
   );
 });
 
-const eventDrivenChatThreadMap$ = computed(async (get) => {
+const eventDrivenChatThreadMap$ = computed((get) => {
   return new Map(
-    (await get(eventDrivenChatThreads$)).map((thread) => {
+    get(eventDrivenChatThreads$).map((thread) => {
       return [thread.id, thread] as const;
     }),
   );
 });
 
 export function eventDrivenChatThread(threadId: string) {
-  return computed(async (get) => {
-    return (await get(eventDrivenChatThreadMap$)).get(threadId) ?? null;
+  return computed((get) => {
+    return get(eventDrivenChatThreadMap$).get(threadId) ?? null;
   });
 }
 
@@ -364,9 +332,9 @@ export function optimisticChatThreadCreateUnsettled(threadId: string) {
   });
 }
 
-export const chatThreadMetaMap$ = computed(async (get) => {
+export const chatThreadMetaMap$ = computed((get) => {
   return new Map<string, ThreadMeta>(
-    (await get(eventDrivenChatThreads$)).map((thread) => {
+    get(eventDrivenChatThreads$).map((thread) => {
       return [
         thread.id,
         {
@@ -382,14 +350,14 @@ export const chatThreadMetaMap$ = computed(async (get) => {
 });
 
 export function threadMeta(threadId: string) {
-  return computed(async (get): Promise<ThreadMeta | null> => {
-    return (await get(chatThreadMetaMap$)).get(threadId) ?? null;
+  return computed((get): ThreadMeta | null => {
+    return get(chatThreadMetaMap$).get(threadId) ?? null;
   });
 }
 
 /** Synchronize the active primary chat tab title after committed thread data changes. */
 const syncCurrentChatThreadDocumentTitle$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  ({ get, set }, signal: AbortSignal) => {
     if (get(activeRoute$) !== "chat") {
       return;
     }
@@ -397,7 +365,7 @@ const syncCurrentChatThreadDocumentTitle$ = command(
     if (typeof threadId !== "string") {
       return;
     }
-    const meta = await get(threadMeta(threadId));
+    const meta = get(threadMeta(threadId));
     signal.throwIfAborted();
     if (meta) {
       set(updateDocumentTitle$, meta.title ?? "New chat");

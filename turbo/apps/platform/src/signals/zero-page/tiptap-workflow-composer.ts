@@ -17,6 +17,8 @@ import {
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -53,6 +55,9 @@ import {
   createTemplatePreviewRuntime,
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
+import { createComposerWorkflows } from "./composer-workflows.ts";
+
+type AgentIdValue = string | null | Promise<string | null>;
 
 const EDITOR_CONTENT_CLASS =
   // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
@@ -113,6 +118,8 @@ export interface WorkflowComposerSignals {
   readonly chatThreadSuggestions$: Computed<
     Promise<ComposerChatThreadSuggestionResult>
   >;
+  readonly agentId$: Computed<Promise<string | null>>;
+  readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
@@ -155,6 +162,26 @@ export interface WorkflowComposerEventHandlers {
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ) => boolean;
+}
+
+function createComposerAgentResources<T extends AgentIdValue>(
+  agentIdSource$: Computed<T>,
+) {
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    return await get(agentIdSource$);
+  });
+  return { agentId$, workflows$: createComposerWorkflows(agentId$) };
+}
+
+function createComposerFeedback(threadId: string | undefined, editor: Editor) {
+  return createFeedbackSignals(threadId ?? "", {
+    insertItem(item) {
+      insertFeedbackItem(editor, item);
+    },
+    removeItem(id) {
+      removeFeedbackItem(editor, id);
+    },
+  });
 }
 
 function createReadInputForSubmissionCommand(
@@ -1524,9 +1551,12 @@ function createTemplateAttachmentControls(
   return { active$, setLifecycleRef$ };
 }
 
-export function createWorkflowComposerSignals(
+export function createWorkflowComposerSignals<
+  T extends AgentIdValue = Promise<string | null>,
+>(
   draft: DraftSignals,
   threadId?: string,
+  agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -1534,17 +1564,11 @@ export function createWorkflowComposerSignals(
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
+  const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createFeedbackSignals(threadId ?? "", {
-    insertItem(item) {
-      insertFeedbackItem(editor, item);
-    },
-    removeItem(id) {
-      removeFeedbackItem(editor, id);
-    },
-  });
+  const feedback = createComposerFeedback(threadId, editor);
 
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
@@ -1574,6 +1598,7 @@ export function createWorkflowComposerSignals(
   });
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
+    agentId$,
   );
   const setSelectedSuggestionIndex$ = command(({ set }, index: number) => {
     set(selectedSuggestionIndexState$, index);
@@ -1640,6 +1665,8 @@ export function createWorkflowComposerSignals(
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
+    agentId$,
+    workflows$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,

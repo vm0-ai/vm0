@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.617.0](https://github.com/vm0-ai/vm0/compare/app-v0.616.0...app-v0.617.0) (2026-07-22)
+
+
+### Features
+
+* **chat:** make structured prompts authoritative on send ([#22537](https://github.com/vm0-ai/vm0/issues/22537)) ([454772b](https://github.com/vm0-ai/vm0/commit/454772bcd57c585e7ac0fbe64615b04c6862fcb7))
+* restore designed workflow-preview diagram and step details in onboarding ([#22562](https://github.com/vm0-ai/vm0/issues/22562)) ([3a82008](https://github.com/vm0-ai/vm0/commit/3a82008deab9266965fd25a925108f24e80cf0c4))
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### Bug Fixes
+
+* **platform:** refresh connector state from ably ([#22582](https://github.com/vm0-ai/vm0/issues/22582)) ([7147b6b](https://github.com/vm0-ai/vm0/commit/7147b6bed037f5d648944e3f434b99902c2b0f3b))
+
+
+### CI
+
+* remove per-pr www preview infrastructure ([#22539](https://github.com/vm0-ai/vm0/issues/22539)) ([1aacb72](https://github.com/vm0-ai/vm0/commit/1aacb72ed6b6d22db3f161608e263087123ba9ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+    * @vm0/core bumped to 8.451.0
+
 ## [0.616.0](https://github.com/vm0-ai/vm0/compare/app-v0.615.2...app-v0.616.0) (2026-07-22)
 
 

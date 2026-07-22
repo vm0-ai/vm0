@@ -81,9 +81,8 @@ guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
 prepare_host() {
   local host=$1
   local host_index=$2
-  local runner_name="${job_ref}-${host_index}"
   local remote="${METAL_USER}@${host}"
-  echo "=== Preparing ${host} (runner: ${runner_name}) ==="
+  echo "=== Preparing ${host} (job: ${job_ref}) ==="
 
   local remote_arch
   if ! remote_arch=$(ssh "$remote" uname -m); then
@@ -95,32 +94,66 @@ prepare_host() {
     return 1
   fi
 
-  if ! ssh "$remote" bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" "${runner_name}" <<'REMOTE_SCRIPT'
+  if ! ssh "$remote" bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" "${job_ref}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 BIN_DIR=$1
 RUNNER_DIR=$2
-RUNNER_NAME=$3
-UNIT="vm0-runner-${RUNNER_NAME}.service"
+JOB_REF=$3
+UNIT_PREFIX="vm0-runner-${JOB_REF}-"
+
+declare -a PRIMARY_UNITS=()
+discover_primary_units() {
+  local output unit rest suffix
+  if ! output=$(sudo systemctl list-units \
+    --all --full --no-legend --plain "${UNIT_PREFIX}*.service" 2>&1); then
+    printf '%s\n' "$output" >&2
+    return 1
+  fi
+
+  PRIMARY_UNITS=()
+  while read -r unit rest; do
+    [ -n "$unit" ] || continue
+    case "$unit" in
+      "${UNIT_PREFIX}"*.service)
+        suffix=${unit#"${UNIT_PREFIX}"}
+        suffix=${suffix%.service}
+        if [[ "$suffix" =~ ^[0-9]+$ ]]; then
+          PRIMARY_UNITS+=("$unit")
+        fi
+        ;;
+    esac
+  done <<< "$output"
+}
 
 # This CI cleanup is intentionally forceful. Avoid executing the existing
 # runner binary here: a cancelled prior prepare can leave a truncated binary at
 # the final path.
-if ! stop_output=$(sudo systemctl stop "${UNIT}" 2>&1); then
-  case "$stop_output" in
-    *"Unit ${UNIT} not loaded."*|*"Unit ${UNIT} could not be found."*|*"Unit ${UNIT} not found."*) ;;
+discover_primary_units
+STOPPED_UNITS=("${PRIMARY_UNITS[@]}")
+if [ "${#STOPPED_UNITS[@]}" -gt 0 ]; then
+  sudo systemctl stop "${STOPPED_UNITS[@]}"
+fi
+
+discover_primary_units
+for unit in "${PRIMARY_UNITS[@]}"; do
+  if ! state=$(sudo systemctl show \
+    --property=ActiveState --value "$unit" 2>&1); then
+    printf '%s\n' "$state" >&2
+    exit 1
+  fi
+  case "$state" in
+    inactive|failed) ;;
     *)
-      printf '%s\n' "$stop_output" >&2
+      echo "runner service ${unit} is ${state} after stop" >&2
       exit 1
       ;;
   esac
+done
+
+if [ "${#STOPPED_UNITS[@]}" -gt 0 ]; then
+  sudo systemctl reset-failed "${STOPPED_UNITS[@]}" 2>/dev/null || true
 fi
 
-if sudo systemctl is-active --quiet "${UNIT}" 2>/dev/null; then
-  echo "runner service ${UNIT} is still active after stop" >&2
-  exit 1
-fi
-
-sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
 sudo rm -rf "${BIN_DIR}" "${RUNNER_DIR}"
 sudo mkdir -p "${BIN_DIR}"
 case "$BIN_DIR" in

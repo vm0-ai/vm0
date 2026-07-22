@@ -7,11 +7,9 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { composerChatThreadSuggestionsEnabled$ } from "../../signals/zero-page/composer-chat-thread-suggestions.ts";
 import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
-import { composerWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   ChatThreadSuggestionMenu,
   scrollChatThreadSuggestionIntoView,
@@ -281,8 +279,8 @@ function useComposerSuggestionMenu({
   const close = useSet(composer.closeSuggestionMenu$);
   const insertWorkflow = useSet(composer.insertWorkflow$);
   const insertChatThread = useSet(composer.insertChatThread$);
-  const currentAgentId = useLastResolved(currentChatAgentRecordId$);
-  const workflowsLoadable = useLastLoadable(composerWorkflows$);
+  const currentAgentId = useLastResolved(composer.agentId$);
+  const workflowsLoadable = useLastLoadable(composer.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,
     workflows:

@@ -452,6 +452,7 @@ describe("chat message action cards", () => {
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
+          callbackTarget: "app",
         });
         connected = true;
         authorized = true;
