@@ -4371,7 +4371,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, runId);
   }, 90_000);
 
-  it("keeps multiple queued messages in transcript order when the head is claimed", async () => {
+  it("appends a claimed queued message after messages that are still queued", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4430,7 +4430,9 @@ describe("CHAT-02: shared user message queue", () => {
     if (!firstOriginal || !firstClaimed?.runId) {
       throw new Error("Expected the first queued message to be claimed");
     }
-    expect(firstClaimed.createdAt).toBe(firstOriginal.createdAt);
+    expect(Date.parse(firstClaimed.createdAt)).toBeGreaterThan(
+      Date.parse(firstOriginal.createdAt),
+    );
 
     const replacedIds = new Set(
       users.flatMap((message) => {
@@ -4447,7 +4449,7 @@ describe("CHAT-02: shared user message queue", () => {
       .map((message) => {
         return message.content;
       });
-    expect(visibleQueuedPrompts).toStrictEqual([firstPrompt, secondPrompt]);
+    expect(visibleQueuedPrompts).toStrictEqual([secondPrompt, firstPrompt]);
 
     await chat.requestSendMessage(
       actor,
@@ -4968,6 +4970,19 @@ describe("CHAT-02: shared user message queue", () => {
       queuedId,
     );
     expect(original.runId).toBeUndefined();
+    expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
+      Date.parse(original.createdAt),
+    );
+    const appended = await chat.listThreadMessages(actor, anchor.threadId, {
+      sinceId: queuedId,
+    });
+    expect(appended.messages).toContainEqual(
+      expect.objectContaining({
+        id: promoted.id,
+        revokesMessageId: queuedId,
+        runId: promoted.runId,
+      }),
+    );
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import {
   artifactEntrySchema,
   storageEntrySchema,
+  storageMountEntrySchema,
   storageManifestSchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
@@ -117,6 +118,43 @@ export const rustTypeBindings = [
           ],
           missingRootPolicy: [
             "Optional policy for a missing artifact root; absence behaves like `fail`.",
+          ],
+        },
+      },
+    ],
+  },
+  {
+    schema: storageMountEntrySchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageMountEntry",
+    direction: "response",
+    fieldTypeOverrides: {
+      missingRootPolicy: "ArtifactEntryMissingRootPolicy",
+    },
+    declarations: [
+      {
+        rustTypeName: "StorageMountEntry",
+        rustDoc: [
+          "Canonical resolved Storage mount accepted by capability-aware runners.",
+        ],
+        fields: {
+          name: ["Storage name retained for diagnostics and cache identity."],
+          storageId: ["Immutable Storage identifier."],
+          versionId: ["Resolved Storage version identifier."],
+          mountPath: ["Guest filesystem path where the Storage is mounted."],
+          archiveUrl: [
+            "Optional presigned archive URL. Explicit empty writeback mounts may omit it.",
+          ],
+          archiveSize: ["Optional exact encoded archive size in bytes."],
+          empty: ["Whether the resolved Storage version is explicitly empty."],
+          instructionsTargetFilename: [
+            "Optional filename used when Storage instructions are normalized.",
+          ],
+          missingRootPolicy: [
+            "Optional behavior when a writeback mount root is missing.",
+          ],
+          writeback: [
+            "Whether changed contents are written back to the same Storage.",
           ],
         },
       },

@@ -14,6 +14,7 @@ import {
   artifactEntrySchema,
   storageEntrySchema,
   storageManifestSchema,
+  storageMountEntrySchema,
 } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
@@ -36,6 +37,11 @@ const expectedBindings = [
   {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageManifest",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageMountEntry",
     direction: "response",
   },
   {
@@ -203,6 +209,10 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub struct StorageManifest {");
     expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
     expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
+    expect(firstRender).toContain("pub struct StorageMountEntry {");
+    expect(firstRender).toContain("pub storage_id: String,");
+    expect(firstRender).toContain("pub version_id: String,");
+    expect(firstRender).toContain("pub writeback: Option<bool>,");
     expect(firstRender).toContain("pub enum ArtifactEntryMissingRootPolicy {");
     expect(firstRender).toContain(
       "/// Policy used when an artifact mount root is missing from the uploaded manifest.",
@@ -232,8 +242,22 @@ describe("Rust type bindings", () => {
       "pub versions: std::collections::BTreeMap<String, String>,",
     );
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
-      2,
+      3,
     );
+  });
+
+  it("keeps canonical Storage mount override aligned with its schema", () => {
+    const mountSchema = z.toJSONSchema(storageMountEntrySchema);
+
+    expect(mountSchema).toMatchObject({
+      required: ["name", "storageId", "versionId", "mountPath"],
+      properties: {
+        missingRootPolicy: {
+          enum: ["fail", "preserveParentVersion"],
+        },
+        writeback: { type: "boolean" },
+      },
+    });
   });
 
   it("keeps storage manifest field overrides aligned with entry schemas", () => {
