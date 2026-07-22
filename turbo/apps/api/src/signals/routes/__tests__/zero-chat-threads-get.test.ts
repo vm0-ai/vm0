@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { chatThreadMetadataContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
@@ -91,7 +92,7 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
     expect(response.body).toStrictEqual({
       id: fixture.threadId,
       title: "Launch plan",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
   });
 
