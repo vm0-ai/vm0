@@ -721,10 +721,15 @@ function setArtifactAuthMethods(
 function buildBundledSkill(
   connectorRef: string,
   versionId = "a".repeat(64),
-  digests: {
-    readonly manifest: string;
-    readonly archive: string;
-  } = { manifest: ZERO_DIGEST, archive: ZERO_DIGEST },
+  metadata: {
+    readonly size: number;
+    readonly archiveSize: number;
+    readonly fileCount: number;
+  } = {
+    size: Buffer.byteLength(`# ${connectorRef}\n`),
+    archiveSize: 321,
+    fileCount: 1,
+  },
 ): JsonRecord {
   const storageName = `connector-skill@${connectorRef}`;
   const prefix = `__system__/volume/${storageName}/${versionId}`;
@@ -732,24 +737,26 @@ function buildBundledSkill(
     kind: "bundled",
     storageName,
     versionId,
+    size: metadata.size,
+    archiveSize: metadata.archiveSize,
+    fileCount: metadata.fileCount,
     frontmatter: {
       name: `${connectorRef} skill`,
       description: `Use the ${connectorRef} connector`,
     },
     manifest: {
       key: `${prefix}/manifest.json`,
-      digest: digests.manifest,
+      digest: ZERO_DIGEST,
     },
     archive: {
       key: `${prefix}/archive.tar.gz`,
-      digest: digests.archive,
+      digest: ZERO_DIGEST,
     },
   };
 }
 
 interface BundledSkillFixture {
   readonly descriptor: JsonRecord;
-  readonly objects: ReadonlyMap<string, Buffer>;
   readonly storageName: string;
   readonly s3Prefix: string;
   readonly versionId: string;
@@ -759,33 +766,13 @@ interface BundledSkillFixture {
   readonly archiveKey: string;
 }
 
-interface BundledSkillFixtureOptions {
-  readonly manifest?: unknown;
-  readonly archive?: Buffer;
-  readonly manifestDigest?: string;
-  readonly archiveDigest?: string;
-}
-
 function buildBundledSkillFixture(
   connectorRef: string,
   versionId = "a".repeat(64),
-  options: BundledSkillFixtureOptions = {},
 ): BundledSkillFixture {
-  const content = Buffer.from(`# ${connectorRef}\n`);
-  const manifest = jsonBytes(
-    options.manifest ?? {
-      version: 1,
-      files: [
-        {
-          path: "SKILL.md",
-          hash: createHash("sha256").update(content).digest("hex"),
-          size: content.length,
-        },
-      ],
-      createdAt: "1970-01-01T00:00:00.000Z",
-    },
-  );
-  const archive = options.archive ?? Buffer.alloc(321, 1);
+  const contentSize = Buffer.byteLength(`# ${connectorRef}\n`);
+  const archiveSize = 321;
+  const fileCount = 1;
   const storageName = `connector-skill@${connectorRef}`;
   const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
   const versionPrefix = `${s3Prefix}/${versionId}`;
@@ -793,18 +780,15 @@ function buildBundledSkillFixture(
   const archiveKey = `${versionPrefix}/archive.tar.gz`;
   return {
     descriptor: buildBundledSkill(connectorRef, versionId, {
-      manifest: options.manifestDigest ?? digest(manifest),
-      archive: options.archiveDigest ?? digest(archive),
+      size: contentSize,
+      archiveSize,
+      fileCount,
     }),
-    objects: new Map([
-      [manifestKey, manifest],
-      [archiveKey, archive],
-    ]),
     storageName,
     s3Prefix,
     versionId,
-    contentSize: content.length,
-    archiveSize: archive.length,
+    contentSize,
+    archiveSize,
     manifestKey,
     archiveKey,
   };
@@ -2572,11 +2556,7 @@ describe("connector catalog valid lifecycle", () => {
         firstRecord(artifact.connectors, "connectors").skill = skill.descriptor;
       },
     });
-    const objects = new Map(catalogObjects([release], release));
-    for (const [key, bytes] of skill.objects) {
-      objects.set(key, bytes);
-    }
-    serveObjects(objects);
+    serveObjects(catalogObjects([release], release));
     await syncCatalog();
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
@@ -4023,11 +4003,7 @@ describe("connector catalog valid lifecycle", () => {
         connector.skill = skill.descriptor;
       },
     });
-    const objects = new Map(catalogObjects([release], release));
-    for (const [key, bytes] of skill.objects) {
-      objects.set(key, bytes);
-    }
-    serveObjects(objects);
+    serveObjects(catalogObjects([release], release));
 
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
@@ -4045,39 +4021,30 @@ describe("connector catalog valid lifecycle", () => {
       file_count: 1,
       head_version_id: skill.versionId,
     });
+    const requestedKeys = context.mocks.s3.send.mock.calls.map((call) => {
+      const input = commandInput(call[0]);
+      return typeof input.Key === "string" ? input.Key : null;
+    });
+    expect(requestedKeys).not.toContain(skill.manifestKey);
+    expect(requestedKeys).not.toContain(skill.archiveKey);
   });
 
-  it("rejects bundled skill objects that fail verification", async () => {
+  it("rejects incomplete or out-of-range bundled skill metadata", async () => {
     const cases = [
       {
-        expected: "source-unavailable",
-        includeObjects: false,
-        label: "missing",
-        options: {},
+        field: "size",
+        label: "missing-size",
+        value: undefined,
       },
       {
-        expected: "digest-mismatch",
-        includeObjects: true,
-        label: "digest",
-        options: { manifestDigest: ZERO_DIGEST },
+        field: "archiveSize",
+        label: "oversized-archive",
+        value: 2 * 1024 * 1024 + 1,
       },
       {
-        expected: "invalid-artifact",
-        includeObjects: true,
-        label: "manifest",
-        options: {
-          manifest: {
-            version: 1,
-            files: [],
-            createdAt: "1970-01-01T00:00:00.000Z",
-          },
-        },
-      },
-      {
-        expected: "object-too-large",
-        includeObjects: true,
-        label: "oversized",
-        options: { archive: Buffer.alloc(2 * 1024 * 1024 + 1, 1) },
+        field: "fileCount",
+        label: "empty-manifest",
+        value: 0,
       },
     ] as const;
 
@@ -4089,7 +4056,6 @@ describe("connector catalog valid lifecycle", () => {
         createHash("sha256")
           .update(`${testCase.label}:${randomUUID()}`)
           .digest("hex"),
-        testCase.options,
       );
       const previous = await readVolumeStorageState({
         orgId: SYSTEM_ORG_ID,
@@ -4106,24 +4072,23 @@ describe("connector catalog valid lifecycle", () => {
         version: `2026-07-22.skill-${testCase.label}-${randomUUID().slice(0, 8)}`,
         connectorRef,
         mutatePrivate: (artifact) => {
-          firstRecord(artifact.connectors, "connectors").skill =
-            skill.descriptor;
+          const descriptor = structuredClone(skill.descriptor);
+          if (testCase.value === undefined) {
+            delete descriptor[testCase.field];
+          } else {
+            descriptor[testCase.field] = testCase.value;
+          }
+          firstRecord(artifact.connectors, "connectors").skill = descriptor;
         },
       });
-      const objects = new Map(catalogObjects([release], release));
-      if (testCase.includeObjects) {
-        for (const [key, bytes] of skill.objects) {
-          objects.set(key, bytes);
-        }
-      }
-      serveObjects(objects);
+      serveObjects(catalogObjects([release], release));
 
       const response = await syncCatalog();
       expect(response.body).toMatchObject({
         outcome: "rejected",
         state: "never-synced",
         active: null,
-        lastAttempt: { failureCode: testCase.expected },
+        lastAttempt: { failureCode: "invalid-artifact" },
       });
       await expect(
         readVolumeStorageState({
@@ -4181,20 +4146,10 @@ describe("connector catalog valid lifecycle", () => {
       },
     });
 
-    const firstObjects = new Map(catalogObjects([firstRelease], firstRelease));
-    for (const [key, bytes] of firstSkill.objects) {
-      firstObjects.set(key, bytes);
-    }
-    serveObjects(firstObjects);
+    serveObjects(catalogObjects([firstRelease], firstRelease));
     expect((await syncCatalog()).body.outcome).toBe("accepted");
 
-    const secondObjects = new Map(
-      catalogObjects([firstRelease, secondRelease], secondRelease),
-    );
-    for (const [key, bytes] of secondSkill.objects) {
-      secondObjects.set(key, bytes);
-    }
-    serveObjects(secondObjects);
+    serveObjects(catalogObjects([firstRelease, secondRelease], secondRelease));
     expect((await syncCatalog()).body.outcome).toBe("accepted");
 
     context.mocks.s3.send.mockClear();
@@ -4310,12 +4265,7 @@ describe("connector catalog valid lifecycle", () => {
         connectors.push(conflictingConnector);
       },
     });
-    const objects = new Map(catalogObjects([release], release));
-    for (const skill of [firstSkill, conflictingSkill]) {
-      for (const [key, bytes] of skill.objects) {
-        objects.set(key, bytes);
-      }
-    }
+    const objects = catalogObjects([release], release);
     serveObjects(objects);
 
     expect((await syncCatalog()).body).toMatchObject({
