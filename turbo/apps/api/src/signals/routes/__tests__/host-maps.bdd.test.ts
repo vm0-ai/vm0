@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
@@ -20,6 +21,7 @@ import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createMapsBillingApi } from "./helpers/api-bdd-maps-billing";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 FILE-01 host APIs plus BILL-02/CHAIN-BILLING-MEDIA maps billing. Replaces the
@@ -53,8 +55,6 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_HTML_EDIT_STARTING_CREDITS = 1000;
 const OPENROUTER_HTML_EDIT_EXPECTED_CHARGE = 4;
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-
 const OPENROUTER_EDIT_PRICING_ROWS = [
   {
     kind: "model",
@@ -97,6 +97,17 @@ async function grantOpenRouterEditCredits(actor: ApiTestUser): Promise<void> {
 
 async function readOrgCredits(actor: ApiTestUser): Promise<number> {
   return (await createMapsBillingApi(context).readBillingStatus(actor)).credits;
+}
+
+async function enableHostedArtifactVersions(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected hosted artifact actor to have an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: actor.userId, orgId: actor.orgId },
+    { [FeatureSwitchKey.HostedArtifactVersions]: true },
+  );
 }
 
 const HTML_SCRIPT_TAG_NAME = "script";
@@ -150,9 +161,13 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
   it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected versioned host actor to have an org");
+    }
+    await enableHostedArtifactVersions(actor);
     const capture = api.captureHostedSitesS3();
-    await upsertOrgPlanEntitlementFixture({ orgId: STAFF_ORG_ID });
+    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
 
     const site = `bdd-versioned-${randomUUID().slice(0, 8)}`;
     const body = {
@@ -201,12 +216,12 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       activeDeploymentVersion: 2,
     });
 
-    const versionPrefix = `sites/orgs/${STAFF_ORG_ID}/${site}/versions`;
+    const versionPrefix = `sites/orgs/${actor.orgId}/${site}/versions`;
     expect(
       capture.puts.map((put) => {
         return put.key;
       }),
-    ).toEqual(
+    ).toStrictEqual(
       expect.arrayContaining([
         `${versionPrefix}/1/manifest.json`,
         `${versionPrefix}/2/manifest.json`,
@@ -299,9 +314,13 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       files: [hostedTextFile("/index.html", "<main>occupied</main>")],
     });
 
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected collision actor to have an org");
+    }
+    await enableHostedArtifactVersions(actor);
     const capture = api.captureHostedSitesS3();
-    await upsertOrgPlanEntitlementFixture({ orgId: STAFF_ORG_ID });
+    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
     const versioned = await api.prepareHostedSite(actor, {
       site: occupied.publicSlug,
       artifactKind: "hosted-site",
@@ -320,7 +339,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         return put.key;
       }),
     ).toContain(
-      `sites/orgs/${STAFF_ORG_ID}/${occupied.publicSlug}/versions/1/manifest.json`,
+      `sites/orgs/${actor.orgId}/${occupied.publicSlug}/versions/1/manifest.json`,
     );
 
     const disabledHistory = await api.requestHostedSiteDeployments(

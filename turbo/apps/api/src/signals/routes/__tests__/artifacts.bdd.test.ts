@@ -34,8 +34,6 @@ const CLOUDFLARE_SNAPSHOT_URL =
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
 const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 type ChatObjectStorage = ReturnType<
   typeof chatCallbacks.acceptChatObjectStorage
@@ -533,7 +531,15 @@ describe("GET /api/zero/artifacts", () => {
   }, 120_000);
 
   it("keeps every hosted-site version as a separate immutable artifact", async () => {
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected hosted artifact actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId },
+      { [FeatureSwitchKey.HostedArtifactVersions]: true },
+    );
     const owner = await artifactActor(
       "Artifacts API hosted versions agent",
       actor,
