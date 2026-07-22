@@ -3,6 +3,17 @@ import { useLastLoadable } from "ccstate-react";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
+
+const ZERO_AVATAR_HEAD_IMG = platformStaticAssetUrl(
+  "views/onboarding/assets/zero-avatar-head-840043d16b50.svg",
+);
+const ZERO_AVATAR_HAIR_IMG = platformStaticAssetUrl(
+  "views/onboarding/assets/zero-avatar-hair-c1d917488df8.svg",
+);
+const ZERO_AVATAR_FACE_IMG = platformStaticAssetUrl(
+  "views/onboarding/assets/zero-avatar-face-19a2ae88c11d.svg",
+);
 
 function DiagramConnectorIcon({
   connectorRef,
@@ -346,9 +357,9 @@ export function WorkflowPreviewDiagram({
           iconClassName="owf-diagram-avatar"
         >
           <span className="owf-diagram-zero-icon" aria-hidden="true">
-            <img src="/onboarding/zero-avatar-head.svg" alt="" aria-hidden />
-            <img src="/onboarding/zero-avatar-hair.svg" alt="" aria-hidden />
-            <img src="/onboarding/zero-avatar-face.svg" alt="" aria-hidden />
+            <img src={ZERO_AVATAR_HEAD_IMG} alt="" aria-hidden />
+            <img src={ZERO_AVATAR_HAIR_IMG} alt="" aria-hidden />
+            <img src={ZERO_AVATAR_FACE_IMG} alt="" aria-hidden />
           </span>
         </WorkflowDiagramNode>
         {diagram.destinationConnector ? (
