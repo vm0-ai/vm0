@@ -20,6 +20,9 @@ import { setMorningBriefUnsubscribeStatus$ } from "./morning-brief-unsubscribe-s
  */
 export const setupMorningBriefUnsubscribePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    // Reset any result left over from a previous visit to this route; the
+    // module-level status state outlives the page setup.
+    set(setMorningBriefUnsubscribeStatus$, null);
     set(updatePage$, createElement(MorningBriefUnsubscribePage));
     set(updateDocumentTitle$, "Morning Brief");
 
