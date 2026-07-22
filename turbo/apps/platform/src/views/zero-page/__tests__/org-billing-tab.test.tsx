@@ -197,6 +197,35 @@ async function openBillingTab(): Promise<void> {
 }
 
 describe("organization billing settings", () => {
+  it("uses plan capabilities instead of the tier for gated billing controls", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "capability-org",
+      name: "Capability Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...noActiveBillingStatus(),
+        canBuyConcurrency: true,
+        canBuyCredits: true,
+        autoRechargeAllowed: true,
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Buy credits" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Automatic top-ups")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Concurrency" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("recovers from a billing load failure and starts an upgrade checkout", async () => {
     let statusCalls = 0;
 

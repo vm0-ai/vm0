@@ -152,7 +152,8 @@ mod tests {
                 "extractPath": extract_path,
                 "archiveUrl": format!("file://{}", missing_archive.display()),
                 "instructionsTargetFilename": "AGENTS.md"
-            }]
+            }],
+            "artifacts": []
         });
 
         let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
@@ -231,7 +232,8 @@ mod tests {
                     "archiveUrl": format!("file://{}", archive.display()),
                     "instructionsTargetFilename": "CLAUDE.md"
                 }
-            ]
+            ],
+            "artifacts": []
         });
 
         let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());

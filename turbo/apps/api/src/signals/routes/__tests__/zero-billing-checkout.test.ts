@@ -1703,6 +1703,36 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     );
   });
 
+  it("rejects credit checkout when the plan capability is disabled", async () => {
+    const fixture = await trackedSeed();
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingCreditCheckoutContract).create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Credit purchases are not available for this workspace",
+      code: "BAD_REQUEST",
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
   it("creates credit checkout for zero tokens with billing write capability", async () => {
     const fixture = await trackedSeed();
     await seedMemberRole({

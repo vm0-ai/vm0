@@ -10,7 +10,7 @@
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:
-#   VM0_AUTH_URL   - Target auth URL (e.g., https://staging-so.vm6.ai)
+#   VM0_AUTH_URL   - Target auth URL (e.g., https://pr-123-app.omby.ai)
 #
 # Optional env vars:
 #   VM0_API_BACKEND_URL            - API URL, used as a local fallback for auth URL

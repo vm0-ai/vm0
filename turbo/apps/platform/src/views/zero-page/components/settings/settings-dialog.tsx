@@ -23,8 +23,10 @@ import {
   IconFileInvoice,
   IconUsers,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
   settingsActiveSection$,
@@ -200,11 +202,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
   const externalProfileModalOpen = useGet(externalProfileModalOpen$);
+  const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
+  const personalGroup: SidebarGroup = {
+    ...PERSONAL_GROUP,
+    items: PERSONAL_GROUP.items.filter((item) => {
+      return item.id !== "debug" || showDebug;
+    }),
+  };
   const sidebarGroups: readonly SidebarGroup[] = [
-    PERSONAL_GROUP,
+    personalGroup,
     ...(isAdmin ? [WORKSPACE_GROUP] : []),
     MODELS_GROUP,
     billingGroup(isAdmin),
@@ -212,7 +222,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
-    !isAdmin && isAdminOnlySettingsSection(activeSection)
+    (!showDebug && activeSection === "debug") ||
+    (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
   const meta =

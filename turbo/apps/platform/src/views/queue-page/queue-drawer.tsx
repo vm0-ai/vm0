@@ -1,4 +1,9 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { ConcurrencyInfo } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -27,6 +32,7 @@ import {
 } from "../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
 
 // ---------------------------------------------------------------------------
 // Upgrade path config: free → pro, pro → team
@@ -354,6 +360,7 @@ function QueueDrawerContent() {
   );
   const concurrencyQuantity = useGet(concurrencyQuantity$);
   const setConcurrencyQuantity = useSet(setConcurrencyQuantity$);
+  const capabilities = useLastResolved(orgPlanCapabilities$);
   const planCheckoutLoading = planCheckoutLoadable.state === "loading";
   const concurrencyCheckoutLoading =
     concurrencyCheckoutLoadable.state === "loading";
@@ -382,8 +389,7 @@ function QueueDrawerContent() {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const visibleUpgrade = canManageBilling ? upgrade : undefined;
   const showConcurrencyPurchase =
-    canManageBilling &&
-    (concurrency.tier === "team" || concurrency.tier === "custom");
+    canManageBilling && capabilities?.canBuyConcurrency === true;
 
   const tierColor = "text-[#D27939]";
 

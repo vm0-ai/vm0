@@ -1249,6 +1249,257 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
+const LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION = 640;
+const LEGACY_MEMORY_CLEANUP_MIGRATION = 641;
+
+const legacyMemoryCleanupFixture = {
+  orgId: "legacy-memory-cleanup-org",
+  composeId: "60000000-0000-4000-8000-000000000001",
+  sessionId: "60000000-0000-4000-8000-000000000002",
+  runId: "60000000-0000-4000-8000-000000000003",
+  targetStorageIds: [
+    "c0ba5859-3f04-4e73-86af-f2ecfda38920",
+    "40bcddf8-dded-4bd3-ba01-889aab237e2c",
+    "a3cd07d8-ed1d-41eb-ad86-36eee81f439b",
+    "bb526398-1475-44a1-bfe8-31de6492aa68",
+    "09b476e2-a966-4c48-b04b-8c7ab525d427",
+    "834c8df9-4755-4252-b0dd-4b1f96f257e6",
+    "1ccfe6e9-f780-46f0-8174-f29b04808d08",
+    "6ed6253f-6a87-4f62-95dd-6cf54eb019cc",
+    "8612fe6d-ea43-4e13-8b37-40a77d9949d6",
+    "cfea61f2-e97f-4726-8806-505454a4d175",
+  ],
+} as const;
+
+function legacyMemoryVersionId(
+  storageIndex: number,
+  versionIndex: number,
+): string {
+  return `legacy-memory-${storageIndex}-${versionIndex}`.padEnd(64, "0");
+}
+
+async function seedLegacyMemoryCleanupFixture(
+  client: Client,
+  args: { readonly addUnexpectedVersion: boolean },
+): Promise<void> {
+  const fixture = legacyMemoryCleanupFixture;
+
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, 'legacy-memory-cleanup-user', 'legacy-memory-cleanup', $2)
+    `,
+    [fixture.composeId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions"
+        ("id", "user_id", "org_id", "agent_compose_id")
+      VALUES ($1, 'legacy-memory-cleanup-user', $2, $3)
+    `,
+    [fixture.sessionId, fixture.orgId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_runs"
+        ("id", "user_id", "session_id", "status", "prompt", "org_id")
+      VALUES ($1, 'legacy-memory-cleanup-user', $2, 'completed', 'migration test', $3)
+    `,
+    [fixture.runId, fixture.sessionId, fixture.orgId],
+  );
+
+  for (const [storageIndex, storageId] of fixture.targetStorageIds.entries()) {
+    await client.query(
+      `
+        INSERT INTO "storages"
+          ("id", "user_id", "name", "type", "org_id", "s3_prefix", "updated_at")
+        VALUES ($1, 'legacy-memory-cleanup-user', $2, 'memory', $3, $4, '2026-04-22 22:56:22.311')
+      `,
+      [
+        storageId,
+        `legacy-memory-${storageIndex}`,
+        fixture.orgId,
+        `legacy-memory-cleanup/${storageIndex}`,
+      ],
+    );
+
+    const versionCount = storageIndex < 4 ? 2 : 1;
+    for (let versionIndex = 0; versionIndex < versionCount; versionIndex += 1) {
+      const versionId = legacyMemoryVersionId(storageIndex, versionIndex);
+      await client.query(
+        `
+          INSERT INTO "storage_versions"
+            ("id", "storage_id", "s3_key", "archive_size", "created_by")
+          VALUES ($1, $2, $3, 0, 'migration-test')
+        `,
+        [
+          versionId,
+          storageId,
+          `legacy-memory-cleanup/${storageIndex}/${versionId}`,
+        ],
+      );
+    }
+
+    if (storageIndex < 4) {
+      await client.query(
+        `
+          INSERT INTO "storage_version_lineage"
+            ("storage_id", "version_id", "parent_version_id", "run_id", "storage_type")
+          VALUES ($1, $2, $3, $4, 'memory')
+        `,
+        [
+          storageId,
+          legacyMemoryVersionId(storageIndex, 1),
+          legacyMemoryVersionId(storageIndex, 0),
+          fixture.runId,
+        ],
+      );
+    }
+  }
+
+  if (args.addUnexpectedVersion) {
+    await client.query(
+      `
+        INSERT INTO "storage_versions"
+          ("id", "storage_id", "s3_key", "archive_size", "created_by")
+        VALUES ($1, $2, 'legacy-memory-cleanup/unexpected', 0, 'migration-test')
+      `,
+      ["legacy-memory-unexpected".padEnd(64, "0"), fixture.targetStorageIds[0]],
+    );
+  }
+}
+
+async function readLegacyMemoryCleanupCounts(client: Client): Promise<{
+  readonly lineageCount: number;
+  readonly storageCount: number;
+  readonly versionCount: number;
+}> {
+  const fixture = legacyMemoryCleanupFixture;
+  const result = await client.query<{
+    lineageCount: number;
+    storageCount: number;
+    versionCount: number;
+  }>(
+    `
+      SELECT
+        (
+          SELECT count(*)::integer
+          FROM "storages"
+          WHERE "id" = ANY($1::uuid[])
+        ) AS "storageCount",
+        (
+          SELECT count(*)::integer
+          FROM "storage_versions"
+          WHERE "storage_id" = ANY($1::uuid[])
+        ) AS "versionCount",
+        (
+          SELECT count(*)::integer
+          FROM "storage_version_lineage"
+          WHERE "storage_id" = ANY($1::uuid[])
+        ) AS "lineageCount"
+    `,
+    [fixture.targetStorageIds],
+  );
+  const counts = result.rows[0];
+  assert.ok(counts);
+  return counts;
+}
+
+async function validateLegacyMemoryCleanup(): Promise<void> {
+  console.log("=== Phase 1.75: Validate legacy memory cleanup ===\n");
+  const cleanupDb = "migration_legacy_memory_cleanup_test";
+  const cleanupDbUrl = createTestDbUrl(cleanupDb);
+
+  await createDatabase(cleanupDb);
+  try {
+    await runMigrationsUpTo(
+      cleanupDbUrl,
+      LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: cleanupDbUrl });
+    await client.connect();
+    try {
+      await seedLegacyMemoryCleanupFixture(client, {
+        addUnexpectedVersion: false,
+      });
+      assert.deepEqual(await readLegacyMemoryCleanupCounts(client), {
+        storageCount: 10,
+        versionCount: 14,
+        lineageCount: 4,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        LEGACY_MEMORY_CLEANUP_MIGRATION,
+      );
+      assert.deepEqual(await readLegacyMemoryCleanupCounts(client), {
+        storageCount: 0,
+        versionCount: 0,
+        lineageCount: 0,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(cleanupDb);
+  }
+
+  const rejectionDb = "migration_legacy_memory_cleanup_rejection_test";
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(
+      rejectionDbUrl,
+      LEGACY_MEMORY_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await seedLegacyMemoryCleanupFixture(client, {
+        addUnexpectedVersion: true,
+      });
+
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          LEGACY_MEMORY_CLEANUP_MIGRATION,
+        );
+      } catch (error) {
+        assert.equal(databaseErrorCode(error), "P0001");
+        assert.ok(
+          error instanceof Error &&
+            error.message.includes(
+              "expected 14 legacy memory storage versions, found 15",
+            ),
+        );
+      }
+
+      assert.deepEqual(await readLegacyMemoryCleanupCounts(client), {
+        storageCount: 10,
+        versionCount: 15,
+        lineageCount: 4,
+      });
+      const migrationRecord = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = '0641_delete_legacy_memory_storages'
+        `,
+      );
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Legacy memory cleanup deletes verified rows and rejects unexpected state atomically\n",
+  );
+}
+
 async function seedStorageArchiveSizeFinalizationFixture(
   client: Client,
 ): Promise<void> {
@@ -1758,6 +2009,160 @@ async function validateSlackChatThreadRouteBackfill(): Promise<void> {
   }
 }
 
+async function validateOrgPlanEntitlementBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
+  );
+  const testDb = "migration_org_plan_entitlement_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 641);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "org_metadata" ("org_id", "tier", "credits")
+        VALUES
+          ('entitlement-backfill-1', 'free', 0),
+          ('entitlement-backfill-2', 'limited-free-1', 0),
+          ('entitlement-backfill-3', 'pro-suspend', 0),
+          ('entitlement-backfill-4', 'pro', 0),
+          ('entitlement-backfill-5', 'team', 0),
+          ('entitlement-backfill-6', 'custom', 0)
+      `);
+
+      await applyMigrationsUpTo(client, 642);
+
+      const entitlements = await client.query<{
+        autoRechargeAllowed: boolean;
+        baseConcurrencyLimit: number;
+        canBuyConcurrency: boolean;
+        canBuyCredits: boolean;
+        orgId: string;
+        planKey: string;
+        restrictedVm0Models: boolean;
+        source: string;
+        status: string;
+        supportByok: boolean;
+        videoGenerationAllowed: boolean;
+        workflowWebhookTriggerAllowed: boolean;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "plan_key" AS "planKey",
+          "source",
+          "status",
+          "base_concurrency_limit" AS "baseConcurrencyLimit",
+          "can_buy_concurrency" AS "canBuyConcurrency",
+          "can_buy_credits" AS "canBuyCredits",
+          "auto_recharge_allowed" AS "autoRechargeAllowed",
+          "support_byok" AS "supportByok",
+          "restricted_vm0_models" AS "restrictedVm0Models",
+          "video_generation_allowed" AS "videoGenerationAllowed",
+          "workflow_webhook_trigger_allowed" AS "workflowWebhookTriggerAllowed"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'entitlement-backfill-%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          orgId: "entitlement-backfill-1",
+          planKey: "free",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 1,
+          canBuyConcurrency: false,
+          canBuyCredits: true,
+          autoRechargeAllowed: false,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-2",
+          planKey: "limited-free-1",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 1,
+          canBuyConcurrency: false,
+          canBuyCredits: false,
+          autoRechargeAllowed: false,
+          supportByok: false,
+          restrictedVm0Models: true,
+          videoGenerationAllowed: false,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-3",
+          planKey: "pro-suspend",
+          source: "org_metadata_migration",
+          status: "suspended",
+          baseConcurrencyLimit: 0,
+          canBuyConcurrency: false,
+          canBuyCredits: false,
+          autoRechargeAllowed: false,
+          supportByok: false,
+          restrictedVm0Models: true,
+          videoGenerationAllowed: false,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-4",
+          planKey: "pro",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 2,
+          canBuyConcurrency: false,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: false,
+        },
+        {
+          orgId: "entitlement-backfill-5",
+          planKey: "team",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 10,
+          canBuyConcurrency: true,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: true,
+        },
+        {
+          orgId: "entitlement-backfill-6",
+          planKey: "custom",
+          source: "org_metadata_migration",
+          status: "active",
+          baseConcurrencyLimit: 10,
+          canBuyConcurrency: true,
+          canBuyCredits: true,
+          autoRechargeAllowed: true,
+          supportByok: true,
+          restrictedVm0Models: false,
+          videoGenerationAllowed: true,
+          workflowWebhookTriggerAllowed: true,
+        },
+      ]);
+      console.log(
+        "   ✅ Existing metadata-only orgs receive complete plan entitlements\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -1931,7 +2336,9 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
 
     await validateStorageArchiveSizeFinalization();
+    await validateLegacyMemoryCleanup();
     await validateSlackChatThreadRouteBackfill();
+    await validateOrgPlanEntitlementBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

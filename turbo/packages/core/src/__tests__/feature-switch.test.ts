@@ -114,6 +114,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       true,
@@ -124,6 +128,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
@@ -142,6 +147,10 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
@@ -157,9 +166,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       false,
     );

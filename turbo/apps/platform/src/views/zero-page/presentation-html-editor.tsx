@@ -61,7 +61,7 @@ import {
 import { fallbackHtmlPreviewTitle } from "./zero-attachment-preview.tsx";
 
 interface PresentationHtmlEditorProps {
-  readonly onClose: () => void;
+  readonly onClose: (publishedUrl?: string) => void;
   readonly url: string;
 }
 
@@ -81,6 +81,7 @@ interface PresentationEditorSession {
   readonly pendingThumbnailSlideIdRef: MutableValue<string | null>;
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly publishedSignatureRef: MutableValue<string>;
+  readonly publishedUrlRef: MutableValue<string | null>;
   readonly publishingRef: MutableValue<boolean>;
   readonly moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   readonly slideList: PresentationSlideListSignals;
@@ -137,6 +138,7 @@ function createPresentationEditorSession(
         slides: draft.slides,
       }),
     ),
+    publishedUrlRef: mutableValue<string | null>(null),
     publishingRef: mutableValue(false),
     moveBlocksRef,
     slideList,
@@ -221,7 +223,7 @@ async function redeployPresentationHtml(params: {
     }),
     [200],
   );
-  return completed.body.url;
+  return completed.body.artifactUrl ?? completed.body.url;
 }
 
 async function generatePresentationSpeakerNotes(params: {
@@ -1537,6 +1539,7 @@ async function ensurePresentationRedeployed(params: {
   readonly markDirty: () => void;
   readonly pageSignal: AbortSignal;
   readonly publishedSignatureRef: MutableValue<string>;
+  readonly publishedUrlRef: MutableValue<string | null>;
   readonly refreshPresentationHtmlPreviews: () => void;
   readonly setPublishing: (publishing: boolean) => void;
   readonly setStatus: (value: string) => void;
@@ -1548,12 +1551,13 @@ async function ensurePresentationRedeployed(params: {
   params.setPublishing(true);
   params.setStatus("Publishing changes");
   const publish = async () => {
-    await redeployPresentationHtml({
+    const publishedUrl = await redeployPresentationHtml({
       createClient: params.createClient,
       html: params.buildEditedHtml(),
-      publicUrl: params.draft.publicUrl,
+      publicUrl: params.publishedUrlRef.current ?? params.draft.publicUrl,
       signal: params.pageSignal,
     });
+    params.publishedUrlRef.current = publishedUrl;
     params.refreshPresentationHtmlPreviews();
     params.publishedSignatureRef.current = signature;
     toast.success("Presentation updated");
@@ -1804,6 +1808,7 @@ interface PresentationEditorControllerParams {
   readonly pendingThumbnailSlideIdRef: MutableValue<string | null>;
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly publishedSignatureRef: MutableValue<string>;
+  readonly publishedUrlRef: MutableValue<string | null>;
   readonly publishingRef: MutableValue<boolean>;
   readonly moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   readonly refreshPresentationHtmlPreviews: () => void;
@@ -1884,6 +1889,7 @@ function createPresentationEditorController(
       markDirty,
       pageSignal: params.pageSignal,
       publishedSignatureRef: params.publishedSignatureRef,
+      publishedUrlRef: params.publishedUrlRef,
       refreshPresentationHtmlPreviews: params.refreshPresentationHtmlPreviews,
       setPublishing,
       setStatus,
@@ -1938,20 +1944,24 @@ function createPresentationEditorController(
 function createPresentationEditorCloseActions(params: {
   readonly controller: ReturnType<typeof createPresentationEditorController>;
   readonly draft: EditorDraft;
-  readonly onClose: () => void;
+  readonly onClose: (publishedUrl?: string) => void;
   readonly publishingRef: MutableValue<boolean>;
   readonly setCloseDialogOpen: (open: boolean) => void;
 }) {
   const requestClose = () => {
     if (!params.controller.hasUnsavedChanges()) {
-      params.onClose();
+      params.onClose(
+        params.draft.editorSession.publishedUrlRef.current ?? undefined,
+      );
       return;
     }
     params.setCloseDialogOpen(true);
   };
   const exitWithoutSaving = () => {
     params.setCloseDialogOpen(false);
-    params.onClose();
+    params.onClose(
+      params.draft.editorSession.publishedUrlRef.current ?? undefined,
+    );
   };
   const saveAndClose = () => {
     params.setCloseDialogOpen(false);
@@ -1960,7 +1970,9 @@ function createPresentationEditorCloseActions(params: {
       reason: "presentation html editor close",
       task: async () => {
         if (await params.controller.ensureRedeployed()) {
-          params.onClose();
+          params.onClose(
+            params.draft.editorSession.publishedUrlRef.current ?? undefined,
+          );
         }
       },
     });
@@ -2022,7 +2034,7 @@ function PresentationEditorReady({
   draft: EditorDraft;
   filename: string;
   movementEnabled: boolean;
-  onClose: () => void;
+  onClose: (publishedUrl?: string) => void;
   sourceUrl: string;
   title: string;
 }) {
@@ -2040,6 +2052,7 @@ function PresentationEditorReady({
     pendingThumbnailSlideIdRef,
     previewFrameRef,
     publishedSignatureRef,
+    publishedUrlRef,
     publishingRef,
     moveBlocksRef,
     slideList,
@@ -2058,6 +2071,7 @@ function PresentationEditorReady({
     pendingThumbnailSlideIdRef,
     previewFrameRef,
     publishedSignatureRef,
+    publishedUrlRef,
     publishingRef,
     moveBlocksRef,
     refreshPresentationHtmlPreviews,

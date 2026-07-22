@@ -124,6 +124,7 @@ describe("POST /api/zero/billing/portal", () => {
     `${APP_ORIGIN}/settings/billing`,
     "https://okou.ai/settings/billing",
     "https://console.okou.ai/settings/billing",
+    "https://pr-22085-app.omby.ai/settings/billing",
   ])("returns portal URL to the allowed origin %s", async (returnUrl) => {
     const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
     const fixture = await track(

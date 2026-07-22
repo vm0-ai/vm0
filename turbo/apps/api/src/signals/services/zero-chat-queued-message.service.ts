@@ -242,7 +242,6 @@ export async function appendClaimedUserMessage(
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
-      createdAt: chatMessages.createdAt,
     })
     .from(chatMessageQueue)
     .innerJoin(
@@ -275,7 +274,6 @@ export async function appendClaimedUserMessage(
       ? [...queued.attachFileMetadata]
       : null,
     generationTemplate: queued.generationTemplate,
-    createdAt: queued.createdAt,
   });
   if (!claimed) {
     return null;

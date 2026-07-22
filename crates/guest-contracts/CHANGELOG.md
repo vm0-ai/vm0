@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.17...guest-contracts-v0.4.0) (2026-07-22)
+
+
+### Features
+
+* **runner:** accept canonical storage mount manifests ([#22546](https://github.com/vm0-ai/vm0/issues/22546)) ([d9cea3a](https://github.com/vm0-ai/vm0/commit/d9cea3a2f56de399b38ef9d1f004da740b699bbc))
+
+
+### Bug Fixes
+
+* **guest-agent:** bound stalled codex resume startup ([#22557](https://github.com/vm0-ai/vm0/issues/22557)) ([1bf198e](https://github.com/vm0-ai/vm0/commit/1bf198e0791884e807f70a2d08fff0b93b050698))
+
 ## [0.3.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.16...guest-contracts-v0.3.17) (2026-07-21)
 
 

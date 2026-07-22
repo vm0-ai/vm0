@@ -538,6 +538,7 @@ export {
   type SecretConnectorMetadata,
   type StorageEntry,
   type ArtifactEntry,
+  type StorageMountEntry,
   type StorageManifest,
   type ResumeSession,
   type RunnerRealtimeTokenContract,

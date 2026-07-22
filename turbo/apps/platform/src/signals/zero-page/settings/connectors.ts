@@ -34,6 +34,7 @@ import type {
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnectionStatus,
+  PublicConnectorCatalogIcon,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -45,7 +46,7 @@ import {
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
-  OAUTH_WEB_API_BASE,
+  OAUTH_API_BASE,
   zeroClient$,
   type ZeroClientFactory,
 } from "../../api-client.ts";
@@ -70,6 +71,9 @@ const { get$: hiddenConnectorRefsRaw$, set$: setHiddenConnectorRefs$ } =
 type PostConnectOptions = {
   readonly connectorLabel?: string;
   readonly agentId?: string;
+};
+type BrowserAuthPostConnectOptions = PostConnectOptions & {
+  readonly connectorIcon: PublicConnectorCatalogIcon;
 };
 // ---------------------------------------------------------------------------
 // Derived state
@@ -1396,7 +1400,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const client = createClient(zeroConnectorOauthDeviceAuthSessionContract, {
-      apiBase: OAUTH_WEB_API_BASE,
+      apiBase: OAUTH_API_BASE,
     });
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
       return isCurrentConnectorOAuthDeviceAuthRequest(
@@ -1482,7 +1486,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const createClient = get(zeroClient$);
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
-          { apiBase: OAUTH_WEB_API_BASE },
+          { apiBase: OAUTH_API_BASE },
         );
         const startResponse = await tapError(
           accept(
@@ -1733,7 +1737,7 @@ export const connectConnectorExternalCode$ = command(
 
         const createClient = get(zeroClient$);
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
-          apiBase: OAUTH_WEB_API_BASE,
+          apiBase: OAUTH_API_BASE,
         });
         const startResponse = await tapError(
           accept(
@@ -1849,7 +1853,7 @@ const completeConnectorExternalCode$ = command(
         const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
         const createClient = get(zeroClient$);
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
-          apiBase: OAUTH_WEB_API_BASE,
+          apiBase: OAUTH_API_BASE,
         });
         const completeResult = await accept(
           client.complete({
@@ -2043,6 +2047,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       readonly connectorRef: ConnectorRef;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly connectorLabel: string;
+      readonly connectorIcon: PublicConnectorCatalogIcon;
       readonly agentId: string | undefined;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
     },
@@ -2056,6 +2061,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     const redirectingPath = connectorRedirectingPath({
       type: args.connectorRef,
       label: args.connectorLabel,
+      icon: args.connectorIcon,
     });
     const authWindow = window.open(redirectingPath, "_blank", popupFeatures);
 
@@ -2096,7 +2102,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
               )
             : await accept(
                 get(zeroClient$)(zeroConnectorOauthStartContract, {
-                  apiBase: OAUTH_WEB_API_BASE,
+                  apiBase: OAUTH_API_BASE,
                 }).start({
                   params: { type: args.connectorRef },
                   body: {
@@ -2125,6 +2131,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
             authWindow.location.href = connectorRedirectingPath({
               type: args.connectorRef,
               label: args.connectorLabel,
+              icon: args.connectorIcon,
               status: "error",
             });
           }
@@ -2142,7 +2149,7 @@ export const connectConnectorOAuthAuthCode$ = command(
     { get, set },
     connectorRef: ConnectorRef,
     method: PublicConnectorCatalogAuthMethodDetail,
-    options: PostConnectOptions,
+    options: BrowserAuthPostConnectOptions,
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
@@ -2178,6 +2185,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             connectorRef,
             method,
             connectorLabel: options.connectorLabel ?? connectorRef,
+            connectorIcon: options.connectorIcon,
             agentId: options.agentId,
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
@@ -2285,7 +2293,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
       readonly connectorRef: ConnectorRef;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly onSuccess: () => void | Promise<void>;
-      readonly options: PostConnectOptions;
+      readonly options: BrowserAuthPostConnectOptions;
     },
     signal: AbortSignal,
   ): Promise<void> => {

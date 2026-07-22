@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::future::Future;
 use std::pin::Pin;
@@ -634,16 +635,28 @@ async fn delete_firewall_rules_from_table(
             return NamespaceDeleteOutcome::Abandoned;
         }
     };
+    delete_firewall_rule_lines(
+        command,
+        table,
+        output
+            .lines()
+            .filter(|line| line.starts_with("-A ") && line.contains(comment)),
+    )
+    .await
+}
+
+async fn delete_firewall_rule_lines<'a>(
+    command: &str,
+    table: &str,
+    rules: impl Iterator<Item = &'a str>,
+) -> NamespaceDeleteOutcome {
     // Sequential: the legacy xtables lock serializes writes to the same table anyway.
     // Note: split_whitespace + trim_matches('"') is safe because namespace
     // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
     // did, iptables-save would quote them as `--comment "foo bar"` and the
     // split would incorrectly break the value into separate arguments.
     let mut outcomes = Vec::new();
-    for line in output
-        .lines()
-        .filter(|line| line.starts_with("-A ") && line.contains(comment))
-    {
+    for line in rules {
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
@@ -891,80 +904,264 @@ async fn create_namespace_inner(
     Ok(())
 }
 
-/// Clean up all resources matching a given pool index.
-///
-/// Deletes orphaned host iptables rules first, then discovers and deletes
-/// remaining namespaces and their veth devices. If the pool-wide iptables
-/// cleanup is abandoned, each namespace falls back to full cleanup.
-async fn cleanup_namespaces_by_index(index: u32) {
-    let idx_str = format_hex_index(index);
-    let prefix = format!("{NS_PREFIX}{idx_str}-");
+#[derive(Debug)]
+enum SnapshotSource<T> {
+    Captured(T),
+    Abandoned,
+}
 
-    // 1. Clean orphaned host iptables rules whose comment matches this pool index.
-    //    The Rust-side `contains()` does substring matching, so the prefix matches
-    //    all namespaces in this pool. This catches rules left behind even if the
-    //    namespace itself was already deleted.
-    let iptables = delete_pool_firewall_rules_by_comment(&prefix).await;
+#[derive(Debug)]
+struct FirewallTableSnapshot {
+    command: &'static str,
+    table: &'static str,
+    rules_by_pool: SnapshotSource<BTreeMap<u32, Vec<String>>>,
+}
 
-    // 2. Discover and delete any remaining namespaces (+ their veth devices).
-    let Ok(output) = exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await
-    else {
-        error!(index, "failed to list namespaces for cleanup");
-        return;
-    };
-    let ns_names: Vec<String> = output
-        .lines()
-        .filter_map(|line| line.split_whitespace().next())
-        .filter(|name| name.starts_with(&prefix))
-        .map(String::from)
-        .collect();
+#[derive(Debug)]
+struct CapturedNamespace {
+    name: String,
+    host_device: String,
+}
 
-    if ns_names.is_empty() {
-        return;
+#[derive(Debug)]
+struct ReconciliationSnapshot {
+    ipv4_raw: FirewallTableSnapshot,
+    ipv4_nat: FirewallTableSnapshot,
+    ipv4_filter: FirewallTableSnapshot,
+    ipv6_filter: FirewallTableSnapshot,
+    namespaces_by_pool: SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>>,
+}
+
+impl ReconciliationSnapshot {
+    async fn capture() -> Self {
+        let (ipv4_raw, ipv4_nat, ipv4_filter, ipv6_filter, namespaces) = tokio::join!(
+            capture_firewall_table("iptables", "iptables-save", "raw"),
+            capture_firewall_table("iptables", "iptables-save", "nat"),
+            capture_firewall_table("iptables", "iptables-save", "filter"),
+            capture_firewall_table("ip6tables", "ip6tables-save", "filter"),
+            capture_namespaces(),
+        );
+        Self {
+            ipv4_raw,
+            ipv4_nat,
+            ipv4_filter,
+            ipv6_filter,
+            namespaces_by_pool: namespaces,
+        }
     }
 
-    info!(count = ns_names.len(), index = %idx_str, "cleaning up orphaned namespaces");
+    fn candidate_pool_indexes(&self, own_index: u32) -> BTreeSet<u32> {
+        let mut indexes = BTreeSet::from([own_index]);
+        for table in [
+            &self.ipv4_raw,
+            &self.ipv4_nat,
+            &self.ipv4_filter,
+            &self.ipv6_filter,
+        ] {
+            if let SnapshotSource::Captured(rules_by_pool) = &table.rules_by_pool {
+                indexes.extend(rules_by_pool.keys().copied());
+            }
+        }
+        if let SnapshotSource::Captured(namespaces_by_pool) = &self.namespaces_by_pool {
+            indexes.extend(namespaces_by_pool.keys().copied());
+        }
+        indexes
+    }
+}
+
+async fn capture_firewall_table(
+    command: &'static str,
+    save_command: &'static str,
+    table: &'static str,
+) -> FirewallTableSnapshot {
+    let rules_by_pool = match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT)
+        .await
+    {
+        Ok(output) => {
+            let mut rules_by_pool: BTreeMap<u32, Vec<String>> = BTreeMap::new();
+            for line in output.lines() {
+                if let Some(pool_index) = firewall_rule_pool_index(line) {
+                    rules_by_pool
+                        .entry(pool_index)
+                        .or_default()
+                        .push(line.to_string());
+                }
+            }
+            SnapshotSource::Captured(rules_by_pool)
+        }
+        Err(error) => {
+            warn!(save_command, table, %error, "failed to capture firewall rules for startup reconciliation");
+            SnapshotSource::Abandoned
+        }
+    };
+    FirewallTableSnapshot {
+        command,
+        table,
+        rules_by_pool,
+    }
+}
+
+fn firewall_rule_pool_index(line: &str) -> Option<u32> {
+    if !line.starts_with("-A ") {
+        return None;
+    }
+
+    let mut tokens = line.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token == "--comment" {
+            return tokens
+                .next()
+                .map(|comment| comment.trim_matches('"'))
+                .and_then(pool_index_from_comment);
+        }
+    }
+    None
+}
+
+fn pool_index_from_comment(comment: &str) -> Option<u32> {
+    if let Some(parsed) = parse_netns_name(comment) {
+        return Some(parsed.pool_index);
+    }
+
+    let suffix = comment.strip_prefix(NS_PREFIX)?;
+    let pool_hex = suffix.strip_suffix("-dns")?;
+    let pool_index = u32::from_str_radix(pool_hex, 16).ok()?;
+    (pool_index < MAX_POOLS && format_hex_index(pool_index) == pool_hex).then_some(pool_index)
+}
+
+async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>> {
+    let output = match exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await {
+        Ok(output) => output,
+        Err(error) => {
+            error!(%error, "failed to capture namespaces for startup reconciliation");
+            return SnapshotSource::Abandoned;
+        }
+    };
+
+    let mut namespaces_by_pool: BTreeMap<u32, Vec<CapturedNamespace>> = BTreeMap::new();
+    for name in output
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+    {
+        let Some(parsed) = parse_netns_name(name) else {
+            continue;
+        };
+        let pool_idx = format_hex_index(parsed.pool_index);
+        let ns_idx = format_hex_index(parsed.namespace_index);
+        namespaces_by_pool
+            .entry(parsed.pool_index)
+            .or_default()
+            .push(CapturedNamespace {
+                name: name.to_string(),
+                host_device: make_host_device(&pool_idx, &ns_idx),
+            });
+    }
+    SnapshotSource::Captured(namespaces_by_pool)
+}
+
+async fn delete_firewall_rules_from_snapshot(
+    snapshot: &FirewallTableSnapshot,
+    pool_index: u32,
+) -> NamespaceDeleteOutcome {
+    let SnapshotSource::Captured(rules_by_pool) = &snapshot.rules_by_pool else {
+        return NamespaceDeleteOutcome::Abandoned;
+    };
+    let Some(rules) = rules_by_pool.get(&pool_index) else {
+        return NamespaceDeleteOutcome::Deleted;
+    };
+
+    delete_firewall_rule_lines(
+        snapshot.command,
+        snapshot.table,
+        rules.iter().map(String::as_str),
+    )
+    .await
+}
+
+async fn delete_pool_firewall_rules_from_snapshot(
+    snapshot: &ReconciliationSnapshot,
+    pool_index: u32,
+) -> NamespaceDeleteOutcome {
+    let (raw, nat, filter, ipv6_filter) = tokio::join!(
+        delete_firewall_rules_from_snapshot(&snapshot.ipv4_raw, pool_index),
+        delete_firewall_rules_from_snapshot(&snapshot.ipv4_nat, pool_index),
+        delete_firewall_rules_from_snapshot(&snapshot.ipv4_filter, pool_index),
+        delete_firewall_rules_from_snapshot(&snapshot.ipv6_filter, pool_index),
+    );
+    if [raw, nat, filter, ipv6_filter]
+        .into_iter()
+        .all(|outcome| matches!(outcome, NamespaceDeleteOutcome::Deleted))
+    {
+        NamespaceDeleteOutcome::Deleted
+    } else {
+        NamespaceDeleteOutcome::Abandoned
+    }
+}
+
+/// Clean up all captured resources matching a given pool index.
+///
+/// Deletes orphaned host firewall rules first, then deletes captured
+/// namespaces and their veth devices. If snapshot-backed firewall cleanup is
+/// abandoned, each namespace retains the existing fresh-discovery fallback.
+async fn cleanup_namespaces_from_snapshot(
+    snapshot: &ReconciliationSnapshot,
+    index: u32,
+) -> NamespaceDeleteOutcome {
+    let firewall = delete_pool_firewall_rules_from_snapshot(snapshot, index).await;
+    let SnapshotSource::Captured(namespaces_by_pool) = &snapshot.namespaces_by_pool else {
+        return NamespaceDeleteOutcome::Abandoned;
+    };
+    let Some(namespaces) = namespaces_by_pool.get(&index) else {
+        return firewall;
+    };
+
+    let idx_str = format_hex_index(index);
+    info!(count = namespaces.len(), index = %idx_str, "cleaning up orphaned namespaces");
     let mut set = tokio::task::JoinSet::new();
-    for ns_name in ns_names {
+    for namespace in namespaces {
+        let ns_name = namespace.name.clone();
+        let host_device = namespace.host_device.clone();
         set.spawn(async move {
-            if let Some(parsed) = parse_netns_name(&ns_name) {
-                let pool_idx = format_hex_index(parsed.pool_index);
-                let ns_idx = format_hex_index(parsed.namespace_index);
-                let host_device = make_host_device(&pool_idx, &ns_idx);
-                match iptables {
-                    NamespaceDeleteOutcome::Deleted => {
-                        info!(name = %ns_name, "deleting namespace");
-                        let outcome =
-                            delete_namespace_link_and_netns(&ns_name, &host_device).await;
-                        if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
-                            info!(name = %ns_name, "namespace deleted");
-                        } else {
-                            warn!(
-                                name = %ns_name,
-                                host_device,
-                                "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
-                            );
-                        }
+            match firewall {
+                NamespaceDeleteOutcome::Deleted => {
+                    info!(name = %ns_name, "deleting namespace");
+                    let outcome = delete_namespace_link_and_netns(&ns_name, &host_device).await;
+                    if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
+                        info!(name = %ns_name, "namespace deleted");
+                    } else {
+                        warn!(
+                            name = %ns_name,
+                            host_device,
+                            "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                        );
                     }
-                    NamespaceDeleteOutcome::Abandoned => {
-                        delete_namespace_resources(&ns_name, &host_device).await;
-                    }
+                    outcome
+                }
+                NamespaceDeleteOutcome::Abandoned => {
+                    delete_namespace_resources(&ns_name, &host_device).await
                 }
             }
         });
     }
-    while set.join_next().await.is_some() {}
+
+    let mut outcome = firewall;
+    while let Some(result) = set.join_next().await {
+        if !matches!(result, Ok(NamespaceDeleteOutcome::Deleted)) {
+            outcome = NamespaceDeleteOutcome::Abandoned;
+        }
+    }
+    outcome
 }
 
-/// Clean orphans from `own_index` and every other pool index that currently
-/// has no active owner.
+/// Clean orphans from `own_index` and captured pool indexes with no active
+/// owner.
 ///
 /// `NetnsPool::cleanup` is best-effort — SIGKILL, panic, OOM, power loss,
 /// and aborted in-flight creation tasks can all leave kernel resources
-/// alive after a runner exits. This function is the correctness guarantee:
-/// on every startup, the flock is used as a liveness probe to identify
-/// pool indexes with no owner, and any namespaces under those indexes are
-/// treated as orphans and deleted.
+/// alive after a runner exits. This function is the correctness guarantee for
+/// `own_index`: every startup captures host resources once and cleans the
+/// acquired index before reuse. Captured resources under other indexes are
+/// deleted only after their flock proves that they have no active owner.
 ///
 /// `_own_lock` is a borrow witness — taking it proves the caller holds a
 /// pool-index flock, which is the permission required to do kernel-side
@@ -974,36 +1171,48 @@ pub(super) async fn reconcile_orphan_namespaces(
     own_index: u32,
     _own_lock: &Flock<File>,
 ) {
+    let snapshot = ReconciliationSnapshot::capture().await;
+    let candidate_indexes = snapshot.candidate_pool_indexes(own_index);
+    let candidate_count = candidate_indexes.len();
+
     // Own index: critical-path cleanup. Warm-up immediately afterwards
     // starts at ns_index 0 and will collide with any surviving orphan.
-    // `cleanup_namespaces_by_index` swallows failures by design — its
-    // only fallible step (`ip netns list`) is near-infallible on a
-    // working runner, and the inner deletes go through
-    // best-effort command helpers so a per-namespace `Result` would carry no
-    // signal. If reconcile silently fails here, the EEXIST that
-    // warm-up's `ip netns add` produces is the diagnostic — chronologically
-    // paired with the `error!` at the cleanup site. See #10826 for the
-    // full analysis (closed as won't-fix).
-    cleanup_namespaces_by_index(own_index).await;
+    // Cleanup remains best-effort. If it is abandoned, the EEXIST that
+    // warm-up's `ip netns add` produces is the diagnostic, chronologically
+    // paired with the warning at the cleanup site. See #10826 for the full
+    // analysis (closed as won't-fix).
+    let own_outcome = cleanup_namespaces_from_snapshot(&snapshot, own_index).await;
 
-    // Other indexes: advisory cleanup for arbitrary prior runners. Failures
-    // are not our problem — the next runner that claims the index will
-    // retry. The `if index == own_index` check is defensive; the flock
-    // would also deny us (Linux flock is per-OFD but same-process locks
-    // on the same file still conflict), so dropping the check would only
-    // waste two syscalls per call.
-    for index in 0..MAX_POOLS {
+    // Other captured indexes: advisory cleanup for arbitrary prior runners.
+    // The snapshot only discovers candidates; a current flock remains the
+    // authority to mutate resources for an index. A missed or failed cleanup
+    // is retried when a future runner directly acquires that index.
+    let mut reconciled = 1_usize;
+    let mut skipped = 0_usize;
+    let mut abandoned = usize::from(matches!(own_outcome, NamespaceDeleteOutcome::Abandoned));
+    for index in candidate_indexes {
         if index == own_index {
             continue;
         }
         let Some(_guard) = try_claim_idle_pool_lock(locks, index) else {
+            skipped += 1;
             continue;
         };
         info!(index, "reconciling orphaned namespaces from idle pool");
-        cleanup_namespaces_by_index(index).await;
+        let outcome = cleanup_namespaces_from_snapshot(&snapshot, index).await;
+        reconciled += 1;
+        abandoned += usize::from(matches!(outcome, NamespaceDeleteOutcome::Abandoned));
         // `_guard` drops here, releasing the lock before the next iteration
         // so a concurrently-starting runner can immediately claim the index.
     }
+    info!(
+        own_index,
+        candidate_count,
+        reconciled,
+        skipped,
+        abandoned,
+        "startup namespace reconciliation complete"
+    );
 }
 
 /// Try to acquire a non-blocking flock on an existing pool lock file.

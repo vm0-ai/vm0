@@ -1,0 +1,1 @@
+ALTER TABLE "connector_oauth_states" ADD COLUMN "authorization_url" text;

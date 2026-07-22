@@ -1223,8 +1223,10 @@ describe("chat lifecycle", () => {
     const burstMessages = Array.from({ length: 120 }, (_, index) => {
       return makeMessage(`burst-${index}`, `Burst ${index}`);
     });
+    const terminalPageGate = context.mocks.deferred<void>();
+    let burstEnabled = false;
     let page = 0;
-    let emptyForwardPageRequested = false;
+    let terminalForwardPageRequested = false;
     const sinceIds: string[] = [];
 
     mockSubagentThread(context, threadId);
@@ -1235,24 +1237,29 @@ describe("chat lifecycle", () => {
         codexServiceTier: null,
       });
     });
-    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-      if (!query.sinceId) {
-        return respond(200, {
-          messages: baselineMessages,
-          hasHistoryBefore: false,
-        });
-      }
-      sinceIds.push(query.sinceId);
-      const startIndex = page * 50;
-      page += 1;
-      const messages = burstMessages.slice(startIndex, startIndex + 50);
-      if (messages.length === 0) {
-        emptyForwardPageRequested = true;
-      }
-      return respond(200, {
-        messages,
-      });
-    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      async ({ query, respond }) => {
+        if (!query.sinceId) {
+          return respond(200, {
+            messages: baselineMessages,
+            hasHistoryBefore: false,
+          });
+        }
+        sinceIds.push(query.sinceId);
+        if (!burstEnabled) {
+          return respond(200, { messages: [] });
+        }
+        const startIndex = page * 50;
+        page += 1;
+        const messages = burstMessages.slice(startIndex, startIndex + 50);
+        if (messages.length === 0) {
+          terminalForwardPageRequested = true;
+          await terminalPageGate.promise;
+        }
+        return respond(200, { messages });
+      },
+    );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
@@ -1260,15 +1267,35 @@ describe("chat lifecycle", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByText("Baseline 0")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Burst 119")).toBeInTheDocument();
-      expect(emptyForwardPageRequested).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(screen.getByText("Baseline 0")).toBeInTheDocument();
+        expect(
+          context.mocks.ably.hasSubscription(
+            `chatThreadMessageCreated:${threadId}`,
+          ),
+        ).toBeTruthy();
+      });
+      sinceIds.length = 0;
+      burstEnabled = true;
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+
+      await waitFor(() => {
+        expect(terminalForwardPageRequested).toBeTruthy();
+      });
+      expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
+
+      terminalPageGate.resolve();
+      await waitFor(() => {
+        expect(screen.getByText("Burst 119")).toBeInTheDocument();
+      });
+    } finally {
+      if (!terminalPageGate.settled()) {
+        terminalPageGate.resolve();
+      }
+    }
     expect(sinceIds).toStrictEqual([
       baselineMessages.at(-1)!.id,
       burstMessages[49]!.id,

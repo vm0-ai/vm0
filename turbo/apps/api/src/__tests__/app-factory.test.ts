@@ -796,7 +796,7 @@ describe("createApp", () => {
       const response = await app.request("/api/zero/org", {
         method: "OPTIONS",
         headers: {
-          origin: "https://pr-20640-app.vm6.ai",
+          origin: "https://pr-20640-app.omby.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
             "authorization,x-vercel-protection-bypass,x-client-version",
@@ -805,7 +805,7 @@ describe("createApp", () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://pr-20640-app.vm6.ai",
+        "https://pr-20640-app.omby.ai",
       );
       const allowHeaders =
         response.headers.get("access-control-allow-headers") ?? "";

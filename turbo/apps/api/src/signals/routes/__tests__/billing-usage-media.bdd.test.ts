@@ -123,7 +123,6 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
     const stripeIdSuffix = admin.userId.replaceAll("-", "");
     const stripeCustomerId = `cus_${stripeIdSuffix}`;
     const subscriptionSessionId = `cs_sub_${stripeIdSuffix}`;
-    const creditsSessionId = `cs_credits_${stripeIdSuffix}`;
     const campaignSessionId = `cs_campaign_${stripeIdSuffix}`;
     context.mocks.stripe.customers.create.mockResolvedValue({
       id: stripeCustomerId,
@@ -132,10 +131,6 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
       .mockResolvedValueOnce({
         id: subscriptionSessionId,
         url: "https://checkout.stripe.test/subscription",
-      })
-      .mockResolvedValueOnce({
-        id: creditsSessionId,
-        url: "https://checkout.stripe.test/credits",
       })
       .mockResolvedValueOnce({
         id: campaignSessionId,
@@ -174,22 +169,18 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
     );
     expectApiError(mismatch.body);
 
-    context.mocks.stripe.prices.retrieve.mockResolvedValue({
-      id: "price_bdd_custom",
-      product: "prod_bdd_custom",
-      currency: "usd",
-      custom_unit_amount: { minimum: null, maximum: null },
-    });
-    context.mocks.stripe.prices.create.mockResolvedValue({
-      id: "price_bdd_credit_preset",
-    });
-    const creditCheckout = await api.startCreditCheckout(admin, {
-      credits: 2000,
-      ...checkoutUrls(),
-    });
-    expect(creditCheckout.body).toStrictEqual({
-      url: "https://checkout.stripe.test/credits",
-    });
+    const creditCheckout = await api.requestCreditCheckout(
+      admin,
+      {
+        credits: 2000,
+        ...checkoutUrls(),
+      },
+      [400],
+    );
+    expectApiError(creditCheckout.body);
+    expect(creditCheckout.body.error.message).toBe(
+      "Credit purchases are not available for this workspace",
+    );
 
     context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
       url: "https://billing.stripe.test/session",

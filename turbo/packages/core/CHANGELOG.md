@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.450.0](https://github.com/vm0-ai/vm0/compare/core-v8.449.0...core-v8.450.0) (2026-07-22)
+
+
+### Features
+
+* **billing:** use org plan entitlements for gated actions ([#22498](https://github.com/vm0-ai/vm0/issues/22498)) ([4d2c428](https://github.com/vm0-ai/vm0/commit/4d2c428c66178ec65cae0ff2fb9483a3f3643097))
+* **runner:** accept canonical storage mount manifests ([#22546](https://github.com/vm0-ai/vm0/issues/22546)) ([d9cea3a](https://github.com/vm0-ai/vm0/commit/d9cea3a2f56de399b38ef9d1f004da740b699bbc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.213.0
+    * @vm0/connectors bumped to 1.178.2
+
+## [8.449.0](https://github.com/vm0-ai/vm0/compare/core-v8.448.5...core-v8.449.0) (2026-07-22)
+
+
+### Features
+
+* enable canonical slack for staff org ([#22524](https://github.com/vm0-ai/vm0/issues/22524)) ([8e8fdb6](https://github.com/vm0-ai/vm0/commit/8e8fdb6153eb751fdab3855b53a57690468c5ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.1
+
 ## [8.448.5](https://github.com/vm0-ai/vm0/compare/core-v8.448.4...core-v8.448.5) (2026-07-22)
 
 

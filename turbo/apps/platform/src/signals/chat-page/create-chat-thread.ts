@@ -8,7 +8,6 @@ import {
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -117,10 +116,7 @@ import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
-import {
-  personalModelProvider$,
-  selectedModelAvailable$,
-} from "../zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
@@ -729,13 +725,6 @@ function createModelSelection(
   };
 }
 
-type ModelSelectionForSendResult =
-  | { readonly available: false }
-  | {
-      readonly available: true;
-      readonly selection: ModelProviderSelection | null;
-    };
-
 function createModelSelectionForSend({
   selectedModel$,
   codexFastModeActive$,
@@ -745,26 +734,19 @@ function createModelSelectionForSend({
 }) {
   return command(
     async (
-      { get, set },
+      { get },
       signal: AbortSignal,
-    ): Promise<ModelSelectionForSendResult> => {
+    ): Promise<ModelProviderSelection | null> => {
       const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
       if (!selectedModel) {
-        return { available: true, selection: null };
-      }
-      if (!(await set(selectedModelAvailable$, selectedModel, signal))) {
-        toast.error("The selected model is not available");
-        return { available: false };
+        return null;
       }
       const codexFastModeActive = await get(codexFastModeActive$);
       signal.throwIfAborted();
-      return {
-        available: true,
-        selection: codexFastModeActive
-          ? { selectedModel, codexServiceTier: "fast" }
-          : { selectedModel },
-      };
+      return codexFastModeActive
+        ? { selectedModel, codexServiceTier: "fast" }
+        : { selectedModel };
     },
   );
 }
@@ -1396,42 +1378,54 @@ function registerChatMessage(
   return { message, blocks };
 }
 
-function createWritePersistentMessages(
+function createMergePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerBodyBlocks: BodyBlocksRenderer,
 ) {
+  return command(({ get, set }, msgs: PagedChatMessage[]): void => {
+    if (msgs.length === 0) {
+      return;
+    }
+    const reportedCompletedRunIds = new Set(
+      completedRunIdsFromMessages(
+        get(persistentMessages$).map((entry) => {
+          return entry.message;
+        }),
+      ),
+    );
+    const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
+      (runId) => {
+        return !reportedCompletedRunIds.has(runId);
+      },
+    );
+    for (const _ of newlyCompletedRunIds) {
+      captureTaskCompletedSuccessfully();
+    }
+    const registeredMessages = msgs.map((message) => {
+      return registerChatMessage(message, registerBodyBlocks);
+    });
+    set(persistentMessages$, (prev) => {
+      return mergeRegisteredMessages([prev, registeredMessages]);
+    });
+    set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+  });
+}
+
+function createWritePersistentMessages(
+  threadId: string,
+  mergePersistentMessages$: Command<void, [PagedChatMessage[]]>,
+) {
   return command(
     async (
-      { get, set },
+      { set },
       msgs: PagedChatMessage[],
       signal: AbortSignal,
     ): Promise<void> => {
       if (msgs.length === 0) {
         return;
       }
-      const reportedCompletedRunIds = new Set(
-        completedRunIdsFromMessages(
-          get(persistentMessages$).map((entry) => {
-            return entry.message;
-          }),
-        ),
-      );
-      const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
-        (runId) => {
-          return !reportedCompletedRunIds.has(runId);
-        },
-      );
-      for (const _ of newlyCompletedRunIds) {
-        captureTaskCompletedSuccessfully();
-      }
-      const registeredMessages = msgs.map((message) => {
-        return registerChatMessage(message, registerBodyBlocks);
-      });
-      set(persistentMessages$, (prev) => {
-        return mergeRegisteredMessages([prev, registeredMessages]);
-      });
-      set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+      set(mergePersistentMessages$, msgs);
       await set(writeIndexedDbChatMessages$, threadId, msgs, signal);
       signal.throwIfAborted();
     },
@@ -2140,28 +2134,24 @@ function createSyncRemoteMessagesCommand({
   threadId,
   persistentMessages$,
   hasReachedOldestMessage$,
-  writePersistentMessages$,
+  mergePersistentMessages$,
   dataSource,
 }: {
   threadId: string;
   persistentMessages$: PersistentChatMessages$;
   hasReachedOldestMessage$: State<boolean>;
-  writePersistentMessages$: Command<
-    Promise<void>,
-    [PagedChatMessage[], AbortSignal]
-  >;
+  mergePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
-  const sinceId$ = computed((get): string | undefined => {
-    return get(persistentMessages$).at(-1)?.message.id;
-  });
-
   return command(async ({ get, set }, signal: AbortSignal) => {
-    const startedWithoutCursor = get(sinceId$) === undefined;
+    const persistentMessages = get(persistentMessages$);
+    const accumulatedMessages: PagedChatMessage[] = [];
+    let sinceId = persistentMessages.at(-1)?.message.id;
+    const startedWithoutCursor = sinceId === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = get(sinceId$);
+      const requestedSinceId = sinceId;
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId: requestedSinceId },
@@ -2182,56 +2172,65 @@ function createSyncRemoteMessagesCommand({
         return;
       }
 
-      await set(writePersistentMessages$, result.messages, signal);
+      accumulatedMessages.push(...result.messages);
+      await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
+      sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
     }
     await syncMessagesAfter();
     signal.throwIfAborted();
 
-    if (get(hasReachedOldestMessage$)) {
-      return;
-    }
-
-    if (
-      (startedWithoutCursor && initialHasHistoryBefore === false) ||
-      get(persistentMessages$).length === 0
-    ) {
-      set(hasReachedOldestMessage$, true);
-      return;
-    }
-
-    let beforeId = get(persistentMessages$)[0]!.message.id;
-    async function syncMessagesBefore(): Promise<void> {
-      const result = await set(
-        dataSource.listMessagesBefore$,
-        { threadId, beforeId },
-        signal,
-      );
-      signal.throwIfAborted();
-      L.debug("syncRemoteMessages$ listMessagesBefore result", {
-        threadId,
-        beforeId,
-        gotCount: result.messages.length,
-        hasHistoryBefore: result.hasHistoryBefore,
-      });
-
-      if (result.messages.length > 0) {
-        await set(writePersistentMessages$, result.messages, signal);
-        signal.throwIfAborted();
-      }
-
-      if (!result.hasHistoryBefore) {
+    if (!get(hasReachedOldestMessage$)) {
+      const oldestMessageId =
+        persistentMessages[0]?.message.id ?? accumulatedMessages[0]?.id;
+      if (
+        (startedWithoutCursor && initialHasHistoryBefore === false) ||
+        oldestMessageId === undefined
+      ) {
         set(hasReachedOldestMessage$, true);
-        return;
+      } else {
+        let beforeId = oldestMessageId;
+        async function syncMessagesBefore(): Promise<void> {
+          const result = await set(
+            dataSource.listMessagesBefore$,
+            { threadId, beforeId },
+            signal,
+          );
+          signal.throwIfAborted();
+          L.debug("syncRemoteMessages$ listMessagesBefore result", {
+            threadId,
+            beforeId,
+            gotCount: result.messages.length,
+            hasHistoryBefore: result.hasHistoryBefore,
+          });
+
+          if (result.messages.length > 0) {
+            accumulatedMessages.push(...result.messages);
+            await set(
+              writeIndexedDbChatMessages$,
+              threadId,
+              result.messages,
+              signal,
+            );
+            signal.throwIfAborted();
+          }
+
+          if (!result.hasHistoryBefore) {
+            set(hasReachedOldestMessage$, true);
+            return;
+          }
+
+          beforeId = result.messages[0]!.id;
+
+          return syncMessagesBefore();
+        }
+        await syncMessagesBefore();
       }
-
-      beforeId = result.messages[0]!.id;
-
-      return syncMessagesBefore();
     }
-    await syncMessagesBefore();
+    signal.throwIfAborted();
+    set(mergePersistentMessages$, accumulatedMessages);
   });
 }
 
@@ -2471,10 +2470,14 @@ function createPagedMessages(
     return mailDraftCardSignals.entries();
   });
 
-  const writePersistentMessages$ = createWritePersistentMessages(
+  const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
     persistentChatMessages$,
     registerBodyBlocks,
+  );
+  const writePersistentMessages$ = createWritePersistentMessages(
+    threadId,
+    mergePersistentMessages$,
   );
 
   const mergeIndexedDbMessages$ = command(
@@ -2506,7 +2509,7 @@ function createPagedMessages(
     threadId,
     persistentMessages$: persistentChatMessages$,
     hasReachedOldestMessage$,
-    writePersistentMessages$,
+    mergePersistentMessages$,
     dataSource,
   });
   const syncRemoteMessages$ = createTrackedMessageSyncCommand(
@@ -2964,6 +2967,12 @@ function createRunTracking({
     await set(initializeIndexedDbMessages$, signal);
     signal.throwIfAborted();
 
+    const onThreadDetailChanged$ = command(({ set }) => {
+      L.debug("onThreadDetailChanged$ fired", { threadId });
+      set(reloadThread$);
+      return false;
+    });
+
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
       await set(syncRemoteMessages$, sig);
@@ -3027,6 +3036,7 @@ function createRunTracking({
           {
             threadId,
             handlers: {
+              onThreadDetailChanged$,
               onMessageCreated$,
               onMessageUpdated$,
               onRunChanged$,
@@ -3272,7 +3282,7 @@ interface SendMessageDeps {
   pendingSendCount$: State<number>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   modelSelectionForSend$: Command<
-    Promise<ModelSelectionForSendResult>,
+    Promise<ModelProviderSelection | null>,
     [AbortSignal]
   >;
   draft: DraftSignals;
@@ -3465,11 +3475,8 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return false;
       }
-      const modelSelectionResult = await set(modelSelectionForSend$, signal);
+      const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      if (!modelSelectionResult.available) {
-        return false;
-      }
       set(pendingSendCount$, (count) => {
         return count + 1;
       });
@@ -3480,7 +3487,7 @@ function createSendMessage(deps: SendMessageDeps) {
             prompt,
             options,
             agentId: meta.agentId,
-            modelSelection: modelSelectionResult.selection,
+            modelSelection,
           },
           signal,
         ),
@@ -3498,7 +3505,7 @@ interface QueueMessageDeps {
   threadId: string;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   modelSelectionForSend$: Command<
-    Promise<ModelSelectionForSendResult>,
+    Promise<ModelProviderSelection | null>,
     [AbortSignal]
   >;
   draft: DraftSignals;
@@ -3549,12 +3556,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
         return false;
       }
       const generationTemplate = options.generationTemplate;
-      const modelSelectionResult = await set(modelSelectionForSend$, signal);
+      const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      if (!modelSelectionResult.available) {
-        return false;
-      }
-      const modelSelection = modelSelectionResult.selection;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,

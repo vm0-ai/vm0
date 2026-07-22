@@ -43,7 +43,7 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
-  it("loads older pages after a delayed initial remote message page", async () => {
+  it("publishes initial and older pages together after full history sync", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000730";
     const messages = Array.from({ length: 60 }, (_, index) => {
       const itemNumber = index + 1;
@@ -55,6 +55,7 @@ describe("chat lifecycle", () => {
       } satisfies PagedChatMessage;
     });
     const initialPageGate = context.mocks.deferred<void>();
+    const beforePageGate = context.mocks.deferred<void>();
     let initialPageRequested = false;
     const beforeIds: string[] = [];
     const sinceIds: string[] = [];
@@ -75,6 +76,7 @@ describe("chat lifecycle", () => {
       async ({ query, respond }) => {
         if (query.beforeId) {
           beforeIds.push(query.beforeId);
+          await beforePageGate.promise;
           return respond(200, {
             messages: messages.slice(0, 10),
             hasHistoryBefore: false,
@@ -110,9 +112,18 @@ describe("chat lifecycle", () => {
       await waitFor(() => {
         expect(beforeIds).toStrictEqual([messages[10]!.id]);
       });
+      expect(
+        screen.queryByText("Delayed history reply 60"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+
+      beforePageGate.resolve();
     } finally {
       if (!initialPageGate.settled()) {
         initialPageGate.resolve();
+      }
+      if (!beforePageGate.settled()) {
+        beforePageGate.resolve();
       }
     }
 
@@ -136,14 +147,18 @@ describe("chat lifecycle", () => {
     expect(beforeIds).toStrictEqual([messages[10]!.id]);
   });
 
-  it("automatically loads older chat history after rendering latest messages", async () => {
+  it("automatically loads older chat history before publishing messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
     const beforeHistoryGate = context.mocks.deferred<void>();
+    let initialPageReturned = false;
 
     mockChatLifecycle(context, {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "History review",
       beforeHistoryGate: beforeHistoryGate.promise,
+      afterInitialMessagesList: () => {
+        initialPageReturned = true;
+      },
       historyMessages: [
         {
           role: "assistant",
@@ -168,18 +183,28 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
 
-    await waitFor(() => {
+    try {
+      await waitFor(() => {
+        expect(initialPageReturned).toBeTruthy();
+      });
       expect(
-        screen.getByText("Current launch risks are ready."),
-      ).toBeInTheDocument();
-    });
-    expect(queryButtonByText("Load history")).toBeNull();
-    expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
+        screen.queryByText("Current launch risks are ready."),
+      ).not.toBeInTheDocument();
+      expect(queryButtonByText("Load history")).toBeNull();
+      expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
 
-    beforeHistoryGate.resolve();
+      beforeHistoryGate.resolve();
+    } finally {
+      if (!beforeHistoryGate.settled()) {
+        beforeHistoryGate.resolve();
+      }
+    }
 
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
+      expect(
+        screen.getByText("Current launch risks are ready."),
+      ).toBeInTheDocument();
       expect(queryButtonByText("Load history")).toBeNull();
     });
   });

@@ -113,7 +113,6 @@ jobs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       api-preview-url: ${{ steps.preview-urls.outputs.api-url }}
-      www-preview-url: ${{ steps.preview-urls.outputs.www-url }}
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
@@ -278,19 +277,16 @@ jobs:
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
-              "$PREVIEW_DOMAIN" \
               "$CF_PAGES_PREVIEW_DOMAIN")"
             {
               echo "app-url=${APP_URL}"
               echo "api-url=https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
-              echo "www-url=https://${JOB_REF}-www.${CF_PAGES_PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
-            echo "App and WWW preview URLs use ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses ${PREVIEW_DOMAIN}"
+            echo "App preview URL uses ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses ${PREVIEW_DOMAIN}"
           else
             {
               echo "app-url="
               echo "api-url="
-              echo "www-url="
             } >> "$GITHUB_OUTPUT"
             echo "Preview URL not set (preview domain or job-ref is empty)"
           fi
@@ -784,101 +780,6 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
-  # Bind a PR WWW origin for connector OAuth callbacks and auth redirects. The
-  # per-PR Worker keeps /api/* on the matching Vercel PR API.
-  provision-preview-www:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    concurrency:
-      group: provision-preview-www-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    if: >-
-      ${{
-        (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-        startsWith(needs.prepare.outputs.job-ref, 'pr-') &&
-        needs.prepare.outputs.www-preview-url != ''
-      }}
-    permissions:
-      contents: read
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-      CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
-      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
-      WWW_PAGES_PROJECT_NAME: ${{ vars.CF_WWW_PAGES_PROJECT_NAME || 'okou-www' }}
-      WWW_PAGES_BRANCH: ${{ vars.CF_WWW_PAGES_BRANCH || 'staging-www' }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: ./.github/actions/toolchain-init
-      - name: Bind PR WWW to marketing staging Pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${WWW_PAGES_PROJECT_NAME:?WWW Pages project name is required}"
-          : "${WWW_PAGES_BRANCH:?WWW Pages branch is required}"
-          hostname="${JOB_REF}-www.${CF_PAGES_PREVIEW_DOMAIN}"
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            ensure \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$WWW_PAGES_PROJECT_NAME" \
-            "$hostname" \
-            "$WWW_PAGES_BRANCH"
-
-      - name: Deploy PR API proxy Worker
-        env:
-          API_BACKEND_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          : "${API_BACKEND_BYPASS_SECRET:?VERCEL_AUTOMATION_BYPASS_SECRET is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
-          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
-          worker_name="vm0-www-${JOB_REF}-runtime"
-          api_backend_origin="https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
-          pnpm --dir turbo/apps/host-worker exec wrangler deploy \
-            --config ../../../.github/workers/preview-www-wrangler.jsonc \
-            --name "$worker_name" \
-            --var "API_BACKEND_ORIGIN:${api_backend_origin}"
-          printf '%s' "$API_BACKEND_BYPASS_SECRET" | \
-            pnpm --dir turbo/apps/host-worker exec wrangler secret put \
-              API_BACKEND_BYPASS_SECRET \
-              --config ../../../.github/workers/preview-www-wrangler.jsonc \
-              --name "$worker_name"
-
-      - name: Route PR WWW API requests to the proxy Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
-          hostname="${JOB_REF}-www.${CF_PAGES_PREVIEW_DOMAIN}"
-          worker_name="vm0-www-${JOB_REF}-runtime"
-          bash .github/scripts/manage-cloudflare-worker-route.sh \
-            ensure \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "${hostname}/api/*" \
-            "$worker_name"
-
-      - name: Check PR WWW Pages deployment
-        env:
-          WWW_PREVIEW_URL: ${{ needs.prepare.outputs.www-preview-url }}
-        run: |
-          curl --fail --silent --show-error \
-            --retry 12 \
-            --retry-delay 5 \
-            --retry-all-errors \
-            "${WWW_PREVIEW_URL}/" >/dev/null
-
   # Deploy API application with preview database and E2E bootstrap data
   deploy-api:
     runs-on: ubuntu-latest
@@ -935,7 +836,9 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}
+          # Preview API routes that historically used VM0_WEB_URL now stay on
+          # the matching preview API instead of depending on a PR WWW proxy.
+          web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -1023,14 +926,9 @@ jobs:
             DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
           fi
 
-          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}}"
-          if [ -z "$API_SEED_WEB_URL" ]; then
-            API_SEED_WEB_URL="https://www.vm0.ai"
-          fi
-
           cd turbo
           DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
-          ENV=preview VM0_WEB_URL="$API_SEED_WEB_URL" DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
+          ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
 
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 
@@ -1042,7 +940,8 @@ jobs:
           environment: preview
           database-url: ${{ steps.neon.outputs.database-url }}
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ needs.prepare.outputs.www-preview-url || 'https://staging-www.omby.ai' }}
+          # Keep the deployed API environment aligned with the seed environment.
+          web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -2641,7 +2540,6 @@ jobs:
       - test-app
       - test-api
       - test-other
-      - provision-preview-www
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
@@ -2735,7 +2633,6 @@ jobs:
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
-          check_result "provision-preview-www" "${{ needs.provision-preview-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"

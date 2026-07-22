@@ -228,12 +228,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route newly admitted per-user Slack threads through canonical chat ingress.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
@@ -463,6 +465,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.HostedArtifactVersions]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Create immutable hosted artifact versions behind stable site aliases.",
+    enabled: false,
+  },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -481,8 +489,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
