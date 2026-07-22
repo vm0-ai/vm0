@@ -12,7 +12,11 @@ export const subscribeConnectorChanged$ = command(
     });
     await set(
       setAblyLoop$,
-      { topic: "connector:changed", loopCommand$: onChanged$ },
+      {
+        topic: "connector:changed",
+        loopCommand$: onChanged$,
+        options: { runOnSubscribe: true },
+      },
       signal,
     );
   },
