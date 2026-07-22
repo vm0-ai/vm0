@@ -113,6 +113,21 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
+export const zeroConnectorOauthContinueContract = c.router({
+  continue: {
+    method: "GET",
+    path: "/api/zero/connectors/:type/oauth/continue",
+    pathParams: z.object({ type: connectorRefSchema }),
+    query: z.object({ state: z.string().regex(/^[0-9a-f]{64}$/) }),
+    responses: {
+      307: c.noBody(),
+      400: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Continue connector OAuth in the browser",
+  },
+});
+
 export const zeroConnectorOpenIdStartContract = c.router({
   start: {
     method: "POST",
