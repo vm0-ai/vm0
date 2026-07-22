@@ -52,7 +52,7 @@ When you test a CLI command via `command.parseAsync()`, you're already exercisin
 
 ### E2E Tests: Happy Path Only
 
-E2E tests are expensive. Each `vm0 run` takes about 15 seconds, involves real network calls, and can fail due to external service issues. We use E2E tests only to verify that the happy path works—that the whole system hangs together.
+E2E runner tests are expensive. Each remote run takes about 15 seconds, involves real network calls, and can fail due to external service issues. We use E2E tests only to verify that the happy path works—that the whole system hangs together.
 
 Error cases and edge cases belong in integration tests, where we can control the environment and test reliably.
 

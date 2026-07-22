@@ -22,9 +22,7 @@ setup_file() {
     export RUN_AGENT_NAME="e2e-billable-runner-${UNIQUE_ID}"
     export THREAD_IDS=""
 
-    $ZERO_CLI org model-provider setup \
-        --type anthropic-api-key \
-        --secret "$ANTHROPIC_API_KEY" >/dev/null
+    configure_e2e_model_provider "anthropic-api-key" "$ANTHROPIC_API_KEY"
     zero_model_provider_id_by_type "anthropic-api-key" >/dev/null
 
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -42,7 +40,7 @@ EOF
     # Create a private zero agent for this file so CI does not consume the
     # shared org's limited public-agent slots.
     local create_out
-    create_out=$(zero_curl "/api/zero/agents" \
+    create_out=$(e2e_api_curl "/api/zero/agents" \
         -X POST \
         --data "$(jq -nc \
             --arg displayName "e2e-billable-${UNIQUE_ID}" \
@@ -57,9 +55,9 @@ EOF
 
 teardown_file() {
     for thread_id in $THREAD_IDS; do
-        zero_curl "/api/zero/chat-threads/$thread_id" -X DELETE >/dev/null 2>&1 || true
+        e2e_api_curl "/api/zero/chat-threads/$thread_id" -X DELETE >/dev/null 2>&1 || true
     done
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y 2>/dev/null || true
+    [ -n "$AGENT_ID" ] && delete_e2e_agent "$AGENT_ID" 2>/dev/null || true
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi

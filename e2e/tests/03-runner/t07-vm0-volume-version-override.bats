@@ -119,7 +119,7 @@ teardown_file() {
             }')"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
 
     # Should see version-1 content (the overridden version)
     assert_output --partial "version-1"

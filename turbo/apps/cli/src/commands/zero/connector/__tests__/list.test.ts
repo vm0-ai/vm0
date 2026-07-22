@@ -120,7 +120,7 @@ describe("zero connector list command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -277,7 +277,7 @@ describe("zero connector list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
+        expect.stringContaining("Authentication failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

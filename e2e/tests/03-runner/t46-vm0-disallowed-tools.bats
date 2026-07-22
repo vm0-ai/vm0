@@ -57,9 +57,9 @@ teardown_file() {
         '{"disallowedTools":["CronCreate","CronList","CronDelete"]}'
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo hello"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 }
 
 @test "t46-2: run with allowed tools succeeds" {
@@ -68,7 +68,7 @@ teardown_file() {
         '{"tools":["Bash"]}'
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo hello"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 }

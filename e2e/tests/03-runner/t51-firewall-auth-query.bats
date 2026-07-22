@@ -24,8 +24,9 @@ setup_file() {
     export ARTIFACT_NAME="e2e-auth-query-artifact-${UNIQUE_ID}"
 
     # Set up serpapi connector — api-token auth, single secret.
-    $ZERO_CLI connector connect serpapi \
-        --value SERPAPI_TOKEN=fake-serpapi-token-for-e2e
+    connect_e2e_connector \
+        "serpapi" \
+        '{"SERPAPI_TOKEN":"fake-serpapi-token-for-e2e"}'
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
@@ -36,7 +37,7 @@ setup_file() {
 }
 
 teardown_file() {
-    zero_curl "/api/zero/connectors/serpapi" -X DELETE >/dev/null 2>&1 || true
+    e2e_api_curl "/api/zero/connectors/serpapi" -X DELETE >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"

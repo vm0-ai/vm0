@@ -245,7 +245,7 @@ let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
   originalEnv = { ...process.env };
-  delete process.env.VM0_TOKEN;
+  delete process.env.ZERO_TOKEN;
   process.env.TEST_SECRET = "value";
 });
 

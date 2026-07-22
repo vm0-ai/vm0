@@ -81,7 +81,7 @@ RUBY
     jq -n --slurpfile content "$content_json" '{content: $content[0]}' > "$request_json"
 
     local response
-    response="$(zero_curl "/api/agent/composes" -X POST --data-binary "@$request_json")"
+    response="$(e2e_api_curl "/api/agent/composes" -X POST --data-binary "@$request_json")"
     jq -e --arg expectedName "$normalized_agent_name" '
         (.composeId | type == "string" and length > 0)
         and (.name == $expectedName)

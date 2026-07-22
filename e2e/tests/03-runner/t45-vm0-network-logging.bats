@@ -52,7 +52,7 @@ EOF
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "PORT22=SSH-2.0"
     assert_output --partial "PORT443=SSH-2.0"
 

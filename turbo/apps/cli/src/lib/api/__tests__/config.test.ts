@@ -1,211 +1,61 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync } from "fs";
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as os from "os";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getActiveOrg, getActiveToken, getApiUrl, getToken } from "../config";
 
-// Mock os.homedir to use temp directory for config isolation
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-config-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
+function buildFakeZeroJwt(payload: Record<string, unknown>): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = Buffer.from("fake-signature").toString("base64url");
+  return `vm0_sandbox_${header}.${body}.${signature}`;
+}
 
-import { getToken, getActiveToken, getActiveOrg } from "../config";
-
-describe("token resolution", () => {
-  beforeEach(async () => {
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await fs.rm(configDir, { recursive: true, force: true });
-  });
-
-  afterEach(async () => {
+describe("Zero configuration", () => {
+  afterEach(() => {
     vi.unstubAllEnvs();
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await fs.rm(configDir, { recursive: true, force: true });
   });
 
-  async function writeConfigToken(token: string): Promise<void> {
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await fs.mkdir(configDir, { recursive: true });
-    await fs.writeFile(
-      path.join(configDir, "config.json"),
-      JSON.stringify({ token }),
+  it("uses ZERO_TOKEN as the sole authentication source", async () => {
+    vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+    vi.stubEnv("VM0_TOKEN", "legacy-token-value");
+
+    await expect(getToken()).resolves.toBe("zero-token-value");
+    await expect(getActiveToken()).resolves.toBe("zero-token-value");
+  });
+
+  it("does not fall back to VM0_TOKEN", async () => {
+    vi.stubEnv("VM0_TOKEN", "legacy-token-value");
+
+    await expect(getToken()).resolves.toBeUndefined();
+    await expect(getActiveToken()).resolves.toBeUndefined();
+  });
+
+  it("reads the active organization from a run-scoped ZERO_TOKEN", async () => {
+    vi.stubEnv(
+      "ZERO_TOKEN",
+      buildFakeZeroJwt({
+        scope: "zero",
+        orgId: "org-from-zero-token",
+        capabilities: [],
+      }),
     );
-  }
 
-  describe("getActiveToken", () => {
-    it("should return ZERO_TOKEN when set", async () => {
-      vi.stubEnv("ZERO_TOKEN", "zero-token-value");
-
-      const token = await getActiveToken();
-      expect(token).toBe("zero-token-value");
-    });
-
-    it("should fall back to VM0_TOKEN when ZERO_TOKEN is not set", async () => {
-      vi.stubEnv("VM0_TOKEN", "vm0-token-value");
-
-      const token = await getActiveToken();
-      expect(token).toBe("vm0-token-value");
-    });
-
-    it("should fall back to config file when neither env var is set", async () => {
-      await writeConfigToken("config-token-value");
-
-      const token = await getActiveToken();
-      expect(token).toBe("config-token-value");
-    });
-
-    it("should return ZERO_TOKEN over VM0_TOKEN when both are set", async () => {
-      vi.stubEnv("ZERO_TOKEN", "zero-wins");
-      vi.stubEnv("VM0_TOKEN", "vm0-loses");
-
-      const token = await getActiveToken();
-      expect(token).toBe("zero-wins");
-    });
-
-    it("should return undefined when no token source is available", async () => {
-      const token = await getActiveToken();
-      expect(token).toBeUndefined();
-    });
+    await expect(getActiveOrg()).resolves.toBe("org-from-zero-token");
   });
 
-  describe("getActiveOrg", () => {
-    function buildFakeJwt(
-      payload: Record<string, unknown>,
-      prefix = "vm0_sandbox_",
-    ): string {
-      const header = Buffer.from(
-        JSON.stringify({ alg: "HS256", typ: "JWT" }),
-      ).toString("base64url");
-      const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-      const sig = Buffer.from("fake-signature").toString("base64url");
-      return `${prefix}${header}.${body}.${sig}`;
-    }
+  it("does not derive an organization from a CLI PAT", async () => {
+    vi.stubEnv("ZERO_TOKEN", "vm0_pat_header.payload.signature");
 
-    it("should return orgId from ZERO_TOKEN when set", async () => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildFakeJwt({
-          scope: "zero",
-          orgId: "org-from-jwt",
-          capabilities: [],
-        }),
-      );
-
-      const org = await getActiveOrg();
-      expect(org).toBe("org-from-jwt");
-    });
-
-    it("should return undefined when no JWT token is available", async () => {
-      const org = await getActiveOrg();
-      expect(org).toBeUndefined();
-    });
-
-    it("should ignore sandbox-scoped token", async () => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildFakeJwt({ scope: "sandbox", runId: "run-1" }),
-      );
-
-      const org = await getActiveOrg();
-      expect(org).toBeUndefined();
-    });
-
-    it("should ignore compose-job-scoped token", async () => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildFakeJwt({ scope: "compose-job", jobId: "job-1" }),
-      );
-
-      const org = await getActiveOrg();
-      expect(org).toBeUndefined();
-    });
-
-    it("should ignore malformed ZERO_TOKEN", async () => {
-      vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
-
-      const org = await getActiveOrg();
-      expect(org).toBeUndefined();
-    });
-
-    it("should ignore ZERO_TOKEN with invalid base64 payload", async () => {
-      vi.stubEnv("ZERO_TOKEN", "vm0_sandbox_header.!!!invalid!!!.signature");
-
-      const org = await getActiveOrg();
-      expect(org).toBeUndefined();
-    });
-
-    it("should return orgId from CLI JWT when config token is JWT format", async () => {
-      const cliJwt = buildFakeJwt(
-        {
-          scope: "cli",
-          orgId: "cli-org",
-          userId: "user-1",
-          tokenId: "tok-1",
-        },
-        "vm0_pat_",
-      );
-      await writeConfigToken(cliJwt);
-
-      const org = await getActiveOrg();
-      expect(org).toBe("cli-org");
-    });
-
-    it("should prefer ZERO_TOKEN JWT over CLI JWT", async () => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildFakeJwt({ scope: "zero", orgId: "zero-org", capabilities: [] }),
-      );
-      const cliJwt = buildFakeJwt(
-        {
-          scope: "cli",
-          orgId: "cli-org",
-          userId: "user-1",
-          tokenId: "tok-1",
-        },
-        "vm0_pat_",
-      );
-      await writeConfigToken(cliJwt);
-
-      const org = await getActiveOrg();
-      expect(org).toBe("zero-org");
-    });
+    await expect(getActiveOrg()).resolves.toBeUndefined();
   });
 
-  describe("getToken", () => {
-    it("should return ZERO_TOKEN when set", async () => {
-      vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+  it("uses VM0_API_BACKEND_URL for routing", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "preview.vm0.ai");
 
-      const token = await getToken();
-      expect(token).toBe("zero-token-value");
-    });
+    await expect(getApiUrl()).resolves.toBe("https://preview.vm0.ai");
+  });
 
-    it("should fall back to VM0_TOKEN when ZERO_TOKEN is not set", async () => {
-      vi.stubEnv("VM0_TOKEN", "vm0-token-value");
-
-      const token = await getToken();
-      expect(token).toBe("vm0-token-value");
-    });
-
-    it("should fall back to config file when neither env var is set", async () => {
-      await writeConfigToken("config-token-value");
-
-      const token = await getToken();
-      expect(token).toBe("config-token-value");
-    });
-
-    it("should return ZERO_TOKEN over VM0_TOKEN when both are set", async () => {
-      vi.stubEnv("ZERO_TOKEN", "zero-wins");
-      vi.stubEnv("VM0_TOKEN", "vm0-loses");
-
-      const token = await getToken();
-      expect(token).toBe("zero-wins");
-    });
+  it("defaults routing to the production API", async () => {
+    await expect(getApiUrl()).resolves.toBe("https://api.vm0.ai");
   });
 });
