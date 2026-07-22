@@ -329,9 +329,11 @@ function isSqlIdentifierCharacter(character: string | undefined): boolean {
 }
 
 function hasSqlIdentifierPrefix(source: string, start: number): boolean {
+  const previous = previousNonWhitespaceCharacter(source, start);
   return (
     isSqlIdentifierCharacter(source[start - 1]) ||
-    previousNonWhitespaceCharacter(source, start) === "."
+    previous === "." ||
+    previous === "\u0000"
   );
 }
 
@@ -1529,6 +1531,7 @@ export const preferDrizzleApis = createRule({
           if (
             aggregate === undefined ||
             aggregateSuffix === undefined ||
+            (index > 0 && prefix.slice(0, aggregate.start).trim() === "") ||
             hasAggregateWindowSuffix(aggregateSuffix, 0) ||
             !isDrizzleWrapperType(checker, expression.type)
           ) {

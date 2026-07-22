@@ -249,6 +249,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         import { eq, sql } from "drizzle-orm";
         const condition = eq(users.id, 1);
         const tagsSql = sql\`\${users.tags}\`;
+        const qualifiedAggregate = sql.raw("pg_catalog.");
         sql\`\${users} LIKE \${"prefix%"}\`;
         sql\`\${users.name} NOT LIKE \${1}\`;
         sql\`\${users.id} BETWEEN \${1} OR \${2}\`;
@@ -263,6 +264,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`COUNT(*) OVER (PARTITION BY \${users.id})\`;
         sql\`COUNT(*) FILTER (WHERE (\${condition})) OVER (ORDER BY \${users.id})\`;
         sql\`SELECT pg_catalog . count(*), pg_catalog.sum(\${users.id}) FROM \${users}\`;
+        sql\`\${qualifiedAggregate} count(*)\`;
+        sql\`\${qualifiedAggregate} sum(\${users.id})\`;
         sql\`'\${condition} NOT \${condition} COUNT(\${users.id})'\`;
         sql\`SELECT $body$\${condition} COUNT(*)$body$\`;
         sql\`SELECT /* \${condition} COUNT(*) */ 1\`;
