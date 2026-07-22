@@ -304,35 +304,96 @@ def test_flush_prunes_completed_path_state(tmp_path):
     assert jsonl_writer._pending_bytes == 0
 
 
-def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
-    log_path = str(tmp_path / "net.jsonl")
-    append_started = threading.Event()
-    release_append = threading.Event()
-    flush_threads: list[ThreadUnderTest] = []
-    original_append_lines = jsonl_writer._append_lines
+def test_out_of_order_concurrent_flushes_prune_after_final_waiter(tmp_path):
+    class DelayedWaitCondition:
+        def __init__(self, delayed_thread_name: str) -> None:
+            self._condition = threading.Condition()
+            self._delayed_thread_name = delayed_thread_name
+            self.delayed_waiter_woke = threading.Event()
+            self.release_delayed_waiter = threading.Event()
 
-    def append_lines(path: str, lines: list[bytes]) -> None:
-        append_started.set()
-        release_append.wait()
-        original_append_lines(path, lines)
+        def __enter__(self) -> "DelayedWaitCondition":
+            self._condition.acquire()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self._condition.release()
+
+        def wait(self, timeout: float | None = None) -> bool:
+            notified = self._condition.wait(timeout)
+            if threading.current_thread().name == self._delayed_thread_name:
+                self.delayed_waiter_woke.set()
+                self._condition.release()
+                try:
+                    self.release_delayed_waiter.wait()
+                finally:
+                    self._condition.acquire()
+            return notified
+
+        def wait_for(
+            self,
+            predicate: Callable[[], bool],
+            timeout: float | None = None,
+        ) -> bool:
+            return self._condition.wait_for(predicate, timeout)
+
+        def notify_all(self) -> None:
+            self._condition.notify_all()
+
+    gate_path = str(tmp_path / "gate.jsonl")
+    log_path = str(tmp_path / "net.jsonl")
+    gate_write_started = threading.Event()
+    release_gate_write = threading.Event()
+    condition = DelayedWaitCondition("target-1-flush")
+    flush_threads: list[ThreadUnderTest] = []
+    original_writev = jsonl_writer.os.writev
+
+    def writev(fd: int, buffers: list[bytes | memoryview]) -> int:
+        if not gate_write_started.is_set():
+            gate_write_started.set()
+            release_gate_write.wait()
+        return original_writev(fd, buffers)
 
     def flush_log_path() -> None:
-        jsonl_writer.flush_log_path(log_path)
+        assert jsonl_writer.flush_log_path(log_path)
 
-    with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
+    with (
+        patch.object(jsonl_writer, "_condition", condition),
+        patch.object(jsonl_writer.os, "writev", side_effect=writev),
+    ):
         try:
-            jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
-            assert append_started.wait(timeout=1)
+            jsonl_writer.write_jsonl_line(gate_path, b"gate\n", "network")
+            assert gate_write_started.wait(timeout=1)
 
-            flush_threads = [
-                ThreadUnderTest(target=flush_log_path, daemon=True),
-                ThreadUnderTest(target=flush_log_path, daemon=True),
-            ]
-            for thread in flush_threads:
-                thread.start()
+            jsonl_writer.write_jsonl_line(log_path, b"first\n", "network")
+            first_flush = ThreadUnderTest(
+                target=flush_log_path,
+                name="target-1-flush",
+                daemon=True,
+            )
+            flush_threads.append(first_flush)
+            first_flush.start()
 
-            with jsonl_writer._condition:
-                flush_waiters_registered = jsonl_writer._condition.wait_for(
+            with condition:
+                first_waiter_registered = condition.wait_for(
+                    lambda: jsonl_writer._flush_waiters_by_path.get(log_path, 0) == 1,
+                    timeout=1,
+                )
+            if not first_waiter_registered:
+                first_flush.raise_if_failed()
+            assert first_waiter_registered
+
+            jsonl_writer.write_jsonl_line(log_path, b"second\n", "network")
+            second_flush = ThreadUnderTest(
+                target=flush_log_path,
+                name="target-2-flush",
+                daemon=True,
+            )
+            flush_threads.append(second_flush)
+            second_flush.start()
+
+            with condition:
+                flush_waiters_registered = condition.wait_for(
                     lambda: jsonl_writer._flush_waiters_by_path.get(log_path, 0) == 2,
                     timeout=1,
                 )
@@ -340,8 +401,22 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
                 for thread in flush_threads:
                     thread.raise_if_failed()
             assert flush_waiters_registered
+
+            release_gate_write.set()
+            assert condition.delayed_waiter_woke.wait(timeout=1)
+
+            second_flush.join_and_raise(timeout=1)
+            assert first_flush.is_alive()
+            with condition:
+                assert jsonl_writer._accepted_by_path[log_path] == 2
+                assert jsonl_writer._completed_by_path[log_path] == 2
+                assert jsonl_writer._flush_waiters_by_path[log_path] == 1
+
+            condition.release_delayed_waiter.set()
+            first_flush.join_and_raise(timeout=1)
         finally:
-            release_append.set()
+            release_gate_write.set()
+            condition.release_delayed_waiter.set()
             for thread in flush_threads:
                 thread.join(timeout=1)
 
@@ -353,6 +428,8 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
     assert log_path not in jsonl_writer._completed_by_path
     assert log_path not in jsonl_writer._flush_waiters_by_path
     assert jsonl_writer._pending_bytes == 0
+    assert jsonl_writer._queued_writes == 0
+    assert (tmp_path / "net.jsonl").read_bytes() == b"first\nsecond\n"
 
 
 def test_shutdown_writer_returns_when_normal_write_backlog_is_full(tmp_path):

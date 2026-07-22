@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# Test VM0 --append-system-prompt flag (E2E happy path only)
+# Test direct-run appended system prompts (E2E happy path only)
 # This test verifies that:
-# 1. vm0 run with --append-system-prompt flag succeeds
-# 2. The agent run completes successfully (full CLI → API → runner → sandbox pipeline)
+# 1. appendSystemPrompt reaches the runner
+# 2. The agent run completes successfully (API → runner → sandbox pipeline)
 #
 # Note: mock-claude does not use the append-system-prompt value, so we cannot
 # verify the text reached Claude. The value is validated to reach the sandbox
@@ -25,8 +25,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -45,7 +44,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -55,10 +54,10 @@ teardown_file() {
     fi
 }
 
-@test "t44-1: run with --append-system-prompt succeeds" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --append-system-prompt "Your name is Aria." \
-        "echo hello"
+@test "t44-1: run with appended system prompt succeeds" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo hello" \
+        '{"appendSystemPrompt":"Your name is Aria."}'
 
     assert_success
     assert_output --partial "● Bash("

@@ -4,6 +4,7 @@
 //! only translates that structured payload into Codex startup configuration.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::error::AgentError;
 
@@ -20,6 +21,20 @@ pub(super) struct CodexRuntimeConfig {
     pub supports_websockets: bool,
     #[serde(default)]
     pub model_catalog: Option<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize)]
+struct BundledModelCatalog {
+    models: Vec<BundledModel>,
+}
+
+#[derive(serde::Deserialize)]
+struct BundledModel {
+    priority: i64,
+    visibility: String,
+    supported_in_api: bool,
+    base_instructions: String,
+    model_messages: serde_json::Value,
 }
 
 pub(super) fn parse_raw(raw: &str) -> Result<Option<CodexRuntimeConfig>, AgentError> {
@@ -83,10 +98,59 @@ pub(super) fn write_model_catalog(
     let Some(model_catalog) = &config.model_catalog else {
         return Ok(());
     };
+    let model_catalog = if config.provider_id == "vm0-model" {
+        inherit_default_model_instructions(model_catalog, load_bundled_model_catalog()?)?
+    } else {
+        model_catalog.clone()
+    };
     std::fs::create_dir_all(codex_home)?;
     let path = model_catalog_path(codex_home);
-    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
+    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(&model_catalog)?)?;
     Ok(())
+}
+
+fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
+    let output = Command::new("codex")
+        .args(["debug", "models", "--bundled"])
+        .output()?;
+    if !output.status.success() {
+        return Err(AgentError::Execution(
+            "failed to read the bundled Codex model catalog".to_string(),
+        ));
+    }
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
+
+fn inherit_default_model_instructions(
+    model_catalog: &serde_json::Value,
+    bundled: BundledModelCatalog,
+) -> Result<serde_json::Value, AgentError> {
+    let source = bundled
+        .models
+        .into_iter()
+        .filter(|model| model.visibility == "list" && model.supported_in_api)
+        .min_by_key(|model| model.priority)
+        .ok_or_else(|| {
+            AgentError::Execution(
+                "bundled Codex model catalog has no default model instructions".to_string(),
+            )
+        })?;
+    let mut hydrated = model_catalog.clone();
+    let models = hydrated
+        .get_mut("models")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| AgentError::Execution("invalid Codex model catalog".to_string()))?;
+    for model in models {
+        let model = model
+            .as_object_mut()
+            .ok_or_else(|| AgentError::Execution("invalid Codex model entry".to_string()))?;
+        model.insert(
+            "base_instructions".to_string(),
+            serde_json::Value::String(source.base_instructions.clone()),
+        );
+        model.insert("model_messages".to_string(), source.model_messages.clone());
+    }
+    Ok(hydrated)
 }
 
 fn write_model_catalog_json_atomic(
@@ -326,5 +390,59 @@ mod tests {
         );
         let written = std::fs::read_to_string(model_catalog_path(&codex_home)).unwrap();
         assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
+    }
+
+    #[test]
+    fn inherit_default_model_instructions_uses_highest_priority_visible_model() {
+        let target = json!({
+            "models": [{
+                "slug": "vm0-model",
+                "base_instructions": "",
+                "model_messages": null,
+                "context_window": 1_000_000
+            }]
+        });
+        let bundled = BundledModelCatalog {
+            models: vec![
+                BundledModel {
+                    priority: 0,
+                    visibility: "hide".to_string(),
+                    supported_in_api: true,
+                    base_instructions: "hidden instructions".to_string(),
+                    model_messages: serde_json::Value::Null,
+                },
+                BundledModel {
+                    priority: 2,
+                    visibility: "list".to_string(),
+                    supported_in_api: true,
+                    base_instructions: "lower priority instructions".to_string(),
+                    model_messages: serde_json::Value::Null,
+                },
+                BundledModel {
+                    priority: 1,
+                    visibility: "list".to_string(),
+                    supported_in_api: true,
+                    base_instructions: "default instructions".to_string(),
+                    model_messages: json!({
+                        "instructions_template": "default template",
+                        "instructions_variables": null,
+                        "approvals": null,
+                        "auto_review": null
+                    }),
+                },
+            ],
+        };
+
+        let hydrated = inherit_default_model_instructions(&target, bundled).unwrap();
+
+        assert_eq!(
+            hydrated["models"][0]["base_instructions"],
+            "default instructions"
+        );
+        assert_eq!(
+            hydrated["models"][0]["model_messages"]["instructions_template"],
+            "default template"
+        );
+        assert_eq!(hydrated["models"][0]["context_window"], 1_000_000);
     }
 }

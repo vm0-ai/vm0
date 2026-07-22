@@ -1,6 +1,7 @@
 """auth.base rewrite forwarding handler tests."""
 
 import asyncio
+import gzip
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
@@ -142,6 +143,53 @@ class TestAuthBaseUrlRewriteForwarding:
         assert "Firewall URL rewrite:" in log_text
         assert "real-token" not in log_text
         assert "webhook/secret" not in log_text
+
+    @pytest.mark.parametrize(
+        ("content_encodings", "coded_body", "decoded_body"),
+        [
+            pytest.param(
+                ("gzip",),
+                gzip.compress(b'{"ok":true}', mtime=0),
+                b'{"ok":true}',
+                id="gzip",
+            ),
+            pytest.param(
+                ("x-first", "x-second"),
+                b"opaque-coded-response",
+                None,
+                id="repeated-unknown",
+            ),
+        ],
+    )
+    async def test_url_rewrite_preserves_encoded_response_representation(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        content_encodings: tuple[str, ...],
+        coded_body: bytes,
+        decoded_body: bytes | None,
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(real_flow, tmp_path)
+        chunked_body = b"%x\r\n" % len(coded_body) + coded_body + b"\r\n0\r\n\r\n"
+        response_headers = [("Content-Encoding", value) for value in content_encodings]
+        response_headers.append(("Transfer-Encoding", "chunked"))
+
+        with (
+            fake_forwarder_upstream(body=chunked_body, headers=response_headers),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+        assert flow.response is not None
+        assert flow.response.raw_content == coded_body
+        assert flow.response.headers.get_all("Content-Encoding") == list(content_encodings)
+        assert flow.response.headers["Content-Length"] == str(len(coded_body))
+        assert "Transfer-Encoding" not in flow.response.headers
+        if decoded_body is not None:
+            assert flow.response.content == decoded_body
 
     async def test_url_rewrite_sends_resolved_auth_headers(
         self, headers, real_flow, mitm_ctx, tmp_path

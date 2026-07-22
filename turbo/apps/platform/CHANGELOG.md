@@ -1,5 +1,149 @@
 # Changelog
 
+## [0.613.1](https://github.com/vm0-ai/vm0/compare/app-v0.613.0...app-v0.613.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **platform:** close mobile sidebar after agent selection ([#22430](https://github.com/vm0-ai/vm0/issues/22430)) ([70a9ecd](https://github.com/vm0-ai/vm0/commit/70a9ecd630a5c4754b984fb6c63bba3808ac37bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+
+## [0.613.0](https://github.com/vm0-ai/vm0/compare/app-v0.612.0...app-v0.613.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+* **platform:** render structured user messages ([#22400](https://github.com/vm0-ai/vm0/issues/22400)) ([3beae6e](https://github.com/vm0-ai/vm0/commit/3beae6e088745cdfdd63da13b0303d7820d67406))
+* unify pending chat items below the composer ([#22398](https://github.com/vm0-ai/vm0/issues/22398)) ([49d86fd](https://github.com/vm0-ai/vm0/commit/49d86fdaa73a2f59206f06ed5f7beec5381b1dae))
+
+
+### Bug Fixes
+
+* **chat:** expand composer for attached template chips ([#22226](https://github.com/vm0-ai/vm0/issues/22226)) ([c71f0ec](https://github.com/vm0-ai/vm0/commit/c71f0eceb2ce29cb1b72c054d496aac709b5a5b9))
+* connect chat connector cards directly ([#22403](https://github.com/vm0-ai/vm0/issues/22403)) ([3fcec0b](https://github.com/vm0-ai/vm0/commit/3fcec0b7723f2c667537a3667a4caf82c8ab8c9f))
+
+
+### Refactoring
+
+* **artifacts:** remove favorites from artifact synchronization ([#22381](https://github.com/vm0-ai/vm0/issues/22381)) ([7d5f43a](https://github.com/vm0-ai/vm0/commit/7d5f43a87c7493ce1037765da86c12d925d24d7a))
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+
+## [0.612.0](https://github.com/vm0-ai/vm0/compare/app-v0.611.0...app-v0.612.0) (2026-07-21)
+
+
+### Features
+
+* **artifacts:** load favorites independently ([#22371](https://github.com/vm0-ai/vm0/issues/22371)) ([c4d23d9](https://github.com/vm0-ai/vm0/commit/c4d23d9a5e4c92b323df57d50fb732ec5ccacde1))
+* **chat:** add structured prompt editor codecs ([#22370](https://github.com/vm0-ai/vm0/issues/22370)) ([09cfdf3](https://github.com/vm0-ai/vm0/commit/09cfdf3746e1b04ee01522daa8a2e03aabc5b7f8))
+
+
+### Bug Fixes
+
+* simplify email draft sidebar details ([#22379](https://github.com/vm0-ai/vm0/issues/22379)) ([e8e0c6a](https://github.com/vm0-ai/vm0/commit/e8e0c6a5271698a2cb31a02cc0017665db252534))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+
+## [0.611.0](https://github.com/vm0-ai/vm0/compare/app-v0.610.6...app-v0.611.0) (2026-07-21)
+
+
+### Features
+
+* **chat:** persist structured prompts through api and indexeddb ([#22357](https://github.com/vm0-ai/vm0/issues/22357)) ([655136e](https://github.com/vm0-ai/vm0/commit/655136e2d01cbe57ac67af61711b21867eea2d2a))
+
+
+### Refactoring
+
+* **platform:** remove agent detail workflows tab ([#22361](https://github.com/vm0-ai/vm0/issues/22361)) ([ea6cf92](https://github.com/vm0-ai/vm0/commit/ea6cf9246a646441986bc930ce653de2c2f947fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+
+## [0.610.6](https://github.com/vm0-ai/vm0/compare/app-v0.610.5...app-v0.610.6) (2026-07-21)
+
+
+### Refactoring
+
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+
+## [0.610.5](https://github.com/vm0-ai/vm0/compare/app-v0.610.4...app-v0.610.5) (2026-07-21)
+
+
+### Refactoring
+
+* **mail:** use one source for draft card state ([#22327](https://github.com/vm0-ai/vm0/issues/22327)) ([65964d3](https://github.com/vm0-ai/vm0/commit/65964d385ebb132115aef960b145ebe3d47783ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.4
+    * @vm0/connectors bumped to 1.173.3
+    * @vm0/core bumped to 8.444.3
+
+## [0.610.4](https://github.com/vm0-ai/vm0/compare/app-v0.610.3...app-v0.610.4) (2026-07-21)
+
+
+### Bug Fixes
+
+* **platform:** restrict new workspace models to OpenAI and Anthropic ([#22318](https://github.com/vm0-ai/vm0/issues/22318)) ([3a3603d](https://github.com/vm0-ai/vm0/commit/3a3603d42f6f970a46f4855272a7b06c63553763))
+* **platform:** show feedback pill after mouseup ([#22286](https://github.com/vm0-ai/vm0/issues/22286)) ([705f7ab](https://github.com/vm0-ai/vm0/commit/705f7ab9af8f845a529d54607c469e4f24439fde))
+
+
+### Refactoring
+
+* **platform:** remove disabled composer inline experiments ([#22299](https://github.com/vm0-ai/vm0/issues/22299)) ([cf84abc](https://github.com/vm0-ai/vm0/commit/cf84abc999b388d627aee71addf49778dbae45e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+    * @vm0/core bumped to 8.444.2
+
 ## [0.610.3](https://github.com/vm0-ai/vm0/compare/app-v0.610.2...app-v0.610.3) (2026-07-21)
 
 

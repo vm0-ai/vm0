@@ -179,7 +179,17 @@ class UsageEventBuffer:
             self._flush_usage_events(trigger="shutdown")
 
     def close(self) -> None:
-        """Cancel any pending timer for test cleanup or process shutdown."""
+        """Cancel the pending timer and discard buffered usage state.
+
+        This clears live events, retained retries, active delivery bookkeeping,
+        and source idempotency keys without flushing or waiting for delivery.
+        Callers that need pending usage must first stop producers and complete
+        the appropriate flush and drain lifecycle, including any required
+        delivery wait.
+
+        The instance remains usable with its existing configuration, but its
+        work and source idempotency state starts empty after this call.
+        """
         with self._lock:
             timer = self._pop_timer_locked()
             self._state.clear()

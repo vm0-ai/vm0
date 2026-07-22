@@ -183,7 +183,7 @@ async function seedStorageVersion(args: {
   readonly versionId: string;
   readonly s3Prefix: string;
   readonly s3Key: string;
-  readonly archiveSize: number | null;
+  readonly archiveSize: number;
 }): Promise<void> {
   await stateAction({
     action: "seed-storage-version",
@@ -427,7 +427,7 @@ describe("system storage presigned URL cache", () => {
             versionId: skill.versionId,
             s3Prefix: skill.s3Prefix,
             s3Key: skill.s3Key,
-            archiveSize: null,
+            archiveSize: 1024,
           });
 
           const systemRun = await api.createRun(actor, {
@@ -444,8 +444,8 @@ describe("system storage presigned URL cache", () => {
           );
           expect(systemStorage).toMatchObject({
             vasVersionId: skill.versionId,
+            archiveSize: 1024,
           });
-          expect(systemStorage?.archiveSize).toBeUndefined();
 
           // A system row without a HEAD is intentionally treated as missing,
           // so the same injected volume must resolve from the primary org.

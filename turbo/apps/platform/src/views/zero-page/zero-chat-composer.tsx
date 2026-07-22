@@ -24,15 +24,18 @@ import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconArrowUp,
+  IconBolt,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
+  IconDots,
   IconPresentation,
   IconLoader2,
   IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
+  IconPlayerPause,
   IconPlayerPlay,
   IconPlayerStop,
   IconPlug,
@@ -58,6 +61,10 @@ import {
   Button,
   Card,
   CardContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   Popover,
   PopoverClose,
@@ -95,8 +102,6 @@ import type {
   ComposerTemplateAttachment,
   WorkflowComposerSignals,
 } from "../../signals/zero-page/tiptap-workflow-composer.ts";
-import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
-import { hasSubmittableInlinePromptContent } from "../../signals/zero-page/composer-inline-prompt-items.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -331,6 +336,18 @@ export interface ZeroChatComposerProps {
   queuedItems?: QueuedComposerItem[];
   /** Cancels a queued message (routed to the recall flow by the caller). */
   onRemoveQueuedItem?: (id: string) => void;
+  /** Pending workflow events, rendered after queued messages. */
+  workflowEventItems?: WorkflowEventComposerItem[];
+  /** Skips one pending workflow event. */
+  onRemoveWorkflowEvent?: (id: string) => void;
+  /** Whether workflow event processing is paused for this thread. */
+  workflowEventsPaused?: boolean;
+  /** Optional server-provided reason for the paused workflow event queue. */
+  workflowEventsPauseReason?: string | null;
+  /** Pauses or resumes workflow event processing without affecting messages. */
+  onSetWorkflowEventsPaused?: (paused: boolean) => void;
+  /** Clears every pending workflow event without affecting messages. */
+  onClearWorkflowEvents?: () => void;
   /**
    * The thread's active goal. Rendered as a row beneath the queued messages in
    * the strip above the composer — a goal runs only once the queue drains, so it
@@ -343,6 +360,11 @@ export interface ZeroChatComposerProps {
 }
 
 export interface QueuedComposerItem {
+  id: string;
+  text: string;
+}
+
+export interface WorkflowEventComposerItem {
   id: string;
   text: string;
 }
@@ -416,20 +438,6 @@ function resolveComposerModelForSelection(
     return selection;
   }
   return null;
-}
-
-function createAttachmentReferenceClientIds<T extends { clientId: string }>(
-  inlineAttachmentReferences: boolean,
-  visibleAttachments: readonly T[],
-): ReadonlySet<string> | null {
-  if (!inlineAttachmentReferences) {
-    return null;
-  }
-  return new Set(
-    visibleAttachments.map((attachment) => {
-      return attachment.clientId;
-    }),
-  );
 }
 
 interface VisualAttachmentUnsupportedState {
@@ -518,10 +526,10 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message or the active goal. Both share one
-// layout so they read as the same kind of pending item; only the leading icon
-// distinguishes them. Queued messages keep the inline popover; goals open a
-// modal because their full objective is fetched lazily by thread.
+// A single strip row — a queued message, workflow event, or active goal. All
+// share one layout so they read as the same kind of pending item; only the
+// leading icon distinguishes them. Goals open a modal because their full
+// objective is fetched lazily by thread.
 function ComposerStripRow({
   kind,
   text,
@@ -529,17 +537,38 @@ function ComposerStripRow({
   onOpenDetail,
   removeAriaLabel,
 }: {
-  kind: "queued" | "goal";
+  kind: "queued" | "workflow-event" | "goal";
   text: string;
   onRemove?: () => void;
   onOpenDetail?: () => void;
   removeAriaLabel: string;
 }) {
   const isGoal = kind === "goal";
+  const isWorkflowEvent = kind === "workflow-event";
+  const itemAriaLabel = isGoal
+    ? "Active goal"
+    : isWorkflowEvent
+      ? "Pending automation event"
+      : "Queued message";
+  const aboutAriaLabel = isGoal
+    ? "About this goal"
+    : isWorkflowEvent
+      ? "About this automation event"
+      : "About this queued message";
+  const itemTitle = isGoal
+    ? "Goal"
+    : isWorkflowEvent
+      ? "Automation event"
+      : "Queued message";
+  const itemDescription = isGoal
+    ? "Runs after the queue drains and keeps running until you cancel it."
+    : isWorkflowEvent
+      ? "Waits behind queued messages and runs once the current run finishes."
+      : "Waits in line and sends once the current run finishes.";
   return (
     <div
       role="listitem"
-      aria-label={isGoal ? "Active goal" : "Queued message"}
+      aria-label={itemAriaLabel}
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
     >
       {isGoal && onOpenDetail ? (
@@ -564,12 +593,12 @@ function ComposerStripRow({
               <button
                 type="button"
                 className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={
-                  isGoal ? "About this goal" : "About this queued message"
-                }
+                aria-label={aboutAriaLabel}
               >
                 {isGoal ? (
                   <IconTarget size={16} stroke={1.5} aria-hidden="true" />
+                ) : isWorkflowEvent ? (
+                  <IconBolt size={16} stroke={1.5} aria-hidden="true" />
                 ) : (
                   <ComposerQueueGlyph />
                 )}
@@ -581,12 +610,10 @@ function ComposerStripRow({
               className="w-80 rounded-lg p-3"
             >
               <p className="text-xs font-semibold text-foreground">
-                {isGoal ? "Goal" : "Queued message"}
+                {itemTitle}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {isGoal
-                  ? "Runs after the queue drains and keeps running until you cancel it."
-                  : "Waits in line and sends once the current run finishes."}
+                {itemDescription}
               </p>
               <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
                 {text}
@@ -674,39 +701,134 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
   );
 }
 
-function QueuedMessagesStrip({
+function PendingItemsStripHeader({
+  count,
+  label,
+  workflowEventCount,
+  workflowEventsPaused,
+  onSetWorkflowEventsPaused,
+  onClearWorkflowEvents,
+}: {
+  count: number;
+  label: string;
+  workflowEventCount: number;
+  workflowEventsPaused: boolean;
+  onSetWorkflowEventsPaused?: (paused: boolean) => void;
+  onClearWorkflowEvents?: () => void;
+}) {
+  const showWorkflowControls =
+    onSetWorkflowEventsPaused !== undefined &&
+    (workflowEventCount > 0 || workflowEventsPaused);
+  return (
+    <div className="flex items-center gap-2 px-5 pt-3 pb-2">
+      <div className="min-w-0 flex-1">
+        <span className="text-sm text-muted-foreground">
+          {count > 0 ? label : "Automation events paused"}
+        </span>
+      </div>
+      {showWorkflowControls ? (
+        <button
+          type="button"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={
+            workflowEventsPaused
+              ? "Resume automation events"
+              : "Pause automation events"
+          }
+          onClick={() => {
+            onSetWorkflowEventsPaused?.(!workflowEventsPaused);
+          }}
+        >
+          {workflowEventsPaused ? (
+            <IconPlayerPlay size={14} stroke={1.5} />
+          ) : (
+            <IconPlayerPause size={14} stroke={1.5} />
+          )}
+          {workflowEventsPaused ? "Resume events" : "Pause events"}
+        </button>
+      ) : null}
+      {workflowEventCount > 0 && onClearWorkflowEvents ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Automation event queue actions"
+            >
+              <IconDots size={16} stroke={1.5} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onClearWorkflowEvents}
+            >
+              Clear automation events ({workflowEventCount})
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
+  );
+}
+
+function PendingItemsStrip({
   items,
   onRemove,
+  workflowEvents,
+  onRemoveWorkflowEvent,
+  workflowEventsPaused,
+  workflowEventsPauseReason,
+  onSetWorkflowEventsPaused,
+  onClearWorkflowEvents,
   activeGoal,
   onCancelGoal,
   onOpenGoal,
 }: {
   items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
+  workflowEvents: WorkflowEventComposerItem[] | undefined;
+  onRemoveWorkflowEvent?: (id: string) => void;
+  workflowEventsPaused: boolean;
+  workflowEventsPauseReason?: string | null;
+  onSetWorkflowEventsPaused?: (paused: boolean) => void;
+  onClearWorkflowEvents?: () => void;
   activeGoal?: ActiveGoalComposerItem;
   onCancelGoal?: () => void;
   onOpenGoal?: () => void;
 }) {
   const queued = items ?? [];
-  if (queued.length === 0 && !activeGoal) {
+  const events = workflowEvents ?? [];
+  const count = queued.length + events.length;
+  const messageLabel = `${queued.length} ${queued.length === 1 ? "message" : "messages"}`;
+  const eventLabel = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  const label =
+    queued.length > 0 && events.length > 0
+      ? `${messageLabel} and ${eventLabel} waiting`
+      : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
+  if (count === 0 && !activeGoal && !workflowEventsPaused) {
     return null;
   }
-  const count = queued.length;
-  const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? (
-        <div className="px-5 pt-3 pb-2">
-          <span className="text-sm text-muted-foreground">{label}</span>
+      {count > 0 || workflowEventsPaused ? (
+        <PendingItemsStripHeader
+          count={count}
+          label={label}
+          workflowEventCount={events.length}
+          workflowEventsPaused={workflowEventsPaused}
+          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
+          onClearWorkflowEvents={onClearWorkflowEvents}
+        />
+      ) : null}
+      {workflowEventsPaused ? (
+        <div className="mx-4 mb-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+          Automation events paused
+          {workflowEventsPauseReason ? `: ${workflowEventsPauseReason}` : ""}.
+          New events keep queueing and run after you resume.
         </div>
       ) : null}
-      <div
-        className={cn(
-          "max-h-[200px] overflow-y-auto px-2 pb-7",
-          count > 0 ? "pt-1" : "pt-3",
-        )}
-        role="list"
-      >
+      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -720,10 +842,22 @@ function QueuedMessagesStrip({
             />
           );
         })}
-        {/* The active goal sits last — below every queued message — because a
-            goal only runs once the queue drains, so it reads as lower priority
-            than the queue. Like a queued message it can be cancelled; cancelling
-            blocks the goal so it no longer runs behind the queue. */}
+        {events.map((event) => {
+          return (
+            <ComposerStripRow
+              key={event.id}
+              kind="workflow-event"
+              text={event.text}
+              onRemove={() => {
+                onRemoveWorkflowEvent?.(event.id);
+              }}
+              removeAriaLabel="Skip automation event"
+            />
+          );
+        })}
+        {/* The active goal sits last — below queued messages and workflow events
+            — because it only runs once the queue drains. Like other pending
+            items it can be cancelled from the strip. */}
         {activeGoal ? (
           <ComposerStripRow
             kind="goal"
@@ -6299,8 +6433,6 @@ function useResolvedComposerSignals(
     draft.attachmentUploadsReady$,
   );
   const readInput = useSet(draft.readInput$);
-  const startAttachmentUpload = useSet(draft.startAttachmentUpload$);
-  const readAttachmentFileInfo = useSet(draft.readAttachmentFileInfo$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
   const restoreAttachments = useSet(draft.restoreAttachments$);
   const removeAttachment = useSet(draft.removeAttachment$);
@@ -6315,8 +6447,6 @@ function useResolvedComposerSignals(
 
   return {
     readInput,
-    startAttachmentUpload,
-    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6444,7 +6574,6 @@ function ComposerSendButton({
 
 function ComposerSendControl({
   draft,
-  attachmentReferenceClientIds,
   visibleAttachmentCount,
   uploadsReady,
   submitBlocked,
@@ -6457,7 +6586,6 @@ function ComposerSendControl({
   onSend,
 }: {
   draft: DraftSignals;
-  attachmentReferenceClientIds: ReadonlySet<string> | null;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
   submitBlocked: boolean;
@@ -6469,11 +6597,7 @@ function ComposerSendControl({
   submissionLoading: boolean;
   onSend: () => void;
 }) {
-  const input = useGet(draft.input$);
-  const hasInput = hasSubmittableInlinePromptContent(
-    input,
-    attachmentReferenceClientIds,
-  );
+  const hasInput = useGet(draft.hasInput$);
   const canSend = resolveComposerCanSend({
     hasInput,
     visibleAttachmentCount,
@@ -6639,6 +6763,12 @@ export function useZeroChatComposer({
   submitBlocker,
   queuedItems,
   onRemoveQueuedItem,
+  workflowEventItems,
+  onRemoveWorkflowEvent,
+  workflowEventsPaused = false,
+  workflowEventsPauseReason,
+  onSetWorkflowEventsPaused,
+  onClearWorkflowEvents,
   activeGoal,
   onCancelActiveGoal,
 }: ZeroChatComposerProps) {
@@ -6653,8 +6783,6 @@ export function useZeroChatComposer({
   );
   const {
     readInput,
-    startAttachmentUpload,
-    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6666,11 +6794,6 @@ export function useZeroChatComposer({
     setDragOver,
   } = resolved;
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const insertTemplate = useSet(composer.insertTemplate$);
-  const insertFile = useSet(composer.insertFile$);
-  const insertReferencedFile = useSet(composer.insertReferencedFile$);
-  const resolveFile = useSet(composer.resolveFile$);
-  const removeFile = useSet(composer.removeFile$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6678,146 +6801,49 @@ export function useZeroChatComposer({
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
-  const features = useGet(featureSwitch$);
-  const inlineAttachmentReferences =
-    features[FeatureSwitchKey.ComposerInlineAttachmentReferences] ?? false;
-  const inlinePromptItems = composerInlinePromptItemsEnabled(features);
   const visualAttachmentUnsupported =
     getVisualAttachmentUnsupportedState(modelPicker);
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
   );
-  const attachmentReferenceClientIds = createAttachmentReferenceClientIds(
-    inlineAttachmentReferences,
-    visibleAttachments,
-  );
   const uploadsReady = attachmentUploadsState === "hasData";
-
-  const uploadInlineFile = (file: File, usePromptReference: boolean) => {
-    const started = startAttachmentUpload(file, rootSignal);
-    const { clientId } = started.attachment;
-    const insert = usePromptReference ? insertReferencedFile : insertFile;
-    insert({
-      clientId,
-      filename: started.attachment.filename,
-      contentType: started.attachment.contentType,
-      size: started.attachment.size,
-    });
-    const settleUpload = async () => {
-      const info = await tapError(
-        (async () => {
-          await started.result;
-          return await readAttachmentFileInfo(started.attachment, rootSignal);
-        })(),
-        () => {
-          removeFile(clientId);
-        },
-      );
-      if (!info) {
-        removeFile(clientId);
-        return;
-      }
-      resolveFile(clientId, info.id, info.url);
-      if (!usePromptReference) {
-        removeAttachment(started.attachment);
-      }
-    };
-    detach(settleUpload(), Reason.DomCallback);
-  };
-
-  const shouldInsertInlineAttachment = (): boolean => {
-    return inlineAttachmentReferences || inlinePromptItems;
-  };
-
-  const uploadComposerFile = (file: File, insertInline: boolean) => {
-    if (insertInline) {
-      uploadInlineFile(file, inlineAttachmentReferences);
-      return;
-    }
-    detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-  };
-
-  const insertClipboardAttachments = (
-    clipboardAttachments: PersistedAttachment[],
-  ) => {
-    const insertInline = shouldInsertInlineAttachment();
-    if (!insertInline) {
-      restoreAttachments(clipboardAttachments);
-      return;
-    }
-    if (inlineAttachmentReferences) {
-      const restoredAttachments = restoreAttachments(clipboardAttachments);
-      for (const [index, attachment] of clipboardAttachments.entries()) {
-        const restoredAttachment = restoredAttachments[index];
-        if (!restoredAttachment) {
-          continue;
-        }
-        insertReferencedFile({
-          clientId: restoredAttachment.clientId,
-          filename: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-          fileId: attachment.id,
-          url: attachment.url,
-        });
-      }
-      return;
-    }
-    for (const attachment of clipboardAttachments) {
-      insertFile({
-        clientId: crypto.randomUUID(),
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        size: attachment.size,
-        fileId: attachment.id,
-        url: attachment.url,
-      });
-    }
-  };
-
-  const pasteChatClipboard = (e: ComposerPasteEvent): boolean => {
-    const chatPayload = e.clipboardData
-      ? readChatMessageFromClipboard(e.clipboardData)
-      : null;
-    if (!chatPayload || chatPayload.attachments.length === 0) {
-      return false;
-    }
-    const persistedAttachments = toPersistedAttachments(
-      chatPayload.attachments,
-    );
-    if (persistedAttachments.length === 0) {
-      return false;
-    }
-    const allowedAttachments = visualAttachmentUnsupported
-      ? persistedAttachments.filter((attachment) => {
-          return !isVisualAttachment({
-            contentType: attachment.contentType,
-            filename: attachment.filename,
-          });
-        })
-      : persistedAttachments;
-    if (
-      visualAttachmentUnsupported &&
-      allowedAttachments.length < persistedAttachments.length
-    ) {
-      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-    }
-    e.preventDefault();
-    if (chatPayload.text) {
-      insertPromptMarkdown(chatPayload.text);
-    }
-    insertClipboardAttachments(allowedAttachments);
-    onDraftChange?.();
-    return true;
-  };
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
-    if (!e.clipboardData || pasteChatClipboard(e)) {
+    if (!e.clipboardData) {
       return;
     }
-    const items = e.clipboardData.items;
+    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
+    if (chatPayload && chatPayload.attachments.length > 0) {
+      const persistedAttachments = toPersistedAttachments(
+        chatPayload.attachments,
+      );
+      if (persistedAttachments.length > 0) {
+        const allowedAttachments = visualAttachmentUnsupported
+          ? persistedAttachments.filter((attachment) => {
+              return !isVisualAttachment({
+                contentType: attachment.contentType,
+                filename: attachment.filename,
+              });
+            })
+          : persistedAttachments;
+        if (allowedAttachments.length < persistedAttachments.length) {
+          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
+        }
+        e.preventDefault();
+        if (chatPayload.text) {
+          insertPromptMarkdown(chatPayload.text);
+        }
+        if (allowedAttachments.length > 0) {
+          restoreAttachments(allowedAttachments);
+        }
+        onDraftChange?.();
+        return;
+      }
+    }
+
+    const items = e.clipboardData?.items;
     if (!items) {
       return;
     }
@@ -6851,7 +6877,7 @@ export function useZeroChatComposer({
       }
       e.preventDefault();
       applyPlainText();
-      uploadComposerFile(file, shouldInsertInlineAttachment());
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       onDraftChange?.();
     }
   };
@@ -6864,7 +6890,6 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
-    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -6875,7 +6900,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file, insertInline);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       uploaded = true;
     }
     if (uploaded) {
@@ -6997,17 +7022,13 @@ export function useZeroChatComposer({
 
   const handleSend = () => {
     const input = readInput();
-    const hasInput = hasSubmittableInlinePromptContent(
-      input,
-      attachmentReferenceClientIds,
-    );
     const sendAction = resolveKeyboardSendAction({
       canSend:
         !actionsLoading &&
         !submissionLoading &&
         inputForSubmissionLoadable.state !== "loading" &&
         uploadsReady &&
-        (hasInput || visibleAttachments.length > 0) &&
+        (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
       sending,
       queueWhileSending,
@@ -7021,21 +7042,15 @@ export function useZeroChatComposer({
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     }
     const submitCurrentInput = async () => {
-      const currentInput = await readInputForSubmission(
-        attachmentReferenceClientIds,
-        pageSignal,
-      );
+      const currentInput = await readInputForSubmission(pageSignal);
       const prompt = currentInput.trim();
       if (prompt.length === 0 && visibleAttachments.length === 0) {
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, inlinePromptItems ? undefined : templatePicker?.value);
+        onSend(prompt, templatePicker?.value);
       } else {
-        onQueue?.(
-          prompt,
-          inlinePromptItems ? undefined : templatePicker?.value,
-        );
+        onQueue?.(prompt, templatePicker?.value);
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
@@ -7084,7 +7099,6 @@ export function useZeroChatComposer({
       return;
     }
     let uploaded = false;
-    const insertInline = shouldInsertInlineAttachment();
     for (const file of files) {
       if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
         showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
@@ -7095,7 +7109,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      uploadComposerFile(file, insertInline);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
       uploaded = true;
     }
     if (uploaded) {
@@ -7122,22 +7136,6 @@ export function useZeroChatComposer({
     modelPicker?.onChange(selection);
   };
 
-  const composerTemplatePicker: ComposerTemplatePicker | undefined =
-    templatePicker && inlinePromptItems
-      ? {
-          value: undefined,
-          onChange: (value) => {
-            if (!value) {
-              return;
-            }
-            const attachment = selectedComposerTemplateAttachment(value);
-            if (attachment) {
-              insertTemplate(value, attachment);
-            }
-          },
-        }
-      : templatePicker;
-
   return (
     <>
       <input
@@ -7149,9 +7147,15 @@ export function useZeroChatComposer({
         onChange={handleFileChange}
       />
       <div className={cn("relative flex flex-col", className)}>
-        <QueuedMessagesStrip
+        <PendingItemsStrip
           items={queuedItems}
           onRemove={onRemoveQueuedItem}
+          workflowEvents={workflowEventItems}
+          onRemoveWorkflowEvent={onRemoveWorkflowEvent}
+          workflowEventsPaused={workflowEventsPaused}
+          workflowEventsPauseReason={workflowEventsPauseReason}
+          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
+          onClearWorkflowEvents={onClearWorkflowEvents}
           activeGoal={activeGoal}
           onCancelGoal={onCancelActiveGoal}
           onOpenGoal={
@@ -7175,15 +7179,14 @@ export function useZeroChatComposer({
             <div className="flex flex-col">
               <ComposerTemplateAttachmentSync
                 composer={composer}
-                picker={composerTemplatePicker}
+                picker={templatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
               />
-              {!inlinePromptItems && visibleAttachments.length > 0 && (
+              {visibleAttachments.length > 0 && (
                 <AttachmentChips
                   attachments={visibleAttachments}
                   onRemove={(attachment) => {
-                    removeFile(attachment.clientId);
                     removeAttachment(attachment);
                     onDraftChange?.();
                   }}
@@ -7207,7 +7210,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerTemplatePickerSlot
                     composer={composer}
-                    picker={composerTemplatePicker}
+                    picker={templatePicker}
                   />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7242,7 +7245,6 @@ export function useZeroChatComposer({
                   />
                   <ComposerSendControl
                     draft={draft}
-                    attachmentReferenceClientIds={attachmentReferenceClientIds}
                     visibleAttachmentCount={visibleAttachments.length}
                     uploadsReady={uploadsReady}
                     submitBlocked={submitBlocker !== undefined}

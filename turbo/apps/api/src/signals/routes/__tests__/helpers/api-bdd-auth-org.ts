@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  apiKeysByIdContract,
-  apiKeysContract,
-  type ApiKeyListResponse,
-  type CreateApiKeyRequest,
-  type CreateApiKeyResponse,
-} from "@vm0/api-contracts/contracts/api-keys";
+  cliAuthApproveContract,
+  cliAuthDeviceContract,
+  cliAuthTokenContract,
+} from "@vm0/api-contracts/contracts/cli-auth";
 import {
   composesByIdContract,
   composesMainContract,
@@ -103,9 +101,8 @@ import { agentComposesRoutes } from "../../agent-composes";
 import { agentComposesByIdRoutes } from "../../agent-composes-id";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { authMeRoutes } from "../../auth-me";
+import { cliAuthRoutes } from "../../cli-auth";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroApiKeysRoutes } from "../../zero-api-keys";
-import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
 import { zeroComposesRoutes } from "../../zero-composes";
 import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
@@ -231,8 +228,7 @@ interface RawJsonResponse {
 
 const authOrgRoutes = [
   ...authMeRoutes,
-  ...zeroApiKeysRoutes,
-  ...zeroApiKeysDeleteRoutes,
+  ...cliAuthRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOnboardingCompleteRoutes,
   ...zeroSecretsRoutes,
@@ -770,56 +766,36 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async createApiKey(
-      actor: ApiTestUser,
-      body: CreateApiKeyRequest,
-    ): Promise<CreateApiKeyResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        apiKeysContract,
-      );
-      const response = await accept(
-        client.create({ headers: authenticate(actor), body }),
-        [201],
-      );
-      return response.body;
-    },
+    async createCliToken(actor: ApiTestUser): Promise<{ token: string }> {
+      const deviceClient = setupAppWithRoutes({
+        context,
+        routes: authOrgRoutes,
+      })(cliAuthDeviceContract);
+      const device = await accept(deviceClient.create({ body: {} }), [200]);
 
-    async requestCreateApiKey(
-      actor: ApiTestUser | null,
-      body: CreateApiKeyRequest,
-      statuses: readonly (201 | 400 | 401 | 500)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        apiKeysContract,
-      );
-      return await accept(
-        client.create({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async listApiKeys(actor: ApiTestUser): Promise<ApiKeyListResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        apiKeysContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
+      const approvalClient = setupAppWithRoutes({
+        context,
+        routes: authOrgRoutes,
+      })(cliAuthApproveContract);
+      await accept(
+        approvalClient.approve({
+          headers: authenticate(actor),
+          body: { device_code: device.body.device_code },
+        }),
         [200],
       );
-      return response.body;
-    },
 
-    async deleteApiKey(actor: ApiTestUser, apiKeyId: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        apiKeysByIdContract,
-      );
-      await accept(
-        client.delete({
-          headers: authenticate(actor),
-          params: { id: apiKeyId },
+      const tokenClient = setupAppWithRoutes({
+        context,
+        routes: authOrgRoutes,
+      })(cliAuthTokenContract);
+      const token = await accept(
+        tokenClient.exchange({
+          body: { device_code: device.body.device_code },
         }),
-        [204],
+        [200],
       );
+      return { token: token.body.access_token };
     },
 
     async readOnboardingStatus(

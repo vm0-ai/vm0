@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.10...guest-mock-codex-v0.6.11) (2026-07-21)
+
+
+### Documentation
+
+* **guest-mock-codex:** document app server contract ([#22424](https://github.com/vm0-ai/vm0/issues/22424)) ([723a76d](https://github.com/vm0-ai/vm0/commit/723a76dfe5331b786e5fc9d3ef40a6239c57a83f))
+
 ## [0.6.10](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.9...guest-mock-codex-v0.6.10) (2026-07-21)
 
 

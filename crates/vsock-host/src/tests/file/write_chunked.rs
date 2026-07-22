@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::Poll;
 use std::time::Duration;
 
 use shell_quote::quote_shell_arg;
@@ -11,7 +14,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use vsock_proto::{
     ExecOutputPolicy, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
 };
 
 use super::super::support::{
@@ -21,9 +24,12 @@ use super::super::support::{
 };
 use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
-    send_write_file_failure, send_write_file_success, spawn_write_file, spawn_write_private_file,
+    send_write_file_failure, send_write_file_success, send_write_files_success, spawn_write_file,
+    spawn_write_private_file,
 };
-use crate::{FrameWriteObserver, VsockHost, operation_tracker::NormalOperationReadiness};
+use crate::{
+    FrameWriteObserver, VsockHost, WriteFileEntry, operation_tracker::NormalOperationReadiness,
+};
 use crate::{exec_operation, file as file_impl};
 
 struct ChunkedWriteFixture {
@@ -126,6 +132,17 @@ fn assert_helper_exec_capture_policy(frame: &ExecStartFrame) {
     assert_eq!(frame.stdout, capture_policy);
     assert_eq!(frame.stderr, capture_policy);
     assert!(frame.expected_exit_codes.is_empty());
+}
+
+async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
+    std::future::poll_fn(|cx| {
+        assert!(
+            future.as_mut().poll(cx).is_pending(),
+            "write future unexpectedly completed"
+        );
+        Poll::Ready(())
+    })
+    .await;
 }
 
 fn helper_exec_capture_policy() -> ExecOutputPolicy {
@@ -470,6 +487,199 @@ async fn write_private_file_chunked_writes_final_path_without_rename() {
 }
 
 #[tokio::test]
+async fn write_private_file_chunked_serializes_equivalent_destinations() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content_a = vec![0xAA; chunk_limit + 1];
+    let content_b = vec![0xBB; chunk_limit + 1];
+    let mut write_a = Box::pin(host.write_private_file("/tmp/private-serialized.bin", &content_a));
+    let mut write_b =
+        Box::pin(host.write_private_file("/tmp/./private-serialized.bin", &content_b));
+
+    let first_a = tokio::select! {
+        _ = write_a.as_mut() => panic!("first private write completed before its first response"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    poll_once_pending(write_b.as_mut()).await;
+    assert_eq!(first_a.path, "/tmp/private-serialized.bin");
+    assert_eq!(first_a.content.len(), chunk_limit);
+    assert_eq!(first_a.content.first(), Some(&0xAA));
+    assert!(!first_a.append);
+    assert!(first_a.private);
+    send_write_file_success(&mut guest, first_a.seq()).await;
+
+    let second_a = tokio::select! {
+        _ = write_a.as_mut() => panic!("first private write completed before its append"),
+        _ = write_b.as_mut() => panic!("second private write completed while the first held the destination"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(second_a.path, "/tmp/private-serialized.bin");
+    assert_eq!(second_a.content, [0xAA]);
+    assert!(second_a.append);
+    assert!(second_a.private);
+    send_write_file_success(&mut guest, second_a.seq()).await;
+    write_a.await.unwrap();
+
+    let first_b = tokio::select! {
+        _ = write_b.as_mut() => panic!("second private write completed before its first frame"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(first_b.path, "/tmp/./private-serialized.bin");
+    assert_eq!(first_b.content.len(), chunk_limit);
+    assert_eq!(first_b.content.first(), Some(&0xBB));
+    assert!(!first_b.append);
+    assert!(first_b.private);
+    send_write_file_success(&mut guest, first_b.seq()).await;
+
+    let second_b = tokio::select! {
+        _ = write_b.as_mut() => panic!("second private write completed before its append"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(second_b.path, "/tmp/./private-serialized.bin");
+    assert_eq!(second_b.content, [0xBB]);
+    assert!(second_b.append);
+    assert!(second_b.private);
+    send_write_file_success(&mut guest, second_b.seq()).await;
+    write_b.await.unwrap();
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_excludes_single_private_ordinary_and_batch_writes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let target = "/tmp/private-exclusive.bin";
+    let private_content = ChunkedWriteFixture::two_chunk_content();
+    let mut private_write = Box::pin(host.write_private_file(target, &private_content));
+
+    let first_private = tokio::select! {
+        _ = private_write.as_mut() => panic!("private write completed before its first response"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(first_private.path, target);
+    assert!(!first_private.append);
+    assert!(first_private.private);
+
+    let mut ordinary_write = Box::pin(host.write_file(target, b"ordinary", false));
+    let mut single_private_write = Box::pin(host.write_private_file(target, b"single-private"));
+    let batch_entries = [WriteFileEntry {
+        path: target,
+        content: b"batch",
+    }];
+    let mut batch_write = Box::pin(host.write_files(&batch_entries));
+    poll_once_pending(ordinary_write.as_mut()).await;
+    poll_once_pending(single_private_write.as_mut()).await;
+    poll_once_pending(batch_write.as_mut()).await;
+
+    send_write_file_success(&mut guest, first_private.seq()).await;
+    let second_private = tokio::select! {
+        _ = private_write.as_mut() => panic!("private write completed before its append"),
+        _ = ordinary_write.as_mut() => panic!("ordinary write completed while private write held the destination"),
+        _ = single_private_write.as_mut() => panic!("single-frame private write completed while chunked private write held the destination"),
+        _ = batch_write.as_mut() => panic!("batch write completed while private write held the destination"),
+        msg = read_guest_message(&mut guest) => msg,
+    };
+    assert_eq!(second_private.msg_type, MSG_WRITE_FILE);
+    let (path, content, sudo, append, private) =
+        vsock_proto::decode_write_file(&second_private.payload).unwrap();
+    assert_eq!(path, target);
+    assert_eq!(content.len(), 100);
+    assert!(!sudo);
+    assert!(append);
+    assert!(private);
+    send_write_file_success(&mut guest, second_private.seq).await;
+    private_write.await.unwrap();
+
+    let guest_drive = async {
+        let mut saw_ordinary = false;
+        let mut saw_single_private = false;
+        let mut saw_batch = false;
+        while !(saw_ordinary && saw_single_private && saw_batch) {
+            let msg = read_guest_message(&mut guest).await;
+            match msg.msg_type {
+                MSG_WRITE_FILE => {
+                    let (path, content, sudo, append, private) =
+                        vsock_proto::decode_write_file(&msg.payload).unwrap();
+                    assert_eq!(path, target);
+                    assert!(!sudo);
+                    assert!(!append);
+                    if private {
+                        assert!(!saw_single_private);
+                        assert_eq!(content, b"single-private");
+                        saw_single_private = true;
+                    } else {
+                        assert!(!saw_ordinary);
+                        assert_eq!(content, b"ordinary");
+                        saw_ordinary = true;
+                    }
+                    send_write_file_success(&mut guest, msg.seq).await;
+                }
+                MSG_WRITE_FILES => {
+                    assert!(!saw_batch);
+                    let files = vsock_proto::decode_write_files(&msg.payload).unwrap();
+                    assert_eq!(files.len(), 1);
+                    assert_eq!(files[0].path, target);
+                    assert_eq!(files[0].content, b"batch");
+                    saw_batch = true;
+                    send_write_files_success(&mut guest, msg.seq).await;
+                }
+                _ => panic!("unexpected guest message type {:#04x}", msg.msg_type),
+            }
+        }
+    };
+    let ((), ordinary_result, single_private_result, batch_result) = tokio::join!(
+        guest_drive,
+        ordinary_write.as_mut(),
+        single_private_write.as_mut(),
+        batch_write.as_mut()
+    );
+    ordinary_result.unwrap();
+    single_private_result.unwrap();
+    batch_result.unwrap();
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_allows_independent_path_progress() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let private_content = ChunkedWriteFixture::two_chunk_content();
+    let mut private_write =
+        Box::pin(host.write_private_file("/tmp/private-progress.bin", &private_content));
+
+    let first_private = tokio::select! {
+        _ = private_write.as_mut() => panic!("private write completed before its first response"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(first_private.path, "/tmp/private-progress.bin");
+    assert!(!first_private.append);
+    assert!(first_private.private);
+
+    let mut independent_write =
+        Box::pin(host.write_file("/tmp/independent.bin", b"independent", false));
+    poll_once_pending(independent_write.as_mut()).await;
+    send_write_file_success(&mut guest, first_private.seq()).await;
+
+    let independent = tokio::select! {
+        _ = private_write.as_mut() => panic!("private write completed before its append"),
+        _ = independent_write.as_mut() => panic!("independent write completed before its response"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(independent.path, "/tmp/independent.bin");
+    assert_eq!(independent.content, b"independent");
+    assert!(!independent.append);
+    assert!(!independent.private);
+    send_write_file_success(&mut guest, independent.seq()).await;
+    independent_write.await.unwrap();
+
+    let second_private = tokio::select! {
+        _ = private_write.as_mut() => panic!("private write completed before its append"),
+        frame = expect_write_file(&mut guest) => frame,
+    };
+    assert_eq!(second_private.path, "/tmp/private-progress.bin");
+    assert!(second_private.append);
+    assert!(second_private.private);
+    send_write_file_success(&mut guest, second_private.seq()).await;
+    private_write.await.unwrap();
+}
+
+#[tokio::test]
 async fn write_private_file_chunked_guest_failure_releases_tracker() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -547,7 +757,19 @@ async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_
         NormalOperationReadiness::Idle
     );
 
+    let successor = spawn_write_file(
+        Arc::clone(&host),
+        "/tmp/private-blocked.env",
+        b"replacement".to_vec(),
+        false,
+    );
     drop(writer_guard);
+    let successor_frame = expect_write_file(&mut guest).await;
+    assert_eq!(successor_frame.path, "/tmp/private-blocked.env");
+    assert_eq!(successor_frame.content, b"replacement");
+    assert!(!successor_frame.private);
+    send_write_file_success(&mut guest, successor_frame.seq()).await;
+    successor.await.unwrap().unwrap();
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 

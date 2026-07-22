@@ -15,7 +15,7 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-api-keys, secrets, variables, agents, composes); the only mocks are the Clerk
+CLI auth, secrets, variables, agents, composes); the only mocks are the Clerk
 SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
 bearers are minted with the exported test token signers (api-bdd-github and
 api-bdd-computer-use precedent).
@@ -63,7 +63,7 @@ async function onboardAdmin(
 }
 
 describe("AUTH-03 user config CRUD error boundaries", () => {
-  it("isolates secret, variable, and api-key deletion across users and missing names", async () => {
+  it("isolates secret and variable deletion across users and missing names", async () => {
     const admin = api.user();
     const member = api.user({ orgId: admin.orgId, orgRole: "org:member" });
     await onboardAdmin(admin, { slug: slug("bdd-uc-a1") });
@@ -125,39 +125,10 @@ describe("AUTH-03 user config CRUD error boundaries", () => {
         return candidate.name === variableName;
       }),
     ).toBeTruthy();
-
-    const created = await api.createApiKey(admin, {
-      name: "BDD UC key",
-      expiresInDays: 7,
-    });
-    const missingKey = await cfg.requestDeleteApiKey(
-      admin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingKey.body);
-    expect(missingKey.body.error).toStrictEqual({
-      message: "API key not found",
-      code: "NOT_FOUND",
-    });
-    const crossUserKey = await cfg.requestDeleteApiKey(
-      member,
-      created.id,
-      [404],
-    );
-    expectApiError(crossUserKey.body);
-    expect(crossUserKey.body.error.code).toBe("NOT_FOUND");
-    const keysAfter = await api.listApiKeys(admin);
-    expect(
-      keysAfter.apiKeys.some((candidate) => {
-        return candidate.id === created.id;
-      }),
-    ).toBeTruthy();
   });
 
-  it("rejects invalid config bodies and missing org context with 400s", async () => {
+  it("rejects invalid config bodies with 400s", async () => {
     const admin = api.user();
-    const noOrg = api.user({ orgId: null });
     await onboardAdmin(admin, { slug: slug("bdd-uc-a2") });
 
     const invalidVariable = await cfg.requestSetVariable(
@@ -167,33 +138,6 @@ describe("AUTH-03 user config CRUD error boundaries", () => {
     );
     expectApiError(invalidVariable.body);
     expect(invalidVariable.body.error.code).toBe("BAD_REQUEST");
-
-    const noOrgKey = await api.requestCreateApiKey(
-      noOrg,
-      { name: "k", expiresInDays: 7 },
-      [400],
-    );
-    expectApiError(noOrgKey.body);
-    expect(noOrgKey.body.error).toStrictEqual({
-      message: "Explicit org context required — ensure active org in session",
-      code: "BAD_REQUEST",
-    });
-
-    const emptyKeyName = await api.requestCreateApiKey(
-      admin,
-      { name: "", expiresInDays: 90 },
-      [400],
-    );
-    expectApiError(emptyKeyName.body);
-    expect(emptyKeyName.body.error.code).toBe("BAD_REQUEST");
-
-    const zeroExpiry = await api.requestCreateApiKey(
-      admin,
-      { name: "k", expiresInDays: 0 },
-      [400],
-    );
-    expectApiError(zeroExpiry.body);
-    expect(zeroExpiry.body.error.code).toBe("BAD_REQUEST");
 
     const invalidPush = await cfg.requestRegisterPush(
       admin,
@@ -336,10 +280,7 @@ describe("AUTH-03 agent user connectors", () => {
     expectApiError(crossOrgRead.body);
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
 
-    const pat = await api.createApiKey(admin, {
-      name: "BDD UC PAT",
-      expiresInDays: 7,
-    });
+    const pat = await api.createCliToken(admin);
     cfg.mockMembership(admin, "org:admin");
     const patSet = await cfg.updateUserConnectors(
       { bearer: pat.token },
@@ -584,16 +525,13 @@ describe("AUTH-01 auth probe sessions", () => {
   });
 });
 
-describe("AUTH-02 auth probe PAT bearers", () => {
-  it("resolves api-key bearers with membership roles from clerk", async () => {
+describe("AUTH-02 auth probe CLI PAT bearers", () => {
+  it("resolves CLI PAT bearers with membership roles from clerk", async () => {
     const admin = api.user();
     const memberUser = api.user({ orgRole: "org:member" });
     const orphan = api.user();
 
-    const adminKey = await api.createApiKey(admin, {
-      name: "BDD probe admin key",
-      expiresInDays: 7,
-    });
+    const adminKey = await api.createCliToken(admin);
     cfg.mockMembership(admin, "org:admin");
     const adminProbe = await cfg.probeAuth(
       { authorization: `Bearer ${adminKey.token}` },
@@ -607,10 +545,7 @@ describe("AUTH-02 auth probe PAT bearers", () => {
       orgRole: "admin",
     });
 
-    const memberKey = await api.createApiKey(memberUser, {
-      name: "BDD probe member key",
-      expiresInDays: 7,
-    });
+    const memberKey = await api.createCliToken(memberUser);
     cfg.mockMembership(memberUser, "org:member");
     const memberProbe = await cfg.probeAuth(
       { authorization: `Bearer ${memberKey.token}` },
@@ -624,10 +559,7 @@ describe("AUTH-02 auth probe PAT bearers", () => {
       orgRole: "member",
     });
 
-    const orphanKey = await api.createApiKey(orphan, {
-      name: "BDD probe orphan key",
-      expiresInDays: 7,
-    });
+    const orphanKey = await api.createCliToken(orphan);
     cfg.mockMembership(orphan, null);
     const orphanProbe = await cfg.probeAuth(
       { authorization: `Bearer ${orphanKey.token}` },
@@ -644,10 +576,7 @@ describe("AUTH-02 auth probe PAT bearers", () => {
     const admin = api.user();
     const base = now();
     mockNow(base);
-    const key = await api.createApiKey(admin, {
-      name: "BDD probe cache key",
-      expiresInDays: 7,
-    });
+    const key = await api.createCliToken(admin);
     const bearer = { authorization: `Bearer ${key.token}` };
 
     cfg.mockMembership(admin, "org:admin");
@@ -676,40 +605,6 @@ describe("AUTH-02 auth probe PAT bearers", () => {
     expect(refreshed.body).toStrictEqual(first.body);
   });
 
-  it("rejects revoked api-key bearers even when a valid clerk cookie rides along", async () => {
-    const admin = api.user();
-    const key = await api.createApiKey(admin, {
-      name: "BDD probe revoked key",
-      expiresInDays: 7,
-    });
-    cfg.mockMembership(admin, "org:admin");
-    const before = await cfg.probeAuth(
-      { authorization: `Bearer ${key.token}` },
-      {},
-      [200],
-    );
-    expect(before.body).toMatchObject({ tokenType: "pat" });
-
-    await api.deleteApiKey(admin, key.id);
-    cfg.mockSession(null);
-    const revoked = await cfg.probeAuth(
-      { authorization: `Bearer ${key.token}` },
-      {},
-      [401],
-    );
-    expectApiError(revoked.body);
-    expect(revoked.body.error.code).toBe("UNAUTHORIZED");
-
-    cfg.mockSession(admin);
-    const revokedWithCookie = await cfg.probeAuth(
-      { authorization: `Bearer ${key.token}`, cookie: "__session=opaque" },
-      {},
-      [401],
-    );
-    expectApiError(revokedWithCookie.body);
-    expect(revokedWithCookie.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("rejects forged and malformed pat bearers", async () => {
     cfg.mockSession(null);
 
@@ -732,14 +627,11 @@ describe("AUTH-02 auth probe PAT bearers", () => {
     expect(garbage.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("expires api keys by their db expiry under mocked time", async () => {
+  it("expires CLI PATs by their db expiry under mocked time", async () => {
     const admin = api.user();
     const base = now();
     mockNow(base);
-    const key = await api.createApiKey(admin, {
-      name: "BDD probe expiring key",
-      expiresInDays: 1,
-    });
+    const key = await api.createCliToken(admin);
     cfg.mockMembership(admin, "org:admin");
     const fresh = await cfg.probeAuth(
       { authorization: `Bearer ${key.token}` },
@@ -748,7 +640,7 @@ describe("AUTH-02 auth probe PAT bearers", () => {
     );
     expect(fresh.body).toMatchObject({ tokenType: "pat" });
 
-    mockNow(base + 2 * 24 * 60 * 60 * 1000);
+    mockNow(base + 91 * 24 * 60 * 60 * 1000);
     const expired = await cfg.probeAuth(
       { authorization: `Bearer ${key.token}` },
       {},

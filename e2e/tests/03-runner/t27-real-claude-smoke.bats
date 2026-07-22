@@ -7,9 +7,8 @@
 #
 # Test 0 (version): print sandbox Claude Code version for debugging
 # Test 1 (basic): baseline LLM execution — math prompt, verify correct answer
-# Test 2 (flags): --append-system-prompt, --disallowed-tools
-#   Verifies CLI flags pass through guest-agent → Claude CLI pipeline:
-#   - Commander.js variadic arg parsing works (regression for #5788)
+# Test 2 (options): appendSystemPrompt, disallowedTools
+#   Verifies structured run options pass through guest-agent → Claude.
 #   - append-system-prompt reaches Claude (verifiable via SIGNATURE)
 # Test 3 (settings): --settings with PreToolUse hook
 #   Verifies the full pipeline: API → claim route → runner → sandbox → hook fires
@@ -35,8 +34,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null
@@ -90,9 +88,9 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
-    $VM0_CLI compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
-    $VM0_CLI compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-basic.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-flags.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-settings.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -114,10 +112,9 @@ ensure_anthropic_model_provider() {
     ensure_anthropic_model_provider
 
     # Run claude --version inside the sandbox to confirm which binary is installed
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        "Run 'claude --version' with the Bash tool and include the exact output"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run 'claude --version' with the Bash tool and include the exact output" \
+        '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     assert_success
     # Print output for CI log inspection
@@ -133,41 +130,40 @@ ensure_anthropic_model_provider() {
 
     ensure_anthropic_model_provider
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "RESULT=579"
 }
 
-# Test 2: CLI flags — verify the full guest-agent → Claude CLI flag pipeline.
+# Test 2: Structured run options — verify the guest-agent → Claude pipeline.
 #
 # Verifies:
-#   - --disallowed-tools doesn't swallow the prompt (#5788 regression)
-#   - --append-system-prompt reaches Claude (SIGNATURE in response)
-@test "t27-2: run with cli flags (append-system-prompt, disallowed-tools)" {
+#   - disallowedTools reaches Claude
+#   - appendSystemPrompt reaches Claude (SIGNATURE in response)
+@test "t27-2: run with append-system-prompt and disallowed-tools" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set"
     fi
 
     ensure_anthropic_model_provider
 
-    # "--" separates variadic --disallowed-tools from the prompt
-    # (Commander.js <tools...> would otherwise swallow subsequent args)
-    run $VM0_CLI run "${AGENT_NAME}-flags" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        --append-system-prompt "In your final response, output exactly two lines and no extra text. Line 1: RESULT=<answer>. Line 2: SIGNATURE=smoke-test." \
-        --disallowed-tools CronCreate CronList CronDelete \
-        -- "Compute 789+101 and follow the required final response format."
+    run run_compose_fixture "${AGENT_NAME}-flags" \
+        "Compute 789+101 and follow the required final response format." \
+        '{
+            "modelProviderType":"anthropic-api-key",
+            "realAgentInPreview":true,
+            "appendSystemPrompt":"In your final response, output exactly two lines and no extra text. Line 1: RESULT=<answer>. Line 2: SIGNATURE=smoke-test.",
+            "disallowedTools":["CronCreate","CronList","CronDelete"]
+        }'
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "RESULT=890"
-    # Verify --append-system-prompt reached Claude (agent follows the instruction)
+    # Verify appendSystemPrompt reached Claude (agent follows the instruction).
     assert_output --partial "SIGNATURE=smoke-test"
 }
 
@@ -187,11 +183,14 @@ ensure_anthropic_model_provider() {
     # Claude will read this file to prove the hook fired inside the sandbox.
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
-    run $VM0_CLI run "${AGENT_NAME}-settings" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        --settings "$settings" \
-        -- "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response."
+    run run_compose_fixture "${AGENT_NAME}-settings" \
+        "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response." \
+        "$(jq -nc --arg settings "$settings" \
+            '{
+                modelProviderType: "anthropic-api-key",
+                realAgentInPreview: true,
+                settings: $settings
+            }')"
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"

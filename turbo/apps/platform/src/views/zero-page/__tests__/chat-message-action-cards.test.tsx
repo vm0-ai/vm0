@@ -1,5 +1,9 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroConnectorManualGrantContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
+  zeroConnectorOauthStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -199,7 +203,7 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
-  it("shares a link-backed mail draft between cards and the detail sidebar", async () => {
+  it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
@@ -223,15 +227,23 @@ describe("chat message action cards", () => {
           from: "sender@example.com",
           to: ["recipient@example.com"],
           cc: ["copy@example.com"],
-          bcc: [],
+          bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
-          status: "draft",
+          replyTo: "reply-only@example.com",
+          inReplyTo: "<thread-message@example.com>",
+          status: sent ? "sent" : "draft",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
-          references: [],
+          ...(sent
+            ? {
+                sentGmailMessageId: "gmail-sent-message-id",
+                sentAt: "2026-07-14T10:01:00.000Z",
+              }
+            : {}),
+          references: ["<reference-message@example.com>"],
           attachments: [
             {
               filename: "report.pdf",
@@ -240,7 +252,7 @@ describe("chat message action cards", () => {
             },
           ],
           createdAt,
-          updatedAt: createdAt,
+          updatedAt: sent ? "2026-07-14T10:01:00.000Z" : createdAt,
         },
       });
     });
@@ -255,16 +267,18 @@ describe("chat message action cards", () => {
           from: "sender@example.com",
           to: ["recipient@example.com"],
           cc: ["copy@example.com"],
-          bcc: [],
+          bcc: ["hidden@example.com"],
           subject: "Hello",
           body: "Mail body",
+          replyTo: "reply-only@example.com",
+          inReplyTo: "<thread-message@example.com>",
           status: "sent",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
           sentGmailMessageId: "gmail-sent-message-id",
-          references: [],
+          references: ["<reference-message@example.com>"],
           attachments: [
             {
               filename: "report.pdf",
@@ -338,9 +352,20 @@ describe("chat message action cards", () => {
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
     expect(within(sidebar).getByText("copy@example.com")).toBeInTheDocument();
+    expect(within(sidebar).getByText("hidden@example.com")).toBeInTheDocument();
     expect(within(sidebar).getByText("Mail body")).toBeInTheDocument();
     expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
+    expect(within(sidebar).getByText("242 KB")).toBeInTheDocument();
+    expect(within(sidebar).queryByText(/application\/pdf/u)).toBeNull();
+    expect(within(sidebar).queryByText("reply-only@example.com")).toBeNull();
+    expect(
+      within(sidebar).queryByText("<thread-message@example.com>"),
+    ).toBeNull();
+    expect(
+      within(sidebar).queryByText("<reference-message@example.com>"),
+    ).toBeNull();
     expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(draftRequests).toBe(1);
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
@@ -350,6 +375,290 @@ describe("chat message action cards", () => {
     sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(queryButtonByText("Send", sidebar)).toBeNull();
     expect(draftRequests).toBe(2);
+  });
+
+  it("connects a single OAuth connector directly and resumes the chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-direct-oauth`;
+    const callbackPrompt = "Re-check GitHub access, then continue";
+    const connectorUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const sentPrompts: string[] = [];
+    let connected = false;
+    let authorized = false;
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.data.connectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "github",
+            label: "GitHub",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            connection: connected
+              ? {
+                  authMethod: "oauth",
+                  externalUsername: "octocat",
+                  externalEmail: null,
+                  reconnectReason: null,
+                }
+              : null,
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["github"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          authMethod: "oauth",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        connected = true;
+        authorized = true;
+        context.mocks.data.connectors([
+          connectedConnector({
+            type: "github",
+            authMethod: "oauth",
+            externalUsername: "octocat",
+            updatedAt: "2026-01-01T00:00:01Z",
+          }),
+        ]);
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/github/authorize",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Direct OAuth connector",
+      chatMessages: [
+        {
+          id: "msg-user-direct-oauth",
+          role: "user",
+          content: "Use GitHub",
+          runId: "run-direct-oauth",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-direct-oauth",
+          role: "assistant",
+          content: connectorUrl,
+          runId: "run-direct-oauth",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", connectorCard));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "GitHub" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+    });
+  });
+
+  it("enables a single no-auth connector directly", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-direct-no-auth`;
+    const connectorUrl = `https://app.vm0.ai/connectors/stripe/authorize?agentId=${AGENT_ID}`;
+    let connected = false;
+    let authorized = false;
+    let connectCalls = 0;
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "stripe",
+            label: "Public Stripe",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            authMethods: [
+              {
+                id: "api",
+                label: "Public catalog",
+                description: null,
+                grantKind: "none",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+          }),
+        ],
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["stripe"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCalls += 1;
+        expect(params.type).toBe("stripe");
+        expect(body).toStrictEqual({
+          authMethod: "api",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        connected = true;
+        authorized = true;
+        return respond(
+          200,
+          connectedConnector({ type: "stripe", authMethod: "api" }),
+        );
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Direct no-auth connector",
+      chatMessages: [
+        {
+          id: "msg-user-direct-no-auth",
+          role: "user",
+          content: "Use public Stripe data",
+          runId: "run-direct-no-auth",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-direct-no-auth",
+          role: "assistant",
+          content: connectorUrl,
+          runId: "run-direct-no-auth",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", connectorCard));
+
+    await waitFor(() => {
+      expect(connectCalls).toBe(1);
+      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reloads the shared mail draft after deleting it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000018";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000019";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let deleted = false;
+    let draftRequests = 0;
+
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      draftRequests += 1;
+      if (deleted) {
+        return respond(404, {
+          error: { message: "Mail draft not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Delete me",
+          body: "Mail body",
+          status: "draft",
+          detailAvailable: true,
+          gmailDraftId: "r-delete-draft",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    context.mocks.api(zeroMailContract.deleteDraft, ({ respond }) => {
+      deleted = true;
+      return respond(204);
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delete mail card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-00000000001a",
+          role: "assistant",
+          content: mailDraftUrl,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const card = await screen.findByLabelText("Open draft email: Delete me");
+    expect(draftRequests).toBe(1);
+    await user.click(card);
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(draftRequests).toBe(1);
+    expect(within(sidebar).queryByText("Cc")).toBeNull();
+    expect(within(sidebar).queryByText("Bcc")).toBeNull();
+    await user.click(await waitForButtonByText("Delete", sidebar));
+
+    await waitFor(() => {
+      expect(deleted).toBeTruthy();
+      expect(draftRequests).toBe(2);
+      expect(screen.queryByLabelText("Open draft email: Delete me")).toBeNull();
+      expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
+    });
   });
 
   it("renders a deleted email card without an interactive sidebar trigger", async () => {
@@ -792,9 +1101,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorActionCallback]: true,
-      },
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -866,9 +1172,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorActionCallback]: true,
-      },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");

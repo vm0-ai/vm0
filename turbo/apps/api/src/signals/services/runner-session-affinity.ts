@@ -1,7 +1,16 @@
 import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  eq,
+  gt,
+  isNotNull,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
@@ -19,48 +28,48 @@ function runnerSessionAffinityHolderFreshAfter(currentDate: Date): Date {
   );
 }
 
-type SessionIdSqlValue = string | SQL;
-type ProfileSqlValue = string | SQL;
-type GenerationSqlValue = string | SQL;
-
 function reusableSandboxCondition(args: {
-  readonly sessionId: SessionIdSqlValue;
-  readonly profile: ProfileSqlValue;
-  readonly historyGenerationRunId?: GenerationSqlValue;
+  readonly sessionId: SQLWrapper;
+  readonly profile: SQLWrapper;
+  readonly historyGenerationRunId?: SQLWrapper;
 }): SQL {
-  const reusableSandbox = args.historyGenerationRunId
-    ? sql`jsonb_build_object(
+  const reusableSandbox =
+    args.historyGenerationRunId !== undefined
+      ? sql`jsonb_build_object(
         'profile', cast(${args.profile} as text),
         'historyGenerationRunId', cast(${args.historyGenerationRunId} as text)
       )`
-    : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
-  return sql`${runnerState.heldSessionStates} @> jsonb_build_array(
+      : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
+  const heldSessionStates = sql`jsonb_build_array(
     jsonb_build_object(
       'sessionId', cast(${args.sessionId} as text),
       'reusableSandbox', ${reusableSandbox}
     )
   )`;
+  return arrayContains(runnerState.heldSessionStates, heldSessionStates);
 }
 
 function capableWorkspaceCondition(args: {
-  readonly sessionId: SessionIdSqlValue;
-  readonly profile: ProfileSqlValue;
+  readonly sessionId: SQLWrapper;
+  readonly profile: SQLWrapper;
 }): SQL {
-  return sql`(
-    ${runnerState.heldSessionStates} @> jsonb_build_array(
-      jsonb_build_object(
-        'sessionId', cast(${args.sessionId} as text),
-        'workspaceCaches', jsonb_build_array(
-          jsonb_build_object(
-            'profile', cast(${args.profile} as text),
-            'workspaceAffinityVersion', 1
-          )
+  const heldSessionStates = sql`jsonb_build_array(
+    jsonb_build_object(
+      'sessionId', cast(${args.sessionId} as text),
+      'workspaceCaches', jsonb_build_array(
+        jsonb_build_object(
+          'profile', cast(${args.profile} as text),
+          'workspaceAffinityVersion', 1
         )
       )
     )
-    AND ${runnerState.admittableProfiles} @> jsonb_build_array(
-      cast(${args.profile} as text)
-    )
+  )`;
+  const admittableProfiles = sql`jsonb_build_array(
+    cast(${args.profile} as text)
+  )`;
+  return sql`(
+    ${arrayContains(runnerState.heldSessionStates, heldSessionStates)}
+    AND ${arrayContains(runnerState.admittableProfiles, admittableProfiles)}
   )`;
 }
 
@@ -71,15 +80,15 @@ function runnerStateHas(args: {
   readonly resourceCondition: SQL;
 }): SQL {
   const runnerCondition = args.runnerId
-    ? sql`AND ${runnerState.runnerId} = ${args.runnerId}`
+    ? sql`AND ${eq(runnerState.runnerId, args.runnerId)}`
     : sql``;
   return sql`EXISTS (
     SELECT 1
     FROM ${runnerState}
-    WHERE ${runnerState.runnerGroup} = ${args.runnerGroup}
+    WHERE ${eq(runnerState.runnerGroup, args.runnerGroup)}
       ${runnerCondition}
       AND ${runnerState.mode} = 'running'
-      AND ${runnerState.lastSeenAt} > ${args.freshAfter}
+      AND ${gt(runnerState.lastSeenAt, args.freshAfter)}
       AND ${args.resourceCondition}
   )`;
 }
@@ -129,17 +138,17 @@ export function runnerSessionAffinityPollPriority(args: {
   const hasGlobalWorkspace = global(workspaceCondition);
   const hasLocalWorkspace = local(workspaceCondition);
   return sql`CASE
-    WHEN ${runnerJobQueue.createdAt} > ${generationProtectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
-    AND ${targetGenerationRunId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, generationProtectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
+    AND ${isNotNull(targetGenerationRunId)}
     AND ${hasGlobalExact}
     THEN CASE WHEN ${hasLocalExact} THEN 5 ELSE 0 END
-    WHEN ${runnerJobQueue.createdAt} > ${protectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
     AND ${hasGlobalReusable}
     THEN CASE WHEN ${hasLocalReusable} THEN 4 ELSE 0 END
-    WHEN ${runnerJobQueue.createdAt} > ${protectedAfter}
-    AND ${runnerJobQueue.cliAgentSessionId} IS NOT NULL
+    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
+    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
     AND ${hasGlobalWorkspace}
     THEN CASE
       WHEN ${hasLocalReusable} THEN 4
@@ -222,20 +231,22 @@ async function runnerSessionAffinityHolders(args: {
   readonly shouldLookUpExactGeneration: boolean;
 }): Promise<RunnerSessionAffinityHolders> {
   const reusableCondition = reusableSandboxCondition({
-    sessionId: args.cliAgentSessionId,
-    profile: args.profile,
+    sessionId: sql.param(args.cliAgentSessionId),
+    profile: sql.param(args.profile),
   });
   const workspaceCondition = capableWorkspaceCondition({
-    sessionId: args.cliAgentSessionId,
-    profile: args.profile,
+    sessionId: sql.param(args.cliAgentSessionId),
+    profile: sql.param(args.profile),
   });
-  const exactGenerationCondition = args.shouldLookUpExactGeneration
-    ? reusableSandboxCondition({
-        sessionId: args.cliAgentSessionId,
-        profile: args.profile,
-        historyGenerationRunId: args.historyGenerationRunId,
-      })
-    : sql`false`;
+  const exactGenerationCondition =
+    args.shouldLookUpExactGeneration &&
+    args.historyGenerationRunId !== undefined
+      ? reusableSandboxCondition({
+          sessionId: sql.param(args.cliAgentSessionId),
+          profile: sql.param(args.profile),
+          historyGenerationRunId: sql.param(args.historyGenerationRunId),
+        })
+      : sql`false`;
   const [holders] = await args.db
     .select({
       hasReusableHolder:

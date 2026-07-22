@@ -88,8 +88,9 @@ applicable runtime boundary:
 
 ```typescript
 // Correct: LOWER(text) has the same driver representation as the text column.
-const normalizedEmail =
-  sql`LOWER(${users.email})`.mapWith(users.email).as("normalized_email");
+const normalizedEmail = sql`LOWER(${users.email})`
+  .mapWith(users.email)
+  .as("normalized_email");
 
 // Correct: the explicit decoder owns the runtime number contract.
 const total = sql`COUNT(*)::int`.mapWith(pgIntegerDecoder).as("total");
@@ -142,6 +143,41 @@ result decoder. If a write query adds `.returning({...})`, map raw SQL in the
 returned fields independently of `.set({...})`. Likewise, raw SQL passed to
 `insert(...).select(...)` is the write source rather than a returned field; only
 a subsequent `returning(...)` introduces a result-mapping boundary.
+
+Use typed operators such as `eq`, `gt`, `isNull`, `isNotNull`, and `like`
+instead of an equivalent SQL tag. They make the operation explicit and, when
+the helper supports it, preserve the schema relationship between a column and
+its bound value. Pass value arrays directly to `inArray(column, values)`; do not
+rebuild parameter lists with `sql.join(...)`. Use `asc(...)` and `desc(...)` for
+ordering leaves, and use `arrayContains(...)` when the left operand is an
+array-valued schema column and an SQL wrapper intentionally constructs the
+right JSON value.
+
+Likewise, use `sum(...)`, `count(...)`, `countDistinct(...)`, `max(...)`, or
+`min(...)` for an exact aggregate leaf. Keep an existing outer SQL cast,
+`FILTER`, `COALESCE`, alias, and `.mapWith(...)` when that outer expression owns
+a stricter result decoder or nullability contract. Keep literal predicates as
+literals when changing them into helper arguments would introduce a parameter
+and alter planner-visible query shape; a `LIKE ... ESCAPE` suffix also remains
+outside the `like(...)` leaf.
+
+This preference also applies to a replaceable leaf inside otherwise irreducible
+SQL. Interpolate the typed operator in place of that leaf while retaining the
+outer tag for surrounding CTE, CASE, join, filter, cast, grouping, or statement
+syntax. Use `and(...)` and `or(...)` for a fixed boolean tree only when its
+direct consumer accepts their `SQL | undefined` result; do not use them when
+that result would weaken a required concrete `SQL` contract.
+Keep SQL syntax that belongs to an operand inside that operand. For example,
+write ``gte(events.createdAt, sql`${timestamp}::timestamp`)`` rather than
+placing the cast after the interpolated `gte(...)` fragment.
+
+Every remaining SQL-tag interpolation must have one unambiguous static role.
+Do not interpolate `any`, `unknown`, a value that can be `undefined`, an array or
+tuple directly, or a union that mixes an ordinary bound value with an SQL
+wrapper. Narrow optional values before constructing SQL. Use `sql.empty()` for
+an intentionally empty fragment, `sql.param(...)` when an array or other value
+must be one driver parameter, and `sql.join(...)` when composing SQL fragments.
+Keep bound values and SQL wrappers as distinct types across helper boundaries.
 
 ### Raw Execute Rows
 

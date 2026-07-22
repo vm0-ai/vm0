@@ -25,8 +25,7 @@ setup_file() {
     cat > AGENTS.md << 'VOLEOF'
 Codex smoke test instructions.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     cat > "$TEST_CONFIG" <<EOF
@@ -45,7 +44,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -55,8 +54,7 @@ teardown_file() {
 }
 
 @test "t-codex-smoke-1: basic codex run renders codex markers" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        "echo from codex"
+    run run_compose_fixture "$AGENT_NAME" "echo from codex"
 
     assert_success
     # init event from thread.started
@@ -65,6 +63,5 @@ teardown_file() {
     assert_output --partial "● echo from codex"
     # result event from turn.completed
     assert_output --partial "◆ Codex Completed"
-    # run lifecycle marker
-    assert_output --partial "Session:"
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 }

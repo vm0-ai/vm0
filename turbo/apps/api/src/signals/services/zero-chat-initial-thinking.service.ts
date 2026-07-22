@@ -8,6 +8,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  not,
   notInArray,
   or,
   type SQL,
@@ -24,6 +25,7 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { insertChatMessage } from "./zero-chat-message.service";
+import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -88,6 +90,7 @@ async function loadThinkingContextMessages(args: {
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
+        not(queuedUserMessageExists(args.db)),
         isNull(chatMessages.runLifecycleEvent),
         isNull(chatMessages.recommendedFollowups),
         isNull(chatMessages.usagePayload),

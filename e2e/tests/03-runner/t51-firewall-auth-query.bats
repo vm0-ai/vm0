@@ -30,9 +30,8 @@ setup_file() {
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$ARTIFACT_NAME" .
     cd - >/dev/null
 }
 
@@ -56,18 +55,17 @@ agents:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-placeholder.yaml"
     echo "$output"
     assert_success
 
-    run $VM0_CLI run "${AGENT_NAME}-placeholder" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo \"TOKEN=\$SERPAPI_TOKEN\""
+    run run_compose_fixture "${AGENT_NAME}-placeholder" \
+        "echo \"TOKEN=\$SERPAPI_TOKEN\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Token should be the placeholder (not the real fake token)
     assert_output --partial "TOKEN=CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof"
 }
@@ -84,7 +82,7 @@ agents:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-proxy.yaml"
     echo "$output"
     assert_success
 
@@ -95,14 +93,13 @@ EOF
     # but returns 401 when api_key IS present but invalid. So 401 is the
     # definitive proof that the proxy injected our fake api_key query param.
     # 403 = firewall blocked (proxy didn't match).
-    run $VM0_CLI run "${AGENT_NAME}-proxy" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\""
+    run run_compose_fixture "${AGENT_NAME}-proxy" \
+        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # 401 proves api_key was injected (SerpApi rejects our fake token).
     # 429 also proves injection (rate-limited, but request reached SerpApi with api_key).
     # Without api_key, SerpApi returns 200 (anonymous access).
@@ -112,7 +109,7 @@ EOF
     assert_output --regexp "SERPAPI_STATUS=(401|429)"
 
     # Check network logs confirm firewall match
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

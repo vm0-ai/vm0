@@ -46,9 +46,7 @@ import type { ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
 import type {
   ConnectorCatalogPrivateArtifact,
-  ConnectorCatalogPrivateFirewallsArtifact,
   ConnectorCatalogPublicArtifact,
-  ConnectorCatalogRunnerFirewallsArtifact,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   acceptedConnectorCatalogMethodIsCompatible,
@@ -64,6 +62,11 @@ import {
   getStaticConnectorCatalogResolutionDetail,
   getStaticPublicConnectorCatalogDetail,
 } from "./connector-catalog-reader.service";
+import {
+  createExternalConnectorServerFirewallCatalog,
+  createStaticConnectorServerFirewallCatalog,
+  type ConnectorServerFirewallCatalog,
+} from "./connector-server-firewall-catalog.service";
 
 type AcceptedPrivateConnector =
   ConnectorCatalogPrivateArtifact["connectors"][number];
@@ -72,10 +75,6 @@ type AcceptedPrivateAuthMethod =
 type AcceptedPrivateSkill = AcceptedPrivateConnector["skill"];
 type AcceptedPublicAuthMethod =
   ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
-type AcceptedServerFirewall =
-  ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
-type AcceptedRunnerFirewall =
-  ConnectorCatalogRunnerFirewallsArtifact["firewalls"][number];
 
 export type ConnectorRuntimeSnapshotIdentity =
   | { readonly source: "static" }
@@ -100,8 +99,6 @@ export interface ConnectorRuntimeConnector {
     ConnectorRuntimeMethod
   >;
   readonly skill: AcceptedPrivateSkill | null;
-  readonly serverFirewall: AcceptedServerFirewall | null;
-  readonly runnerFirewall: AcceptedRunnerFirewall | null;
 }
 
 interface ConnectorRuntimeSnapshotBase {
@@ -109,6 +106,7 @@ interface ConnectorRuntimeSnapshotBase {
     ConnectorCatalogRef,
     ConnectorRuntimeConnector
   >;
+  readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }
 
 export type ConnectorRuntimeSnapshot =
@@ -579,14 +577,14 @@ const staticRuntimeSnapshot = singleton(() => {
         catalogConnector,
         methods,
         skill: null,
-        serverFirewall: null,
-        runnerFirewall: null,
       });
     }
     return {
       identity: { source: "static" },
       acceptedSnapshot: null,
       connectors,
+      serverFirewalls:
+        createStaticConnectorServerFirewallCatalog(CONNECTOR_TYPE_KEYS),
     };
   })();
 });
@@ -597,16 +595,6 @@ function externalRuntimeSnapshot(
   const privateByRef = new Map(
     acceptedSnapshot.privateArtifact.connectors.map((connector) => {
       return [connector.connectorRef, connector];
-    }),
-  );
-  const serverFirewallByRef = new Map(
-    acceptedSnapshot.privateFirewallsArtifact.connectors.map((firewall) => {
-      return [firewall.connectorRef, firewall];
-    }),
-  );
-  const runnerFirewallByRef = new Map(
-    acceptedSnapshot.runnerFirewallsArtifact.firewalls.map((firewall) => {
-      return [firewall.name, firewall];
     }),
   );
   const connectors = new Map<ConnectorCatalogRef, ConnectorRuntimeConnector>();
@@ -663,16 +651,27 @@ function externalRuntimeSnapshot(
       catalogConnector,
       methods,
       skill: privateConnector.skill,
-      serverFirewall:
-        serverFirewallByRef.get(publicConnector.connectorRef) ?? null,
-      runnerFirewall:
-        runnerFirewallByRef.get(publicConnector.connectorRef) ?? null,
     });
   }
+  const runtimeMethodsByRef = new Map(
+    [...connectors.entries()].map(([connectorRef, connector]) => {
+      return [
+        connectorRef,
+        [...connector.methods.values()].map((method) => {
+          return method.method;
+        }),
+      ];
+    }),
+  );
   return {
     identity: { source: "external", ...acceptedSnapshot.identity },
     acceptedSnapshot,
     connectors,
+    serverFirewalls: createExternalConnectorServerFirewallCatalog({
+      publicArtifact: acceptedSnapshot.publicArtifact,
+      privateFirewallsArtifact: acceptedSnapshot.privateFirewallsArtifact,
+      runtimeMethodsByRef,
+    }),
   };
 }
 
@@ -753,6 +752,14 @@ function runtimeShadowDigest(methods: readonly RuntimeShadowMethod[]): string {
     .digest("hex")}`;
 }
 
+async function serverFirewallShadowDigest(
+  snapshot: ConnectorRuntimeSnapshot,
+): Promise<string> {
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify(await snapshot.serverFirewalls.shadowProjection()))
+    .digest("hex")}`;
+}
+
 async function compareRuntimeSnapshots(
   staticSnapshot: ConnectorRuntimeSnapshot,
   db: ReadonlyDb,
@@ -772,15 +779,30 @@ async function compareRuntimeSnapshots(
   const externalMethods = runtimeShadowMethods(result.value);
   const staticDigest = runtimeShadowDigest(staticMethods);
   const externalDigest = runtimeShadowDigest(externalMethods);
+  const [staticServerFirewallDigest, externalServerFirewallDigest] =
+    await Promise.all([
+      serverFirewallShadowDigest(staticSnapshot),
+      serverFirewallShadowDigest(result.value),
+    ]);
   log.debug("Connector runtime catalog shadow comparison completed", {
     type: "connector_runtime_catalog_shadow_comparison",
-    outcome: staticDigest === externalDigest ? "match" : "difference",
+    outcome:
+      staticDigest === externalDigest &&
+      staticServerFirewallDigest === externalServerFirewallDigest
+        ? "match"
+        : "difference",
     staticConnectorCount: staticSnapshot.connectors.size,
     externalConnectorCount: result.value.connectors.size,
     staticMethodCount: staticMethods.length,
     externalMethodCount: externalMethods.length,
     staticDigest,
     externalDigest,
+    staticServerFirewallCount:
+      staticSnapshot.serverFirewalls.connectorRefs.length,
+    externalServerFirewallCount:
+      result.value.serverFirewalls.connectorRefs.length,
+    staticServerFirewallDigest,
+    externalServerFirewallDigest,
     ...(result.value.identity.source === "external"
       ? {
           sourceId: result.value.identity.sourceId,

@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -70,17 +71,18 @@ export const storageVersions = pgTable(
       ),
     s3Key: text("s3_key").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
-    archiveSize: bigint("archive_size", { mode: "number" }),
+    archiveSize: bigint("archive_size", { mode: "number" }).notNull(),
     fileCount: integer("file_count").notNull().default(0),
     message: text("message"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
-    return {
-      archiveSizeNullIdx: index("idx_storage_versions_archive_size_null")
-        .on(table.id)
-        .where(sql`${table.archiveSize} IS NULL`),
-    };
+    return [
+      check(
+        "chk_storage_versions_archive_size_nonnegative",
+        sql`${table.archiveSize} >= 0`,
+      ),
+    ];
   },
 );

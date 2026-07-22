@@ -55,8 +55,7 @@ setup_file() {
         "$TEST_DIR/$AUDIT_ARTIFACT_NAME/audit-runner.sh"
     chmod +x "$TEST_DIR/$AUDIT_ARTIFACT_NAME/audit-runner.sh"
     cd "$TEST_DIR/$AUDIT_ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$AUDIT_ARTIFACT_NAME" >/dev/null
-    $VM0_CLI artifact push >/dev/null
+    seed_storage_fixture artifact "$AUDIT_ARTIFACT_NAME" .
     cd - >/dev/null
 
     # Enable feature switch (codexOauthProvider is staff-only off by default).
@@ -84,7 +83,7 @@ agents:
     artifacts:
       - ${AUDIT_ARTIFACT_NAME}:/artifacts
 EOF
-    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -99,9 +98,9 @@ teardown_file() {
 # Real-codex-against-real-ChatGPT happy path is deferred to a nightly job
 # (per plan phase Q1 decision: A2 — synthetic + MSW for CI).
 @test "t54-1: codex agent run completes with codex-oauth provider" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "codex-oauth-token" \
-        -- "Reply with exactly RESULT=579"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Reply with exactly RESULT=579" \
+        '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
     # Mock codex echoes the prompt back; the sentinel just proves the run
@@ -180,9 +179,9 @@ teardown_file() {
 
     seed_codex_oauth_via_authjson "$raw_json"
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "codex-oauth-token" \
-        -- "Reply with exactly RESULT=579"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Reply with exactly RESULT=579" \
+        '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
     assert_output --partial "RESULT=579"
@@ -240,12 +239,11 @@ teardown_file() {
         skip "Requires REAL ChatGPT account tokens (synthetic seed produces 401 from real codex). Firewall rule covered by api-contracts unit tests. Run with E2E_CHATGPT_REAL_ACCOUNT_TOKENS=1 in nightly real-account job."
     fi
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "codex-oauth-token" \
-        --real-agent-in-preview \
-        -- "Run this exact Bash command and include its output:
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run this exact Bash command and include its output:
 curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
-cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'"
+cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'" \
+        '{"modelProviderType":"codex-oauth-token","realAgentInPreview":true}'
 
     assert_success
     # Firewall blocks → either non-2xx HTTP code, or curl exit non-zero

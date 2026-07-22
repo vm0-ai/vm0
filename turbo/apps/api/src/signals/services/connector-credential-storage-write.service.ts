@@ -1,7 +1,7 @@
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { eq, isNull, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -68,10 +68,7 @@ export async function upsertConnectorOwnedSecret(
           : { description: args.updatedDescription }),
         updatedAt: nowDate(),
       },
-      setWhere: or(
-        isNull(secrets.connectorId),
-        eq(secrets.connectorId, args.connectorId),
-      ),
+      setWhere: eq(secrets.connectorId, args.connectorId),
     })
     .returning({ id: secrets.id });
   if (!row) {
@@ -117,10 +114,7 @@ export async function upsertConnectorOwnedVariable(
           : { description: args.updatedDescription }),
         updatedAt: nowDate(),
       },
-      setWhere: or(
-        isNull(variables.connectorId),
-        eq(variables.connectorId, args.connectorId),
-      ),
+      setWhere: eq(variables.connectorId, args.connectorId),
     })
     .returning({ id: variables.id });
   if (!row) {

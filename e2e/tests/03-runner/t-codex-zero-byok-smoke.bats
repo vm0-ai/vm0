@@ -5,7 +5,7 @@
 # Validates the chain added by epic #11520:
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
 #   →  model policy routes the selected Codex model to that BYOK provider
-#   →  vm0 compose  →
+#   →  compose fixture API  →
 #   POST /api/zero/chat/messages (the same unified create-thread + run endpoint
 #   the web composer uses) → thread pins the selected model  →  real codex CLI runs with
 #   $OPENAI_API_KEY  →  response contains the expected sentinel.
@@ -36,9 +36,12 @@ setup_file() {
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
-    export CODEX_ZERO_SELECTED_MODEL="gpt-5.4-mini"
     configure_codex_zero_model_policy \
-        "$CODEX_ZERO_SELECTED_MODEL" \
+        "gpt-5.4-mini" \
+        "openai-api-key" \
+        "$OPENAI_PROVIDER_ID"
+    configure_codex_zero_model_policy \
+        "gpt-5.6-luna" \
         "openai-api-key" \
         "$OPENAI_PROVIDER_ID"
 
@@ -56,11 +59,11 @@ agents:
 EOF
 
     local compose_json
-    compose_json=$($VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" --json)
+    compose_json=$(seed_compose_fixture "$TEST_DIR/vm0-basic.yaml")
     export AGENT_ID
     AGENT_ID=$(printf '%s' "$compose_json" | jq -r '.composeId')
     [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]] \
-        || { echo "# compose --json output: $compose_json" >&2; return 1; }
+        || { echo "# compose fixture response: $compose_json" >&2; return 1; }
 
     # 4. Seed the zero_agents row (PK = composeId) without changing the
     # compose version created above; the product PUT route rewrites server-side
@@ -69,11 +72,14 @@ EOF
         -X POST -d "{\"action\":\"seed-agent\",\"agent_id\":\"$AGENT_ID\",\"display_name\":\"BYOK codex e2e\",\"visibility\":\"private\"}" >/dev/null
 }
 
-teardown_file() {
+teardown() {
     # Best-effort cleanup; never mask the actual test failure.
     if [[ -n "${THREAD_ID:-}" ]]; then
         _codex_zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
     fi
+}
+
+teardown_file() {
     if [[ -n "${AGENT_ID:-}" ]]; then
         $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
     fi
@@ -83,7 +89,7 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-zero-byok-smoke: full BYOK codex via zero web layer" {
+@test "t-codex-zero-byok-smoke-1: gpt-5.4-mini via zero web layer" {
     # Trigger a real run by hitting the same unified chat endpoint the web
     # composer uses. This both creates the thread (with eager-pin) and
     # dispatches the codex run in one call. Sets LAST_RUN_ID + LAST_THREAD_ID.
@@ -93,7 +99,8 @@ teardown_file() {
     # LAST_THREAD_ID / LAST_RUN_ID would arrive empty. The helper returns
     # non-zero on failure, which fails the test naturally.
     send_chat_run_message "$AGENT_ID" \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>"
+        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        "gpt-5.4-mini"
 
     THREAD_ID="$LAST_THREAD_ID"
     [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
@@ -111,4 +118,19 @@ teardown_file() {
     # key the run cannot produce the sentinel.
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
         || fail "Expected 'RESULT=579' in assistant content, got: $LAST_MSG_CONTENT"
+}
+
+@test "t-codex-zero-byok-smoke-2: gpt-5.6-luna via zero web layer" {
+    send_chat_run_message "$AGENT_ID" \
+        "Compute 234+567 and reply with exactly: LUNA_RESULT=<answer>" \
+        "gpt-5.6-luna"
+
+    THREAD_ID="$LAST_THREAD_ID"
+    [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
+    export THREAD_ID
+
+    wait_for_chat_assistant_done "$THREAD_ID"
+
+    [[ "$LAST_MSG_CONTENT" == *"LUNA_RESULT=801"* ]] \
+        || fail "Expected 'LUNA_RESULT=801' in assistant content, got: $LAST_MSG_CONTENT"
 }

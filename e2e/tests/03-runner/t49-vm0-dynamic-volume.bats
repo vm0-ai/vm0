@@ -1,11 +1,7 @@
 #!/usr/bin/env bats
 
-# Test VM0 dynamic volume mounting via --volume flag (E2E happy path only)
-# This test verifies that --volume flag can mount volumes that are not defined
-# in the agent's compose configuration.
-#
-# Note: resume/continue with --volume uses the same code path and is tested
-# via CLI Command Integration Tests (see run/__tests__/dynamic-volume.test.ts).
+# Test direct-run dynamic volume mounting (E2E happy path only).
+# Additional volumes can be mounted without appearing in the compose config.
 
 load '../../helpers/setup'
 
@@ -22,8 +18,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$CLAUDE_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create dynamic volume A with known content
@@ -31,8 +26,7 @@ VOLEOF
     mkdir -p "$TEST_DIR/$DYNAMIC_VOL_A"
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "dynamic-content-a" > data.txt
-    $VM0_CLI volume init --name "$DYNAMIC_VOL_A" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$DYNAMIC_VOL_A" . >/dev/null
     cd - >/dev/null
 
     # Create dynamic volume B with different content
@@ -40,8 +34,7 @@ VOLEOF
     mkdir -p "$TEST_DIR/$DYNAMIC_VOL_B"
     cd "$TEST_DIR/$DYNAMIC_VOL_B"
     echo "dynamic-content-b" > data.txt
-    $VM0_CLI volume init --name "$DYNAMIC_VOL_B" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$DYNAMIC_VOL_B" . >/dev/null
     cd - >/dev/null
 
     # Create inline config — agent has NO volumes except claude-files
@@ -60,7 +53,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -74,27 +67,22 @@ teardown_file() {
     fi
 }
 
-@test "t49-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
 @test "t49-2: --volume mounts dynamic volume at runtime (latest)" {
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    # Run agent with --volume pointing to a volume NOT in compose config
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --volume "$DYNAMIC_VOL_A:/home/user/data" \
-        --verbose \
-        "cat /home/user/data/data.txt"
+    # Run with an additional volume not present in the compose config.
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/data/data.txt" \
+        "$(jq -nc --arg artifact "$ARTIFACT_NAME" --arg volume "$DYNAMIC_VOL_A" \
+            '{
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}],
+                additionalVolumes: [{name: $volume, mountPath: "/home/user/data"}]
+            }')"
 
     assert_success
     assert_output --partial "dynamic-content-a"
@@ -104,30 +92,34 @@ teardown_file() {
     # Push version 1 with v1-specific content
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "v1-content" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+    VERSION1="$output"
     [ -n "$VERSION1" ]
 
     # Push version 2 (HEAD) with different content
     echo "v2-head-content" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run with specific version — should see v1 content, not HEAD
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --volume "$DYNAMIC_VOL_A:$VERSION1:/home/user/data" \
-        --verbose \
-        "cat /home/user/data/data.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/data/data.txt" \
+        "$(jq -nc \
+            --arg artifact "$ARTIFACT_NAME" \
+            --arg volume "$DYNAMIC_VOL_A" \
+            --arg version "$VERSION1" \
+            '{
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}],
+                additionalVolumes: [{name: $volume, version: $version, mountPath: "/home/user/data"}]
+            }')"
 
     assert_success
     assert_output --partial "v1-content"
@@ -138,24 +130,30 @@ teardown_file() {
     # Push fresh content to vol-a (t49-3 changed its HEAD)
     cd "$TEST_DIR/$DYNAMIC_VOL_A"
     echo "multi-test-a" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$DYNAMIC_VOL_A" .
     assert_success
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
     # Run with two dynamic volumes at different mount paths
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --volume "$DYNAMIC_VOL_A:/home/user/data-a" \
-        --volume "$DYNAMIC_VOL_B:/home/user/data-b" \
-        --verbose \
-        "cat /home/user/data-a/data.txt && cat /home/user/data-b/data.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/data-a/data.txt && cat /home/user/data-b/data.txt" \
+        "$(jq -nc \
+            --arg artifact "$ARTIFACT_NAME" \
+            --arg volumeA "$DYNAMIC_VOL_A" \
+            --arg volumeB "$DYNAMIC_VOL_B" \
+            '{
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}],
+                additionalVolumes: [
+                    {name: $volumeA, mountPath: "/home/user/data-a"},
+                    {name: $volumeB, mountPath: "/home/user/data-b"}
+                ]
+            }')"
 
     assert_success
     assert_output --partial "multi-test-a"

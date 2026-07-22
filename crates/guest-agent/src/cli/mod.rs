@@ -429,7 +429,6 @@ enum ParsedEventAction {
 
 struct CliEventIngestor {
     seq: u32,
-    run_id: String,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
@@ -440,7 +439,6 @@ impl CliEventIngestor {
     fn new(runtime: &CliRuntimeConfig<'_>) -> Self {
         Self {
             seq: 0,
-            run_id: runtime.run_id.to_string(),
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
             session_metadata_capture: events::SessionMetadataCapture::from_values(
@@ -520,9 +518,8 @@ impl CliEventIngestor {
         let sequence = self.seq;
         self.seq += 1;
         if should_send_events {
-            let payload =
-                events::prepare_event_payload_for_run_id(event, sequence, masker, &self.run_id);
-            event_tx.try_send(sequence, payload)?;
+            let event = events::prepare_event_for_delivery(event, sequence, masker);
+            event_tx.try_send(sequence, event)?;
         }
         Ok(())
     }
@@ -753,10 +750,15 @@ async fn execute_cli_inner(
 
     // Background event sender: HTTP POSTs happen here, never in the stdout
     // reading loop. Admission is non-blocking and bounded by count and bytes;
-    // overload enters controlled CLI termination rather than blocking stdout.
+    // the serial worker greedily batches only existing FIFO backlog. There is
+    // no collection delay or concurrent POST path. Overload enters controlled
+    // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery =
-        EventDeliveryRuntime::start(http.clone(), runtime.event_error_flag.to_string());
+    let event_delivery = EventDeliveryRuntime::start(
+        http.clone(),
+        runtime.event_error_flag.to_string(),
+        &runtime.run_id,
+    );
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;

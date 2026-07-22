@@ -3,13 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -217,87 +217,6 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
-  it("keeps the composer caret after inserting atomic block feedback", async () => {
-    const user = userEvent.setup({ delay: null });
-    const assistantReply = "The rollout dates are unclear in this summary.";
-    let sentPrompt: string | undefined;
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      chatMessages: [
-        {
-          id: "msg-inline-feedback-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-inline-feedback",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-inline-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-inline-feedback",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentPrompt = body.prompt;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-      },
-    });
-
-    const composerEditor = await findComposerEditor();
-    await user.click(composerEditor);
-    await user.keyboard("Context before feedback.");
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    const shortcutEvent = dispatchDocumentShortcut("f");
-    expect(shortcutEvent.defaultPrevented).toBeTruthy();
-    expect(window.getSelection()?.rangeCount).toBe(1);
-
-    const feedbackBlock = await waitFor(() => {
-      const element = composerEditor.querySelector("[data-composer-feedback]");
-      expect(element).toHaveTextContent(assistantReply);
-      expect(feedbackNotes()).toHaveLength(0);
-      return element;
-    });
-    expect(feedbackBlock?.tagName).toBe("DIV");
-    expect(feedbackBlock?.parentElement).toBe(composerEditor);
-    expect(feedbackBlock?.previousElementSibling).toHaveTextContent(
-      "Context before feedback.",
-    );
-    expect(feedbackBlock?.nextElementSibling?.tagName).toBe("P");
-    expect(feedbackBlock?.nextElementSibling).toHaveTextContent("");
-
-    await waitFor(() => {
-      const selection = window.getSelection();
-      expect(
-        composerEditor.contains(selection?.focusNode ?? null),
-      ).toBeTruthy();
-    });
-
-    await user.keyboard("补充具体日期");
-    expect(feedbackBlock?.nextElementSibling).toHaveTextContent("补充具体日期");
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(sentPrompt).toBeDefined();
-    });
-    expect(sentPrompt).toBe(
-      `Context before feedback.\nFeedback on this part of your reply:\n\n> ${assistantReply}\n补充具体日期`,
-    );
-  });
-
   it("keeps ordinary text and inline feedback in one composer document", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
@@ -334,7 +253,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const composerEditor = await findComposerEditor();
@@ -343,10 +261,6 @@ describe("chat inline feedback", () => {
       composerEditor,
       "Mention the dates before the risk summary.",
     );
-    // The composer restores its own selection in a deferred task after paste;
-    // selecting the assistant reply before that settles races the toolbar's
-    // deferred selection capture against the composer's selection restore.
-    await waitForDeferredSelectionCapture();
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 
@@ -1099,16 +1013,14 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
 
-    fireEvent.click(await screen.findByLabelText("Template"));
-    fireEvent.click(
+    click(await screen.findByLabelText("Template"));
+    click(
       await screen.findByLabelText(
         `Preview ${template.title} at current slide`,
       ),
     );
-    fireEvent.click(await screen.findByLabelText("Select style Gold Luxe"));
-    fireEvent.click(
-      await screen.findByLabelText(`Select template ${template.title}`),
-    );
+    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(
         screen.getByLabelText(`Remove template ${templateChipLabel}`),
@@ -1136,11 +1048,10 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
-    fireEvent.click(buttonByText("Provide feedback"));
+    click(buttonByText("Provide feedback"));
 
-    const feedbackNote = await findFeedbackNote();
     pastePlainText(
-      feedbackNote,
+      await findFeedbackNote(),
       "Use the attached brief as supporting context.",
     );
     expect(
@@ -1150,7 +1061,7 @@ describe("chat inline feedback", () => {
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Send"));
+    click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(sentBodies[0]).toMatchObject({
@@ -1179,126 +1090,6 @@ describe("chat inline feedback", () => {
     expect(sentBody?.prompt).toContain(
       "Use the attached brief as supporting context.",
     );
-  });
-
-  it("filters hidden attachment references from inline feedback sends", async () => {
-    const user = userEvent.setup({ delay: null });
-    const assistantReply = "The launch summary needs visual context.";
-    let sentBody: RunCreateCapture | undefined;
-    const imageUrl =
-      "https://cdn.vm0.io/artifacts/user_1/feedback-model-switch/diagram.png";
-
-    context.mocks.data.orgModelPolicies([
-      {
-        id: "00000000-0000-4000-a000-000000000705",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-        routeStatus: "valid",
-        routeStatusReason: null,
-        createdAt: "2026-07-14T00:00:00.000Z",
-        updatedAt: "2026-07-14T00:00:00.000Z",
-      },
-      {
-        id: "00000000-0000-4000-a000-000000000706",
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
-        isDefault: false,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-        routeStatus: "valid",
-        routeStatusReason: null,
-        createdAt: "2026-07-14T00:00:00.000Z",
-        updatedAt: "2026-07-14T00:00:00.000Z",
-      },
-    ]);
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
-        {
-          id: "msg-feedback-model-switch-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-model-switch",
-          createdAt: "2026-07-20T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-model-switch-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-model-switch",
-          createdAt: "2026-07-20T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentBody = body;
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-feedback-model-switch",
-      filename: "diagram.png",
-      contentType: "image/png",
-      size: 128,
-      url: imageUrl,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
-    const feedbackNote = await findFeedbackNote();
-    await user.click(feedbackNote);
-    await user.keyboard("Review ");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["image"], "diagram.png", { type: "image/png" }),
-    );
-
-    await waitFor(() => {
-      expect(feedbackNote).toHaveTextContent("Review image1");
-      expect(
-        screen.getByLabelText("Open image preview for diagram.png"),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Open image preview for diagram.png"),
-      ).not.toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(sentBody).toBeDefined();
-    });
-    expect(sentBody?.prompt).toContain("Review");
-    expect(sentBody?.prompt).not.toContain("image1");
-    expect(sentBody?.prompt).not.toContain(imageUrl);
-    expect(sentBody?.prompt).not.toContain("vm0-attachment-reference");
-    expect(sentBody?.attachFiles).toBeUndefined();
   });
 
   it("keeps committed inline feedback while drafting another selected comment", async () => {

@@ -44,9 +44,8 @@ setup_file() {
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$ARTIFACT_NAME" .
     cd - >/dev/null
 }
 
@@ -162,7 +161,7 @@ run_zero_agent_via_api() {
     logs=""
     status_value=1
     while (( SECONDS - start < timeout )); do
-        logs="$($VM0_CLI logs "$run_id" --all 2>&1)"
+        logs="$(fetch_run_log "$run_id" agent 2>&1)"
         status_value=$?
         if [[ "$status_value" -eq 0 && ( -z "$expected_log" || "$logs" == *"$expected_log"* ) ]]; then
             echo "$logs"
@@ -311,14 +310,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-refresh.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-refresh.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"
@@ -393,14 +392,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-stale.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-stale.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"

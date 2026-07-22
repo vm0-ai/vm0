@@ -5,9 +5,7 @@
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
 #
-# All tests are independent and parallelizable.
-# t04-1 validates compose config.
-# t04-2 runs the full checkpoint versioning workflow in a single test.
+# The test runs the full checkpoint versioning workflow in a single test.
 
 load '../../helpers/setup'
 
@@ -26,8 +24,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -46,7 +43,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -63,12 +60,6 @@ teardown_file() {
     fi
 }
 
-@test "t04-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
 @test "t04-2: resume from checkpoint restores checkpoint version not HEAD" {
     # --- Phase 1: Create artifact with initial content ---
     local artifact_name="$ARTIFACT_NAME"
@@ -77,20 +68,19 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     # Initial content: counter at 100, no agent marker
     echo "100" > counter.txt
     echo "initial content" > state.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # --- Phase 2: Run agent to create checkpoint (~15s) ---
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
@@ -98,11 +88,11 @@ teardown_file() {
     assert_output --partial "● Bash("
     assert_output --partial "echo 'created by agent'"
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     # Extract checkpoint ID as a local variable
     local checkpoint_id
-    checkpoint_id=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    checkpoint_id=$(run_fixture_field "$output" '.checkpointId')
     echo "# Checkpoint ID: $checkpoint_id"
     [ -n "$checkpoint_id" ] || {
         echo "# Failed to extract checkpoint ID"
@@ -119,16 +109,14 @@ teardown_file() {
     echo "external marker" > external-marker.txt  # Add new file
     rm -f agent-marker.txt 2>/dev/null || true    # Remove agent's file
 
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
     echo "# New HEAD version pushed"
 
     # --- Phase 4: Resume from checkpoint and verify ---
     # Should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $checkpoint_id"
-    run $VM0_CLI run resume "$checkpoint_id" \
-        --verbose \
-        "ls && cat counter.txt"
+    run resume_run_fixture "$checkpoint_id" "ls && cat counter.txt"
 
     assert_success
 

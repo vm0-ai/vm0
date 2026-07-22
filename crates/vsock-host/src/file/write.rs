@@ -424,6 +424,12 @@ impl VsockHost {
     /// chunk creates or truncates the final file through private runtime-file
     /// semantics; later chunks append to the same file. A failed chunk leaves
     /// the run failed and may leave a partial private runtime file behind.
+    ///
+    /// Within one [`VsockHost`], a chunked private write excludes other writes
+    /// whose destinations compare equal as [`std::path::Path`] values until
+    /// the call finishes. This does not coordinate guest processes, other
+    /// connections, hard links, or aliases that depend on guest filesystem
+    /// state.
     pub async fn write_private_file(&self, path: &str, content: &[u8]) -> io::Result<()> {
         self.write_private_file_with_write_observer(path, content, FrameWriteObserver::default())
             .await
@@ -431,6 +437,9 @@ impl VsockHost {
 
     /// Write a private runtime file on the guest and report before each
     /// helper frame is written to the guest.
+    ///
+    /// This uses the destination-isolation semantics documented on
+    /// [`write_private_file`](Self::write_private_file).
     pub async fn write_private_file_with_write_observer(
         &self,
         path: &str,
@@ -439,15 +448,18 @@ impl VsockHost {
     ) -> io::Result<()> {
         validate_guest_file_path(path)?;
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+            let request = WriteFileChunkRequest::private(path, content, false);
+            validate_write_file_chunk_request(request)?;
+            let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
             return self
-                .write_file_chunk(
-                    WriteFileChunkRequest::private(path, content, false),
-                    WriteFileChunkTracking::Tracked,
-                    write_observer,
-                )
+                .write_file_chunk(request, WriteFileChunkTracking::Tracked, write_observer)
                 .await;
         }
 
+        for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+            validate_write_file_chunk_request(WriteFileChunkRequest::private(path, chunk, i > 0))?;
+        }
+        let _path_guard = self.file_write_path_locks.acquire_exclusive(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let result = async {
             for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
@@ -483,15 +495,15 @@ impl VsockHost {
     ) -> io::Result<()> {
         validate_guest_file_path(path)?;
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+            let request = WriteFileChunkRequest::standard(path, content, sudo, false);
+            validate_write_file_chunk_request(request)?;
+            let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
             return self
-                .write_file_chunk(
-                    WriteFileChunkRequest::standard(path, content, sudo, false),
-                    WriteFileChunkTracking::Tracked,
-                    write_observer,
-                )
+                .write_file_chunk(request, WriteFileChunkTracking::Tracked, write_observer)
                 .await;
         }
 
+        let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
 
         // Write chunks to a per-call temp file, then atomic rename. The
@@ -622,6 +634,10 @@ impl VsockHost {
         }
         vsock_proto::validate_write_files(&proto_entries).map_err(protocol_invalid_input)?;
 
+        let _path_guards = self
+            .file_write_path_locks
+            .acquire_shared_many(files.iter().map(|file| file.path))
+            .await;
         let _file_write_guard = self.shared.file_write_gate.lock().await;
         let timeout = Duration::from_secs(300);
         let resp = normal_request_on_shared_with_write_observer_frame_builder(

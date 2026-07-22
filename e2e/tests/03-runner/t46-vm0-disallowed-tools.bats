@@ -1,14 +1,10 @@
 #!/usr/bin/env bats
 
-# Test VM0 --disallowed-tools and --tools flags (E2E happy path only)
+# Test direct-run tool restrictions (E2E happy path only)
 # This test verifies that:
-# 1. vm0 run with --disallowed-tools flag succeeds (prompt is not swallowed)
-# 2. vm0 run with --tools flag succeeds (prompt is not swallowed)
-#
-# These flags use Commander.js variadic options (<tools...>) which greedily
-# consume subsequent positional arguments. The guest-agent must insert "--"
-# before the prompt to prevent the prompt from being consumed as a tool name.
-# See: https://github.com/vm0-ai/vm0/issues/5788
+# 1. disallowedTools reaches the runner
+# 2. tools reaches the runner
+# The guest agent must preserve the prompt while applying both option arrays.
 
 load '../../helpers/setup'
 
@@ -26,8 +22,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -46,7 +41,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -56,12 +51,10 @@ teardown_file() {
     fi
 }
 
-@test "t46-1: run with --disallowed-tools succeeds" {
-    # "--" separates variadic --disallowed-tools from the prompt
-    # (Commander.js <tools...> would otherwise swallow the prompt)
-    run $VM0_CLI run "$AGENT_NAME" \
-        --disallowed-tools CronCreate CronList CronDelete \
-        -- "echo hello"
+@test "t46-1: run with disallowed tools succeeds" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo hello" \
+        '{"disallowedTools":["CronCreate","CronList","CronDelete"]}'
 
     assert_success
     assert_output --partial "● Bash("
@@ -69,11 +62,10 @@ teardown_file() {
     assert_output --partial "◆ Claude Code Completed"
 }
 
-@test "t46-2: run with --tools succeeds" {
-    # "--" separates variadic --tools from the prompt
-    run $VM0_CLI run "$AGENT_NAME" \
-        --tools Bash \
-        -- "echo hello"
+@test "t46-2: run with allowed tools succeeds" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo hello" \
+        '{"tools":["Bash"]}'
 
     assert_success
     assert_output --partial "● Bash("

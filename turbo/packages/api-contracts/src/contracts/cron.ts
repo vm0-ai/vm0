@@ -67,6 +67,11 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
+const cronMonitorChatMessageQueueResponseSchema = z.object({
+  success: z.literal(true),
+  orphanedMessages: z.number().int().nonnegative(),
+});
+
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
   success: z.literal(true),
   downgraded: z.number(),
@@ -196,6 +201,12 @@ const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   skipped: z.number(),
 });
 
+const cronExecuteMorningBriefsResponseSchema = z.object({
+  success: z.literal(true),
+  executed: z.number(),
+  skipped: z.number(),
+});
+
 const cronRenewGmailWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -256,54 +267,6 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   workflowSkill: storagePresignedUrlRefreshResultSchema,
 });
 
-const storageArchiveSizeBackfillRetiredResponseSchema = z.object({
-  state: z.literal("retired"),
-});
-
-const storageArchiveSizeBackfillCountsSchema = z.object({
-  selected: z.number().int().nonnegative(),
-  positive: z.number().int().nonnegative(),
-  intentionalEmpty: z.number().int().nonnegative(),
-  alreadyCompleted: z.number().int().nonnegative(),
-  superseded: z.number().int().nonnegative(),
-  missing: z.number().int().nonnegative(),
-  invalid: z.number().int().nonnegative(),
-  failed: z.number().int().nonnegative(),
-});
-
-const storageArchiveSizeBackfillActiveResponseSchema =
-  storageArchiveSizeBackfillCountsSchema.extend({
-    state: z.literal("active"),
-    batchToken: z.string().uuid(),
-  });
-
-const storageArchiveSizeBackfillResponseSchema = z.union([
-  storageArchiveSizeBackfillRetiredResponseSchema,
-  storageArchiveSizeBackfillActiveResponseSchema,
-]);
-
-const storageArchiveSizeBackfillStatusActiveResponseSchema = z.object({
-  state: z.literal("active"),
-  totalVersions: z.number().int().nonnegative(),
-  positiveArchives: z.number().int().nonnegative(),
-  intentionalEmptyArchives: z.number().int().nonnegative(),
-  remaining: z.number().int().nonnegative(),
-  negativeArchives: z.number().int().nonnegative(),
-  nonEmptyZeroArchives: z.number().int().nonnegative(),
-  unresolved: z.object({
-    missing: z.number().int().nonnegative(),
-    invalid: z.number().int().nonnegative(),
-    failed: z.number().int().nonnegative(),
-  }),
-  unattemptedOrInFlight: z.number().int().nonnegative(),
-  complete: z.boolean(),
-});
-
-const storageArchiveSizeBackfillStatusResponseSchema = z.union([
-  storageArchiveSizeBackfillRetiredResponseSchema,
-  storageArchiveSizeBackfillStatusActiveResponseSchema,
-]);
-
 export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
 
 const cronAggregateModelStatsResponseSchema = z.object({
@@ -349,6 +312,20 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Compact chat thread snapshots from lifecycle events",
+  },
+});
+
+export const cronMonitorChatMessageQueueContract = c.router({
+  monitor: {
+    method: "GET",
+    path: "/api/cron/monitor-chat-message-queue",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronMonitorChatMessageQueueResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Monitor for orphaned queued chat messages",
   },
 });
 
@@ -505,6 +482,19 @@ export const cronExecuteWorkflowAutomationsContract = c.router({
   },
 });
 
+export const cronExecuteMorningBriefsContract = c.router({
+  execute: {
+    method: "GET",
+    path: "/api/cron/execute-morning-briefs",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExecuteMorningBriefsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Execute due morning briefs",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",
@@ -565,34 +555,13 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
   },
 });
 
-export const cronStorageArchiveSizeBackfillContract = c.router({
-  backfill: {
-    method: "GET",
-    path: "/api/cron/backfill-storage-archive-sizes",
-    headers: authHeadersSchema,
-    responses: {
-      200: storageArchiveSizeBackfillResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Backfill encoded archive sizes for historical storage versions",
-  },
-  status: {
-    method: "GET",
-    path: "/api/cron/storage-archive-size-backfill-status",
-    headers: authHeadersSchema,
-    responses: {
-      200: storageArchiveSizeBackfillStatusResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Read historical storage archive size backfill status",
-  },
-});
-
 export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
+export type CronMonitorChatMessageQueueContract =
+  typeof cronMonitorChatMessageQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
@@ -602,8 +571,6 @@ export type CronAggregateModelStatsContract =
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronRefreshStoragePresignedUrlsContract =
   typeof cronRefreshStoragePresignedUrlsContract;
-export type CronStorageArchiveSizeBackfillContract =
-  typeof cronStorageArchiveSizeBackfillContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
@@ -617,12 +584,6 @@ export type CronRenewGoogleCalendarWatchesContract =
   typeof cronRenewGoogleCalendarWatchesContract;
 export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
   typeof cronRenewGoogleWorkspaceEventSubscriptionsContract;
-export type StorageArchiveSizeBackfillResponse = z.infer<
-  typeof storageArchiveSizeBackfillResponseSchema
->;
-export type StorageArchiveSizeBackfillStatusResponse = z.infer<
-  typeof storageArchiveSizeBackfillStatusResponseSchema
->;
 
 // Export schemas for reuse
 export {

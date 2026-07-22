@@ -37,7 +37,7 @@ agents:
       ANTHROPIC_MODEL: "claude-sonnet-4-6"
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 
     # Create a private zero agent for this file so CI does not consume the
     # shared org's limited public-agent slots.
@@ -66,15 +66,14 @@ teardown_file() {
 }
 
 @test "t54-0: BYOK provider — firewall not billable" {
-    run $VM0_CLI run "$RUN_AGENT_NAME" \
-        --model-provider-type "anthropic-api-key" \
-        --real-agent-in-preview \
-        "Reply with exactly: DONE"
+    run run_compose_fixture "$RUN_AGENT_NAME" \
+        "Reply with exactly: DONE" \
+        '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     echo "$output"
     assert_success
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

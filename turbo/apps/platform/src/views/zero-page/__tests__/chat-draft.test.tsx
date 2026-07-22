@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -174,18 +173,6 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
-function composerFileInput(editor: HTMLElement): HTMLInputElement {
-  const fileInput = Array.from(
-    document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-  ).find((candidate) => {
-    return candidate.parentElement?.contains(editor) ?? false;
-  });
-  if (!fileInput) {
-    throw new Error("File input not found");
-  }
-  return fileInput;
-}
-
 async function navigateToThread(threadId: string): Promise<void> {
   const link = await waitFor(() => {
     return document.querySelector<HTMLAnchorElement>(
@@ -341,424 +328,6 @@ describe("chat drafts", () => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
-  });
-
-  it("shows numbered text references and attachment chips", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000103";
-    const draftPatches: Record<string, unknown>[] = [];
-    const uploadResults = [
-      {
-        id: "upload-image-one",
-        filename: "first.png",
-        contentType: "image/png",
-        size: 3,
-        url: "https://cdn.vm0.io/artifacts/user_1/upload-image-one/first.png",
-      },
-      {
-        id: "upload-image-two",
-        filename: "second.png",
-        contentType: "image/png",
-        size: 3,
-        url: "https://cdn.vm0.io/artifacts/user_1/upload-image-two/second.png",
-      },
-      {
-        id: "upload-file-one",
-        filename: "first.pdf",
-        contentType: "application/pdf",
-        size: 3,
-        url: "https://cdn.vm0.io/artifacts/user_1/upload-file-one/first.pdf",
-      },
-      {
-        id: "upload-file-two",
-        filename: "second.pdf",
-        contentType: "application/pdf",
-        size: 3,
-        url: "https://cdn.vm0.io/artifacts/user_1/upload-file-two/second.pdf",
-      },
-    ] as const;
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: readonly { id?: string }[];
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Compare ");
-    const fileInput = composerFileInput(editor);
-    for (const upload of uploadResults) {
-      context.mocks.upload.success(upload);
-      await user.upload(
-        fileInput,
-        new File([upload.filename], upload.filename, {
-          type: upload.contentType,
-        }),
-      );
-      await screen.findByLabelText(`Remove ${upload.filename}`);
-      await waitFor(() => {
-        expect(screen.getByLabelText("Send")).toBeEnabled();
-      });
-    }
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Compare");
-      expect(editor).toHaveTextContent("image1 image2 file1 file2");
-      expect(
-        editor.querySelectorAll("[data-composer-inline-file]"),
-      ).toHaveLength(4);
-      expect(editor.querySelector("button")).toBeNull();
-      expect(screen.getByLabelText("Remove first.png")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove second.png")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove first.pdf")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove second.pdf")).toBeInTheDocument();
-      expect(screen.getByLabelText("Send")).toBeEnabled();
-    });
-    await waitFor(() => {
-      const persistedContent = draftPatches.find((patch) => {
-        return (
-          typeof patch.draftContent === "string" &&
-          patch.draftContent.includes("#vm0-attachment-reference=")
-        );
-      })?.draftContent;
-      expect(persistedContent).toBeTypeOf("string");
-      expect(
-        (persistedContent as string).match(/#vm0-attachment-reference=/g),
-      ).toHaveLength(4);
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toContain("Compare");
-    for (const reference of ["image1", "image2", "file1", "file2"]) {
-      expect(submitted?.prompt).toContain(reference);
-    }
-    expect(submitted?.attachFiles).toHaveLength(4);
-  });
-
-  it("keeps the attachment chip when its text reference is deleted", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000104";
-    const uploadUrl =
-      "https://cdn.vm0.io/artifacts/user_1/upload-empty/empty-composer.pdf";
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: readonly { id?: string }[];
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-empty-composer",
-      filename: "empty-composer.pdf",
-      contentType: "application/pdf",
-      size: 8,
-      url: uploadUrl,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    const fileInput = composerFileInput(editor);
-    await user.upload(
-      fileInput,
-      new File(["document"], "empty-composer.pdf", {
-        type: "application/pdf",
-      }),
-    );
-
-    await expect(
-      screen.findByLabelText("Remove empty-composer.pdf"),
-    ).resolves.toBeInTheDocument();
-    expect(editor).toHaveTextContent("file1");
-    expect(editor.querySelectorAll("[data-composer-inline-file]")).toHaveLength(
-      1,
-    );
-    expect(editor.querySelector("button")).toBeNull();
-    await user.click(editor);
-    await user.keyboard("{Control>}a{/Control}{Backspace}");
-    await waitFor(() => {
-      expect(editor).not.toHaveTextContent("file1");
-      expect(
-        screen.getByLabelText("Remove empty-composer.pdf"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Send")).toBeEnabled();
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toBe("(see attached files)");
-    expect(submitted?.attachFiles?.[0]?.id).toBe("upload-empty-composer");
-  });
-
-  it("restores numbered attachment references and their attachment chips", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000105";
-    const imageUrl =
-      "https://cdn.vm7.io/artifacts/test/drafts/reference-image.png";
-    const fileUrl = "https://cdn.vm7.io/artifacts/test/drafts/reference.pdf";
-    const imageClientId = "11111111-1111-4111-8111-111111111111";
-    const fileClientId = "22222222-2222-4222-8222-222222222222";
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: readonly { id?: string }[];
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
-        draftContent:
-          `Compare [image1](${imageUrl}#vm0-attachment-reference=${imageClientId}) with ` +
-          `[file1](${fileUrl}#vm0-attachment-reference=${fileClientId})`,
-        draftAttachments: [
-          {
-            id: "draft-image-reference",
-            filename: "reference-image.png",
-            contentType: "image/png",
-            size: 10,
-            url: imageUrl,
-          },
-          {
-            id: "draft-file-reference",
-            filename: "reference.pdf",
-            contentType: "application/pdf",
-            size: 20,
-            url: fileUrl,
-          },
-        ],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(textarea()).toHaveTextContent("Compare image1 with file1");
-      expect(
-        textarea().querySelectorAll("[data-composer-inline-file]"),
-      ).toHaveLength(2);
-      expect(textarea().querySelector("button")).toBeNull();
-      expect(
-        screen.getByLabelText("Remove reference-image.png"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove reference.pdf")).toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Remove reference.pdf"));
-    await waitFor(() => {
-      expect(textarea()).toHaveTextContent("Compare image1 with");
-      expect(textarea()).not.toHaveTextContent("file1");
-      expect(
-        screen.queryByLabelText("Remove reference.pdf"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Remove reference-image.png"),
-      ).toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toBe("Compare image1 with");
-    expect(submitted?.attachFiles).toStrictEqual([
-      expect.objectContaining({ id: "draft-image-reference" }),
-    ]);
-  });
-
-  it.each([
-    {
-      name: "structured attachment mode",
-      threadId: "b1000000-0000-4000-a000-000000000107",
-      inlinePromptItems: false,
-      expectedPrompt: "Review image1",
-      expectedAttachmentId: "rollback-reference-image",
-      expectedInlineFileCount: 0,
-      expectedAttachmentChip: true,
-    },
-    {
-      name: "legacy inline prompt mode",
-      threadId: "b1000000-0000-4000-a000-000000000108",
-      inlinePromptItems: true,
-      expectedPrompt:
-        "Review [image1](https://cdn.vm7.io/artifacts/test/drafts/rollback-reference.png)",
-      expectedAttachmentId: undefined,
-      expectedInlineFileCount: 1,
-      expectedAttachmentChip: false,
-    },
-  ])(
-    "normalizes restored references when the switch is off in $name",
-    async ({
-      threadId,
-      inlinePromptItems,
-      expectedPrompt,
-      expectedAttachmentId,
-      expectedInlineFileCount,
-      expectedAttachmentChip,
-    }) => {
-      const user = userEvent.setup({ delay: null });
-      const imageUrl =
-        "https://cdn.vm7.io/artifacts/test/drafts/rollback-reference.png";
-      const imageClientId = "33333333-3333-4333-8333-333333333333";
-      let submitted:
-        | {
-            prompt?: string;
-            attachFiles?: readonly { id?: string }[];
-          }
-        | undefined;
-      mockChatLifecycle(context, {
-        threadId,
-        onRunCreate: (body) => {
-          submitted = body;
-        },
-      });
-      context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-        return respond(200, {
-          draftContent: `Review [image1](${imageUrl}#vm0-attachment-reference=${imageClientId})`,
-          draftAttachments: [
-            {
-              id: "rollback-reference-image",
-              filename: "rollback-reference.png",
-              contentType: "image/png",
-              size: 10,
-              url: imageUrl,
-            },
-          ],
-        });
-      });
-
-      detachedSetupPage({
-        context,
-        path: `/chats/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ComposerInlinePromptItems]: inlinePromptItems,
-          [FeatureSwitchKey.ComposerInlineAttachmentReferences]: false,
-        },
-      });
-
-      await waitFor(() => {
-        expect(textarea()).toHaveTextContent("Review image1");
-        expect(
-          textarea().querySelectorAll("[data-composer-inline-file]"),
-        ).toHaveLength(expectedInlineFileCount);
-        const attachmentChip = screen.queryByLabelText(
-          "Remove rollback-reference.png",
-        );
-        if (expectedAttachmentChip) {
-          expect(attachmentChip).toBeInTheDocument();
-        } else {
-          expect(attachmentChip).not.toBeInTheDocument();
-        }
-        expect(screen.getByLabelText("Send")).toBeEnabled();
-      });
-      await user.click(screen.getByLabelText("Send"));
-
-      await waitFor(() => {
-        expect(submitted).toBeDefined();
-      });
-      expect(submitted?.prompt).toBe(expectedPrompt);
-      expect(submitted?.prompt).not.toContain("vm0-attachment-reference");
-      if (expectedAttachmentId === undefined) {
-        expect(submitted?.attachFiles).toBeUndefined();
-      } else {
-        expect(submitted?.attachFiles).toStrictEqual([
-          expect.objectContaining({ id: expectedAttachmentId }),
-        ]);
-      }
-    },
-  );
-
-  it("keeps a legacy inline attachment named like a numbered reference", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000106";
-    const fileUrl =
-      "https://cdn.vm7.io/artifacts/test/drafts/legacy-file-one.pdf";
-    let submitted:
-      | {
-          prompt?: string;
-          attachFiles?: readonly { id?: string }[];
-        }
-      | undefined;
-    mockChatLifecycle(context, {
-      threadId,
-      onRunCreate: (body) => {
-        submitted = body;
-      },
-    });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
-        draftContent: `[file1](${fileUrl})`,
-        draftAttachments: null,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
-        [FeatureSwitchKey.ComposerInlineAttachmentReferences]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(textarea()).toHaveTextContent("file1");
-      expect(screen.getByLabelText("Remove file file1")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Remove file1")).not.toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(submitted).toBeDefined();
-    });
-    expect(submitted?.prompt).toBe(`[file1](${fileUrl})`);
-    expect(submitted?.attachFiles).toBeUndefined();
   });
 
   it("persists edited draft attachments and clears the server draft after sending", async () => {
@@ -1264,10 +833,10 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores copied chat text in the slash composer when attachments prevent default paste", async () => {
+  it("preserves multiline copied chat text when attachments prevent default paste", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "thread-copied-attachment-slash-composer";
-    const pastedText = "123";
+    const pastedText = `first\n[Thread 1](/chats/${THREAD_ONE_ID})\nlast `;
     const filename = "image.png";
     const url =
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
@@ -1284,6 +853,10 @@ describe("chat drafts", () => {
 
     const editor = await findComposerEditor();
     await user.click(editor);
+    await user.keyboard("Before after");
+    await user.keyboard(
+      "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
+    );
 
     fireEvent.paste(editor, {
       clipboardData: {
@@ -1309,7 +882,18 @@ describe("chat drafts", () => {
     });
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent(pastedText);
+      expect(
+        Array.from(editor.children, (element) => {
+          return element.textContent ?? "";
+        }).filter((text) => {
+          return text.length > 0;
+        }),
+      ).toStrictEqual(["Before first", "Thread 1", "last after"]);
+      expect(
+        editor.querySelector(
+          `span[data-chat-thread-mention="${THREAD_ONE_ID}"]`,
+        ),
+      ).toHaveTextContent("Thread 1");
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });

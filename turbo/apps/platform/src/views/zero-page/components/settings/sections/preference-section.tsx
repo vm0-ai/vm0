@@ -24,6 +24,7 @@ import {
   pendingSendMode$,
 } from "../../../../../signals/zero-page/settings/preferences-page.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
+import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 
@@ -200,6 +201,7 @@ export function PreferenceSection() {
           description="Times shown to you and used for automation runs."
         />
         <TimezoneSettings />
+        <MorningBriefSettings />
       </section>
     </div>
   );

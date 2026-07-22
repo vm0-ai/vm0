@@ -14,14 +14,16 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
+import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
+import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { storageVersions, storages } from "@vm0/db/schema/storage";
 import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -504,6 +506,73 @@ function slackConnections(db: ReadonlyDb, teamId: string) {
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
 }
 
+function slackChatRoutes(db: ReadonlyDb, teamId: string) {
+  return db
+    .select({
+      id: slackChatThreadRoutes.id,
+      connectionId: slackChatThreadRoutes.connectionId,
+      channelId: slackChatThreadRoutes.channelId,
+      threadTs: slackChatThreadRoutes.threadTs,
+      userId: slackChatThreadRoutes.userId,
+      backend: slackChatThreadRoutes.backend,
+      chatThreadId: slackChatThreadRoutes.chatThreadId,
+      createdAt: slackChatThreadRoutes.createdAt,
+    })
+    .from(slackChatThreadRoutes)
+    .innerJoin(
+      slackOrgConnections,
+      eq(slackChatThreadRoutes.connectionId, slackOrgConnections.id),
+    )
+    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+}
+
+function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
+  return db
+    .select({
+      id: slackChatIngress.id,
+      routeId: slackChatIngress.routeId,
+      eventId: slackChatIngress.eventId,
+      payload: slackChatIngress.payload,
+      status: slackChatIngress.status,
+      retryCount: slackChatIngress.retryCount,
+      lastError: slackChatIngress.lastError,
+      createdAt: slackChatIngress.createdAt,
+      updatedAt: slackChatIngress.updatedAt,
+    })
+    .from(slackChatIngress)
+    .innerJoin(
+      slackChatThreadRoutes,
+      eq(slackChatIngress.routeId, slackChatThreadRoutes.id),
+    )
+    .innerJoin(
+      slackOrgConnections,
+      eq(slackChatThreadRoutes.connectionId, slackOrgConnections.id),
+    )
+    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+}
+
+function slackChatQueueRows(db: ReadonlyDb, teamId: string) {
+  return db
+    .select({
+      id: chatMessageQueue.id,
+      chatThreadId: chatMessageQueue.chatThreadId,
+      chatMessageId: chatMessageQueue.chatMessageId,
+      itemType: chatMessageQueue.itemType,
+      triggerSource: chatMessageQueue.triggerSource,
+      createdAt: chatMessageQueue.createdAt,
+    })
+    .from(chatMessageQueue)
+    .innerJoin(
+      slackChatThreadRoutes,
+      eq(chatMessageQueue.chatThreadId, slackChatThreadRoutes.chatThreadId),
+    )
+    .innerJoin(
+      slackOrgConnections,
+      eq(slackChatThreadRoutes.connectionId, slackOrgConnections.id),
+    )
+    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+}
+
 function recentSlackRuns(db: ReadonlyDb, orgId: string | null | undefined) {
   if (!orgId) {
     return [];
@@ -544,45 +613,6 @@ async function orgMetaFor(db: ReadonlyDb, orgId: string | null | undefined) {
         })
         .from(orgMetadata)
         .where(eq(orgMetadata.orgId, orgId))
-        .limit(1)
-    )[0] ?? null
-  );
-}
-
-async function artifactStorageFor(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string | null | undefined;
-    readonly userId: string | null | undefined;
-  },
-) {
-  if (!args.orgId || !args.userId) {
-    return null;
-  }
-
-  return (
-    (
-      await db
-        .select({
-          id: storages.id,
-          headVersionId: storages.headVersionId,
-          s3Prefix: storages.s3Prefix,
-          versionId: storageVersions.id,
-          versionS3Key: storageVersions.s3Key,
-        })
-        .from(storages)
-        .leftJoin(
-          storageVersions,
-          eq(storages.headVersionId, storageVersions.id),
-        )
-        .where(
-          and(
-            eq(storages.orgId, args.orgId),
-            eq(storages.userId, args.userId),
-            eq(storages.name, "artifact"),
-            eq(storages.type, "artifact"),
-          ),
-        )
         .limit(1)
     )[0] ?? null
   );
@@ -776,12 +806,15 @@ const getSlackState$ = computed(async (get) => {
     ? await slackInstallation(db, teamId)
     : null;
   const connections = hasTeamIdLookup ? await slackConnections(db, teamId) : [];
+  const chatThreadRoutes = hasTeamIdLookup
+    ? await slackChatRoutes(db, teamId)
+    : [];
+  const chatIngress = hasTeamIdLookup
+    ? await slackChatIngressRows(db, teamId)
+    : [];
+  const chatQueue = hasTeamIdLookup ? await slackChatQueueRows(db, teamId) : [];
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentSlackRuns(db, stateOrgId);
-  const artifactStorage = await artifactStorageFor(db, {
-    orgId: stateOrgId,
-    userId: query.user_id,
-  });
   const orgMeta = await orgMetaFor(db, stateOrgId);
   const defaultAgent = await defaultAgentFor(db, orgMeta?.defaultAgentId);
   const compose = await defaultComposeFor(db, orgMeta?.defaultAgentId);
@@ -806,13 +839,25 @@ const getSlackState$ = computed(async (get) => {
           createdAt: isoString(connection.createdAt),
         };
       }),
+      chat_thread_routes: chatThreadRoutes.map((route) => {
+        return { ...route, createdAt: isoString(route.createdAt) };
+      }),
+      chat_ingress: chatIngress.map((ingress) => {
+        return {
+          ...ingress,
+          createdAt: isoString(ingress.createdAt),
+          updatedAt: isoString(ingress.updatedAt),
+        };
+      }),
+      chat_message_queue: chatQueue.map((item) => {
+        return { ...item, createdAt: isoString(item.createdAt) };
+      }),
       recent_runs: recentRuns.map((run) => {
         return {
           ...run,
           createdAt: isoString(run.createdAt),
         };
       }),
-      artifact_storage: artifactStorage,
       org_metadata: orgMeta,
       default_agent: defaultAgent,
       default_compose: compose,
@@ -1195,35 +1240,6 @@ async function deleteSlackComposesForOrg(
   signal.throwIfAborted();
 }
 
-async function deleteSlackStoragesForOrg(
-  db: Db,
-  orgId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const storageRows = await db
-    .select({ id: storages.id })
-    .from(storages)
-    .where(eq(storages.orgId, orgId));
-  signal.throwIfAborted();
-  const storageIds = storageRows.map((storage) => {
-    return storage.id;
-  });
-  if (storageIds.length === 0) {
-    return;
-  }
-  await db
-    .update(storages)
-    .set({ headVersionId: null })
-    .where(inArray(storages.id, storageIds));
-  signal.throwIfAborted();
-  await db
-    .delete(storageVersions)
-    .where(inArray(storageVersions.storageId, storageIds));
-  signal.throwIfAborted();
-  await db.delete(storages).where(inArray(storages.id, storageIds));
-  signal.throwIfAborted();
-}
-
 async function deleteSlackOrgState(
   db: Db,
   orgId: string,
@@ -1236,7 +1252,6 @@ async function deleteSlackOrgState(
   await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
   signal.throwIfAborted();
   await deleteSlackComposesForOrg(db, orgId, signal);
-  await deleteSlackStoragesForOrg(db, orgId, signal);
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
 }

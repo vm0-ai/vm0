@@ -8,7 +8,6 @@ import {
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -135,37 +134,6 @@ describe("GET /api/zero/connectors", () => {
         namespace: "secrets",
         name: "GITLAB_TOKEN",
       }),
-    );
-  });
-
-  it("reports a null storage version as reconnect-required", async () => {
-    const fixture = seedAuthenticatedFixture();
-    seededFixtures.push(fixture);
-    await connectGitlab(fixture);
-    await setConnectorCredentialStorageState(context, {
-      connectorRef: "gitlab",
-      orgId: fixture.orgId,
-      storageVersion: null,
-      userId: fixture.userId,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      setupApp({ context })(zeroConnectorsMainContract).list({
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    expect(response.body.connectors).toContainEqual(
-      expect.objectContaining({
-        type: "gitlab",
-        authMethod: "api-token",
-        connectionStatus: "reconnect-required",
-        reconnectReason: null,
-      }),
-    );
-    expect(response.body.connectorProvidedBindings).not.toContainEqual(
-      expect.objectContaining({ connectorType: "gitlab" }),
     );
   });
 

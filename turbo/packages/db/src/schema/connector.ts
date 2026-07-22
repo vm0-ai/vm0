@@ -24,7 +24,7 @@ export const connectors = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     type: varchar("type", { length: 64 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
-    storageVersion: bigint("storage_version", { mode: "number" }),
+    storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
 
     // External account info (from OAuth)
     externalId: varchar("external_id", { length: 255 }),
@@ -51,7 +51,7 @@ export const connectors = pgTable(
       ),
       check(
         "chk_connectors_storage_version_positive",
-        sql`${table.storageVersion} IS NULL OR ${table.storageVersion} > 0`,
+        sql`${table.storageVersion} > 0`,
       ),
     ];
   },

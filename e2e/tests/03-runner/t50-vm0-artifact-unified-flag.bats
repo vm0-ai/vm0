@@ -1,10 +1,6 @@
 #!/usr/bin/env bats
 
-# Test unified --artifact flag with Docker-style name:version syntax (E2E happy path only)
-# This test verifies that --artifact <name> and --artifact <name:version> work correctly.
-#
-# Note: resume/continue with --artifact uses the same parsing code path and is tested
-# via CLI Command Integration Tests (see run/__tests__/resume.test.ts, continue.test.ts).
+# Test direct artifact overrides with explicit versions (E2E happy path only).
 
 load '../../helpers/setup'
 
@@ -32,7 +28,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -59,16 +55,15 @@ teardown() {
     # Step 1: Create and push artifact with known content
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "unified-flag-content" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    # Step 2: Run agent using unified --artifact flag (name only = latest)
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/workspace/marker.txt"
+    # Step 2: Run with an artifact name only, which resolves to latest.
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/workspace/marker.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     assert_output --partial "unified-flag-content"
@@ -78,25 +73,24 @@ teardown() {
     # Step 1: Push version 1
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "version-1-content" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+    VERSION1="$output"
     echo "# Version 1 ID: $VERSION1"
     [ -n "$VERSION1" ]
 
     # Step 2: Push version 2 (becomes HEAD)
     echo "version-2-head" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
     echo "# HEAD version pushed"
 
     # Step 3: Run agent with --artifact name:version to pin to version 1
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:$VERSION1:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/workspace/marker.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/workspace/marker.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" --arg version "$VERSION1" \
+            '{artifacts: [{name: $name, version: $version, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 

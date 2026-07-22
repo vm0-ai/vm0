@@ -51,7 +51,6 @@ interface VisualAttachmentDescriptor {
 
 interface PrepareUserMessageOptions {
   excludeVisualAttachments?: boolean;
-  includeAttachments?: boolean;
 }
 
 const VISUAL_ATTACHMENT_EXTENSION_RE =
@@ -138,8 +137,7 @@ export const prepareUserMessageFromDraft$ = command(
     options: PrepareUserMessageOptions,
     signal: AbortSignal,
   ): Promise<PreparedUserMessage | null> => {
-    const draftAttachments =
-      options.includeAttachments === false ? [] : get(draft.attachments$);
+    const draftAttachments = get(draft.attachments$);
     const allAttachments = options.excludeVisualAttachments
       ? draftAttachments.filter((attachment) => {
           return !isVisualAttachment(attachment);

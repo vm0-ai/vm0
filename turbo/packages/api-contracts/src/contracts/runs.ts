@@ -674,10 +674,6 @@ export function createLogPaginationQuerySchema(
     });
 }
 
-const sequenceLogPaginationQuerySchema = createLogPaginationQuerySchema({
-  cursorKind: "sequence",
-});
-
 const timeLogPaginationQuerySchema = createLogPaginationQuerySchema({
   cursorKind: "time",
 });
@@ -849,66 +845,12 @@ export const runMetricsContract = c.router({
   },
 });
 
-/**
- * Agent events route contract (/api/agent/runs/[id]/telemetry/agent)
- */
-export const runAgentEventsContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry/agent
-   * Get agent events with pagination (for vm0 logs default)
-   */
-  getAgentEvents: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry/agent",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: sequenceLogPaginationQuerySchema,
-    responses: {
-      200: agentEventsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent events with pagination",
-  },
-});
-
-/**
- * Network logs route contract (/api/agent/runs/[id]/telemetry/network)
- */
-export const runNetworkLogsContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry/network
-   * Get network logs with pagination (for vm0 logs --network)
-   */
-  getNetworkLogs: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry/network",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: timeLogPaginationQuerySchema,
-    responses: {
-      200: networkLogsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get network logs with pagination",
-  },
-});
-
 export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunsCancelContract = typeof runsCancelContract;
 export type RunEventsContract = typeof runEventsContract;
 export type RunSystemLogContract = typeof runSystemLogContract;
 export type RunMetricsContract = typeof runMetricsContract;
-export type RunAgentEventsContract = typeof runAgentEventsContract;
-export type RunNetworkLogsContract = typeof runNetworkLogsContract;
 
 /**
  * Logs search result schema
@@ -939,31 +881,6 @@ const logsSearchQuerySchema = z.object({
   before: boundedIntegerQueryNumberSchema(0, 10).default(0),
   after: boundedIntegerQueryNumberSchema(0, 10).default(0),
 });
-
-/**
- * Logs search route contract (/api/logs/search)
- * Search agent events across runs
- */
-export const logsSearchContract = c.router({
-  /**
-   * GET /api/logs/search
-   * Search agent events across runs using keyword matching
-   */
-  searchLogs: {
-    method: "GET",
-    path: "/api/logs/search",
-    headers: authHeadersSchema,
-    query: logsSearchQuerySchema,
-    responses: {
-      200: logsSearchResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Search agent events across runs",
-  },
-});
-
-export type LogsSearchContract = typeof logsSearchContract;
 
 /**
  * Queue entry schema — own entries have real data, others have null for private fields

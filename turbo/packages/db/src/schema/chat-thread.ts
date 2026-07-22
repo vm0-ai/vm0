@@ -13,6 +13,7 @@ import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
+  ChatThreadDraftStructuredPrompt,
   ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
 
@@ -49,6 +50,10 @@ export const chatThreads = pgTable(
      * Persisted with local-first sync: local state takes precedence on first visit.
      */
     draftContent: text("draft_content"),
+    /** Stable business representation of the composer's rich draft content. */
+    draftStructuredPrompt: jsonb(
+      "draft_structured_prompt",
+    ).$type<ChatThreadDraftStructuredPrompt>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.

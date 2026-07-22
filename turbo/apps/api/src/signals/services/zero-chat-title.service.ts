@@ -30,6 +30,7 @@ import {
   normalizeRecommendedFollowups,
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -79,15 +80,7 @@ export function isChatTitleGenerationConfigured(): boolean {
 
 function completedConversationContextMessageCondition(db: SelectDb) {
   return and(
-    not(
-      and(
-        eq(chatMessages.role, "user"),
-        isNull(chatMessages.runId),
-        isNull(chatMessages.revokesMessageId),
-        isNull(chatMessages.interruptsRunId),
-        isNull(chatMessages.error),
-      ) as SQL,
-    ),
+    not(queuedUserMessageExists(db)),
     not(
       and(
         isNotNull(chatMessages.runId),

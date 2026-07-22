@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
+use tokio::sync::OnceCell;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -50,6 +51,27 @@ struct ProcessIdentity {
 struct FileProcessIdentity {
     pid: u32,
     starttime: u64,
+}
+
+struct LivenessContext {
+    boot_id: OnceCell<String>,
+    euid: u32,
+}
+
+impl LivenessContext {
+    fn new() -> Self {
+        Self {
+            boot_id: OnceCell::new(),
+            euid: current_euid(),
+        }
+    }
+
+    async fn boot_id(&self) -> RunnerResult<&str> {
+        self.boot_id
+            .get_or_try_init(current_boot_id)
+            .await
+            .map(String::as_str)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -122,7 +144,6 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
     if !validate_existing_live_runner_instances_dir(home)? {
         return Ok(Vec::new());
     }
-    remove_stale_records(home).await;
 
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
@@ -136,6 +157,7 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
         }
     };
 
+    let liveness = LivenessContext::new();
     let mut instances = Vec::new();
     loop {
         let entry = match entries.next_entry().await {
@@ -148,30 +170,38 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
                 )));
             }
         };
-        let Some(identity) = stable_record_identity_from_file_name(&entry.file_name()) else {
+        let file_name = entry.file_name();
+        let path = entry.path();
+        if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
+            let record = match read_record_for_identity(&path, identity, &liveness).await? {
+                RecordForIdentity::Valid(record) => record,
+                RecordForIdentity::InvalidForStaleProcess => {
+                    remove_stale_file(&path, "stale live runner instance record").await;
+                    continue;
+                }
+                RecordForIdentity::InvalidForLiveProcess => {
+                    return Err(RunnerError::Internal(format!(
+                        "live runner instance record {} is invalid for a live process identity",
+                        path.display()
+                    )));
+                }
+            };
+            instances.push(LiveRunnerInstance {
+                pid: record.pid,
+                starttime: record.starttime,
+                config_path: record.config_path,
+                base_dir: record.base_dir,
+                runner_name: record.runner_name,
+                runner_group: record.runner_group,
+                subcommand: record.subcommand,
+                started_at: record.started_at,
+            });
+            continue;
+        }
+        let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        let path = entry.path();
-        let record = match read_record_for_identity(&path, identity).await? {
-            RecordForIdentity::Valid(record) => record,
-            RecordForIdentity::InvalidForStaleProcess => continue,
-            RecordForIdentity::InvalidForLiveProcess => {
-                return Err(RunnerError::Internal(format!(
-                    "live runner instance record {} is invalid for a live process identity",
-                    path.display()
-                )));
-            }
-        };
-        instances.push(LiveRunnerInstance {
-            pid: record.pid,
-            starttime: record.starttime,
-            config_path: record.config_path,
-            base_dir: record.base_dir,
-            runner_name: record.runner_name,
-            runner_group: record.runner_group,
-            subcommand: record.subcommand,
-            started_at: record.started_at,
-        });
+        remove_stale_tmp_file(&path, identity, &liveness).await;
     }
 
     instances.sort_by(|left, right| {
@@ -214,12 +244,13 @@ pub(crate) async fn is_current(
     home: &HomePaths,
     instance: &LiveRunnerInstance,
 ) -> RunnerResult<bool> {
+    let liveness = LivenessContext::new();
     let identity = FileProcessIdentity {
         pid: instance.pid,
         starttime: instance.starttime,
     };
     let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
-    let record = match read_record_for_identity(&path, identity).await? {
+    let record = match read_record_for_identity(&path, identity, &liveness).await? {
         RecordForIdentity::Valid(record) => record,
         RecordForIdentity::InvalidForStaleProcess => return Ok(false),
         RecordForIdentity::InvalidForLiveProcess => {
@@ -269,6 +300,14 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
 }
 
 async fn read_record(path: &Path) -> RunnerResult<RecordRead> {
+    let liveness = LivenessContext::new();
+    read_record_with_liveness(path, &liveness).await
+}
+
+async fn read_record_with_liveness(
+    path: &Path,
+    liveness: &LivenessContext,
+) -> RunnerResult<RecordRead> {
     let content = match crate::state_file::read_to_string(
         path,
         LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES,
@@ -290,7 +329,7 @@ async fn read_record(path: &Path) -> RunnerResult<RecordRead> {
             return Ok(RecordRead::InvalidFile);
         }
     };
-    if record_is_live(&record).await? {
+    if record_is_live(&record, liveness).await? {
         Ok(RecordRead::Valid(record))
     } else {
         Ok(RecordRead::NotLive)
@@ -311,6 +350,7 @@ async fn remove_stale_records(home: &HomePaths) {
         }
     };
 
+    let liveness = LivenessContext::new();
     loop {
         let entry = match entries.next_entry().await {
             Ok(Some(entry)) => entry,
@@ -323,7 +363,7 @@ async fn remove_stale_records(home: &HomePaths) {
         let file_name = entry.file_name();
         let path = entry.path();
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
-            match read_record_for_identity(&path, identity).await {
+            match read_record_for_identity(&path, identity, &liveness).await {
                 Err(e) => {
                     tracing::debug!(
                         path = %path.display(),
@@ -341,31 +381,20 @@ async fn remove_stale_records(home: &HomePaths) {
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        match file_process_identity_is_live(identity).await {
-            Ok(true) => {}
-            Ok(false) => {
-                remove_stale_file(&path, "stale live runner instance tmp file").await;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "preserving live runner instance tmp file after liveness check failed"
-                );
-            }
-        }
+        remove_stale_tmp_file(&path, identity, &liveness).await;
     }
 }
 
 async fn read_record_for_identity(
     path: &Path,
     identity: FileProcessIdentity,
+    liveness: &LivenessContext,
 ) -> RunnerResult<RecordForIdentity> {
-    let record = match read_record(path).await? {
+    let record = match read_record_with_liveness(path, liveness).await? {
         RecordRead::Valid(record) => record,
         RecordRead::Missing => return Ok(RecordForIdentity::InvalidForStaleProcess),
         RecordRead::InvalidFile | RecordRead::NotLive => {
-            return invalid_record_for_identity(identity).await;
+            return invalid_record_for_identity(identity, liveness).await;
         }
     };
     if record.pid == identity.pid && record.starttime == identity.starttime {
@@ -379,17 +408,38 @@ async fn read_record_for_identity(
             file_starttime = identity.starttime,
             "ignoring live runner instance record whose contents do not match file name"
         );
-        invalid_record_for_identity(identity).await
+        invalid_record_for_identity(identity, liveness).await
     }
 }
 
 async fn invalid_record_for_identity(
     identity: FileProcessIdentity,
+    liveness: &LivenessContext,
 ) -> RunnerResult<RecordForIdentity> {
-    if file_process_identity_is_live(identity).await? {
+    if file_process_identity_is_live(identity, liveness).await? {
         Ok(RecordForIdentity::InvalidForLiveProcess)
     } else {
         Ok(RecordForIdentity::InvalidForStaleProcess)
+    }
+}
+
+async fn remove_stale_tmp_file(
+    path: &Path,
+    identity: FileProcessIdentity,
+    liveness: &LivenessContext,
+) {
+    match file_process_identity_is_live(identity, liveness).await {
+        Ok(true) => {}
+        Ok(false) => {
+            remove_stale_file(path, "stale live runner instance tmp file").await;
+        }
+        Err(e) => {
+            tracing::debug!(
+                path = %path.display(),
+                error = %e,
+                "preserving live runner instance tmp file after liveness check failed"
+            );
+        }
     }
 }
 
@@ -425,37 +475,53 @@ fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<FileProcess
     stable_record_identity_from_str(stable_name)
 }
 
-async fn record_is_live(record: &LiveRunnerInstanceRecord) -> RunnerResult<bool> {
-    process_identity_is_live(ProcessIdentity {
-        boot_id: record.boot_id.clone(),
-        pid: record.pid,
-        starttime: record.starttime,
-        euid: record.euid,
-    })
+async fn record_is_live(
+    record: &LiveRunnerInstanceRecord,
+    liveness: &LivenessContext,
+) -> RunnerResult<bool> {
+    process_identity_is_live(
+        ProcessIdentity {
+            boot_id: record.boot_id.clone(),
+            pid: record.pid,
+            starttime: record.starttime,
+            euid: record.euid,
+        },
+        liveness,
+    )
     .await
 }
 
-async fn file_process_identity_is_live(identity: FileProcessIdentity) -> RunnerResult<bool> {
-    let boot_id = current_boot_id().await?;
+async fn file_process_identity_is_live(
+    identity: FileProcessIdentity,
+    liveness: &LivenessContext,
+) -> RunnerResult<bool> {
+    let boot_id = liveness.boot_id().await?;
     let identity = ProcessIdentity {
-        boot_id: boot_id.clone(),
+        boot_id: boot_id.to_owned(),
         pid: identity.pid,
         starttime: identity.starttime,
-        euid: current_euid(),
+        euid: liveness.euid,
     };
-    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
+    Ok(process_identity_is_live_for_boot(&identity, boot_id, liveness.euid).await)
 }
 
-async fn process_identity_is_live(identity: ProcessIdentity) -> RunnerResult<bool> {
-    let boot_id = current_boot_id().await?;
-    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
+async fn process_identity_is_live(
+    identity: ProcessIdentity,
+    liveness: &LivenessContext,
+) -> RunnerResult<bool> {
+    let boot_id = liveness.boot_id().await?;
+    Ok(process_identity_is_live_for_boot(&identity, boot_id, liveness.euid).await)
 }
 
-async fn process_identity_is_live_for_boot(identity: &ProcessIdentity, boot_id: &str) -> bool {
+async fn process_identity_is_live_for_boot(
+    identity: &ProcessIdentity,
+    boot_id: &str,
+    euid: u32,
+) -> bool {
     if identity.boot_id != boot_id {
         return false;
     }
-    if identity.euid != current_euid() {
+    if identity.euid != euid {
         return false;
     }
     let Some(before) = process::read_process_stat(identity.pid).await else {
@@ -535,6 +601,33 @@ mod tests {
     const STALE_RECORD_PID: u32 = u32::MAX;
     const STALE_RECORD_STARTTIME: u64 = 1;
     const TEST_STARTED_AT: &str = "2026-01-01T00:00:00.000Z";
+
+    #[cfg(unix)]
+    struct ChildGuard(std::process::Child);
+
+    #[cfg(unix)]
+    impl ChildGuard {
+        fn spawn() -> Self {
+            Self(
+                std::process::Command::new("sleep")
+                    .arg("30")
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+
+        fn pid(&self) -> u32 {
+            self.0.id()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
 
     struct TestRegistry {
         dir: tempfile::TempDir,
@@ -737,6 +830,29 @@ mod tests {
         assert!(!instance.started_at.is_empty());
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn try_list_sorts_multiple_live_instances() {
+        let registry = TestRegistry::new();
+        let _handle = publish(&registry.home, registry.metadata()).await.unwrap();
+        let child = ChildGuard::spawn();
+        let child_stat = process::read_process_stat(child.pid()).await.unwrap();
+        let child_record = registry
+            .other_live_process_record(child.pid(), child_stat.starttime)
+            .await;
+        registry.write_record_at_identity(&child_record).await;
+
+        let instances = try_list(&registry.home).await.unwrap();
+
+        assert_eq!(
+            instances
+                .iter()
+                .map(|instance| instance.runner_name.as_str())
+                .collect::<Vec<_>>(),
+            ["other-runner", "test-runner"]
+        );
+    }
+
     #[tokio::test]
     async fn try_list_defaults_legacy_records_to_start_subcommand() {
         let registry = TestRegistry::new();
@@ -808,6 +924,35 @@ mod tests {
             "{error}"
         );
         assert!(handle.path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn try_list_fails_closed_for_unreadable_record_with_live_file_identity() {
+        use std::os::unix::fs::symlink;
+
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
+        let target = registry.root().join("symlink-target");
+        tokio::fs::write(&target, b"{}").await.unwrap();
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+        symlink(&target, &handle.path).unwrap();
+
+        let error = match try_list(&registry.home).await {
+            Ok(_) => panic!("expected unreadable live record to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("live process identity"),
+            "{error}"
+        );
+        assert!(
+            std::fs::symlink_metadata(&handle.path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[tokio::test]
@@ -937,7 +1082,7 @@ mod tests {
     #[tokio::test]
     async fn try_list_removes_stale_records() {
         let registry = TestRegistry::new();
-        registry.ensure_dir();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
         let stale_record = registry.stale_record().await;
         let stale_path = registry.write_record_at_identity(&stale_record).await;
         let stale_tmp_path = registry.stale_tmp_path();
@@ -945,9 +1090,24 @@ mod tests {
 
         let instances = try_list(&registry.home).await.unwrap();
 
-        assert!(instances.is_empty());
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].pid, handle.identity.pid);
         assert!(!stale_path.exists());
         assert!(!stale_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_list_keeps_live_tmp_file() {
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        let live_tmp_path = registry.tmp_path_for_record(&record);
+        tokio::fs::write(&live_tmp_path, b"partial").await.unwrap();
+
+        let instances = try_list(&registry.home).await.unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert!(live_tmp_path.exists());
     }
 
     #[tokio::test]
@@ -969,22 +1129,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn publish_keeps_other_live_runner_instance_records() {
-        struct ChildGuard(std::process::Child);
-
-        impl Drop for ChildGuard {
-            fn drop(&mut self) {
-                let _ = self.0.kill();
-                let _ = self.0.wait();
-            }
-        }
-
-        let child = ChildGuard(
-            std::process::Command::new("sleep")
-                .arg("30")
-                .spawn()
-                .unwrap(),
-        );
-        let child_pid = child.0.id();
+        let child = ChildGuard::spawn();
+        let child_pid = child.pid();
         let registry = TestRegistry::new();
         registry.ensure_dir();
         let child_stat = process::read_process_stat(child_pid).await.unwrap();

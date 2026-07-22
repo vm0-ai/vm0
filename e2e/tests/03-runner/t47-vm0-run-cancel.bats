@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Test run cancellation: vm0 run kill cancels a running job via Ably.
+# Test cancellation of a running job through the run API.
 # Uses "sleep 300" as prompt — mock-claude executes it as bash, keeping
 # the run alive long enough to cancel.
 
@@ -23,7 +23,7 @@ teardown() {
     fi
 }
 
-@test "vm0 run kill cancels a running job" {
+@test "run API cancels a running job" {
     if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated"
     fi
@@ -40,47 +40,27 @@ agents:
 EOF
 
     echo "# Step 1: Compose agent..."
-    run $VM0_CLI compose vm0.yaml
+    run seed_compose_fixture vm0.yaml
     assert_success
 
-    echo "# Step 2: Start run in background (sleep 300 keeps it alive)..."
-    $VM0_CLI run "$AGENT_NAME" --no-auto-update "sleep 300" > "$TEST_DIR/run_output.txt" 2>&1 &
-    RUN_PID=$!
-
-    echo "# Step 3: Extract Run ID from output..."
-    RUN_ID=""
-    for i in $(seq 1 30); do
-        RUN_ID=$(grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' "$TEST_DIR/run_output.txt" 2>/dev/null | head -1)
-        [ -n "$RUN_ID" ] && break
-        sleep 1
-    done
+    echo "# Step 2: Create a long-running fixture..."
+    run create_compose_run_fixture "$AGENT_NAME" "sleep 300"
+    assert_success
+    RUN_ID=$(jq -er '.runId' <<< "$output")
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
-        cat "$TEST_DIR/run_output.txt" 2>/dev/null
+        echo "$output"
         return 1
     }
     echo "# Got Run ID: $RUN_ID"
 
     echo "# Step 4: Kill the run..."
-    run $VM0_CLI run kill "$RUN_ID"
+    run cancel_run_fixture "$RUN_ID"
     assert_success
     assert_output --partial "cancelled"
 
-    echo "# Step 5: Wait for background run to exit..."
-    for i in $(seq 1 60); do
-        kill -0 "$RUN_PID" 2>/dev/null || break
-        sleep 1
-    done
-    if kill -0 "$RUN_PID" 2>/dev/null; then
-        kill "$RUN_PID" 2>/dev/null || true
-        echo "# Background run did not exit after 60s"
-        return 1
-    fi
-
-    echo "# Step 6: Verify output shows cancellation..."
-    cat "$TEST_DIR/run_output.txt" | grep -qi "cancel" || {
-        echo "# Expected 'cancel' in output but got:"
-        cat "$TEST_DIR/run_output.txt"
-        return 1
-    }
+    echo "# Step 5: Verify terminal cancellation state..."
+    run wait_for_run_fixture "$RUN_ID" 60
+    assert_failure
+    assert_output --partial '"status":"cancelled"'
 }

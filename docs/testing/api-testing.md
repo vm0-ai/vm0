@@ -131,20 +131,6 @@ raise the gap during review.
 For the full reasoning, see
 [Testing External Behavior](./testing-external-behavior.md).
 
-## Frontend-Origin API Compatibility
-
-All endpoint behavior lives in `apps/api`; frontend apps should not add API
-route handlers or thin proxy route handlers. When a `/api/*` path must remain
-reachable on a frontend origin, route that path back to `apps/api` through the
-owning frontend's Vercel rewrite configuration, such as
-`turbo/apps/platform/vercel.json`.
-
-Frontend-side tests should cover only routing concerns, such as:
-
-- exact Vercel rewrite entries
-- service-worker handling of API and navigation requests
-- security header behavior around proxied paths
-
 ## Commands
 
 Run route-focused tests from `turbo`:

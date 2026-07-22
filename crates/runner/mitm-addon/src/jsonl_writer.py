@@ -104,7 +104,7 @@ def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
             return True
         finally:
             _decrement_flush_waiter_locked(log_path)
-            _prune_completed_path_locked(log_path, target)
+            _prune_completed_path_locked(log_path)
 
 
 def flush_all_logs() -> None:
@@ -124,8 +124,8 @@ def flush_all_logs() -> None:
         finally:
             for path in targets:
                 _decrement_flush_waiter_locked(path)
-            for path, target in targets.items():
-                _prune_completed_path_locked(path, target)
+            for path in targets:
+                _prune_completed_path_locked(path)
 
 
 def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) -> bool:
@@ -303,8 +303,8 @@ def _complete_batch(items: list[object]) -> None:
             )
         _pending_bytes = max(0, _pending_bytes - completed_bytes)
         _queued_writes = max(0, _queued_writes - completed_writes)
-        for log_path, sequence in completed_by_path.items():
-            _prune_completed_path_locked(log_path, sequence)
+        for log_path in completed_by_path:
+            _prune_completed_path_locked(log_path)
         _condition.notify_all()
 
 
@@ -320,13 +320,11 @@ def _decrement_flush_waiter_locked(log_path: str) -> None:
         _flush_waiters_by_path[log_path] = current - 1
 
 
-def _prune_completed_path_locked(log_path: str, target: int) -> None:
+def _prune_completed_path_locked(log_path: str) -> None:
     if _flush_waiters_by_path.get(log_path, 0) > 0:
         return
-    if (
-        _accepted_by_path.get(log_path, 0) == target
-        and _completed_by_path.get(log_path, 0) >= target
-    ):
+    accepted = _accepted_by_path.get(log_path)
+    if accepted is not None and _completed_by_path.get(log_path, 0) >= accepted:
         _accepted_by_path.pop(log_path, None)
         _completed_by_path.pop(log_path, None)
 

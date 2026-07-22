@@ -180,6 +180,10 @@ function buildUnsplashAsset(
   if (!src || !photographerName || !photographerUrl || !sourceUrl) {
     return null;
   }
+  const sourceAttributionUrl = withUnsplashUtm(
+    UNSPLASH_HOME_URL,
+    UNSPLASH_HOME_URL,
+  );
 
   return {
     src,
@@ -191,7 +195,8 @@ function buildUnsplashAsset(
     source: "unsplash",
     sourceName: "Unsplash",
     sourceUrl: withUnsplashUtm(sourceUrl, UNSPLASH_HOME_URL),
-    unsplashUrl: withUnsplashUtm(UNSPLASH_HOME_URL, UNSPLASH_HOME_URL),
+    sourceAttributionUrl,
+    unsplashUrl: sourceAttributionUrl,
     photographerName,
     photographerUrl: withUnsplashUtm(photographerUrl, UNSPLASH_HOME_URL),
     license: "Unsplash",
@@ -328,6 +333,7 @@ function buildPexelsAsset(
     sourceUrl,
     // Credit link rendered by the deck templates; for Pexels this points at the
     // photo page, which satisfies the Pexels attribution guidelines.
+    sourceAttributionUrl: sourceUrl,
     unsplashUrl: sourceUrl,
     photographerName,
     photographerUrl,

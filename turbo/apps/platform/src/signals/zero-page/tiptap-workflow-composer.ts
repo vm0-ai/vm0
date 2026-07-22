@@ -16,7 +16,6 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
@@ -29,6 +28,7 @@ import {
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
+  splitChatThreadMentionSegments,
   type ChatThreadSuggestionRange,
   type ComposerChatThreadSuggestion,
 } from "./chat-thread-suggestion-domain.ts";
@@ -43,17 +43,13 @@ import {
   type SlashWorkflowRange,
 } from "./workflow-composer-domain.ts";
 import {
+  CHAT_THREAD_MENTION_NODE_NAME,
+  TEMPLATE_ATTACHMENT_NODE_NAME,
+} from "./user-message-document-codec.ts";
+import {
   createTemplatePreviewRuntime,
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
-import {
-  inlineTemplateMetadataFromRequest,
-  serializeInlineAttachmentReferencePromptItem,
-  serializeInlineFilePromptItem,
-  serializeInlineTemplatePromptItem,
-  splitInlinePromptLine,
-  type InlineTemplateMetadata,
-} from "./composer-inline-prompt-items.ts";
 
 const EDITOR_CONTENT_CLASS =
   // The editor grows with its content instead of scrolling inside a fixed
@@ -116,27 +112,10 @@ export interface WorkflowComposerSignals {
   readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
-  readonly insertTemplate$: Command<
-    void,
-    [GenerationTemplateRequest, ComposerTemplateAttachment]
-  >;
-  readonly insertFile$: Command<void, [ComposerInlineFileAttachment]>;
-  readonly insertReferencedFile$: Command<void, [ComposerInlineFileAttachment]>;
-  readonly resolveFile$: Command<
-    void,
-    [clientId: string, fileId: string, url: string]
-  >;
-  readonly removeFile$: Command<void, [clientId: string]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
-  readonly readInputForSubmission$: Command<
-    Promise<string>,
-    [
-      attachmentReferenceClientIds: ReadonlySet<string> | null,
-      signal: AbortSignal,
-    ]
-  >;
+  readonly readInputForSubmission$: Command<Promise<string>, [AbortSignal]>;
   readonly setTemplateAttachmentLifecycleRef$: Command<
     (() => void) | undefined,
     [HTMLButtonElement | null]
@@ -159,16 +138,6 @@ export interface ComposerTemplateAttachment {
   readonly previewImageUrl?: string;
 }
 
-export interface ComposerInlineFileAttachment {
-  readonly clientId: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly size: number;
-  readonly fileId?: string;
-  readonly url?: string;
-  readonly promptReference?: string;
-}
-
 export interface WorkflowComposerEventHandlers {
   readonly onInput: () => void;
   readonly onKeyDown: (event: KeyboardEvent) => boolean;
@@ -179,11 +148,6 @@ export interface WorkflowComposerEventHandlers {
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
-const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
-const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
-const INLINE_FILE_NODE_NAME = "inlineFile";
-const PROMPT_FEEDBACK_NODE_NAME = "promptFeedback";
-const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 const CHAT_THREAD_MENTION_CLASS =
   "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
 
@@ -574,400 +538,6 @@ function createTemplateAttachmentNodeView(
   };
 }
 
-interface InlineTemplateNodeAttributes extends InlineTemplateMetadata {
-  readonly title: string;
-  readonly category: string;
-  readonly previewImageUrl?: string;
-}
-
-function inlineTemplateNodeAttributes(
-  node: ProseMirrorNode,
-): InlineTemplateNodeAttributes {
-  const templateType: unknown = node.attrs.templateType;
-  const normalizedTemplateType =
-    typeof templateType === "string" ? templateType : undefined;
-  const selectionId: unknown = node.attrs.selectionId;
-  const colorSystemId: unknown = node.attrs.colorSystemId;
-  const title: unknown = node.attrs.title;
-  const category: unknown = node.attrs.category;
-  const previewImageUrl: unknown = node.attrs.previewImageUrl;
-  if (
-    !isComposerTemplateAttachmentType(normalizedTemplateType) ||
-    typeof selectionId !== "string" ||
-    (colorSystemId !== null && typeof colorSystemId !== "string") ||
-    typeof title !== "string" ||
-    typeof category !== "string" ||
-    (previewImageUrl !== null && typeof previewImageUrl !== "string")
-  ) {
-    throw new Error("Inline template node attributes are invalid");
-  }
-  return {
-    type: normalizedTemplateType,
-    selectionId,
-    ...(colorSystemId === null ? {} : { colorSystemId }),
-    title,
-    category,
-    ...(previewImageUrl === null ? {} : { previewImageUrl }),
-  };
-}
-
-function inlineTemplateNodeText(node: ProseMirrorNode): string {
-  return serializeInlineTemplatePromptItem(inlineTemplateNodeAttributes(node));
-}
-
-function createInlineTemplateNodeView(
-  node: ProseMirrorNode,
-  openTemplate: (category: string) => void,
-  removeTemplate: () => void,
-): NodeView {
-  const dom = document.createElement("span");
-  dom.dataset.composerInlineTemplate = "";
-  dom.className =
-    "mx-0.5 inline-flex max-w-full align-middle items-center gap-1 rounded-md " +
-    "border border-border/80 bg-background/90 px-1.5 py-0.5 text-foreground " +
-    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-  dom.contentEditable = "false";
-
-  const openButton = document.createElement("button");
-  openButton.type = "button";
-  openButton.className =
-    "flex min-w-0 items-center gap-1.5 rounded px-0.5 hover:bg-muted " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  const preview = document.createElement("span");
-  preview.className =
-    "flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded bg-muted";
-  const title = document.createElement("span");
-  title.className = "min-w-0 truncate text-xs font-medium";
-  openButton.append(preview, title);
-
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className =
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 " +
-    "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
-    "focus-visible:ring-ring";
-  removeButton.append(
-    createComposerIcon(11, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
-  );
-  dom.append(openButton, removeButton);
-
-  let currentNode = node;
-  function render(nextNode: ProseMirrorNode): void {
-    const attributes = inlineTemplateNodeAttributes(nextNode);
-    title.textContent = attributes.title;
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(attributes),
-    );
-    removeButton.setAttribute(
-      "aria-label",
-      templateAttachmentRemoveLabel(attributes),
-    );
-    preview.replaceChildren();
-    if (attributes.previewImageUrl) {
-      const image = document.createElement("img");
-      image.src = attributes.previewImageUrl;
-      image.alt = "";
-      image.className = "h-full w-full object-cover";
-      preview.append(image);
-      return;
-    }
-    preview.append(
-      createComposerIcon(11, 1.5, [
-        "M4 4h16v16h-16z",
-        "M8 8h8",
-        "M8 12h8",
-        "M8 16h5",
-      ]),
-    );
-  }
-  openButton.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  openButton.addEventListener("click", () => {
-    openTemplate(inlineTemplateNodeAttributes(currentNode).category);
-  });
-  removeButton.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  removeButton.addEventListener("click", removeTemplate);
-  render(currentNode);
-
-  return {
-    dom,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type) {
-        return false;
-      }
-      currentNode = nextNode;
-      render(nextNode);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof globalThis.Node && dom.contains(event.target)
-      );
-    },
-    ignoreMutation() {
-      return true;
-    },
-  };
-}
-
-type InlineFileNodeAttributes = ComposerInlineFileAttachment;
-
-function inlineFileNodeAttributes(
-  node: ProseMirrorNode,
-): InlineFileNodeAttributes {
-  const clientId: unknown = node.attrs.clientId;
-  const filename: unknown = node.attrs.filename;
-  const contentType: unknown = node.attrs.contentType;
-  const size: unknown = node.attrs.size;
-  const fileId: unknown = node.attrs.fileId;
-  const url: unknown = node.attrs.url;
-  const promptReference: unknown = node.attrs.promptReference;
-  if (
-    typeof clientId !== "string" ||
-    typeof filename !== "string" ||
-    typeof contentType !== "string" ||
-    typeof size !== "number" ||
-    (fileId !== null && typeof fileId !== "string") ||
-    (url !== null && typeof url !== "string") ||
-    (promptReference !== null && typeof promptReference !== "string")
-  ) {
-    throw new Error("Inline file node attributes are invalid");
-  }
-  return {
-    clientId,
-    filename,
-    contentType,
-    size,
-    ...(fileId === null ? {} : { fileId }),
-    ...(url === null ? {} : { url }),
-    ...(promptReference === null ? {} : { promptReference }),
-  };
-}
-
-function inlineFileNodeText(node: ProseMirrorNode): string {
-  const attributes = inlineFileNodeAttributes(node);
-  const label = attributes.promptReference ?? attributes.filename;
-  if (attributes.promptReference && attributes.url) {
-    return serializeInlineAttachmentReferencePromptItem(
-      label,
-      attributes.url,
-      attributes.clientId,
-    );
-  }
-  return attributes.url
-    ? serializeInlineFilePromptItem(label, attributes.url)
-    : label;
-}
-
-function inlineFileSubmissionText(
-  node: ProseMirrorNode,
-  attachmentReferenceClientIds: ReadonlySet<string>,
-): string {
-  const attributes = inlineFileNodeAttributes(node);
-  if (!attributes.promptReference) {
-    return inlineFileNodeText(node);
-  }
-  return attachmentReferenceClientIds.has(attributes.clientId)
-    ? attributes.promptReference
-    : "";
-}
-
-function createInlineFileReferenceNodeView(node: ProseMirrorNode): NodeView {
-  const dom = document.createElement("span");
-  dom.dataset.composerInlineFile = "";
-  dom.className = "text-foreground";
-  dom.contentEditable = "false";
-
-  let currentNode = node;
-  function render(nextNode: ProseMirrorNode): boolean {
-    const reference = inlineFileNodeAttributes(nextNode).promptReference;
-    if (!reference) {
-      return false;
-    }
-    dom.textContent = reference;
-    return true;
-  }
-  render(currentNode);
-
-  return {
-    dom,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type || !render(nextNode)) {
-        return false;
-      }
-      currentNode = nextNode;
-      return true;
-    },
-    ignoreMutation() {
-      return true;
-    },
-  };
-}
-
-function createInlineFileNodeView(
-  node: ProseMirrorNode,
-  removeFile: () => void,
-): NodeView {
-  if (inlineFileNodeAttributes(node).promptReference) {
-    return createInlineFileReferenceNodeView(node);
-  }
-  const dom = document.createElement("span");
-  dom.dataset.composerInlineFile = "";
-  dom.className =
-    "mx-0.5 inline-flex max-w-full align-middle items-center gap-1 rounded-md border " +
-    "border-border/80 bg-background/90 px-1.5 py-0.5 text-foreground " +
-    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-  dom.contentEditable = "false";
-  const icon = document.createElement("span");
-  icon.className = "flex h-4 w-4 shrink-0 items-center justify-center";
-  const title = document.createElement("span");
-  title.className = "min-w-0 truncate text-xs font-medium";
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className =
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 " +
-    "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
-    "focus-visible:ring-ring";
-  removeButton.append(
-    createComposerIcon(11, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
-  );
-  dom.append(icon, title, removeButton);
-
-  let currentNode = node;
-  function render(nextNode: ProseMirrorNode): void {
-    const attributes = inlineFileNodeAttributes(nextNode);
-    const label = attributes.promptReference ?? attributes.filename;
-    title.textContent = label;
-    removeButton.setAttribute("aria-label", `Remove file ${label}`);
-    icon.replaceChildren();
-    const fileIcon = createComposerIcon(12, 1.5, [
-      "M15 7l-6.5 6.5a2.121 2.121 0 0 0 3 3l6.5-6.5a4.243 4.243 0 0 0-6-6l-6.5 6.5a6.364 6.364 0 0 0 9 9l6.5-6.5",
-    ]);
-    fileIcon.setAttribute(
-      "class",
-      attributes.url ? "text-muted-foreground" : "animate-pulse text-primary",
-    );
-    icon.append(fileIcon);
-  }
-  removeButton.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  removeButton.addEventListener("click", removeFile);
-  render(currentNode);
-
-  return {
-    dom,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type) {
-        return false;
-      }
-      currentNode = nextNode;
-      render(nextNode);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof globalThis.Node && dom.contains(event.target)
-      );
-    },
-    ignoreMutation() {
-      return true;
-    },
-  };
-}
-
-interface PromptFeedbackNodeAttributes {
-  readonly feedbackId: number;
-  readonly quote: string;
-}
-
-function promptFeedbackNodeAttributes(
-  node: ProseMirrorNode,
-): PromptFeedbackNodeAttributes {
-  const feedbackId: unknown = node.attrs.feedbackId;
-  const quote: unknown = node.attrs.quote;
-  if (typeof feedbackId !== "number" || typeof quote !== "string") {
-    throw new Error("Prompt feedback node attributes are invalid");
-  }
-  return { feedbackId, quote };
-}
-
-function promptFeedbackNodeText(node: ProseMirrorNode): string {
-  const { feedbackId, quote } = promptFeedbackNodeAttributes(node);
-  return formatFeedbackPrompt([{ id: feedbackId, quote, note: "" }]).trimEnd();
-}
-
-function createPromptFeedbackNodeView(
-  node: ProseMirrorNode,
-  removeFeedback: () => void,
-): NodeView {
-  const dom = document.createElement("div");
-  dom.dataset.composerFeedback = "";
-  dom.className = "flex min-w-0";
-  dom.contentEditable = "false";
-  const chip = document.createElement("div");
-  chip.className =
-    "inline-flex max-w-full items-center gap-1 rounded-md border " +
-    "border-border/80 bg-background/90 px-1.5 py-0.5 text-foreground " +
-    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-  const icon = document.createElement("span");
-  icon.className = "flex h-4 w-4 shrink-0 items-center justify-center";
-  icon.append(
-    createComposerIcon(11, 1.5, [
-      "M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
-      "M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
-    ]),
-  );
-  const quote = document.createElement("span");
-  quote.className = "max-w-48 truncate text-xs font-medium";
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className =
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 " +
-    "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
-    "focus-visible:ring-ring";
-  removeButton.setAttribute("aria-label", "Remove feedback");
-  removeButton.append(
-    createComposerIcon(11, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
-  );
-  chip.append(icon, quote, removeButton);
-  dom.append(chip);
-
-  let currentNode = node;
-  function render(nextNode: ProseMirrorNode): void {
-    quote.textContent = promptFeedbackNodeAttributes(nextNode).quote;
-  }
-  removeButton.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  removeButton.addEventListener("click", removeFeedback);
-  render(currentNode);
-
-  return {
-    dom,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type) {
-        return false;
-      }
-      currentNode = nextNode;
-      render(nextNode);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof globalThis.Node && dom.contains(event.target)
-      );
-    },
-    ignoreMutation() {
-      return true;
-    },
-  };
-}
-
 function feedbackNoteContent(note: string): JSONContent[] {
   return note.split("\n").map((line) => {
     return line.length > 0
@@ -976,11 +546,8 @@ function feedbackNoteContent(note: string): JSONContent[] {
   });
 }
 
-function feedbackNoteFromNode(
-  node: ProseMirrorNode,
-  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
-): string {
-  return nodeText(node, node.content.size, attachmentReferenceClientIds);
+function feedbackNoteFromNode(node: ProseMirrorNode): string {
+  return nodeText(node);
 }
 
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
@@ -1043,40 +610,22 @@ function insertFeedbackItem(editor: Editor, item: FeedbackItem): void {
   editor.commands.focus("end");
 }
 
-function insertPromptFeedbackItem(editor: Editor, item: FeedbackItem): void {
-  editor
-    .chain()
-    .focus()
-    .insertContent([
-      {
-        type: PROMPT_FEEDBACK_NODE_NAME,
-        attrs: { feedbackId: item.id, quote: item.quote },
-      },
-      { type: "paragraph" },
-    ])
-    .run();
-}
-
 function removeFeedbackItem(editor: Editor, id: number): void {
   let itemPosition: number | null = null;
   let itemSize = 0;
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
-      if (feedbackItemNodeAttributes(node).feedbackId === id) {
-        itemPosition = position;
-        itemSize = node.nodeSize;
-      }
-      return false;
-    }
+  let position = 0;
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
     if (
-      node.type.name === PROMPT_FEEDBACK_NODE_NAME &&
-      promptFeedbackNodeAttributes(node).feedbackId === id
+      node.type.name === FEEDBACK_ITEM_NODE_NAME &&
+      feedbackItemNodeAttributes(node).feedbackId === id
     ) {
       itemPosition = position;
       itemSize = node.nodeSize;
+      break;
     }
-    return itemPosition === null;
-  });
+    position += node.nodeSize;
+  }
   if (itemPosition === null) {
     return;
   }
@@ -1094,26 +643,18 @@ function feedbackItemsFromWorkflowComposer(
   editor: Editor,
 ): readonly FeedbackItem[] {
   const items: FeedbackItem[] = [];
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
-      const attributes = feedbackItemNodeAttributes(node);
-      items.push({
-        id: attributes.feedbackId,
-        quote: attributes.quote,
-        note: feedbackNoteFromNode(node),
-      });
-      return false;
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+      continue;
     }
-    if (node.type.name === PROMPT_FEEDBACK_NODE_NAME) {
-      const attributes = promptFeedbackNodeAttributes(node);
-      items.push({
-        id: attributes.feedbackId,
-        quote: attributes.quote,
-        note: "",
-      });
-    }
-    return true;
-  });
+    const attributes = feedbackItemNodeAttributes(node);
+    items.push({
+      id: attributes.feedbackId,
+      quote: attributes.quote,
+      note: feedbackNoteFromNode(node),
+    });
+  }
   return items;
 }
 
@@ -1238,237 +779,21 @@ function setTemplateAttachmentNode(
   );
 }
 
-function inlineTemplateNode(
-  editor: Editor,
-  request: GenerationTemplateRequest,
-  attachment: ComposerTemplateAttachment,
-): ProseMirrorNode {
-  const metadata = inlineTemplateMetadataFromRequest(request);
-  return editor.schema.nodeFromJSON({
-    type: INLINE_TEMPLATE_NODE_NAME,
-    attrs: {
-      templateType: metadata.type,
-      selectionId: metadata.selectionId,
-      colorSystemId: metadata.colorSystemId ?? null,
-      title: attachment.title,
-      category: attachment.category,
-      previewImageUrl: attachment.previewImageUrl ?? null,
-    },
-  });
-}
-
-function insertInlineTemplate(
-  editor: Editor,
-  request: GenerationTemplateRequest,
-  attachment: ComposerTemplateAttachment,
-): void {
-  const node = inlineTemplateNode(editor, request, attachment);
-  editor
-    .chain()
-    .focus()
-    .insertContent([node.toJSON(), { type: "text", text: " " }])
-    .run();
-}
-
-function insertInlineFile(
-  editor: Editor,
-  attachment: ComposerInlineFileAttachment,
-): void {
-  editor
-    .chain()
-    .focus()
-    .insertContent([
-      {
-        type: INLINE_FILE_NODE_NAME,
-        attrs: {
-          clientId: attachment.clientId,
-          filename: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-          fileId: attachment.fileId ?? null,
-          url: attachment.url ?? null,
-          promptReference: attachment.promptReference ?? null,
-        },
-      },
-      { type: "text", text: " " },
-    ])
-    .run();
-}
-
-function nextInlineFilePromptReference(
-  document: ProseMirrorNode,
-  contentType: string,
-): string {
-  const prefix = contentType.startsWith("image/") ? "image" : "file";
-  let nextIndex = 1;
-  document.descendants((node) => {
-    if (node.type.name !== INLINE_FILE_NODE_NAME) {
-      return true;
-    }
-    const reference = inlineFileNodeAttributes(node).promptReference;
-    const match = reference?.match(new RegExp(`^${prefix}(\\d+)$`));
-    if (match) {
-      nextIndex = Math.max(nextIndex, Number(match[1]) + 1);
-    }
-    return true;
-  });
-  return `${prefix}${nextIndex}`;
-}
-
-interface LocatedInlineFile {
-  readonly node: ProseMirrorNode;
-  readonly position: number;
-}
-
-function locateInlineFile(
-  document: ProseMirrorNode,
-  clientId: string,
-): LocatedInlineFile | null {
-  let located: LocatedInlineFile | null = null;
-  document.descendants((node, position) => {
-    if (
-      node.type.name === INLINE_FILE_NODE_NAME &&
-      inlineFileNodeAttributes(node).clientId === clientId
-    ) {
-      located = { node, position };
-      return false;
-    }
-    return located === null;
-  });
-  return located;
-}
-
-function inlineFileClientIds(document: ProseMirrorNode): ReadonlySet<string> {
-  const clientIds = new Set<string>();
-  document.descendants((node) => {
-    if (
-      node.type.name === INLINE_FILE_NODE_NAME &&
-      !inlineFileNodeAttributes(node).promptReference
-    ) {
-      clientIds.add(inlineFileNodeAttributes(node).clientId);
-    }
-    return true;
-  });
-  return clientIds;
-}
-
-function resolveInlineFile(
-  editor: Editor,
-  clientId: string,
-  fileId: string,
-  url: string,
-): void {
-  const located = locateInlineFile(editor.state.doc, clientId);
-  if (!located) {
-    return;
-  }
-  const attributes = inlineFileNodeAttributes(located.node);
-  editor.view.dispatch(
-    editor.state.tr.setNodeMarkup(located.position, undefined, {
-      ...attributes,
-      fileId,
-      url,
-    }),
-  );
-}
-
-function removeInlineFile(editor: Editor, clientId: string): void {
-  const located = locateInlineFile(editor.state.doc, clientId);
-  if (!located) {
-    return;
-  }
-  editor.view.dispatch(
-    editor.state.tr.delete(
-      located.position,
-      located.position + located.node.nodeSize,
-    ),
-  );
-}
-
-function inlinePromptSegmentToJson(
-  segment: ReturnType<typeof splitInlinePromptLine>[number],
-  featureModes: WorkflowComposerFeatureModes,
-): JSONContent {
-  switch (segment.type) {
-    case "text": {
-      return { type: "text", text: segment.text };
-    }
-    case "thread": {
-      return {
-        type: CHAT_THREAD_MENTION_NODE_NAME,
-        attrs: { threadId: segment.threadId, title: segment.title },
-      };
-    }
-    case "file": {
-      if (
-        segment.promptReference !== undefined &&
-        !featureModes.inlineAttachmentReferences
-      ) {
-        if (!featureModes.inlinePromptItems) {
-          return { type: "text", text: segment.promptReference };
-        }
-        return {
-          type: INLINE_FILE_NODE_NAME,
-          attrs: {
-            clientId: segment.clientId ?? segment.url,
-            filename: segment.promptReference,
-            contentType: "application/octet-stream",
-            size: 0,
-            fileId: null,
-            url: segment.url,
-            promptReference: null,
-          },
-        };
-      }
-      return {
-        type: INLINE_FILE_NODE_NAME,
-        attrs: {
-          clientId: segment.clientId ?? segment.url,
-          filename: segment.filename,
-          contentType: "application/octet-stream",
-          size: 0,
-          fileId: null,
-          url: segment.url,
-          promptReference: segment.promptReference ?? null,
-        },
-      };
-    }
-    case "template": {
-      const { metadata, title } = segment.template;
-      return {
-        type: INLINE_TEMPLATE_NODE_NAME,
-        attrs: {
-          templateType: metadata.type,
-          selectionId: metadata.selectionId,
-          colorSystemId: metadata.colorSystemId ?? null,
-          title,
-          category: metadata.type === "presentation" ? "slides" : metadata.type,
-          previewImageUrl: null,
-        },
-      };
-    }
-  }
-}
-
-interface WorkflowComposerFeatureModes {
-  readonly inlinePromptItems: boolean;
-  readonly inlineAttachmentReferences: boolean;
-}
-
-function valueToWorkflowComposerDoc(
-  value: string,
-  featureModes: WorkflowComposerFeatureModes = {
-    inlinePromptItems: false,
-    inlineAttachmentReferences: false,
-  },
-): JSONContent {
+function valueToWorkflowComposerDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
     if (line.length === 0) {
       return { type: "paragraph" };
     }
-    const inlineContent = splitInlinePromptLine(line).map((segment) => {
-      return inlinePromptSegmentToJson(segment, featureModes);
-    });
+    const inlineContent = splitChatThreadMentionSegments(line).map(
+      (segment): JSONContent => {
+        return segment.type === "text"
+          ? { type: "text", text: segment.text }
+          : {
+              type: CHAT_THREAD_MENTION_NODE_NAME,
+              attrs: { threadId: segment.threadId, title: segment.title },
+            };
+      },
+    );
     return { type: "paragraph", content: inlineContent };
   });
   return { type: "doc", content };
@@ -1477,28 +802,16 @@ function valueToWorkflowComposerDoc(
 function nodeText(
   node: ProseMirrorNode,
   to: number = node.content.size,
-  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
 ): string {
   return node.textBetween(0, to, "\n", (leafNode) => {
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       return chatThreadMentionText(leafNode);
     }
-    if (leafNode.type.name === INLINE_TEMPLATE_NODE_NAME) {
-      return inlineTemplateNodeText(leafNode);
-    }
-    if (leafNode.type.name === INLINE_FILE_NODE_NAME) {
-      return attachmentReferenceClientIds
-        ? inlineFileSubmissionText(leafNode, attachmentReferenceClientIds)
-        : inlineFileNodeText(leafNode);
-    }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
   });
 }
 
-function workflowComposerDocToString(
-  editor: Editor,
-  attachmentReferenceClientIds: ReadonlySet<string> | null = null,
-): string {
+function workflowComposerDocToString(editor: Editor): string {
   const sections: string[] = [];
   let textBlocks: string[] = [];
   let feedbackItems: FeedbackItem[] = [];
@@ -1530,19 +843,12 @@ function workflowComposerDocToString(
       feedbackItems.push({
         id: attributes.feedbackId,
         quote: attributes.quote,
-        note: feedbackNoteFromNode(node, attachmentReferenceClientIds),
+        note: feedbackNoteFromNode(node),
       });
       continue;
     }
-    if (node.type.name === PROMPT_FEEDBACK_NODE_NAME) {
-      flushFeedbackItems();
-      textBlocks.push(promptFeedbackNodeText(node));
-      continue;
-    }
     flushFeedbackItems();
-    textBlocks.push(
-      nodeText(node, node.content.size, attachmentReferenceClientIds),
-    );
+    textBlocks.push(nodeText(node));
   }
   flushTextBlocks();
   flushFeedbackItems();
@@ -1666,7 +972,6 @@ interface WorkflowComposerRuntime {
   removeFeedback(id: number): void;
   keyDown(event: KeyboardEvent): boolean;
   paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
-  inlineFileClientIds: ReadonlySet<string>;
 }
 
 function createTemplateAttachmentNode(
@@ -1737,137 +1042,6 @@ function createTemplateAttachmentNode(
   });
 }
 
-function deleteInlineNodeAtPosition(
-  editor: Editor,
-  getPos: () => number | undefined,
-): void {
-  const position = getPos();
-  if (typeof position !== "number") {
-    return;
-  }
-  editor.view.dispatch(editor.state.tr.delete(position, position + 1));
-}
-
-function createInlineTemplateNode(
-  runtime: WorkflowComposerRuntime,
-): Node<undefined, unknown> {
-  return Node.create({
-    name: INLINE_TEMPLATE_NODE_NAME,
-    group: "inline",
-    inline: true,
-    atom: true,
-    draggable: true,
-    selectable: true,
-    addAttributes() {
-      return {
-        templateType: { default: "presentation" },
-        selectionId: { default: "" },
-        colorSystemId: { default: null },
-        title: { default: "" },
-        category: { default: "slides" },
-        previewImageUrl: { default: null },
-      };
-    },
-    parseHTML() {
-      return [{ tag: "span[data-composer-inline-template]" }];
-    },
-    renderHTML({ HTMLAttributes }) {
-      return [
-        "span",
-        { ...HTMLAttributes, "data-composer-inline-template": "" },
-      ];
-    },
-    renderText({ node }) {
-      return inlineTemplateNodeText(node);
-    },
-    addNodeView() {
-      return ({ node, getPos, editor }) => {
-        return createInlineTemplateNodeView(
-          node,
-          (category) => {
-            runtime.openTemplate(category);
-          },
-          () => {
-            deleteInlineNodeAtPosition(editor, getPos);
-          },
-        );
-      };
-    },
-  });
-}
-
-function createInlineFileNode(): Node<undefined, unknown> {
-  return Node.create({
-    name: INLINE_FILE_NODE_NAME,
-    group: "inline",
-    inline: true,
-    atom: true,
-    draggable: true,
-    selectable: true,
-    addAttributes() {
-      return {
-        clientId: { default: "" },
-        filename: { default: "" },
-        contentType: { default: "application/octet-stream" },
-        size: { default: 0 },
-        fileId: { default: null },
-        url: { default: null },
-        promptReference: { default: null },
-      };
-    },
-    parseHTML() {
-      return [{ tag: "span[data-composer-inline-file]" }];
-    },
-    renderHTML({ HTMLAttributes }) {
-      return ["span", { ...HTMLAttributes, "data-composer-inline-file": "" }];
-    },
-    renderText({ node }) {
-      return inlineFileNodeText(node);
-    },
-    addNodeView() {
-      return ({ node, getPos, editor }) => {
-        return createInlineFileNodeView(node, () => {
-          deleteInlineNodeAtPosition(editor, getPos);
-        });
-      };
-    },
-  });
-}
-
-function createPromptFeedbackNode(
-  runtime: WorkflowComposerRuntime,
-): Node<undefined, unknown> {
-  return Node.create({
-    name: PROMPT_FEEDBACK_NODE_NAME,
-    group: "block",
-    atom: true,
-    draggable: true,
-    selectable: true,
-    addAttributes() {
-      return {
-        feedbackId: { default: 0 },
-        quote: { default: "" },
-      };
-    },
-    parseHTML() {
-      return [{ tag: "div[data-composer-feedback]" }];
-    },
-    renderHTML({ HTMLAttributes }) {
-      return ["div", { ...HTMLAttributes, "data-composer-feedback": "" }];
-    },
-    renderText({ node }) {
-      return promptFeedbackNodeText(node);
-    },
-    addNodeView() {
-      return ({ node }) => {
-        return createPromptFeedbackNodeView(node, () => {
-          runtime.removeFeedback(promptFeedbackNodeAttributes(node).feedbackId);
-        });
-      };
-    },
-  });
-}
-
 function createFeedbackItemNode(
   runtime: WorkflowComposerRuntime,
 ): Node<undefined, unknown> {
@@ -1908,9 +1082,6 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
     extensions: [
       STARTER_KIT,
       createTemplateAttachmentNode(runtime),
-      createInlineTemplateNode(runtime),
-      createInlineFileNode(),
-      createPromptFeedbackNode(runtime),
       createFeedbackItemNode(runtime),
       ChatThreadMentionNode,
       WorkflowHighlight,
@@ -1959,10 +1130,9 @@ function setWorkflowComposerDocument(
 function workflowComposerDocumentForValue(
   editor: Editor,
   value: string,
-  featureModes: WorkflowComposerFeatureModes,
 ): ProseMirrorNode {
   const textDocument = editor.schema.nodeFromJSON(
-    valueToWorkflowComposerDoc(value, featureModes),
+    valueToWorkflowComposerDoc(value),
   );
   const templateAttachment = locateTemplateAttachment(editor.state.doc)?.node;
   if (!templateAttachment) {
@@ -1975,43 +1145,6 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
-function syncInlineFileAttachments(
-  runtime: WorkflowComposerRuntime,
-  document: ProseMirrorNode,
-  removeAttachment: (clientId: string) => void,
-) {
-  const nextInlineFileClientIds = inlineFileClientIds(document);
-  for (const clientId of runtime.inlineFileClientIds) {
-    if (!nextInlineFileClientIds.has(clientId)) {
-      removeAttachment(clientId);
-    }
-  }
-  runtime.inlineFileClientIds = nextInlineFileClientIds;
-}
-
-function setWorkflowComposerEditorOptions(
-  editor: Editor,
-  runtime: WorkflowComposerRuntime,
-  singleLineOnMobile: boolean,
-) {
-  editor.setOptions({
-    editorProps: {
-      attributes: {
-        "aria-label": "Message",
-        placeholder: COMPOSER_PLACEHOLDER,
-        tabindex: "0",
-        class: editorContentClass(singleLineOnMobile),
-      },
-      handlePaste: (view, event) => {
-        return runtime.paste(event, view.dom);
-      },
-      handleKeyDown: (_view, event) => {
-        return runtime.keyDown(event);
-      },
-    },
-  });
-}
-
 function createMountEditorCommand({
   editor,
   draft,
@@ -2021,7 +1154,6 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$,
   feedback,
   compositionGate,
-  featureModes,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -2033,20 +1165,12 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
-  featureModes: WorkflowComposerFeatureModes;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
-        syncInlineFileAttachments(
-          runtime,
-          updatedEditor.state.doc,
-          (clientId) => {
-            set(draft.removeAttachmentByClientId$, clientId);
-          },
-        );
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
@@ -2072,12 +1196,27 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      setWorkflowComposerEditorOptions(editor, runtime, singleLineOnMobile);
+      editor.setOptions({
+        editorProps: {
+          attributes: {
+            "aria-label": "Message",
+            placeholder: COMPOSER_PLACEHOLDER,
+            tabindex: "0",
+            class: editorContentClass(singleLineOnMobile),
+          },
+          handlePaste: (_view, event) => {
+            return runtime.paste(event, _view.dom);
+          },
+          handleKeyDown: (_view, event) => {
+            return runtime.keyDown(event);
+          },
+        },
+      });
       const input = get(draft.input$);
       if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
           editor,
-          workflowComposerDocumentForValue(editor, input, featureModes),
+          workflowComposerDocumentForValue(editor, input),
         );
       }
       editor.mount(element);
@@ -2098,7 +1237,7 @@ function createMountEditorCommand({
           }
           const changed = setWorkflowComposerDocument(
             editor,
-            workflowComposerDocumentForValue(editor, value, featureModes),
+            workflowComposerDocumentForValue(editor, value),
           );
           if (changed) {
             runtime.replaceFeedbackItems(
@@ -2198,17 +1337,12 @@ function createInsertChatThreadCommand(
   });
 }
 
-function createInsertTextCommands(
-  editor: Editor,
-  featureModes: WorkflowComposerFeatureModes,
-) {
+function createInsertTextCommands(editor: Editor) {
   const insertText$ = command((_context, value: string) => {
     editor.chain().focus().insertContent(value).run();
   });
   const insertPromptMarkdown$ = command((_context, value: string) => {
-    const doc = editor.schema.nodeFromJSON(
-      valueToWorkflowComposerDoc(value, featureModes),
-    );
+    const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
     const slice = Slice.maxOpen(doc.content, true);
     editor
       .chain()
@@ -2252,7 +1386,6 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => {
       return false;
     },
-    inlineFileClientIds: new Set(),
   };
 }
 
@@ -2299,93 +1432,9 @@ function createTemplateAttachmentControls(
   return { active$, setLifecycleRef$ };
 }
 
-function createComposerFeedback(
-  editor: Editor,
-  threadId: string | undefined,
-  inlinePromptItems: boolean,
-): FeedbackSignals {
-  return createFeedbackSignals(threadId ?? "", {
-    insertItem(item) {
-      if (inlinePromptItems) {
-        insertPromptFeedbackItem(editor, item);
-      } else {
-        insertFeedbackItem(editor, item);
-      }
-    },
-    removeItem(id) {
-      removeFeedbackItem(editor, id);
-    },
-  });
-}
-
-function createInlinePromptItemCommands(editor: Editor) {
-  const insertTemplate$ = command(
-    (
-      _context,
-      request: GenerationTemplateRequest,
-      attachment: ComposerTemplateAttachment,
-    ) => {
-      insertInlineTemplate(editor, request, attachment);
-    },
-  );
-  const insertFile$ = command(
-    (_context, attachment: ComposerInlineFileAttachment) => {
-      insertInlineFile(editor, attachment);
-    },
-  );
-  const insertReferencedFile$ = command(
-    (_context, attachment: ComposerInlineFileAttachment) => {
-      insertInlineFile(editor, {
-        ...attachment,
-        promptReference: nextInlineFilePromptReference(
-          editor.state.doc,
-          attachment.contentType,
-        ),
-      });
-    },
-  );
-  const resolveFile$ = command(
-    (_context, clientId: string, fileId: string, url: string) => {
-      resolveInlineFile(editor, clientId, fileId, url);
-    },
-  );
-  const removeFile$ = command((_context, clientId: string) => {
-    removeInlineFile(editor, clientId);
-  });
-  return {
-    insertTemplate$,
-    insertFile$,
-    insertReferencedFile$,
-    resolveFile$,
-    removeFile$,
-  };
-}
-
-function createReadInputForSubmissionCommand(
-  editor: Editor,
-  compositionGate: CompositionGate,
-) {
-  return command(
-    (
-      _context,
-      attachmentReferenceClientIds: ReadonlySet<string> | null,
-      signal: AbortSignal,
-    ) => {
-      return compositionGate.runWhenSettled(() => {
-        return workflowComposerDocToString(
-          editor,
-          attachmentReferenceClientIds,
-        );
-      }, signal);
-    },
-  );
-}
-
 export function createWorkflowComposerSignals(
   draft: DraftSignals,
   threadId?: string,
-  inlinePromptItems = false,
-  inlineAttachmentReferences = false,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2393,11 +1442,17 @@ export function createWorkflowComposerSignals(
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
-  const featureModes = { inlinePromptItems, inlineAttachmentReferences };
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createComposerFeedback(editor, threadId, inlinePromptItems);
+  const feedback = createFeedbackSignals(threadId ?? "", {
+    insertItem(item) {
+      insertFeedbackItem(editor, item);
+    },
+    removeItem(id) {
+      removeFeedbackItem(editor, id);
+    },
+  });
 
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
@@ -2460,7 +1515,6 @@ export function createWorkflowComposerSignals(
       selectedSuggestionIndexState$,
       feedback,
       compositionGate,
-      featureModes,
       autoFocus,
       singleLineOnMobile,
     });
@@ -2473,13 +1527,12 @@ export function createWorkflowComposerSignals(
     editor,
     activeChatThreadSuggestionRange$,
   );
-  const { insertText$, insertPromptMarkdown$, appendText$ } =
-    createInsertTextCommands(editor, featureModes);
-  const inlinePromptItemCommands = createInlinePromptItemCommands(editor);
-  const readInputForSubmission$ = createReadInputForSubmissionCommand(
-    editor,
-    compositionGate,
-  );
+  const textCommands = createInsertTextCommands(editor);
+  const readInputForSubmission$ = command((_context, signal: AbortSignal) => {
+    return compositionGate.runWhenSettled(() => {
+      return workflowComposerDocToString(editor);
+    }, signal);
+  });
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });
@@ -2502,10 +1555,7 @@ export function createWorkflowComposerSignals(
     setWorkflowNames$,
     insertWorkflow$,
     insertChatThread$,
-    ...inlinePromptItemCommands,
-    insertPromptMarkdown$,
-    insertText$,
-    appendText$,
+    ...textCommands,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     setEventHandlers$,

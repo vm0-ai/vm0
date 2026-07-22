@@ -1,9 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
 import {
@@ -15,7 +13,6 @@ import {
 
 export const SETTINGS_SECTIONS = [
   "preference",
-  "api-keys",
   "model",
   "debug",
   "general",
@@ -261,9 +258,6 @@ export const checkUnifiedSettingsParam$ = command(
     const opensBuyCredits = section === "billing" && billingView === "credits";
     const isAdmin = await get(isOrgAdmin$);
     signal.throwIfAborted();
-    const features = get(featureSwitch$);
-    const apiKeysEnabled = Boolean(features[FeatureSwitchKey.ApiKeys]);
-
     if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
       set(setBillingSubPage$, false);
       set(setBillingScrollTarget$, null);
@@ -275,10 +269,7 @@ export const checkUnifiedSettingsParam$ = command(
     }
 
     const resolved: SettingsSection =
-      (section === "api-keys" && !apiKeysEnabled) ||
-      (!isAdmin && isAdminOnlySettingsSection(section))
-        ? "preference"
-        : section;
+      !isAdmin && isAdminOnlySettingsSection(section) ? "preference" : section;
     set(internalActiveSection$, resolved);
     set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
     set(

@@ -37,7 +37,6 @@ export interface ConnectorCredentialAccess {
   readonly connectorRef: string;
   readonly orgId: string;
   readonly runtimeMethod: ConnectorRuntimeMethod;
-  readonly staticNullOwnerBridge: boolean;
   readonly storageVersion: number;
   readonly userId: string;
 }
@@ -52,7 +51,7 @@ interface ConnectorCredentialStoredIdentity {
   readonly connectorId: string;
   readonly connectorRef: string;
   readonly orgId: string;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
   readonly userId: string;
 }
 
@@ -73,12 +72,9 @@ const credentialAccessConnector = alias(
 
 export function connectorCredentialStorageIsCompatible(args: {
   readonly runtimeMethod: ConnectorRuntimeMethod;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
 }): boolean {
-  return (
-    args.storageVersion !== null &&
-    args.storageVersion === args.runtimeMethod.method.storage.version
-  );
+  return args.storageVersion === args.runtimeMethod.method.storage.version;
 }
 
 export function resolveConnectorCredentialAccess(args: {
@@ -110,7 +106,6 @@ export function resolveConnectorCredentialAccess(args: {
       connectorRef: args.stored.connectorRef,
       orgId: args.stored.orgId,
       runtimeMethod,
-      staticNullOwnerBridge: args.snapshot.identity.source === "static",
       storageVersion: runtimeMethod.method.storage.version,
       userId: args.stored.userId,
     },
@@ -164,16 +159,6 @@ function connectorIdentityExists(
   );
 }
 
-function connectorOwnerCondition(
-  connectorId: typeof secrets.connectorId | typeof variables.connectorId,
-  access: ConnectorCredentialAccess,
-): SQL | undefined {
-  if (access.staticNullOwnerBridge) {
-    return or(eq(connectorId, access.connectorId), isNull(connectorId));
-  }
-  return eq(connectorId, access.connectorId);
-}
-
 export function connectorCredentialSecretReadCondition(args: {
   readonly db: ReadonlyDb;
   readonly groups: readonly ConnectorCredentialReadGroup[];
@@ -194,7 +179,7 @@ export function connectorCredentialSecretReadCondition(args: {
         eq(secrets.userId, group.access.userId),
         eq(secrets.type, "connector"),
         inArray(secrets.name, names),
-        connectorOwnerCondition(secrets.connectorId, group.access),
+        eq(secrets.connectorId, group.access.connectorId),
         connectorIdentityExists(
           args.db,
           group.access,
@@ -226,7 +211,7 @@ export function connectorCredentialVariableReadCondition(args: {
         eq(variables.userId, group.access.userId),
         eq(variables.type, "connector"),
         inArray(variables.name, names),
-        connectorOwnerCondition(variables.connectorId, group.access),
+        eq(variables.connectorId, group.access.connectorId),
         connectorIdentityExists(
           args.db,
           group.access,

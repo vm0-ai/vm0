@@ -136,6 +136,7 @@ interface DecisionApi {
   readonly baseMalformed: boolean;
   readonly authMalformed: boolean;
   readonly hasMalformedRules: boolean;
+  readonly permissionless: boolean;
   readonly routingIdentity: string | null;
   readonly rules: readonly DecisionRule[];
 }
@@ -597,6 +598,9 @@ function compileDecisionApi(
   const seenPermissionNames = new Set<string>();
   let hasMalformedRules = nameMalformed;
   const rawPermissions = api.permissions;
+  const permissionless =
+    !rawObjectHasOwn(api, "permissions") ||
+    (Array.isArray(rawPermissions) && rawPermissions.length === 0);
 
   if (Array.isArray(rawPermissions)) {
     for (const rawPermission of rawPermissions) {
@@ -649,6 +653,7 @@ function compileDecisionApi(
     baseMalformed,
     authMalformed,
     hasMalformedRules,
+    permissionless,
     routingIdentity,
     rules,
   };
@@ -1603,6 +1608,52 @@ function winningOwnerNames(
   return [...names].sort();
 }
 
+function selectedOwnerApiMatches(
+  collection: FirewallMatchCollection,
+  selectedName: string,
+): CollectedApiMatch[] {
+  const matches = winningApiMatches(collection).filter((match) => {
+    return match.firewall.name === selectedName;
+  });
+  if (collection.ruleMatches.length > 0) return matches;
+
+  // APIs without permissions are catch-alls only within the selected owner.
+  // Owner selection must still resolve shared bases before this fallback.
+  const permissionlessMatches = matches.filter((match) => {
+    return match.api.permissionless;
+  });
+  return permissionlessMatches.length > 0 ? permissionlessMatches : matches;
+}
+
+function relevantOwnerApiMatches(
+  collection: FirewallMatchCollection,
+  selectedName: string | null,
+): readonly CollectedApiMatch[] {
+  if (selectedName === null) return collection.apiMatches;
+  return collection.apiMatches.filter((match) => {
+    return match.firewall.name === selectedName || match.firewall.nameMalformed;
+  });
+}
+
+function selectedBaseApiMatches(
+  collection: FirewallMatchCollection,
+  selectedName: string | null,
+): readonly CollectedApiMatch[] {
+  const relevantMatches = relevantOwnerApiMatches(collection, selectedName);
+  if (selectedName === null || collection.ruleMatches.length > 0) {
+    return relevantMatches;
+  }
+
+  const selectedOrders = new Set(
+    selectedOwnerApiMatches(collection, selectedName).map((match) => {
+      return match.order;
+    }),
+  );
+  return relevantMatches.filter((match) => {
+    return selectedOrders.has(match.order);
+  });
+}
+
 function connectorAmbiguityReason(
   intent: FirewallConnectorIntent,
 ): ConnectorRouteAmbiguityReason {
@@ -1655,17 +1706,17 @@ function conflictingSelectedApiDecision(
   collection: FirewallMatchCollection,
   selectedName: string,
 ): FirewallRequestDecision | null {
-  const [first, ...otherMatches] = winningApiMatches(collection).filter(
-    (match) => {
-      return (
-        match.firewall.name === selectedName &&
-        !match.firewall.nameMalformed &&
-        !match.api.baseMalformed &&
-        !match.api.authMalformed &&
-        match.api.routingIdentity !== null
-      );
-    },
-  );
+  const [first, ...otherMatches] = selectedOwnerApiMatches(
+    collection,
+    selectedName,
+  ).filter((match) => {
+    return (
+      !match.firewall.nameMalformed &&
+      !match.api.baseMalformed &&
+      !match.api.authMalformed &&
+      match.api.routingIdentity !== null
+    );
+  });
   if (first === undefined || otherMatches.length === 0) return null;
   if (
     otherMatches.every((match) => {
@@ -1696,17 +1747,15 @@ function reduceSelectedOwner(
 
   const state = createDecisionState();
   const evaluableApiOrders = new Set<number>();
-  for (const apiMatch of collection.apiMatches) {
-    const { firewall, api, baseMatch, blockMatch } = apiMatch;
-    if (
-      selectedName !== null &&
-      firewall.name !== selectedName &&
-      !firewall.nameMalformed
-    ) {
-      continue;
-    }
+  const relevantApiMatches = relevantOwnerApiMatches(collection, selectedName);
+
+  for (const apiMatch of selectedBaseApiMatches(collection, selectedName)) {
+    acceptDecisionBaseMatch(state, apiMatch.baseMatch, apiMatch.score);
+  }
+
+  for (const apiMatch of relevantApiMatches) {
+    const { firewall, api, blockMatch } = apiMatch;
     const policy = networkPolicies.policies.get(firewall.name);
-    acceptDecisionBaseMatch(state, baseMatch, apiMatch.score);
     recordMalformedDecisionState(state, api, blockMatch);
     if (apiCannotEvaluateRules(firewall, api)) continue;
     if (policyCannotEvaluateRules(networkPolicies, policy)) {
@@ -1719,9 +1768,6 @@ function reduceSelectedOwner(
   for (const ruleMatch of collection.ruleMatches) {
     const { apiMatch, rule } = ruleMatch;
     if (!evaluableApiOrders.has(apiMatch.order)) continue;
-    if (selectedName !== null && apiMatch.firewall.name !== selectedName) {
-      continue;
-    }
     const policy = networkPolicies.policies.get(apiMatch.firewall.name);
     if (!acceptRuleSpecificity(state, rule.specificity)) continue;
     if (

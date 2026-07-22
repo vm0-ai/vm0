@@ -639,29 +639,38 @@ class TestAuthBaseForwarderRequestBehavior:
         assert upstream.socket.request_header_values("Content-Length") == ["0"]
         assert upstream.socket.request_text().endswith("\r\n\r\n")
 
-    async def test_preserves_duplicate_response_headers_and_filters_connection_names(self):
-        with fake_forwarder_upstream(
-            headers=[
-                ("Set-Cookie", "a=1"),
-                ("Set-Cookie", "b=2"),
-                ("Connection", "X-Remove"),
-                ("X-Remove", "drop"),
-                ("X-Keep", "ok"),
-            ]
-        ):
-            _status, _body, headers = await forwarder.forward_request(
+    async def test_preserves_response_header_octets_duplicates_and_filters_connection_names(self):
+        raw_response = (
+            b"HTTP/1.1 200 OK\r\n"
+            b"X-Bytes: caf\xe9\r\n"
+            b"Set-Cookie: a=1\r\n"
+            b"Set-Cookie: b=2\r\n"
+            b"Connection: X-Remove\r\n"
+            b"X-Remove: drop\r\n"
+            b"X-Keep: ok\r\n"
+            b"\r\n"
+            b"ok"
+        )
+
+        def create_connection(_address, _timeout, _source_address):
+            return FakeSocket(raw_response)
+
+        with fake_forwarder_upstream(create_connection=create_connection):
+            status, body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
                 [],
                 None,
             )
 
-        pairs = list(headers.items(multi=True))
-        assert pairs.count(("Set-Cookie", "a=1")) == 1
-        assert pairs.count(("Set-Cookie", "b=2")) == 1
-        assert ("Connection", "X-Remove") not in pairs
-        assert ("X-Remove", "drop") not in pairs
-        assert ("X-Keep", "ok") in pairs
+        assert status == 200
+        assert body == b"ok"
+        assert headers.fields == (
+            (b"X-Bytes", b"caf\xe9"),
+            (b"Set-Cookie", b"a=1"),
+            (b"Set-Cookie", b"b=2"),
+            (b"X-Keep", b"ok"),
+        )
 
     async def test_filters_hop_by_hop_response_headers(self):
         with fake_forwarder_upstream(

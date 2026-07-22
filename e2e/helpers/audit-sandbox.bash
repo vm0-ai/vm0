@@ -44,9 +44,8 @@ After running, output exactly:
 EOF
 )
 
-    run "$VM0_CLI" run "$agent_name" \
-        --model-provider-type "codex-oauth-token" \
-        -- "$prompt"
+    run run_compose_fixture "$agent_name" "$prompt" \
+        '{"modelProviderType":"codex-oauth-token"}'
     if [ "$status" -ne 0 ]; then
         echo "Agent run failed (status=$status):" >&2
         echo "$output" >&2

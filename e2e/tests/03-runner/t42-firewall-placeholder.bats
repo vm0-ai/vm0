@@ -61,9 +61,8 @@ create_artifact() {
     local name="$1"
     mkdir -p "$TEST_DIR/$name"
     cd "$TEST_DIR/$name"
-    $VM0_CLI artifact init --name "$name" >/dev/null 2>&1
     echo "test" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$name" .
 }
 
 # Helper to set up a test connector with a known token via API
@@ -221,18 +220,17 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-multi"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify env vars from both firewall configs are set to placeholder values.
-    run $VM0_CLI run "${AGENT_NAME}-multi" \
-        --artifact "$ARTIFACT_NAME-multi:/home/user/workspace" \
-        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
+    run run_compose_fixture "${AGENT_NAME}-multi" \
+        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-multi" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     assert_output --partial "GITHUB_TOKEN=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"
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
 }
@@ -417,19 +415,18 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-auto"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
     # and a GitHub API call succeeds through the proxy (token replacement works).
-    run $VM0_CLI run "${AGENT_NAME}-auto" \
-        --artifact "$ARTIFACT_NAME-auto:/home/user/workspace" \
-        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\""
+    run run_compose_fixture "${AGENT_NAME}-auto" \
+        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-auto" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Token should be the placeholder (proxy will replace it with real token)
     assert_output --partial "PLACEHOLDER=gho_Cof"
     # API call should succeed (proxy replaced placeholder with real token)
@@ -437,7 +434,7 @@ EOF
 
     # Verify token replacement details appear in network logs.
     # The CLI renders: ↔ GITHUB_TOKEN with optional (cached)/(refreshed) suffix.
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -463,21 +460,20 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-webhook"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify:
     # 1. DISCORD_WEBHOOK_URL is set to the placeholder URL
     # 2. curl to the placeholder URL triggers mitmproxy URL rewrite
     # 3. Discord returns 404 (fake webhook ID) proving the request reached Discord
-    run $VM0_CLI run "${AGENT_NAME}-webhook" \
-        --artifact "$ARTIFACT_NAME-webhook:/home/user/workspace" \
-        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'"
+    run run_compose_fixture "${AGENT_NAME}-webhook" \
+        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-webhook" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Placeholder is the firewall-placeholder.vm3.ai URL
     assert_output --partial "DISCORD_WEBHOOK_URL=https://firewall-placeholder.vm3.ai/discord-webhook/hook"
 
@@ -486,7 +482,7 @@ EOF
     assert_output --regexp "API_STATUS=(404|429)"
 
     # Extract run ID
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

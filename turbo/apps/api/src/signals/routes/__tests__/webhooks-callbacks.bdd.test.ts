@@ -30,6 +30,7 @@ import {
 } from "./helpers/api-bdd";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -3654,7 +3655,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(lateStatus.hasSubscription).toBeTruthy();
   });
 
-  it("grants one-time and custom credit purchases once payment settles", async () => {
+  it("grants purchased and Atom-issued custom credits", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
@@ -3807,6 +3808,96 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
         }),
       ]),
+    );
+
+    // Atom grants use the configured zero-price line and declare the credit
+    // amount in trusted invoice metadata instead of encoding it in subtotal.
+    const metadataCreditInvoiceId = `in_bdd_metadata_credit_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: metadataCreditInvoiceId,
+          customer: null,
+          subtotal: 0,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_custom_credits",
+            grantType: "credits",
+            orgId,
+            creditsAmount: "2500",
+            creditsExpiresAt: String(invoiceCreditExpiresAt),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_metadata_credit_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: invoiceCreditExpiresAt,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const afterMetadataCredit = await billing.readBillingStatus(actor);
+    expect(afterMetadataCredit.credits).toBe(baselineCredits + 302_500);
+    expect(afterMetadataCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "credit_purchase",
+          amount: 2500,
+          expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
+        }),
+      ]),
+    );
+
+    // Metadata credit amounts are ignored outside the configured Atom grant
+    // price path.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_untrusted_metadata_credit_${suffix}`,
+          customer: null,
+          subtotal: 0,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_custom_credits",
+            grantType: "credits",
+            orgId,
+            creditsAmount: "9000",
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_untrusted_metadata_credit_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_other" },
+                period: {
+                  start: epochSeconds(0),
+                  end: invoiceCreditExpiresAt,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits + 302_500,
     );
   });
 
@@ -4272,6 +4363,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up organization state after a verified organization.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4283,6 +4375,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
+    await connectors.connectManualGrant(actor, "openai", "api-token", {
+      OPENAI_TOKEN: "org-teardown-connector-token",
+    });
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
@@ -4391,6 +4486,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await waitForExpectation(async () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      const listed = await connectors.listConnectors(actor);
+      expect(listed.connectors).not.toContainEqual(
+        expect.objectContaining({
+          type: "openai",
+          connectionStatus: "connected",
+        }),
+      );
     });
     await waitForExpectation(async () => {});
 
@@ -4736,6 +4840,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4747,6 +4852,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const doomed = bdd.user();
     await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
+    await connectors.connectManualGrant(doomed, "openai", "api-token", {
+      OPENAI_TOKEN: "user-teardown-connector-token",
+    });
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
     const sharedAgent = await bdd.createAgent(peer, {
       displayName: "BDD Shared Grant Agent",
@@ -4757,7 +4865,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       visibility: "private",
     });
 
-    const doomedKey = await runs.createApiKey(doomed);
+    const doomedKey = await runs.createCliToken(doomed);
     const doomedBearer = `Bearer ${doomedKey.token}`;
     const livePoll = await runs.requestPollRunnerAs(
       doomedBearer,
@@ -4821,6 +4929,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await waitForExpectation(() => {
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
         botToken,
+      );
+    });
+    await waitForExpectation(async () => {
+      const listed = await connectors.listConnectors(doomed);
+      expect(listed.connectors).not.toContainEqual(
+        expect.objectContaining({
+          type: "openai",
+          connectionStatus: "connected",
+        }),
       );
     });
     let revokedPoll:

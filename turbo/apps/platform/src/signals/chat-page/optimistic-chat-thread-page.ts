@@ -24,7 +24,6 @@ import {
   clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import { composerInlinePromptItemsEnabled } from "../../lib/composer-feature-switches.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -44,7 +43,6 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
-import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { logger } from "../log.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -431,10 +429,7 @@ const sendNewThreadMessage$ = command(
     readonly sendResult: Promise<SendNewThreadMessageResult>;
   } | null> => {
     const { agentId, prompt } = request;
-    const generationTemplate = generationTemplateForFeatureSwitches(
-      request.generationTemplate,
-      get(featureSwitch$),
-    );
+    const generationTemplate = request.generationTemplate;
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
     const resolvedModelSelection = await set(
@@ -449,9 +444,6 @@ const sendNewThreadMessage$ = command(
       draft,
       prompt,
       {
-        includeAttachments: !composerInlinePromptItemsEnabled(
-          get(featureSwitch$),
-        ),
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
         ),

@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.146.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.26...runner-rs-v0.146.27) (2026-07-21)
+
+
+### Bug Fixes
+
+* **runner:** avoid signal reentrant flush deadlock ([#22448](https://github.com/vm0-ai/vm0/issues/22448)) ([221989f](https://github.com/vm0-ai/vm0/commit/221989f453153f541ae2a7f362c8d1b001b09423))
+
+
+### Performance Improvements
+
+* **runner:** stop scanning r2 cache during gc ([#22440](https://github.com/vm0-ai/vm0/issues/22440)) ([51cb14f](https://github.com/vm0-ai/vm0/commit/51cb14faddadc9191fcc1ad61001e8cb404650b1))
+
+## [0.146.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.25...runner-rs-v0.146.26) (2026-07-21)
+
+
+### Performance Improvements
+
+* align session-history sidecar capacity with resume limit ([#22392](https://github.com/vm0-ai/vm0/issues/22392)) ([6eee854](https://github.com/vm0-ai/vm0/commit/6eee8548718c69c4d46afe9b1ddcd8c7babcca59))
+
+## [0.146.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.24...runner-rs-v0.146.25) (2026-07-21)
+
+## [0.146.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.23...runner-rs-v0.146.24) (2026-07-21)
+
+
+### Refactoring
+
+* **runner:** centralize session history telemetry fields ([#22373](https://github.com/vm0-ai/vm0/issues/22373)) ([c5ae2f7](https://github.com/vm0-ai/vm0/commit/c5ae2f71e02d6e02b4677bb9d168c4396c10c46f))
+
+## [0.146.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.22...runner-rs-v0.146.23) (2026-07-21)
+
+
+### Documentation
+
+* **runner:** clarify name validation lifecycle ([#22352](https://github.com/vm0-ai/vm0/issues/22352)) ([a21cdb9](https://github.com/vm0-ai/vm0/commit/a21cdb97ac7ac2072b0b1093477bd32ac91b28c3))
+
+## [0.146.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.21...runner-rs-v0.146.22) (2026-07-21)
+
+
+### Bug Fixes
+
+* **connectors:** use permissionless api as routing fallback ([#22330](https://github.com/vm0-ai/vm0/issues/22330)) ([222d852](https://github.com/vm0-ai/vm0/commit/222d852615a507c03375b3aedcf50a3094b5fdcf))
+
+## [0.146.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.20...runner-rs-v0.146.21) (2026-07-21)
+
+
+### Documentation
+
+* **mitm-addon:** clarify usage buffer close contract ([#22288](https://github.com/vm0-ai/vm0/issues/22288)) ([3339719](https://github.com/vm0-ai/vm0/commit/3339719db4cd2471a30ee4627ac2c40c2642eb56))
+* **runner:** update storage cache gc documentation ([#22298](https://github.com/vm0-ai/vm0/issues/22298)) ([dfed3a1](https://github.com/vm0-ai/vm0/commit/dfed3a1ae354197bff6e3aad59d6873123aaf010))
+
+
+### Performance Improvements
+
+* **runner:** avoid duplicate live runner registry scans ([#22306](https://github.com/vm0-ai/vm0/issues/22306)) ([571db03](https://github.com/vm0-ai/vm0/commit/571db035fe34f358c539095e3e13de5ba922ee23))
+
 ## [0.146.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.19...runner-rs-v0.146.20) (2026-07-21)
 
 ## [0.146.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.18...runner-rs-v0.146.19) (2026-07-21)

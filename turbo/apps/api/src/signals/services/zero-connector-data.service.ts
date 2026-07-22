@@ -12,7 +12,6 @@ import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodManualGrantFieldNames,
   connectorAuthMethodOwnedSecretNames,
-  connectorAuthMethodOwnedVariableNames,
   connectorAuthMethodRevokeMetadata,
   connectorAuthMethodRuntimeMetadata,
   connectorAuthMethodScopeDiff,
@@ -31,7 +30,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -82,7 +81,7 @@ type StoredConnectorRow = {
   readonly oauthScopes: string | null;
   readonly needsReconnect: boolean;
   readonly reconnectReason: string | null;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -137,11 +136,6 @@ type ConnectNoAuthConnectorResult = {
 interface EncryptedManualGrantSecret {
   readonly name: string;
   readonly encryptedValue: string;
-}
-
-interface OmittedManualGrantFieldNames {
-  readonly omittedSecretNames: readonly string[];
-  readonly omittedVariableNames: readonly string[];
 }
 
 interface EncryptedConnectorTokenSecret {
@@ -400,29 +394,6 @@ async function encryptManualGrantSecrets(args: {
     args.signal.throwIfAborted();
   }
   return encryptedSecrets;
-}
-
-function omittedManualGrantFieldNames(
-  prepared: PreparedManualGrantConnect,
-): OmittedManualGrantFieldNames {
-  const submittedSecretNames = new Set(
-    prepared.secretValues.map((field) => {
-      return field.name;
-    }),
-  );
-  const submittedVariableNames = new Set(
-    prepared.variableValues.map((field) => {
-      return field.name;
-    }),
-  );
-  return {
-    omittedSecretNames: prepared.configuredSecretNames.filter((name) => {
-      return !submittedSecretNames.has(name);
-    }),
-    omittedVariableNames: prepared.configuredVariableNames.filter((name) => {
-      return !submittedVariableNames.has(name);
-    }),
-  };
 }
 
 export function zeroConnectorList(args: {
@@ -892,30 +863,6 @@ export const deleteZeroConnectorLocalState$ = command(
         connectorId: existing.id,
         signal,
       });
-
-      if (
-        accessResult.kind === "ok" &&
-        accessResult.access.staticNullOwnerBridge
-      ) {
-        await deleteConnectorScopedSecretNames(tx, {
-          connectorId: existing.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          names: connectorAuthMethodOwnedSecretNames(
-            accessResult.access.runtimeMethod.method,
-          ),
-          signal,
-        });
-        await deleteConnectorScopedVariableNames(tx, {
-          connectorId: existing.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          names: connectorAuthMethodOwnedVariableNames(
-            accessResult.access.runtimeMethod.method,
-          ),
-          signal,
-        });
-      }
       await tx.delete(connectors).where(eq(connectors.id, existing.id));
       signal.throwIfAborted();
 
@@ -1053,66 +1000,6 @@ async function deleteVariableNames(
   }
 }
 
-async function deleteConnectorScopedSecretNames(
-  db: Db,
-  args: {
-    readonly connectorId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly names: readonly string[];
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
-  if (args.names.length === 0) {
-    return;
-  }
-  await db
-    .delete(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        eq(secrets.type, "connector"),
-        inArray(secrets.name, [...args.names]),
-        or(
-          isNull(secrets.connectorId),
-          eq(secrets.connectorId, args.connectorId),
-        ),
-      ),
-    );
-  args.signal.throwIfAborted();
-}
-
-async function deleteConnectorScopedVariableNames(
-  db: Db,
-  args: {
-    readonly connectorId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly names: readonly string[];
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
-  if (args.names.length === 0) {
-    return;
-  }
-  await db
-    .delete(variables)
-    .where(
-      and(
-        eq(variables.orgId, args.orgId),
-        eq(variables.userId, args.userId),
-        eq(variables.type, "connector"),
-        inArray(variables.name, [...args.names]),
-        or(
-          isNull(variables.connectorId),
-          eq(variables.connectorId, args.connectorId),
-        ),
-      ),
-    );
-  args.signal.throwIfAborted();
-}
-
 async function deleteConnectorOwnedCredentialRows(
   db: Db,
   args: {
@@ -1186,26 +1073,6 @@ async function cleanupExistingStoredConnectorForLocalConnect(
     connectorId: existing.id,
     signal: args.signal,
   });
-  if (accessResult.kind === "ok" && accessResult.access.staticNullOwnerBridge) {
-    await deleteConnectorScopedSecretNames(db, {
-      connectorId: existing.id,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: connectorAuthMethodOwnedSecretNames(
-        accessResult.access.runtimeMethod.method,
-      ),
-      signal: args.signal,
-    });
-    await deleteConnectorScopedVariableNames(db, {
-      connectorId: existing.id,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: connectorAuthMethodOwnedVariableNames(
-        accessResult.access.runtimeMethod.method,
-      ),
-      signal: args.signal,
-    });
-  }
 
   return pendingTokenRevoke;
 }
@@ -1282,9 +1149,6 @@ export const connectManualGrantConnector$ = command(
       signal,
     });
     signal.throwIfAborted();
-    const { omittedSecretNames, omittedVariableNames } =
-      omittedManualGrantFieldNames(preparedResult.prepared);
-
     const writeDb = set(writeDb$);
     let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
     let connectorRow: StoredConnectorRow | null = null;
@@ -1318,23 +1182,6 @@ export const connectManualGrantConnector$ = command(
         storageVersion: args.runtimeMethod.method.storage.version,
       });
       signal.throwIfAborted();
-
-      if (args.snapshot.identity.source === "static") {
-        await deleteConnectorScopedSecretNames(tx, {
-          connectorId: connectorRow.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          names: omittedSecretNames,
-          signal,
-        });
-        await deleteConnectorScopedVariableNames(tx, {
-          connectorId: connectorRow.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          names: omittedVariableNames,
-          signal,
-        });
-      }
 
       await writeManualGrantCredentials(tx, {
         connectorId: connectorRow.id,
@@ -1847,7 +1694,7 @@ async function loadExistingConnectorIdentity(
 ): Promise<{
   readonly authMethod: string;
   readonly id: string;
-  readonly storageVersion: number | null;
+  readonly storageVersion: number;
 } | null> {
   const [existingConnector] = await db
     .select({
@@ -1997,27 +1844,6 @@ async function commitConnectorTokenConnection(args: {
       signal: args.signal,
     });
   }
-  if (existingAccess?.staticNullOwnerBridge === true) {
-    await deleteConnectorScopedSecretNames(args.db, {
-      connectorId: existingAccess.connectorId,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: connectorAuthMethodOwnedSecretNames(
-        existingAccess.runtimeMethod.method,
-      ),
-      signal: args.signal,
-    });
-    await deleteConnectorScopedVariableNames(args.db, {
-      connectorId: existingAccess.connectorId,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: connectorAuthMethodOwnedVariableNames(
-        existingAccess.runtimeMethod.method,
-      ),
-      signal: args.signal,
-    });
-  }
-
   const connectorRow = await upsertConnectorTokenConnectionRow(args.db, {
     orgId: args.orgId,
     userId: args.userId,

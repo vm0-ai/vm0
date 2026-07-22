@@ -1,10 +1,6 @@
 #!/usr/bin/env bats
 
-# Test VM0 volume version override functionality (E2E happy path only)
-# This test verifies that --volume-version flag can override volume versions at runtime.
-#
-# Note: resume/continue with --volume-version uses the same code path and is tested
-# via CLI Command Integration Tests (see run/__tests__/volume-version.test.ts).
+# Test direct-run volume version overrides (E2E happy path only).
 
 load '../../helpers/setup'
 
@@ -23,8 +19,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$CLAUDE_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create the test-volume that will be used for all override tests
@@ -33,8 +28,7 @@ VOLEOF
     mkdir -p "$TEST_DIR/$TEST_VOLUME_NAME"
     cd "$TEST_DIR/$TEST_VOLUME_NAME"
     echo "initial-data" > data.txt
-    $VM0_CLI volume init --name "$TEST_VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$TEST_VOLUME_NAME" . >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name using real volume names
@@ -57,12 +51,12 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
     # Per-test setup: create unique artifact name
-    # VOLUME_ALIAS is the key in the config's volumes section (used for --volume-version flag)
+    # VOLUME_ALIAS is the key in the config's volumes section.
     # VOLUME_DIR is the actual directory path for the volume
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export VOLUME_ALIAS="test-volume"
@@ -77,15 +71,8 @@ teardown_file() {
     fi
 }
 
-@test "t07-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
-@test "t07-2: --volume-version overrides volume at runtime" {
-    # This test verifies that --volume-version flag overrides the default volume version
-    # Single vm0 run - safe for 30s timeout
+@test "t07-2: volume version override selects an older version" {
+    # Single direct run - safe for 30s timeout.
 
     # Step 1: Push multiple versions to the shared test volume
     echo "# Pushing multiple versions to shared test volume..."
@@ -93,20 +80,20 @@ teardown_file() {
 
     # Version 1: content = "version-1"
     echo "version-1" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$TEST_VOLUME_NAME" .
     assert_success
-    VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
+    VERSION1="$output"
     echo "# Version 1 ID: $VERSION1"
     [ -n "$VERSION1" ]
 
     # Version 2: content = "version-2"
     echo "version-2" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$TEST_VOLUME_NAME" .
     assert_success
 
     # Version 3 (HEAD): content = "version-3-head"
     echo "version-3-head" > data.txt
-    run $VM0_CLI volume push
+    run seed_storage_fixture volume "$TEST_VOLUME_NAME" .
     assert_success
     echo "# HEAD version pushed"
 
@@ -114,19 +101,22 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    # Step 3: Run agent WITH --volume-version to override to version 1 (~15s)
-    # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
-    echo "# Running agent with --volume-version override..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --volume-version "$VOLUME_ALIAS=$VERSION1" \
-        --verbose \
-        "cat /home/user/data/data.txt"
+    # Step 3: Override the compose volume alias to version 1 (~15s).
+    echo "# Running agent with volume version override..."
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/data/data.txt" \
+        "$(jq -nc \
+            --arg artifactName "$ARTIFACT_NAME" \
+            --arg volumeAlias "$VOLUME_ALIAS" \
+            --arg version "$VERSION1" \
+            '{
+                artifacts: [{name: $artifactName, mountPath: "/home/user/workspace"}],
+                volumeVersions: {($volumeAlias): $version}
+            }')"
 
     assert_success
     assert_output --partial "● Bash("
@@ -137,5 +127,5 @@ teardown_file() {
     # Should NOT see HEAD content
     refute_output --partial "version-3-head"
 
-    echo "# Verified: --volume-version correctly overrode volume to version 1"
+    echo "# Verified: volume override selected version 1"
 }

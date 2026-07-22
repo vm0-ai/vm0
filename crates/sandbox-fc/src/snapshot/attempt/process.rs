@@ -499,56 +499,40 @@ mod tests {
         assert_eq!(drain_stderr_buf(&buf), "mount: bind failed\nexit code 32");
     }
 
-    /// Boundary: exactly `STDERR_BUF_LINES` entries — no eviction should
-    /// have happened, and all lines (including `line 0`) must be present.
-    /// Guards against off-by-one in the `if len == N { pop_front }` check.
-    #[test]
-    fn drain_stderr_buf_handles_exact_capacity() {
+    /// At exact capacity, the stderr forwarder retains every record in order.
+    #[tokio::test]
+    async fn stderr_forwarder_retains_all_lines_at_exact_capacity() {
+        let input = (0..STDERR_BUF_LINES)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
-        {
-            let mut g = buf.lock().expect("lock");
-            for i in 0..STDERR_BUF_LINES {
-                if g.len() == STDERR_BUF_LINES {
-                    g.pop_front();
-                }
-                g.push_back(format!("line {i}"));
-            }
-        }
-        let joined = drain_stderr_buf(&buf);
-        assert!(
-            joined.contains("line 0"),
-            "line 0 should survive at exact capacity: {joined}"
-        );
-        assert!(
-            joined.contains(&format!("line {}", STDERR_BUF_LINES - 1)),
-            "last line should be present: {joined}"
-        );
+
+        forward_stderr(input.as_bytes(), &buf).await;
+
+        let expected: VecDeque<_> = (0..STDERR_BUF_LINES).map(|i| format!("line {i}")).collect();
+        assert_eq!(*buf.lock().expect("lock"), expected);
     }
 
-    /// Ring buffer drops oldest entries past the bound, keeping only the
-    /// most recent N lines — the relevant ones for diagnosing a recent crash.
-    #[test]
-    fn drain_stderr_buf_keeps_only_recent_lines_when_overflowing() {
+    /// Past capacity, the stderr forwarder drops the oldest records and keeps
+    /// exactly the most recent `STDERR_BUF_LINES` records.
+    #[tokio::test]
+    async fn stderr_forwarder_evicts_oldest_lines_when_overflowing() {
+        let total_lines = STDERR_BUF_LINES + 5;
+        let input = (0..total_lines)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
-        {
-            let mut g = buf.lock().expect("lock");
-            // Simulate the same eviction policy used by the stderr forwarder.
-            for i in 0..(STDERR_BUF_LINES + 5) {
-                if g.len() == STDERR_BUF_LINES {
-                    g.pop_front();
-                }
-                g.push_back(format!("line {i}"));
-            }
-        }
-        let joined = drain_stderr_buf(&buf);
-        assert!(
-            !joined.contains("line 0"),
-            "oldest line should be evicted: {joined}"
-        );
-        assert!(
-            joined.contains(&format!("line {}", STDERR_BUF_LINES + 4)),
-            "newest line should be retained: {joined}"
-        );
+
+        forward_stderr(input.as_bytes(), &buf).await;
+
+        let buffer = buf.lock().expect("lock");
+        assert_eq!(buffer.len(), STDERR_BUF_LINES);
+        let expected: VecDeque<_> = (total_lines - STDERR_BUF_LINES..total_lines)
+            .map(|i| format!("line {i}"))
+            .collect();
+        assert_eq!(*buffer, expected);
     }
 
     /// Build a placeholder `SnapshotConfig` for `Ok(_)` rewrap cases.

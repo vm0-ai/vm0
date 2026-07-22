@@ -103,9 +103,10 @@ interface ValidatedStoredArtifactItem {
 }
 
 function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
+  const cachedItem: ArtifactItem = artifactItemSchema.parse(item);
   return {
-    ...item,
-    searchText: artifactSearchText(item),
+    ...cachedItem,
+    searchText: artifactSearchText(cachedItem),
   };
 }
 
@@ -122,7 +123,7 @@ function storedSearchText(raw: unknown, item: ArtifactItem): string {
 }
 
 function validateStoredArtifactItem(raw: unknown): ValidatedStoredArtifactItem {
-  const item = artifactItemSchema.parse(raw);
+  const item: ArtifactItem = artifactItemSchema.parse(raw);
   return {
     item,
     searchText: storedSearchText(raw, item),

@@ -8,31 +8,29 @@ load '../../helpers/setup'
 
 # ============================================================================
 # File-level setup: create volume, compose config, and artifact ONCE for all
-# heavy (vm0 run) tests. Lightweight CRUD tests don't need these resources.
+# heavy direct-run tests. Lightweight CRUD tests don't need these resources.
 # ============================================================================
 
 setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
 
-    # Create volume once for all vm0 run tests
+    # Create volume once for all direct-run tests.
     export VOLUME_NAME="e2e-vol-secret-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create artifact once
     export ARTIFACT_NAME="e2e-secret-art-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$ARTIFACT_NAME" .
     cd - >/dev/null
 
     # Create compose config for single-secret masking test
@@ -53,7 +51,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_MASK" >/dev/null
+    seed_compose_fixture "$CONFIG_MASK" >/dev/null
 
     # Create compose config for multi-secret masking test
     export AGENT_MULTI="e2e-secret-multi-${UNIQUE_ID}"
@@ -74,7 +72,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_MULTI" >/dev/null
+    seed_compose_fixture "$CONFIG_MULTI" >/dev/null
 }
 
 # Generate unique secret name for each test run to avoid conflicts
@@ -175,7 +173,7 @@ teardown_file() {
 # Heavy setup (volume, compose, artifact) is shared via setup_file().
 # ============================================================================
 
-@test "vm0 run masks secret values in output" {
+@test "direct run masks secret values in output" {
     if [[ -z "$VM0_API_BACKEND_URL" ]]; then
         skip "VM0_API_BACKEND_URL not set"
     fi
@@ -184,10 +182,13 @@ teardown_file() {
 
     # Run agent with secret provided via CLI
     echo "# Running agent that echoes secret value..."
-    run $VM0_CLI run "$AGENT_MASK" \
-        --secrets "MY_SECRET=${secret_value}" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo SECRET=\$MY_SECRET"
+    run run_compose_fixture "$AGENT_MASK" \
+        "echo SECRET=\$MY_SECRET" \
+        "$(jq -nc --arg secret "$secret_value" --arg artifact "$ARTIFACT_NAME" \
+            '{
+                secrets: {MY_SECRET: $secret},
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}]
+            }')"
 
     echo "# Output:"
     echo "$output"
@@ -199,7 +200,7 @@ teardown_file() {
     refute_output --partial "SECRET=${secret_value}"
 }
 
-@test "vm0 run masks multiple CLI secrets in output" {
+@test "direct run masks multiple supplied secrets in output" {
     if [[ -z "$VM0_API_BACKEND_URL" ]]; then
         skip "VM0_API_BACKEND_URL not set"
     fi
@@ -207,13 +208,18 @@ teardown_file() {
     local secret1_value="secret1-${UNIQUE_ID}"
     local secret2_value="secret2-${UNIQUE_ID}"
 
-    # Run agent with multiple CLI secrets
-    echo "# Running agent with multiple CLI secrets..."
-    run $VM0_CLI run "$AGENT_MULTI" \
-        --secrets "API_KEY=${secret1_value}" \
-        --secrets "CLI_SECRET=${secret2_value}" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET"
+    # Run agent with multiple supplied secrets.
+    echo "# Running agent with multiple supplied secrets..."
+    run run_compose_fixture "$AGENT_MULTI" \
+        "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET" \
+        "$(jq -nc \
+            --arg secret1 "$secret1_value" \
+            --arg secret2 "$secret2_value" \
+            --arg artifact "$ARTIFACT_NAME" \
+            '{
+                secrets: {API_KEY: $secret1, CLI_SECRET: $secret2},
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}]
+            }')"
 
     echo "# Output:"
     echo "$output"

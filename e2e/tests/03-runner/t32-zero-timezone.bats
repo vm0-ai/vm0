@@ -31,8 +31,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 Test volume for timezone E2E tests.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd "$TEST_DIR"
 
     # Create agent config
@@ -52,7 +51,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose vm0.yaml
+    seed_compose_fixture vm0.yaml
 }
 
 teardown_file() {
@@ -73,7 +72,7 @@ setup() {
 }
 
 # All timezone tests are in a single test to avoid racing on the global
-# user-level timezone preference.  Two vm0 run calls (~15s each) + CLI
+# user-level timezone preference. Two direct runs (~15s each) + CLI
 # commands (~5s) ≈ 35s, well within the 60s timeout.
 
 @test "zero preference --timezone and TZ injection" {
@@ -97,9 +96,7 @@ setup() {
     # --- TZ injection into sandbox ---
     $ZERO_CLI preference --timezone "Asia/Tokyo" >/dev/null
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --verbose \
-        "echo TZ=\$TZ"
+    run run_compose_fixture "$AGENT_NAME" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Asia/Tokyo"
 
@@ -125,11 +122,9 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
-    run $VM0_CLI run "$OVERRIDE_AGENT_NAME" \
-        --verbose \
-        "echo TZ=\$TZ"
+    run run_compose_fixture "$OVERRIDE_AGENT_NAME" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Europe/London"
 }

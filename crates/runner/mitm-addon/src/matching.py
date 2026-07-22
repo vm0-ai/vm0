@@ -130,6 +130,7 @@ class _CompiledApiCore(NamedTuple):
     base_malformed: bool
     auth_malformed: bool
     injects_ordinary_upstream_credentials: bool
+    permissionless: bool
     routing_identity: str | None
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
@@ -162,6 +163,10 @@ class _CompiledApi(NamedTuple):
     @property
     def injects_ordinary_upstream_credentials(self) -> bool:
         return self.core.injects_ordinary_upstream_credentials
+
+    @property
+    def permissionless(self) -> bool:
+        return self.core.permissionless
 
     @property
     def routing_identity(self) -> str | None:
@@ -845,6 +850,9 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         seen_permission_names: set[str] = set()
         permissions = api_entry.get("permissions")
         permissions_present = "permissions" in api_entry
+        permissionless = not permissions_present or (
+            isinstance(permissions, list) and len(permissions) == 0
+        )
         if isinstance(permissions, list):
             for perm in permissions:
                 if not isinstance(perm, dict):
@@ -893,6 +901,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 base_malformed,
                 auth_malformed,
                 injects_ordinary_upstream_credentials,
+                permissionless,
                 routing_identity,
                 has_malformed_rules,
             )
@@ -1412,9 +1421,43 @@ def _selected_source_api_matches(
     collection: _FirewallMatchCollection,
     selected_name: str,
 ) -> list[_MatchedApi]:
-    return [
+    matches = [
         match for match in _winning_api_matches(collection) if match.firewall.name == selected_name
     ]
+    if collection.best_rule_specificity is not None:
+        return matches
+
+    # APIs without permissions are catch-alls only within the selected owner.
+    # Owner selection must still resolve shared bases before this fallback.
+    permissionless_matches = [match for match in matches if match.api.permissionless]
+    return permissionless_matches or matches
+
+
+def _relevant_owner_api_matches(
+    collection: _FirewallMatchCollection,
+    selected_name: str | None,
+) -> list[_MatchedApi]:
+    if selected_name is None:
+        return collection.api_matches
+    return [
+        match
+        for match in collection.api_matches
+        if match.firewall.name == selected_name or match.firewall.name_malformed
+    ]
+
+
+def _selected_base_api_matches(
+    collection: _FirewallMatchCollection,
+    selected_name: str | None,
+) -> list[_MatchedApi]:
+    relevant_matches = _relevant_owner_api_matches(collection, selected_name)
+    if selected_name is None or collection.best_rule_specificity is not None:
+        return relevant_matches
+
+    selected_orders = {
+        match.order for match in _selected_source_api_matches(collection, selected_name)
+    }
+    return [match for match in relevant_matches if match.order in selected_orders]
 
 
 def _conflicting_selected_api_block(
@@ -1511,23 +1554,21 @@ def _reduce_selected_owner(
 
     decision = _FirewallDecisionState()
     evaluable_api_orders: set[int] = set()
-    for api_match in collection.api_matches:
-        fw_entry = api_match.firewall
-        if (
-            selected_name is not None
-            and fw_entry.name != selected_name
-            and not fw_entry.name_malformed
-        ):
-            continue
+    relevant_api_matches = _relevant_owner_api_matches(collection, selected_name)
 
-        api_entry = api_match.api
-        policy = compiled_network_policies.policies.get(fw_entry.name)
+    for api_match in _selected_base_api_matches(collection, selected_name):
+        fw_entry = api_match.firewall
         decision.accept_base_match(
-            api_entry,
+            api_match.api,
             name=fw_entry.name,
             rel_path=api_match.rel_path,
             base_params=api_match.base_params,
         )
+
+    for api_match in relevant_api_matches:
+        fw_entry = api_match.firewall
+        api_entry = api_match.api
+        policy = compiled_network_policies.policies.get(fw_entry.name)
         routing_identity_malformed = api_entry.routing_identity is None
         if (
             api_entry.base_malformed
@@ -1566,8 +1607,6 @@ def _reduce_selected_owner(
         if api_match.order not in evaluable_api_orders:
             continue
         fw_entry = api_match.firewall
-        if selected_name is not None and fw_entry.name != selected_name:
-            continue
         policy = compiled_network_policies.policies.get(fw_entry.name)
         rel_path_segs = _split_path_segments(api_match.rel_path)
         rule_entries = (

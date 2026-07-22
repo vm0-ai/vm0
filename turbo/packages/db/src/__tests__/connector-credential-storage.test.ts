@@ -6,14 +6,14 @@ import { secrets } from "../schema/secret";
 import { variables } from "../schema/variable";
 
 describe("connector credential storage schema", () => {
-  it("keeps rolling-deployment metadata nullable with bigint version storage", () => {
-    expect(connectors.storageVersion.notNull).toBe(false);
+  it("requires connector versions while shared owner columns stay nullable", () => {
+    expect(connectors.storageVersion.notNull).toBe(true);
     expect(connectors.storageVersion.columnType).toBe("PgBigInt53");
     expect(secrets.connectorId.notNull).toBe(false);
     expect(variables.connectorId.notNull).toBe(false);
   });
 
-  it("declares owner indexes, cascade foreign keys, and additive checks", () => {
+  it("declares owner indexes, cascade foreign keys, and final checks", () => {
     const connectorConfig = getTableConfig(connectors);
     const secretConfig = getTableConfig(secrets);
     const variableConfig = getTableConfig(variables);

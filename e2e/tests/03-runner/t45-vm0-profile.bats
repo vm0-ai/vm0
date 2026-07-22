@@ -16,7 +16,7 @@ teardown() {
     [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ] && rm -rf "$TEST_DIR"
 }
 
-@test "vm0 run with default profile has claude and gh cli" {
+@test "direct run with default profile has claude and gh cli" {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -27,24 +27,24 @@ agents:
     experimental_profile: vm0/default
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "claude --version && gh --version"
+    run run_compose_fixture "$AGENT_NAME" \
+        "claude --version && gh --version" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
     assert_output --partial "claude"
     assert_output --partial "gh version"
 }
 
-@test "vm0 run with default profile has agent-browser and chromium" {
+@test "direct run with default profile has agent-browser and chromium" {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -55,18 +55,18 @@ agents:
     experimental_profile: vm0/default
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "agent-browser open https://github.com && agent-browser get title | grep -Fq GitHub && agent-browser close"
+    run run_compose_fixture "$AGENT_NAME" \
+        "agent-browser open https://github.com && agent-browser get title | grep -Fq GitHub && agent-browser close" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
     assert_output --partial "https://github.com/"
 }

@@ -51,7 +51,6 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const draftLoadable = useLoadable(signals.draft$);
   const selectedMailDraftId = useGet(currentMailDraftId$);
   const openSidebar = useSet(openMailDraftSidebar$);
-  const reload = useSet(signals.reload$);
 
   if (draftLoadable.state === "loading") {
     return <MailDraftCardSkeleton />;
@@ -118,7 +117,6 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
       data-mail-draft-card
       data-mail-draft-status={draft.status}
       onClick={() => {
-        reload();
         openSidebar(signals.mailDraftId);
       }}
       className={cn(

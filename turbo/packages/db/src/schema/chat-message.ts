@@ -18,6 +18,7 @@ import type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageRecommendedFollowups,
+  ChatMessageStructuredPrompt,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
 export type {
@@ -33,6 +34,7 @@ export type {
   ChatMessageRecommendedFollowupGenerationType,
   ChatMessageRecommendedFollowupKind,
   ChatMessageRecommendedFollowups,
+  ChatMessageStructuredPrompt,
   ChatMessageUsageKindBreakdown,
   ChatMessageUsagePayload,
   ChatMessageUsageProviderBreakdown,
@@ -45,9 +47,10 @@ export type {
  * Chat Messages table
  * Each row is a single message belonging to a chat_thread.
  *
- * User messages are persisted immediately on send. Queued user messages have no
- * run_id; when the queue is drained, a new user row is appended with run_id and
- * revokes_message_id pointing at the queued row it supersedes.
+ * User messages are persisted immediately on send. Queued user messages are
+ * represented by chat_message_queue rows; when the queue is drained, a new
+ * user row is appended with run_id and revokes_message_id pointing at the
+ * queued row it supersedes.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -77,7 +80,8 @@ export const chatMessages = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    // Historical run references remain after the corresponding run is deleted.
+    // Attribution only: identifies the run that consumed or produced this row.
+    // Queued state is represented exclusively by chat_message_queue.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
@@ -92,6 +96,9 @@ export const chatMessages = pgTable(
     runGroupId: uuid("run_group_id"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
+    /** Stable business representation of rich user-message content. */
+    structuredPrompt:
+      jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */

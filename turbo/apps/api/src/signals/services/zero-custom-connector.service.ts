@@ -12,7 +12,6 @@ import type {
   CustomConnectorValueInput,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { getBuiltinConnectorHostOwner } from "@vm0/connectors/firewall-metadata/server";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
@@ -32,6 +31,11 @@ import {
 } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 const L = logger("CustomConnectorService");
 
@@ -479,6 +483,7 @@ function prefixContainsPathVariable(raw: string): boolean {
 function validateAndNormalizePrefixTemplate(args: {
   readonly raw: string;
   readonly fields: readonly CustomConnectorField[];
+  readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }): string | BadRequestResponse {
   const trimmed = args.raw.trim();
   if (trimmed.length === 0) {
@@ -525,7 +530,7 @@ function validateAndNormalizePrefixTemplate(args: {
     const authorityStart = schemeEnd + 3;
     const authorityEnd = canonicalPrefix.indexOf("/", authorityStart);
     const host = canonicalPrefix.slice(authorityStart, authorityEnd);
-    const builtinOwner = getBuiltinConnectorHostOwner(host);
+    const builtinOwner = args.serverFirewalls.getFixedHostOwner(host);
     if (builtinOwner) {
       const rawAuthority = normalised.slice(
         "https://".length,
@@ -647,6 +652,7 @@ function validateQueryInjections(args: {
 
 function validateDefinition(
   input: DefinitionInput,
+  serverFirewalls: ConnectorServerFirewallCatalog,
 ): ValidatedDefinition | BadRequestResponse {
   const displayName = validateDisplayName(input.displayName);
   if (isBadRequest(displayName)) {
@@ -662,7 +668,11 @@ function validateDefinition(
     return badRequestMessage("At least one prefix template is required");
   }
   for (const raw of input.prefixTemplates) {
-    const normalized = validateAndNormalizePrefixTemplate({ raw, fields });
+    const normalized = validateAndNormalizePrefixTemplate({
+      raw,
+      fields,
+      serverFirewalls,
+    });
     if (isBadRequest(normalized)) {
       return normalized;
     }
@@ -864,6 +874,7 @@ export const createCustomConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly input: CreateCustomConnectorBody;
+      readonly connectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse> => {
@@ -871,7 +882,15 @@ export const createCustomConnector$ = command(
     if (isBadRequest(canonicalInput)) {
       return canonicalInput;
     }
-    const v = validateDefinition(canonicalInput);
+    const writeDb = set(writeDb$);
+    const connectorCatalogSnapshot =
+      args.connectorCatalogSnapshot ??
+      (await loadConnectorRuntimeSnapshot(writeDb));
+    signal.throwIfAborted();
+    const v = validateDefinition(
+      canonicalInput,
+      connectorCatalogSnapshot.serverFirewalls,
+    );
     if (isBadRequest(v)) {
       return v;
     }
@@ -883,7 +902,6 @@ export const createCustomConnector$ = command(
     const legacy = legacyColumns(v);
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
-    const writeDb = set(writeDb$);
     const [row] = await writeDb
       .insert(orgCustomConnectors)
       .values({
@@ -917,15 +935,23 @@ const updateCustomConnectorDefinition$ = command(
       readonly orgId: string;
       readonly id: string;
       readonly input: UpdateCustomConnectorBody;
+      readonly connectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | NotFoundResponse> => {
-    const v = validateDefinition(definitionFromUpdateInput(args.input));
+    const writeDb = set(writeDb$);
+    const connectorCatalogSnapshot =
+      args.connectorCatalogSnapshot ??
+      (await loadConnectorRuntimeSnapshot(writeDb));
+    signal.throwIfAborted();
+    const v = validateDefinition(
+      definitionFromUpdateInput(args.input),
+      connectorCatalogSnapshot.serverFirewalls,
+    );
     if (isBadRequest(v)) {
       return v;
     }
     const legacy = legacyColumns(v);
-    const writeDb = set(writeDb$);
     const [row] = await writeDb
       .update(orgCustomConnectors)
       .set({
@@ -1613,7 +1639,9 @@ function proposalUpdateInput(
 const saveProposalDefinition$ = command(
   async (
     { set },
-    args: SaveCustomConnectorProposalArgs,
+    args: SaveCustomConnectorProposalArgs & {
+      readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    },
     signal: AbortSignal,
   ): Promise<
     | CustomConnectorRow
@@ -1632,6 +1660,7 @@ const saveProposalDefinition$ = command(
           orgId: args.orgId,
           userId: args.userId,
           input: updateInput,
+          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         },
         signal,
       );
@@ -1648,6 +1677,7 @@ const saveProposalDefinition$ = command(
         orgId: args.orgId,
         id: args.proposal.connectorId,
         input: updateInput,
+        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       },
       signal,
     );
@@ -1695,8 +1725,13 @@ export const saveCustomConnectorProposal$ = command(
     args: SaveCustomConnectorProposalArgs,
     signal: AbortSignal,
   ): Promise<SaveCustomConnectorProposalResult> => {
+    const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
+      get(db$),
+    );
+    signal.throwIfAborted();
     const proposalDefinition = validateDefinition(
       definitionFromUpdateInput(proposalUpdateInput(args.proposal)),
+      connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(proposalDefinition)) {
       return proposalDefinition;
@@ -1710,7 +1745,11 @@ export const saveCustomConnectorProposal$ = command(
       return proposalValues;
     }
 
-    const connector = await set(saveProposalDefinition$, args, signal);
+    const connector = await set(
+      saveProposalDefinition$,
+      { ...args, connectorCatalogSnapshot },
+      signal,
+    );
     signal.throwIfAborted();
     if ("status" in connector) {
       return connector;

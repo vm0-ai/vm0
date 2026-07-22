@@ -8,41 +8,39 @@ load '../../helpers/setup'
 
 # ============================================================================
 # File-level setup: create volume, compose config, and artifact ONCE for all
-# heavy (vm0 run) tests. Lightweight CRUD tests don't need these resources.
+# heavy direct-run tests. Lightweight CRUD tests don't need these resources.
 # ============================================================================
 
 setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
 
-    # Create volume once for all vm0 run tests
+    # Create volume once for all direct-run tests.
     export VOLUME_NAME="e2e-vol-var-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create artifact once
     export ARTIFACT_NAME="e2e-var-art-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
+    seed_storage_fixture artifact "$ARTIFACT_NAME" .
     cd - >/dev/null
 
-    # Each vm0 run test gets its own unique variable name to avoid race conditions.
+    # Each direct-run test gets its own variable name to avoid race conditions.
     # Variable names must contain only uppercase letters, numbers, and underscores,
     # so replace the hyphen in UNIQUE_ID with an underscore.
     local var_safe_id="${UNIQUE_ID//-/_}"
     export VAR_NAME_EXPAND="TEST_VAR_EXPAND_${var_safe_id}"
     export VAR_NAME_OVERRIDE="TEST_VAR_OVERRIDE_${var_safe_id}"
 
-    # Create compose configs for both vm0 run tests
+    # Create compose configs for both direct-run tests.
     export AGENT_EXPAND="e2e-var-expand-${UNIQUE_ID}"
     export CONFIG_EXPAND="$TEST_DIR/expand.yaml"
     cat > "$CONFIG_EXPAND" <<EOF
@@ -60,7 +58,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_EXPAND" >/dev/null
+    seed_compose_fixture "$CONFIG_EXPAND" >/dev/null
 
     export AGENT_OVERRIDE="e2e-var-override-${UNIQUE_ID}"
     export CONFIG_OVERRIDE="$TEST_DIR/override.yaml"
@@ -79,7 +77,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$CONFIG_OVERRIDE" >/dev/null
+    seed_compose_fixture "$CONFIG_OVERRIDE" >/dev/null
 }
 
 # Generate unique variable name for each test run to avoid conflicts
@@ -93,7 +91,7 @@ teardown() {
 }
 
 teardown_file() {
-    # Clean up variables used by vm0 run tests (one API call each, once)
+    # Clean up variables used by direct-run tests (one API call each, once).
     $ZERO_CLI variable delete -y "$VAR_NAME_EXPAND" 2>/dev/null || true
     $ZERO_CLI variable delete -y "$VAR_NAME_OVERRIDE" 2>/dev/null || true
     # Clean up shared test directory
@@ -186,7 +184,7 @@ teardown_file() {
 # Heavy setup (volume, compose, artifact) is shared via setup_file().
 # ============================================================================
 
-@test "vm0 run expands server-stored variables" {
+@test "direct run expands server-stored variables" {
     if [[ -z "$VM0_API_BACKEND_URL" ]]; then
         skip "VM0_API_BACKEND_URL not set"
     fi
@@ -198,9 +196,10 @@ teardown_file() {
 
     # Run agent that echoes the variable value
     echo "# Running agent that echoes variable value..."
-    run $VM0_CLI run "$AGENT_EXPAND" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo MY_VAR=\$MY_VAR"
+    run run_compose_fixture "$AGENT_EXPAND" \
+        "echo MY_VAR=\$MY_VAR" \
+        "$(jq -nc --arg artifact "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}]}')"
 
     echo "# Output:"
     echo "$output"
@@ -211,7 +210,7 @@ teardown_file() {
     assert_output --partial "MY_VAR=${var_value}"
 }
 
-@test "vm0 run CLI vars override server-stored variables" {
+@test "direct run vars override server-stored variables" {
     if [[ -z "$VM0_API_BACKEND_URL" ]]; then
         skip "VM0_API_BACKEND_URL not set"
     fi
@@ -222,12 +221,18 @@ teardown_file() {
     # Set a server-stored variable (unique name per test to avoid races)
     $ZERO_CLI variable set "$VAR_NAME_OVERRIDE" "$server_value"
 
-    # Run agent with CLI --vars to override server value
-    echo "# Running agent with CLI var override..."
-    run $VM0_CLI run "$AGENT_OVERRIDE" \
-        --vars "$VAR_NAME_OVERRIDE=$cli_value" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo MY_VAR=\$MY_VAR"
+    # Run with explicit vars to override the server value.
+    echo "# Running agent with direct var override..."
+    run run_compose_fixture "$AGENT_OVERRIDE" \
+        "echo MY_VAR=\$MY_VAR" \
+        "$(jq -nc \
+            --arg variableName "$VAR_NAME_OVERRIDE" \
+            --arg variableValue "$cli_value" \
+            --arg artifact "$ARTIFACT_NAME" \
+            '{
+                vars: {($variableName): $variableValue},
+                artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}]
+            }')"
 
     echo "# Output:"
     echo "$output"

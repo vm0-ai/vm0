@@ -1,7 +1,6 @@
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import { env } from "../../lib/env";
 import type { RouteEntry } from "../route-entry";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -12,18 +11,11 @@ import {
   connectorCatalogStatus$,
   syncConnectorCatalog$,
 } from "../services/connector-catalog-sync.service";
-import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorCredentialReadiness } from "../services/connector-credential-readiness.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 async function connectorCredentialReadiness(db: ReadonlyDb) {
-  // External mode has no safe null-owner bridge, and status must remain
-  // available even before an accepted external snapshot exists.
-  const snapshot =
-    env("CONNECTOR_CATALOG_SOURCE_MODE") === "external"
-      ? null
-      : await loadConnectorRuntimeSnapshot(db);
-  return await loadConnectorCredentialReadiness(db, snapshot);
+  return await loadConnectorCredentialReadiness(db);
 }
 
 const syncConnectorCatalogRoute$ = command(

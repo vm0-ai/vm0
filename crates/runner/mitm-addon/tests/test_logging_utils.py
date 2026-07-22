@@ -402,22 +402,6 @@ class TestJsonlWriterBehavior:
 
 
 class TestAddFirewallMetadata:
-    def test_copies_valid_firewall_error_metadata(self, real_flow):
-        flow = real_flow(with_response=False)
-        flow.metadata.update({metadata_keys.FIREWALL_ERROR: "TOKEN_REFRESH_FAILED"})
-        log_entry = {}
-
-        logging_utils.add_firewall_metadata(flow, log_entry)
-
-        assert log_entry == {
-            "firewall_base": "",
-            "firewall_name": "",
-            "firewall_permission": "",
-            "firewall_rule_match": "",
-            "firewall_billable": False,
-            "firewall_error": "TOKEN_REFRESH_FAILED",
-        }
-
     def test_copies_valid_connector_diagnostic_metadata(self, real_flow):
         flow = real_flow(with_response=False)
         flow.metadata.update(
@@ -426,8 +410,6 @@ class TestAddFirewallMetadata:
                 metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: "not_configured_for_run",
                 metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN"],
                 metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: "https://fal.run",
-                metadata_keys.CONNECTOR_ROUTE_REASON: "connector_intent_required",
-                metadata_keys.CONNECTOR_ROUTE_CANDIDATES: ["auditor", "primary"],
             }
         )
         log_entry = {}
@@ -444,8 +426,6 @@ class TestAddFirewallMetadata:
             "connector_diagnostic_reason": "not_configured_for_run",
             "connector_diagnostic_env_names": ["FAL_TOKEN"],
             "connector_diagnostic_base": "https://fal.run",
-            "connector_route_reason": "connector_intent_required",
-            "connector_route_candidates": ["auditor", "primary"],
         }
 
     def test_defaults_missing_required_firewall_metadata(self, real_flow):
@@ -491,7 +471,6 @@ class TestAddFirewallMetadata:
         flow.metadata.update(
             {
                 metadata_keys.FIREWALL_PARAMS: None,
-                metadata_keys.FIREWALL_ERROR: None,
                 metadata_keys.AUTH_RESOLVED_SECRETS: None,
                 metadata_keys.AUTH_REFRESHED_CONNECTORS: None,
                 metadata_keys.AUTH_REFRESHED_SECRETS: None,
@@ -516,7 +495,6 @@ class TestAddFirewallMetadata:
         flow.metadata.update(
             {
                 metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "branch": None},
-                metadata_keys.FIREWALL_ERROR: 123,
                 metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN", None],
                 metadata_keys.AUTH_REFRESHED_CONNECTORS: "github",
                 metadata_keys.AUTH_REFRESHED_SECRETS: [1],

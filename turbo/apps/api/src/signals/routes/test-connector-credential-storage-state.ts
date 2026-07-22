@@ -23,10 +23,9 @@ const actionBody$ = bodyResultOf(
 
 /**
  * This route is explicitly mounted only by tests. Connector owner/version
- * metadata has no production API, and historical null or cross-owner states
- * cannot be constructed through one. Keeping that exception here lets route
- * tests exercise the real public behavior without registering a production
- * diagnostics surface.
+ * metadata has no production API, and cross-owner states cannot be constructed
+ * through one. Keeping that exception here lets route tests exercise the real
+ * public behavior without registering a production diagnostics surface.
  */
 type ConnectorCredentialStorageAction<
   TAction extends TestConnectorCredentialStorageStateActionBody["action"],
@@ -34,6 +33,15 @@ type ConnectorCredentialStorageAction<
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return { status: 200 as const, body: { ok: true as const, ...extra } };
+}
+
+function requiredConnectorCredentialOwnerId(
+  connectorId: string | null,
+): string {
+  if (connectorId === null) {
+    throw new Error("Connector credential is missing its owner");
+  }
+  return connectorId;
 }
 
 async function readState(
@@ -104,7 +112,7 @@ async function readState(
     secrets: secretRows.map((row) => {
       return {
         name: row.name,
-        connector_id: row.connectorId,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
         encrypted_value: row.encryptedValue,
         description: row.description,
       };
@@ -112,43 +120,10 @@ async function readState(
     variables: variableRows.map((row) => {
       return {
         name: row.name,
-        connector_id: row.connectorId,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
       };
     }),
   });
-}
-
-async function seedLegacySecret(
-  db: Db,
-  body: ConnectorCredentialStorageAction<"seed-legacy-secret">,
-  signal: AbortSignal,
-) {
-  await db.insert(secrets).values({
-    orgId: body.org_id,
-    userId: body.user_id,
-    name: body.name,
-    encryptedValue: body.encrypted_value,
-    description: body.description,
-    type: "connector",
-  });
-  signal.throwIfAborted();
-  return actionOk();
-}
-
-async function seedLegacyVariable(
-  db: Db,
-  body: ConnectorCredentialStorageAction<"seed-legacy-variable">,
-  signal: AbortSignal,
-) {
-  await db.insert(variables).values({
-    orgId: body.org_id,
-    userId: body.user_id,
-    name: body.name,
-    value: body.value,
-    type: "connector",
-  });
-  signal.throwIfAborted();
-  return actionOk();
 }
 
 async function seedOwnedSecret(
@@ -311,12 +286,6 @@ const mutateConnectorCredentialStorageState$ = command(
     switch (body.action) {
       case "read": {
         return await readState(db, body, signal);
-      }
-      case "seed-legacy-secret": {
-        return await seedLegacySecret(db, body, signal);
-      }
-      case "seed-legacy-variable": {
-        return await seedLegacyVariable(db, body, signal);
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);

@@ -71,7 +71,6 @@ const artifactItemSchema = z.object({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
-  isFavorited: z.boolean().optional(),
 });
 
 /**
@@ -102,6 +101,10 @@ const artifactsListResponseSchema = z.object({
    * persist it only after the complete page chain has been cached.
    */
   syncUntil: z.string().datetime().optional(),
+});
+
+const artifactFavoritesResponseSchema = z.object({
+  artifactUrls: z.array(z.string()),
 });
 
 const artifactFavoriteBodySchema = z.object({
@@ -299,6 +302,44 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const userMessagePartSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("text"),
+      text: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat_thread"),
+      threadId: z.string().uuid(),
+      titleSnapshot: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("template"),
+      titleSnapshot: z.string().min(1),
+      template: generationTemplateRequestSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file"),
+      fileId: z.string().min(1),
+      filenameSnapshot: z.string().min(1),
+      contentType: z.string().min(1),
+    })
+    .strict(),
+]);
+
+const userMessageDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z.array(userMessagePartSchema).min(1),
+  })
+  .strict();
+
 const workflowSnapshotSchema = z.object({
   id: z.string().uuid().optional(),
   agentId: z.string().uuid().optional(),
@@ -356,6 +397,7 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
   pagedChatMessageBaseSchema
     .extend({
       role: z.literal("user"),
+      structuredPrompt: userMessageDocumentSchema.optional(),
     })
     .strict(),
   pagedChatMessageBaseSchema.extend({
@@ -384,6 +426,7 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.object({
   draftContent: z.string().nullable(),
+  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
@@ -486,6 +529,7 @@ const chatMessageNormalSendBodySchema = z.preprocess(
      */
     model: selectedModelRequestSchema.optional(),
     runOptions: chatRunOptionsRequestSchema.optional(),
+    structuredPrompt: userMessageDocumentSchema.optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
     computerUseHostId: z.string().uuid().nullable().optional(),
     // Optional for backward compatibility: older clients that omit this field
@@ -581,7 +625,8 @@ export const chatThreadsContract = c.router({
       200: z.object({
         /**
          * Thread ids owned by the caller that currently hold an unsent draft
-         * (non-empty `draftContent` or one+ `draftAttachments`).
+         * (non-empty `draftContent`, a structured prompt, or one+
+         * `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
       }),
@@ -651,6 +696,7 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
+      draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
       draftAttachments: z
         .array(persistedAttachmentSchema)
         .nullable()
@@ -918,6 +964,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -936,6 +983,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
+        structuredPrompt: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -1198,6 +1246,17 @@ export const artifactsContract = c.router({
     summary:
       "List artifacts for the caller's current organization (keyset-paginated)",
   },
+  listFavorites: {
+    method: "GET",
+    path: "/api/zero/artifacts/favorites",
+    headers: authHeadersSchema,
+    responses: {
+      200: artifactFavoritesResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List artifact favorite URLs for the caller",
+  },
   favorite: {
     method: "POST",
     path: "/api/zero/artifacts/favorite",
@@ -1302,6 +1361,8 @@ export {
   chatThreadDraftSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
+  userMessagePartSchema,
+  userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
@@ -1314,6 +1375,7 @@ export {
   resolvedAttachFileSchema,
   artifactItemSchema,
   artifactFavoriteBodySchema,
+  artifactFavoritesResponseSchema,
   artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
@@ -1329,6 +1391,8 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
+export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
+export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
   "workflow" | "website"
@@ -1386,6 +1450,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
+export type ArtifactFavoritesResponse = z.infer<
+  typeof artifactFavoritesResponseSchema
+>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type ImageArtifactEditSnapshot = z.infer<
   typeof imageArtifactEditSnapshotSchema

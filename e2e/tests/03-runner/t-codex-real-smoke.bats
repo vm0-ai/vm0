@@ -24,8 +24,7 @@ setup_file() {
     cat > AGENTS.md << 'VOLEOF'
 Real codex smoke test instructions.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
@@ -46,7 +45,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0-basic.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -62,10 +61,9 @@ ensure_openai_model_provider() {
 @test "t-codex-real-smoke-0: print sandbox codex version" {
     ensure_openai_model_provider
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "openai-api-key" \
-        --real-agent-in-preview \
-        "Run 'codex --version' with the shell tool and include the exact output"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run 'codex --version' with the shell tool and include the exact output" \
+        '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
     echo "# Sandbox codex version output:"
@@ -75,10 +73,9 @@ ensure_openai_model_provider() {
 @test "t-codex-real-smoke-1: basic run with real codex" {
     ensure_openai_model_provider
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "openai-api-key" \
-        --real-agent-in-preview \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
     assert_output --partial "◆ Codex Completed"

@@ -2,20 +2,33 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+import {
+  testSystemStoragePresignedUrlCacheStateContract,
+  type TestSystemStoragePresignedUrlCacheStateActionBody,
+} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorCheckContract } from "@vm0/api-contracts/contracts/zero-connector-check";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+} from "@vm0/connectors/firewall-metadata/runner-runtime";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -27,6 +40,7 @@ import {
 } from "vitest";
 
 import { createApp } from "../../../app-factory";
+import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -39,15 +53,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
-import {
-  readConnectorCredentialStorageState,
-  seedConnectorStorageRow,
-  seedLegacyConnectorSecret,
-  seedLegacyConnectorVariable,
-  setConnectorCredentialStorageState,
-  setConnectorSecretOwner,
-  setConnectorVariableOwner,
-} from "./helpers/connector-credential-storage-state";
+import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   awsVerificationCode,
@@ -62,6 +68,7 @@ import {
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
@@ -69,6 +76,8 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const PRIVATE_VALUE = "SECRET_TOKEN";
@@ -709,8 +718,10 @@ function setArtifactAuthMethods(
   firstRecord(artifact.connectors, "connectors").authMethods = methods;
 }
 
-function buildBundledSkill(connectorRef: string): JsonRecord {
-  const versionId = "a".repeat(64);
+function buildBundledSkill(
+  connectorRef: string,
+  versionId = "a".repeat(64),
+): JsonRecord {
   const storageName = `connector-skill@${connectorRef}`;
   const prefix = `__system__/volume/${storageName}/${versionId}`;
   return {
@@ -819,6 +830,88 @@ function buildGeneratedFirewall(args: {
       ],
     },
   };
+}
+
+const DUPLICATE_DYNAMIC_FIREWALL_BASE = `https://${catalogTemplate("vars.SERVICE_HOST")}.example.test/v1`;
+const DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY = {
+  kind: "providerOwned",
+  suffixes: [".example.test"],
+} as const;
+
+function addDynamicFirewallVariableBinding(artifact: JsonRecord): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const method = firstRecord(connector.authMethods, "authMethods");
+  recordValue(method.storage, "storage").variables = ["SERVICE_HOST"];
+  recordValue(
+    recordValue(method.access, "access").envBindings,
+    "envBindings",
+  ).SERVICE_HOST = "$vars.SERVICE_HOST";
+}
+
+function addDuplicateDynamicPrivateFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const firewall = recordValue(connector.firewall, "firewall");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
+
+  const routing = recordValue(connector.routing, "routing");
+  routing.fixedHosts = [];
+  routing.baseUrlVarNames = ["SERVICE_HOST"];
+  routing.baseUrlTemplates = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: true,
+      hostPolicy: DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY,
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      credentialed: false,
+      hostPolicy: fallbackApi.hostPolicy,
+    },
+  ];
+  routing.apis = [
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST", "SERVICE_TOKEN"],
+      routes: [{ permissionName: "items.read", rule: "GET /items" }],
+    },
+    {
+      base: DUPLICATE_DYNAMIC_FIREWALL_BASE,
+      environmentNames: ["SERVICE_HOST"],
+      routes: [],
+    },
+  ];
+  recordValue(connector.diagnostics, "diagnostics").apiCount = 2;
+}
+
+function addDuplicateDynamicRunnerFirewallApi(
+  artifact: JsonRecord,
+  options: { readonly conflictingHostPolicy?: boolean } = {},
+): void {
+  const firewall = firstRecord(artifact.firewalls, "firewalls");
+  const apis = arrayValue(firewall.apis, "firewall.apis");
+  const firstApi = firstRecord(apis, "firewall.apis");
+  firstApi.base = DUPLICATE_DYNAMIC_FIREWALL_BASE;
+  firstApi.hostPolicy = DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  const fallbackApi = structuredClone(firstApi);
+  fallbackApi.auth = {};
+  fallbackApi.permissions = [];
+  fallbackApi.hostPolicy = options.conflictingHostPolicy
+    ? { kind: "publicDestination" }
+    : DUPLICATE_DYNAMIC_FIREWALL_HOST_POLICY;
+  apis.push(fallbackApi);
 }
 
 function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
@@ -1108,6 +1201,76 @@ function cronClient() {
   return setupApp({ context })(cronConnectorCatalogContract);
 }
 
+function runnerFirewallClient() {
+  return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
+}
+
+interface VolumeStorageState {
+  readonly s3_prefix: string;
+  readonly size: number;
+  readonly file_count: number;
+  readonly head_version_id: string | null;
+}
+
+function systemStorageStateClient() {
+  return setupAppWithRoutes({
+    context,
+    routes: testSystemStoragePresignedUrlCacheStateRoutes,
+  })(testSystemStoragePresignedUrlCacheStateContract);
+}
+
+async function systemStorageStateAction(
+  body: TestSystemStoragePresignedUrlCacheStateActionBody,
+) {
+  return await accept(systemStorageStateClient().action({ body }), [200]);
+}
+
+async function readVolumeStorageState(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+}): Promise<VolumeStorageState | null> {
+  const response = await systemStorageStateAction({
+    action: "read-storage-state",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+  });
+  return response.body.storage_state ?? null;
+}
+
+async function restoreVolumeStorageState(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly previous: VolumeStorageState | null;
+}): Promise<void> {
+  await systemStorageStateAction({
+    action: "restore-storage-state",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+    previous: args.previous,
+  });
+}
+
+async function seedVolumeStorageVersion(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly versionId: string;
+  readonly s3Prefix: string;
+  readonly s3Key: string;
+}): Promise<void> {
+  await systemStorageStateAction({
+    action: "seed-storage-version",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+    version_id: args.versionId,
+    s3_prefix: args.s3Prefix,
+    s3_key: args.s3Key,
+    archive_size: 321,
+  });
+}
+
 async function syncCatalog() {
   return await accept(cronClient().sync({ headers: cronHeaders() }), [200]);
 }
@@ -1190,79 +1353,16 @@ describe("connector catalog cron authentication and initial state", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
-  it("reports aggregate-only connector credential readiness", async () => {
+  it("reports zero final connector credential invariant violations", async () => {
     configureSource();
-    const actor = bdd.user();
-    const orgId = actor.orgId ?? "";
-    const connectorId = await seedConnectorStorageRow(context, {
-      authMethod: "oauth",
-      connectorRef: "test-oauth",
-      orgId,
-      storageVersion: 1,
-      userId: actor.userId,
-    });
-    await setConnectorCredentialStorageState(context, {
-      connectorRef: "test-oauth",
-      orgId,
-      storageVersion: null,
-      userId: actor.userId,
-    });
-    const suffix = randomUUID().replaceAll("-", "").toUpperCase();
-    const secretName = `UNRESOLVED_SECRET_${suffix}`;
-    const variableName = `UNRESOLVED_VARIABLE_${suffix}`;
-    await seedLegacyConnectorSecret(context, {
-      description: "private readiness description",
-      encryptedValue: "private readiness secret",
-      name: secretName,
-      orgId,
-      userId: actor.userId,
-    });
-    await seedLegacyConnectorVariable(context, {
-      name: variableName,
-      orgId,
-      userId: actor.userId,
-      value: "private readiness variable",
-    });
-    onTestFinished(async () => {
-      await setConnectorSecretOwner(context, {
-        connectorId,
-        name: secretName,
-        orgId,
-        userId: actor.userId,
-      });
-      await setConnectorVariableOwner(context, {
-        connectorId,
-        name: variableName,
-        orgId,
-        userId: actor.userId,
-      });
-      await connectorsApi.deleteConnectorByType(
-        actor,
-        "test-oauth",
-        [204, 404],
-      );
-    });
 
     const response = await readStatus();
-    expect(response.body.credentialStorage).toMatchObject({
-      missingConnectorVersions: expect.any(Number),
-      unownedConnectorSecrets: expect.any(Number),
-      unownedConnectorVariables: expect.any(Number),
-      unresolvedBridgeCredentials: expect.any(Number),
+    expect(response.body.credentialStorage).toStrictEqual({
+      missingConnectorVersions: 0,
+      unownedConnectorSecrets: 0,
+      unownedConnectorVariables: 0,
+      unresolvedBridgeCredentials: 0,
     });
-    expect(
-      response.body.credentialStorage.missingConnectorVersions,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      response.body.credentialStorage.unownedConnectorSecrets,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      response.body.credentialStorage.unownedConnectorVariables,
-    ).toBeGreaterThanOrEqual(1);
-    const serialized = JSON.stringify(response.body.credentialStorage);
-    expect(serialized).not.toContain(secretName);
-    expect(serialized).not.toContain(variableName);
-    expect(serialized).not.toContain(actor.userId);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 });
@@ -1646,13 +1746,6 @@ describe("connector catalog valid lifecycle", () => {
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
     const actor = bdd.user();
-    await seedLegacyConnectorSecret(context, {
-      description: "unresolved optional external state",
-      encryptedValue: "unresolved-optional-value",
-      name: optionalSecretName,
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
     onTestFinished(async () => {
       await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
     });
@@ -1695,20 +1788,7 @@ describe("connector catalog valid lifecycle", () => {
       userId: actor.userId,
       secretNames: [optionalSecretName],
     });
-    expect(storageState.secrets).toStrictEqual([
-      {
-        connector_id: null,
-        description: "unresolved optional external state",
-        encrypted_value: "unresolved-optional-value",
-        name: optionalSecretName,
-      },
-    ]);
-    await setConnectorSecretOwner(context, {
-      connectorId: connected.id,
-      name: optionalSecretName,
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
+    expect(storageState.secrets).toStrictEqual([]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
@@ -2106,6 +2186,10 @@ describe("connector catalog valid lifecycle", () => {
       version: "2026-07-15.external-run-materialization",
       connectorRef,
       label: "External Runtime",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").billable = true;
+      },
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
@@ -2146,6 +2230,61 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const check = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://api.example.test/v1/items",
+          connectorRef,
+        },
+      }),
+      [200],
+    );
+    expect(check.body).toMatchObject({
+      outcome: "resolved",
+      mode: "url",
+      connector: {
+        connectorRef,
+        label: "External Runtime",
+      },
+      base: "https://api.example.test/v1",
+      relativePath: "/items",
+      permission: {
+        kind: "matched",
+        permissions: [{ name: "items.read" }],
+      },
+    });
+    const hostCollision = await connectorsApi.requestCreateCustomConnector(
+      actor,
+      {
+        displayName: "External Host Collision",
+        prefixes: ["https://api.example.test/custom/"],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+      [400],
+    );
+    expectApiError(hostCollision.body);
+    expect(hostCollision.body.error.message).toContain("api.example.test");
+    expect(hostCollision.body.error.message).toContain("External Runtime");
+    const grants = await accept(
+      setupApp({ context })(zeroUserPermissionGrantsContract).apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorRef,
+          mode: "replace",
+          grants: [{ permission: "items.read", action: "deny" }],
+        },
+      }),
+      [200],
+    );
+    expect(grants.body).toMatchObject([
+      { connectorRef, permission: "items.read", action: "deny" },
+    ]);
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
       prompt: "Use the externally sourced connector credential",
@@ -2165,6 +2304,17 @@ describe("connector catalog valid lifecycle", () => {
     expect(claim.environment?.SERVICE_TOKEN).toBeTruthy();
     expect(claim.secretConnectorMap).toMatchObject({
       SERVICE_TOKEN: connectorRef,
+    });
+    expect(claim.firewalls).toContainEqual({
+      kind: "builtin",
+      name: connectorRef,
+    });
+    expect(claim.billableFirewalls).toContain(connectorRef);
+    expect(claim.networkPolicies?.[connectorRef]).toStrictEqual({
+      allow: [],
+      deny: ["items.read"],
+      ask: [],
+      unknownPolicy: "deny",
     });
     expect(
       claim.storageManifest?.storages.some((storage) => {
@@ -2196,6 +2346,328 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRun);
     await runs.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
+
+  it("composes accepted connector and local model-provider runner firewalls", async () => {
+    const connectorRef = "external-runner-firewall";
+    configureSource();
+    const first = buildRelease({
+      version: "2026-07-15.external-runner-firewall-1",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([first], first));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
+    const providerName = "model-provider:openai-api-key";
+    const callsBeforeReads = context.mocks.s3.send.mock.calls.length;
+    const subset = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: [connectorRef, connectorRef, providerName] },
+      }),
+      [200],
+    );
+    expect(Object.keys(subset.body.firewalls).sort()).toStrictEqual([
+      connectorRef,
+      providerName,
+    ]);
+    expect(subset.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      "https://api.example.test/v1",
+    );
+    expect(subset.body.firewalls[providerName]?.apis[0]?.base).toBe(
+      "https://api.openai.com/v1/responses",
+    );
+
+    const full = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    const providerNames = Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS)
+      .map((firewall) => {
+        return firewall.name;
+      })
+      .sort();
+    expect(Object.keys(full.body.firewalls).sort()).toStrictEqual(
+      [connectorRef, ...providerNames].sort(),
+    );
+    expect(subset.body.catalogDigest).toBe(full.body.catalogDigest);
+    expect(subset.body.catalogVersion).toBe(full.body.catalogVersion);
+    const firstHex = createHash("sha256")
+      .update(JSON.stringify(full.body.firewalls, null, 2))
+      .digest("hex");
+    expect(full.body.catalogDigest).toBe(`sha256:${firstHex}`);
+    expect(full.body.catalogVersion).toBe(`sha256-${firstHex.slice(0, 12)}`);
+    for (const [name, firewall] of Object.entries(full.body.firewalls)) {
+      expect(firewall.name).toBe(name);
+    }
+    const serialized = JSON.stringify(full.body);
+    expect(serialized).not.toContain("sourceId");
+    expect(serialized).not.toContain("integrityDigest");
+    expect(serialized).not.toContain(first.integrityKey);
+
+    const missing = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: ["github"] },
+      }),
+      [400],
+    );
+    expect(missing.body.error.message).toBe("Unknown builtin firewall: github");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReads);
+
+    const changedBase = "https://api.example.test/v2";
+    const second = buildRelease({
+      version: "2026-07-15.external-runner-firewall-2",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        setPrivateFirewallBase(artifact, changedBase);
+      },
+      mutateRunnerFirewalls: (artifact) => {
+        setRunnerFirewallBase(artifact, changedBase);
+      },
+    });
+    serveObjects(catalogObjects([first, second], second));
+    await syncCatalog();
+    const callsBeforeSecondRead = context.mocks.s3.send.mock.calls.length;
+    const updated = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    expect(updated.body.catalogDigest).not.toBe(full.body.catalogDigest);
+    expect(updated.body.catalogVersion).not.toBe(full.body.catalogVersion);
+    expect(updated.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      changedBase,
+    );
+    expect(updated.body.firewalls[providerName]).toStrictEqual(
+      full.body.firewalls[providerName],
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSecondRead);
+  });
+
+  it("keeps runner firewall resolution static in shadow mode", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.shadow-runner-firewall",
+      connectorRef: "external-shadow-runner-firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
+
+    const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
+    const response = await accept(
+      runnerFirewallClient().resolve({
+        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+        body: { names: ["github"] },
+      }),
+      [200],
+    );
+    expect(response.body.catalogDigest).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+    );
+    expect(response.body.catalogVersion).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+    );
+    expect(response.body.firewalls.github?.name).toBe("github");
+    await flushWaitUntilForTest();
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
+  });
+
+  it("mounts an external connector skill from its exact system version", async () => {
+    const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;
+    const storageName = `connector-skill@${connectorRef}`;
+    const selectedVersionId = createHash("sha256")
+      .update(`selected:${randomUUID()}`)
+      .digest("hex");
+    const otherVersionId = createHash("sha256")
+      .update(`other:${randomUUID()}`)
+      .digest("hex");
+    const newerVersionId = createHash("sha256")
+      .update(`newer:${randomUUID()}`)
+      .digest("hex");
+    const canonicalPrefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-exact-skill",
+      connectorRef,
+      label: "External Exact Skill",
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill =
+          buildBundledSkill(connectorRef, selectedVersionId);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    const runtimeOrgId = actor.orgId;
+    const previousSystemState = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+    });
+    const previousRuntimeState = await readVolumeStorageState({
+      orgId: runtimeOrgId,
+      storageName,
+    });
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External exact connector skill agent",
+      visibility: "private",
+    });
+    let successfulRunId: string | undefined;
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      if (successfulRunId) {
+        await runs.requestCancelRun(actor, successfulRunId, [200, 404]);
+      }
+      await systemStorageStateAction({
+        action: "cleanup",
+        object_key_prefix: canonicalPrefix,
+      });
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName,
+        previous: previousSystemState,
+      });
+      await restoreVolumeStorageState({
+        orgId: runtimeOrgId,
+        storageName,
+        previous: previousRuntimeState,
+      });
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        connectorRef,
+        [204, 404],
+      );
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+    await connectorsApi.connectManualGrant(
+      actor,
+      connectorRef,
+      "api-token",
+      { credential: "catalog-skill-secret" },
+      agent.agentId,
+    );
+
+    const createSkillRun = async () => {
+      return await runs.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: "Use the connector skill",
+        modelProvider: "anthropic-api-key",
+      });
+    };
+    const expectRegistrationFailure = async () => {
+      const failed = await createSkillRun();
+      expect(failed).toMatchObject({
+        status: "failed",
+        error: "Connector skill registration is unavailable",
+      });
+    };
+
+    await seedVolumeStorageVersion({
+      orgId: runtimeOrgId,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+    await restoreVolumeStorageState({
+      orgId: runtimeOrgId,
+      storageName,
+      previous: previousRuntimeState,
+    });
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: otherVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${otherVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${storageName}`;
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: wrongPrefix,
+      s3Key: `${wrongPrefix}/${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/wrong-${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${selectedVersionId}`,
+    });
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: newerVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${newerVersionId}`,
+    });
+
+    const run = await createSkillRun();
+    successfulRunId = run.runId;
+    expect(run.status).not.toBe("failed");
+    await runs.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await runs.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await runs.claimRunnerJob(run.runId);
+    const mountedSkills =
+      claim.storageManifest?.storages.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
+        );
+      }) ?? [];
+    expect(mountedSkills).toHaveLength(1);
+    expect(mountedSkills[0]).toMatchObject({
+      name: storageName,
+      mountPath: `/home/user/.claude/skills/${connectorRef}`,
+      vasStorageName: storageName,
+      vasVersionId: selectedVersionId,
+      archiveSize: 321,
+      archiveUrl: expect.any(String),
+    });
+    await runs.requestCancelRun(actor, run.runId, [200]);
+    successfulRunId = undefined;
+  }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
     mockTestOAuthDeviceConnectorProvider();
@@ -3363,12 +3835,17 @@ describe("connector catalog valid lifecycle", () => {
       schemaVersion: 1,
       catalogVersion: release.version,
       externalConnectorCount: 1,
+      staticServerFirewallCount: expect.any(Number),
+      externalServerFirewallCount: 0,
+      staticServerFirewallDigest: expect.stringMatching(/^sha256:/),
+      externalServerFirewallDigest: expect.stringMatching(/^sha256:/),
     });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicRead);
     const logged = JSON.stringify(context.mocks.axiomLogging.debug.mock.calls);
     expect(logged).not.toContain(userId);
     expect(logged).not.toContain(orgId);
     expect(logged).not.toContain(PRIVATE_VALUE);
+    expect(logged).not.toContain("placeholder-token");
   });
 
   it("accepts a complete generated firewall projection", async () => {
@@ -3383,6 +3860,52 @@ describe("connector catalog valid lifecycle", () => {
       outcome: "accepted",
       state: "current",
       active: { catalogVersion: release.version },
+    });
+  });
+
+  it("merges duplicate dynamic firewall execution templates", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.duplicate-dynamic-firewall-base",
+      connectorRef: "dynamic-firewall",
+      label: "Dynamic Firewall",
+      generatedFirewall: true,
+      mutatePrivate: addDynamicFirewallVariableBinding,
+      mutatePrivateFirewalls: addDuplicateDynamicPrivateFirewallApi,
+      mutateRunnerFirewalls: addDuplicateDynamicRunnerFirewallApi,
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://tenant.example.test/v1/items",
+          connectorRef: "dynamic-firewall",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "dynamic-firewall",
+        label: "Dynamic Firewall",
+      },
+      permission: {
+        kind: "matched",
+        permissions: [{ name: "items.read" }],
+      },
     });
   });
 
@@ -3659,6 +4182,22 @@ describe("connector catalog executable compatibility", () => {
           reasons: ["missing-grant-provider"],
         },
       ],
+    });
+
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "environment",
+          environmentName: "TEST_OAUTH_DEVICE_TOKEN",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toStrictEqual({
+      outcome: "unknown-environment",
     });
 
     const allFiltered = buildRelease({
@@ -4456,6 +4995,93 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const auth = recordValue(api.auth, "firewall api auth");
             recordValue(auth.headers, "firewall auth headers")["X-Unknown"] =
               catalogTemplate("secrets.UNKNOWN_SECRET");
+          },
+        });
+      },
+    },
+    {
+      name: "conflicting duplicate dynamic firewall host policies",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-dynamic-base-host-policy-conflict",
+          generatedFirewall: true,
+          mutatePrivate: addDynamicFirewallVariableBinding,
+          mutatePrivateFirewalls: (artifact) => {
+            addDuplicateDynamicPrivateFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            addDuplicateDynamicRunnerFirewallApi(artifact, {
+              conflictingHostPolicy: true,
+            });
+          },
+        });
+      },
+    },
+    {
+      name: "normalized cross-connector firewall fixed host collision",
+      expected: "relationship-mismatch",
+      release: () => {
+        const secondConnectorRef = "collision-b";
+        return buildRelease({
+          version: "firewall-fixed-host-collision",
+          connectorRef: "collision-a",
+          generatedFirewall: true,
+          mutatePublic: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            second.label = "Collision B";
+            connectors.push(second);
+          },
+          mutatePrivate: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            const method = firstRecord(second.authMethods, "authMethods");
+            recordValue(method.storage, "storage").secrets = [
+              "SECOND_SECRET_TOKEN",
+            ];
+            firstRecord(
+              recordValue(method.grant, "grant").fields,
+              "grant.fields",
+            ).privateName = "SECOND_SECRET_TOKEN";
+            recordValue(
+              recordValue(method.access, "access").envBindings,
+              "envBindings",
+            ).SERVICE_TOKEN = "$secrets.SECOND_SECRET_TOKEN";
+            connectors.push(second);
+          },
+          mutatePrivateFirewalls: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = secondConnectorRef;
+            second.label = "Collision B";
+            const firewall = recordValue(second.firewall, "firewall");
+            firewall.name = secondConnectorRef;
+            firstRecord(firewall.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            const routing = recordValue(second.routing, "routing");
+            routing.fixedHosts = ["api.example.test."];
+            firstRecord(routing.apis, "routing.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            connectors.push(second);
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            const firewalls = arrayValue(artifact.firewalls, "firewalls");
+            const second = structuredClone(firstRecord(firewalls, "firewalls"));
+            second.name = secondConnectorRef;
+            firstRecord(second.apis, "firewall.apis").base =
+              "https://API.EXAMPLE.TEST./v1";
+            firewalls.push(second);
           },
         });
       },

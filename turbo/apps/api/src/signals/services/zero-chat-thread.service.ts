@@ -10,6 +10,7 @@ import {
   type PagedChatMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
+  type UserMessageDocument,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -34,6 +35,7 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
+  type ChatMessageStructuredPrompt,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
@@ -75,7 +77,7 @@ import {
   pgTextDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
-import { type Db, db$, writeDb$ } from "../external/db";
+import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
   insertAssistantEventMessages$,
@@ -84,11 +86,13 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
+import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -106,23 +110,16 @@ const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
 function chatMessageOrderSequenceSql() {
   return sql`CASE
-    WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
+    WHEN ${isNotNull(chatMessages.runLifecycleEvent)} THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
-}
-
-function matchedMessageCreatedAtSql(messageId: string) {
-  return sql`(
-    SELECT ${matchedChatMessage.createdAt}
-    FROM ${chatMessages} AS matched_chat_message
-    WHERE ${matchedChatMessage.id} = ${messageId}
-  )`;
 }
 
 type ChatMessageRow = {
   readonly id: string;
   readonly role: string;
   readonly content: string | null;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
@@ -176,7 +173,6 @@ const artifactListSqlRowSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string().nullable(),
   agent_avatar_url: z.string().nullable(),
-  is_favorited: z.boolean(),
 });
 type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 
@@ -193,11 +189,17 @@ type ChatSearchMessageRow = {
   readonly runId: string | null;
 };
 
+interface ChatSearchContext {
+  readonly before: ChatSearchMessage[];
+  readonly after: ChatSearchMessage[];
+}
+
 type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
   readonly agentComposeId: string;
   readonly draftContent: string | null;
+  readonly draftStructuredPrompt: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -227,6 +229,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
+  structuredPrompt: chatMessages.structuredPrompt,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -239,8 +242,8 @@ const messageColumns = {
   isGoalRun: sql`EXISTS (
     SELECT 1
     FROM ${zeroRuns}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
-      AND ${zeroRuns.goalId} IS NOT NULL
+    WHERE ${eq(zeroRuns.id, chatMessages.runId)}
+      AND ${isNotNull(zeroRuns.goalId)}
   )`.mapWith(pgBooleanDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
@@ -451,6 +454,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
+        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         modelProviderId: chatThreads.modelProviderId,
@@ -479,6 +483,7 @@ function ownedChatThread(
       title: thread.title,
       agentComposeId: thread.agentComposeId,
       draftContent: thread.draftContent ?? null,
+      draftStructuredPrompt: thread.draftStructuredPrompt ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
@@ -515,6 +520,7 @@ export function zeroChatThreadDraft(args: {
 
     return {
       draftContent: thread.draftContent,
+      draftStructuredPrompt: thread.draftStructuredPrompt,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -689,6 +695,7 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
+        structuredPrompt: row.structuredPrompt ?? undefined,
       };
     }
     const recommendedFollowups = normalizeRecommendedFollowups(
@@ -707,22 +714,13 @@ function toPagedMessage(
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
-function activeRunStatusSqlList() {
-  return sql.join(
-    ACTIVE_RUN_STATUSES.map((status) => {
-      return sql`${status}`;
-    }),
-    sql`, `,
-  );
-}
-
 function noActiveRunsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-    WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
-      AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
+    INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+    WHERE ${eq(zeroRuns.chatThreadId, chatThreads.id)}
+      AND ${inArray(agentRuns.status, ACTIVE_RUN_STATUSES)}
   )`;
 }
 
@@ -730,7 +728,7 @@ function noActiveGoalsForCurrentThreadCondition() {
   return sql`NOT EXISTS (
     SELECT 1
     FROM ${threadGoals}
-    WHERE ${threadGoals.chatThreadId} = ${chatThreads.id}
+    WHERE ${eq(threadGoals.chatThreadId, chatThreads.id)}
       AND ${threadGoals.status} = 'active'
   )`;
 }
@@ -780,24 +778,6 @@ export function zeroChatThreadDetail(args: {
   });
 }
 
-function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        isNotNull(chatMessages.runLifecycleEvent),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-}
-
 /**
  * The user's unread threads under an agent, each with the creation time of
  * the latest run-finish marker. A thread is unread only when it has at least
@@ -806,10 +786,11 @@ function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
   readonly agentComposeId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .select({
         threadId: chatThreads.id,
@@ -821,18 +802,22 @@ export function zeroChatThreadUnreads(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastRunFinish.id) filter guarantees a
-      // joined row, but the left-lateral type keeps the column nullable.
+      // Always present: the isNotNull(lastRunFinish.createdAt) filter
+      // guarantees a joined row, but the left-lateral type keeps the column
+      // nullable.
       if (row.unreadAt === null) {
         return [];
       }
@@ -848,10 +833,11 @@ export function zeroChatThreadUnreads(args: {
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastRunFinish = lastRunFinishMessageSubquery(db);
+    const lastRunFinish = latestRunFinishMessageSubquery(db, chatThreads.id);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
@@ -861,13 +847,16 @@ export function zeroChatThreadUnreadAgentIds(args: {
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastRunFinish.id),
+          isNotNull(lastRunFinish.createdAt),
           or(
             isNull(chatThreads.lastReadAt),
-            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
+            gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
           ),
           noActiveRunsForCurrentThreadCondition(),
           noActiveGoalsForCurrentThreadCondition(),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -884,9 +873,11 @@ export function zeroChatThreadUnreadAgentIds(args: {
 export function zeroChatThreadActiveRunThreadIds(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
-    const rows = await get(db$)
+    const db = get(db$);
+    const rows = await db
       .selectDistinct({ threadId: zeroRuns.chatThreadId })
       .from(zeroRuns)
       .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -898,6 +889,9 @@ export function zeroChatThreadActiveRunThreadIds(args: {
           eq(zeroAgents.orgId, args.orgId),
           isNotNull(zeroRuns.chatThreadId),
           inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
 
@@ -909,11 +903,12 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent` or one+ `draftAttachments`).
+ * (non-empty `draftContent`, a structured prompt, or one+ `draftAttachments`).
  */
-export function zeroChatThreadDraftIds(
-  userId: string,
-): Computed<Promise<readonly string[]>> {
+export function zeroChatThreadDraftIds(args: {
+  readonly userId: string;
+  readonly includeCanonicalSlackThreads?: boolean;
+}): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
     const db = get(db$);
     const rows = await db
@@ -921,11 +916,15 @@ export function zeroChatThreadDraftIds(
       .from(chatThreads)
       .where(
         and(
-          eq(chatThreads.userId, userId),
+          eq(chatThreads.userId, args.userId),
+          ...(args.includeCanonicalSlackThreads
+            ? []
+            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
+            OR ${isNotNull(chatThreads.draftStructuredPrompt)}
             OR (
-              ${chatThreads.draftAttachments} IS NOT NULL
+              ${isNotNull(chatThreads.draftAttachments)}
               AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
             )
           )`,
@@ -970,8 +969,8 @@ export function zeroChatThreadArtifacts(args: {
               sql`EXISTS (
                 SELECT 1
                 FROM ${chatMessages}
-                WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-                  AND ${chatMessages.chatThreadId} = ${args.threadId}
+                WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
+                  AND ${eq(chatMessages.chatThreadId, args.threadId)}
               )`,
             ),
           ),
@@ -1040,15 +1039,15 @@ function artifactCallerVisibilityConditions(args: {
   readonly orgId: string;
 }): SQL[] {
   return [
-    sql`${agentRuns.orgId} = ${args.orgId}`,
-    sql`${chatThreads.userId} = ${args.userId}`,
-    sql`${agentComposes.orgId} = ${args.orgId}`,
+    eq(agentRuns.orgId, args.orgId),
+    eq(chatThreads.userId, args.userId),
+    eq(agentComposes.orgId, args.orgId),
   ];
 }
 
 function artifactFileVisibilityConditions(): SQL[] {
   return [
-    sql`${runUploadedFiles.url} IS NOT NULL`,
+    isNotNull(runUploadedFiles.url),
     sql`(
       NOT EXISTS (
         SELECT 1
@@ -1093,7 +1092,6 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
-    isFavorited: row.is_favorited,
     ...(artifactKind ? { artifactKind } : {}),
   };
 }
@@ -1225,22 +1223,22 @@ async function listChangedArtifacts(args: {
           ) AS metadata_updated_at
         FROM ${agentRuns}
         INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${agentRuns.id}
+          ON ${eq(zeroRuns.id, agentRuns.id)}
         INNER JOIN ${chatThreads}
           ON ${chatThreads.id} = COALESCE(
             ${zeroRuns.chatThreadId},
             (
               SELECT ${chatMessages.chatThreadId}
               FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${zeroRuns.id}
-              ORDER BY ${chatMessages.createdAt} ASC
+              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
+              ORDER BY ${asc(chatMessages.createdAt)}
               LIMIT 1
             )
           )
         INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+          ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
-          ON ${zeroAgents.id} = ${agentComposes.id}
+          ON ${eq(zeroAgents.id, agentComposes.id)}
         WHERE ${sql.join(callerConditions, sql` AND `)}
       ),
       changed_artifact_ids AS MATERIALIZED (
@@ -1252,8 +1250,8 @@ async function listChangedArtifacts(args: {
           ON ${runUploadedFiles.runId} = visible_runs.run_id
         WHERE ${sql.join(fileConditions, sql` AND `)}
           AND ${lowerBoundClause}
-          AND ${effectiveUpdatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
-        ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
+          AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
+        ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
         LIMIT ${args.limit + 1}
       )
       SELECT
@@ -1279,34 +1277,29 @@ async function listChangedArtifacts(args: {
         ${chatThreads.title} AS thread_title,
         ${zeroAgents.id} AS agent_id,
         COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-        ${zeroAgents.avatarUrl} AS agent_avatar_url,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+        ${zeroAgents.avatarUrl} AS agent_avatar_url
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
         ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-            ORDER BY ${chatMessages.createdAt} ASC
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
-        ON ${zeroAgents.id} = ${agentComposes.id}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.query.userId}
-        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+        ON ${eq(zeroAgents.id, agentComposes.id)}
       ORDER BY changed_artifact_ids.effective_updated_at ASC,
         changed_artifact_ids.row_id ASC
     `,
@@ -1352,35 +1345,30 @@ async function listArtifactHistory(args: {
         to_char(
           ${runUploadedFiles.createdAt},
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at,
-        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
+        ) AS cursor_created_at
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-            ORDER BY ${chatMessages.createdAt} ASC
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
-        ON ${zeroAgents.id} = ${agentComposes.id}
-      LEFT JOIN ${userArtifactFavorites}
-        ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
-        AND ${userArtifactFavorites.userId} = ${args.query.userId}
-        AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
+        ON ${eq(zeroAgents.id, agentComposes.id)}
       WHERE ${sql.join(conditions, sql` AND `)}
       ${keysetClause}
-    ORDER BY ${runUploadedFiles.createdAt} DESC, ${runUploadedFiles.id} DESC
+    ORDER BY ${desc(runUploadedFiles.createdAt)}, ${desc(runUploadedFiles.id)}
       LIMIT ${args.limit + 1}
     `,
     artifactListSqlRowSchema,
@@ -1410,6 +1398,11 @@ interface ArtifactFavoriteArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly artifactUrl: string;
+}
+
+interface ArtifactFavoriteScope {
+  readonly userId: string;
+  readonly orgId: string;
 }
 
 export const zeroArtifacts$ = command(
@@ -1450,13 +1443,36 @@ export const zeroArtifacts$ = command(
   },
 );
 
+export const artifactFavoriteUrls$ = command(
+  async (
+    { set },
+    args: ArtifactFavoriteScope,
+    signal: AbortSignal,
+  ): Promise<string[]> => {
+    const rows = await set(writeDb$)
+      .select({ artifactUrl: userArtifactFavorites.artifactUrl })
+      .from(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+        ),
+      )
+      .orderBy(asc(userArtifactFavorites.artifactUrl));
+    signal.throwIfAborted();
+    return rows.map((row) => {
+      return row.artifactUrl;
+    });
+  },
+);
+
 async function artifactUrlIsVisible(
   db: Pick<Db, "execute">,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
     ...artifactVisibilityConditions(args),
-    sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
+    eq(runUploadedFiles.url, args.artifactUrl),
   ];
   const rows = await executeRawRows(
     db,
@@ -1465,22 +1481,22 @@ async function artifactUrlIsVisible(
       SELECT 1
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
-        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
-        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
         ON ${chatThreads.id} = COALESCE(
           ${zeroRuns.chatThreadId},
           (
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-            ORDER BY ${chatMessages.createdAt} ASC
+            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
+            ORDER BY ${asc(chatMessages.createdAt)}
             LIMIT 1
           )
         )
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       WHERE ${sql.join(conditions, sql` AND `)}
       LIMIT 1
       ) AS visible
@@ -1488,40 +1504,6 @@ async function artifactUrlIsVisible(
     artifactVisibilityRowSchema,
   );
   return rows[0]?.visible === true;
-}
-
-async function touchArtifactFavoriteChange(
-  db: Pick<Db, "execute">,
-  args: ArtifactFavoriteArgs,
-): Promise<void> {
-  await db.execute(sql`
-    UPDATE ${runUploadedFiles}
-    SET updated_at = clock_timestamp()
-    WHERE ${runUploadedFiles.url} = ${args.artifactUrl}
-      AND EXISTS (
-        SELECT 1
-        FROM ${agentRuns}
-        INNER JOIN ${zeroRuns}
-          ON ${zeroRuns.id} = ${agentRuns.id}
-        INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              ORDER BY ${chatMessages.createdAt} ASC
-              LIMIT 1
-            )
-          )
-        INNER JOIN ${agentComposes}
-          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-        WHERE ${agentRuns.id} = ${runUploadedFiles.runId}
-          AND ${agentRuns.orgId} = ${args.orgId}
-          AND ${chatThreads.userId} = ${args.userId}
-          AND ${agentComposes.orgId} = ${args.orgId}
-      )
-  `);
 }
 
 export const favoriteArtifact$ = command(
@@ -1536,7 +1518,7 @@ export const favoriteArtifact$ = command(
         return false;
       }
 
-      const inserted = await tx
+      await tx
         .insert(userArtifactFavorites)
         .values({
           orgId: args.orgId,
@@ -1549,11 +1531,7 @@ export const favoriteArtifact$ = command(
             userArtifactFavorites.userId,
             userArtifactFavorites.artifactUrl,
           ],
-        })
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (inserted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
+        });
       return true;
     });
     signal.throwIfAborted();
@@ -1568,21 +1546,15 @@ export const unfavoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db.transaction(async (tx) => {
-      const deleted = await tx
-        .delete(userArtifactFavorites)
-        .where(
-          and(
-            eq(userArtifactFavorites.orgId, args.orgId),
-            eq(userArtifactFavorites.userId, args.userId),
-            eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-          ),
-        )
-        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
-      if (deleted.length > 0) {
-        await touchArtifactFavoriteChange(tx, args);
-      }
-    });
+    await db
+      .delete(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+        ),
+      );
     signal.throwIfAborted();
   },
 );
@@ -1605,6 +1577,132 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   };
 }
 
+function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
+  return sql`unnest(${sql.param([...messageIds])}::uuid[])
+    WITH ORDINALITY AS chat_search_matches(message_id, result_ordinality)`;
+}
+
+function chatSearchContextSideQuery(
+  db: ReadonlyDb,
+  args: {
+    readonly isBefore: boolean;
+    readonly limit: number;
+  },
+) {
+  return db
+    .select({
+      isBefore: sql`${args.isBefore}::boolean`
+        .mapWith(pgBooleanDecoder)
+        .as("is_before"),
+      ...searchMessageColumns,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, matchedChatMessage.chatThreadId),
+        args.isBefore
+          ? lt(chatMessages.createdAt, matchedChatMessage.createdAt)
+          : gt(chatMessages.createdAt, matchedChatMessage.createdAt),
+        isNotNull(chatMessages.content),
+        visibleChatMessageCondition(),
+        excludeGoalMarkerCondition(),
+      ),
+    )
+    .orderBy(
+      args.isBefore
+        ? desc(chatMessages.createdAt)
+        : asc(chatMessages.createdAt),
+    )
+    .limit(args.limit);
+}
+
+async function loadChatSearchContexts(
+  db: ReadonlyDb,
+  args: {
+    readonly matches: readonly ChatSearchMessageRow[];
+    readonly before: number;
+    readonly after: number;
+  },
+): Promise<ReadonlyMap<string, ChatSearchContext>> {
+  const contextsByMessageId = new Map<string, ChatSearchContext>(
+    args.matches.map((match): readonly [string, ChatSearchContext] => {
+      return [match.messageId, { before: [], after: [] }];
+    }),
+  );
+  if (args.matches.length === 0 || (args.before === 0 && args.after === 0)) {
+    return contextsByMessageId;
+  }
+
+  const contextQuery =
+    args.before > 0
+      ? args.after > 0
+        ? chatSearchContextSideQuery(db, {
+            isBefore: true,
+            limit: args.before,
+          }).unionAll(
+            chatSearchContextSideQuery(db, {
+              isBefore: false,
+              limit: args.after,
+            }),
+          )
+        : chatSearchContextSideQuery(db, {
+            isBefore: true,
+            limit: args.before,
+          })
+      : chatSearchContextSideQuery(db, {
+          isBefore: false,
+          limit: args.after,
+        });
+
+  const context = contextQuery.as("chat_search_context");
+  const resultOrdinality = sql`chat_search_matches.result_ordinality::integer`
+    .mapWith(pgIntegerDecoder)
+    .as("result_ordinality");
+  const rows = await db
+    .select({
+      resultOrdinality,
+      matchedMessageId: matchedChatMessage.id,
+      isBefore: context.isBefore,
+      messageId: context.messageId,
+      chatThreadId: context.chatThreadId,
+      role: context.role,
+      content: context.content,
+      createdAt: context.createdAt,
+      sequenceNumber: context.sequenceNumber,
+      runId: context.runId,
+    })
+    .from(
+      chatSearchMatchesTable(
+        args.matches.map((match) => {
+          return match.messageId;
+        }),
+      ),
+    )
+    .innerJoin(
+      matchedChatMessage,
+      sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
+    )
+    .innerJoinLateral(context, sql`true`)
+    .orderBy(resultOrdinality, asc(context.createdAt));
+
+  for (const row of rows) {
+    const matchedContext = contextsByMessageId.get(row.matchedMessageId);
+    if (!matchedContext) {
+      throw new Error(
+        "chat search context returned an unknown matched message",
+      );
+    }
+    const message = toChatSearchMessage(row);
+    if (row.isBefore) {
+      matchedContext.before.push(message);
+    } else {
+      matchedContext.after.push(message);
+    }
+  }
+
+  return contextsByMessageId;
+}
+
 export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -1614,6 +1712,7 @@ export function zeroChatSearch(args: {
   readonly limit: number;
   readonly before: number;
   readonly after: number;
+  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<
   Promise<{
     readonly results: readonly ChatSearchResult[];
@@ -1632,6 +1731,9 @@ export function zeroChatSearch(args: {
       visibleChatMessageCondition(),
       excludeGoalMarkerCondition(),
       ilike(chatMessages.content, pattern),
+      ...(args.includeCanonicalSlackThreads
+        ? []
+        : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));
@@ -1659,58 +1761,24 @@ export function zeroChatSearch(args: {
     const hasMore = matches.length > args.limit;
     const truncated = hasMore ? matches.slice(0, args.limit) : matches;
 
-    const results = await Promise.all(
-      truncated.map(async (match): Promise<ChatSearchResult> => {
-        // Keep the comparison inside Postgres so timestamp microseconds are
-        // not lost when the match is round-tripped through JavaScript Date.
-        const matchedCreatedAt = matchedMessageCreatedAtSql(match.messageId);
-        const [contextBeforeRows, contextAfterRows] = await Promise.all([
-          args.before > 0
-            ? db
-                .select(searchMessageColumns)
-                .from(chatMessages)
-                .where(
-                  and(
-                    eq(chatMessages.chatThreadId, match.chatThreadId),
-                    lt(chatMessages.createdAt, matchedCreatedAt),
-                    isNotNull(chatMessages.content),
-                    visibleChatMessageCondition(),
-                    excludeGoalMarkerCondition(),
-                  ),
-                )
-                .orderBy(desc(chatMessages.createdAt))
-                .limit(args.before)
-            : Promise.resolve([] as ChatSearchMessageRow[]),
-          args.after > 0
-            ? db
-                .select(searchMessageColumns)
-                .from(chatMessages)
-                .where(
-                  and(
-                    eq(chatMessages.chatThreadId, match.chatThreadId),
-                    gt(chatMessages.createdAt, matchedCreatedAt),
-                    isNotNull(chatMessages.content),
-                    visibleChatMessageCondition(),
-                    excludeGoalMarkerCondition(),
-                  ),
-                )
-                .orderBy(asc(chatMessages.createdAt))
-                .limit(args.after)
-            : Promise.resolve([] as ChatSearchMessageRow[]),
-        ]);
-
-        return {
-          chatThreadId: match.chatThreadId,
-          agentName: match.agentName,
-          matchedMessage: toChatSearchMessage(match),
-          contextBefore: contextBeforeRows
-            .slice()
-            .reverse()
-            .map(toChatSearchMessage),
-          contextAfter: contextAfterRows.map(toChatSearchMessage),
-        };
-      }),
-    );
+    const contextsByMessageId = await loadChatSearchContexts(db, {
+      matches: truncated,
+      before: args.before,
+      after: args.after,
+    });
+    const results = truncated.map((match): ChatSearchResult => {
+      const context = contextsByMessageId.get(match.messageId);
+      if (!context) {
+        throw new Error("chat search context is missing a matched message");
+      }
+      return {
+        chatThreadId: match.chatThreadId,
+        agentName: match.agentName,
+        matchedMessage: toChatSearchMessage(match),
+        contextBefore: context.before,
+        contextAfter: context.after,
+      };
+    });
 
     return { results, hasMore };
   });
@@ -1771,8 +1839,8 @@ export function zeroChatThreadMessagesPage(args: {
           ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
-        WHERE ${chatMessages.id} = ${cursorId}
-          AND ${chatMessages.chatThreadId} = ${args.threadId}
+        WHERE ${eq(chatMessages.id, cursorId)}
+          AND ${eq(chatMessages.chatThreadId, args.threadId)}
       )`;
       const cursorBeforeCondition = sql`(
         ${chatMessages.createdAt},
@@ -1783,8 +1851,8 @@ export function zeroChatThreadMessagesPage(args: {
           ${chatMessageOrderSequenceSql()},
           ${chatMessages.id}
         FROM ${chatMessages}
-        WHERE ${chatMessages.id} = ${cursorId}
-          AND ${chatMessages.chatThreadId} = ${args.threadId}
+        WHERE ${eq(chatMessages.id, cursorId)}
+          AND ${eq(chatMessages.chatThreadId, args.threadId)}
       )`;
 
       if (args.sinceId !== undefined) {
@@ -2073,6 +2141,7 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftContent: string | null;
+      readonly draftStructuredPrompt: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
@@ -2083,6 +2152,7 @@ export const updateChatThreadDraft$ = command(
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
+        draftStructuredPrompt: args.draftStructuredPrompt,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

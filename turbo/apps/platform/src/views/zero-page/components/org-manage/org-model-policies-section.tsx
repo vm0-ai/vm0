@@ -39,14 +39,12 @@ import {
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
-  type ModelProviderFeatureStates,
   type ModelProviderResponse,
   type ModelProviderType,
   type OrgModelPolicy,
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
@@ -78,7 +76,6 @@ import {
   modelPolicyAllowedForPlan,
   type ModelPlanCapabilities,
 } from "../../../../signals/zero-page/model-plan-capabilities.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   hasTokenInputValue,
@@ -104,20 +101,21 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function getApiProviderTypes(
-  model: SupportedRunModel,
-  featureStates: ModelProviderFeatureStates,
-): ModelProviderType[] {
-  return getProvidersForModel(model, featureStates).filter((type) => {
+function isOpenAIOrAnthropicModel(model: SupportedRunModel): boolean {
+  const providerType = getModelIconType(model);
+  return (
+    providerType === "openai-api-key" || providerType === "anthropic-api-key"
+  );
+}
+
+function getApiProviderTypes(model: SupportedRunModel): ModelProviderType[] {
+  return getProvidersForModel(model).filter((type) => {
     return isByokProviderType(type);
   });
 }
 
-function getOAuthProviderTypes(
-  model: SupportedRunModel,
-  featureStates: ModelProviderFeatureStates,
-): ModelProviderType[] {
-  return getProvidersForModel(model, featureStates).filter((type) => {
+function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
+  return getProvidersForModel(model).filter((type) => {
     return isOAuthMemberType(type);
   });
 }
@@ -931,7 +929,6 @@ function ModelPolicyRouteDialog({
   policies,
   addableModels,
   providers,
-  featureStates,
   saving,
   modelCapabilities,
   onUpgrade,
@@ -940,7 +937,6 @@ function ModelPolicyRouteDialog({
   policies: OrgModelPolicy[];
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
-  featureStates: ModelProviderFeatureStates;
   saving: boolean;
   modelCapabilities: ModelPlanCapabilities;
   onUpgrade: () => void;
@@ -973,12 +969,8 @@ function ModelPolicyRouteDialog({
     selectedModel,
     modelCapabilities,
   );
-  const apiTypes = selectedModel
-    ? getApiProviderTypes(selectedModel, featureStates)
-    : [];
-  const oauthTypes = selectedModel
-    ? getOAuthProviderTypes(selectedModel, featureStates)
-    : [];
+  const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
+  const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
   const selectedProviderType = getSelectedProviderType({
     routeKind: dialog.routeKind,
     providerType: dialog.providerType,
@@ -1238,7 +1230,6 @@ export function OrgModelPoliciesSection() {
   const lastProviders = useLastResolved(orgConfiguredProviders$);
   const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
   const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const featureStates = useGet(featureSwitch$);
   const pageSignal = useGet(pageSignal$);
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
@@ -1287,13 +1278,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    if (configuredModels.has(model)) {
-      return false;
-    }
-    return (
-      model !== "vm0-model" ||
-      (featureStates[FeatureSwitchKey.Vm0Model] ?? false)
-    );
+    return isOpenAIOrAnthropicModel(model) && !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
@@ -1388,7 +1373,6 @@ export function OrgModelPoliciesSection() {
         policies={policies}
         addableModels={addableModels}
         providers={providers}
-        featureStates={featureStates}
         saving={saving}
         modelCapabilities={modelCapabilities}
         onUpgrade={openComparePlans}

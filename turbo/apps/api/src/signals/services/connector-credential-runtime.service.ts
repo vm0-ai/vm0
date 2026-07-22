@@ -477,11 +477,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
 
 async function connectorCredentialRefreshFailure(
   args: ConnectorCredentialRefreshArgs,
-  kind:
-    | "invalid-output"
-    | "missing-input"
-    | "not-refreshable"
-    | "provider-failed",
+  kind: "invalid-output" | "missing-input" | "provider-failed",
 ): Promise<ConnectorCredentialRefreshResult> {
   if (args.persist?.markNeedsReconnectOnFailure === true) {
     await markConnectorCredentialNeedsReconnectAfterRefreshFailure({
@@ -555,7 +551,7 @@ export async function refreshConnectorCredentialAccess(
   }
   const access = args.connection.runtimeMethod.method.access;
   if (access.kind !== "refresh-token") {
-    return await connectorCredentialRefreshFailure(args, "not-refreshable");
+    return { kind: "not-refreshable" };
   }
   const authClient = args.connection.runtimeMethod.method.client
     ? resolveConnectorAuthClient(

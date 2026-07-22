@@ -3,7 +3,7 @@
 # Test VM0 agent session and continue functionality (E2E happy path only)
 # This test verifies that:
 # 1. Agent runs create agent sessions
-# 2. vm0 run continue uses session's conversation but latest artifact version
+# 2. Session continuation uses the conversation with the latest artifact version
 # 3. Session stores and inherits templateVars for continue operations
 # 4. Secrets can be loaded from environment variables for continue
 #
@@ -30,8 +30,7 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
-    $VM0_CLI volume push >/dev/null
+    seed_storage_fixture volume "$VOLUME_NAME" .
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -50,7 +49,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -68,14 +67,8 @@ teardown_file() {
 }
 
 # =============================================================================
-# Test 1: Build configuration (fast, no vm0 run)
+# Test 1: Build configuration (fast, no direct run)
 # =============================================================================
-
-@test "t06-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
 
 # =============================================================================
 # Test 2: Continue uses latest artifact version
@@ -91,27 +84,25 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     echo "initial" > marker.txt
     echo "100" > counter.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent to create session (was t06-2b) --
     echo "# Running agent to create session..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'agent-created' > agent.txt && echo 200 > counter.txt" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     assert_output --partial "● Bash("
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
-    assert_output --partial "Session:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     local session_id
-    session_id=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    session_id=$(run_fixture_field "$output" '.sessionId')
     echo "# Session ID: $session_id"
     [ -n "$session_id" ] || {
         echo "# Failed to extract session ID"
@@ -126,13 +117,13 @@ teardown_file() {
     echo "999" > counter.txt                 # Update counter
     rm -f agent.txt 2>/dev/null || true      # Remove agent's file
 
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
     echo "# New HEAD version pushed"
 
     # -- Step 4: Continue session and verify latest version (was t06-2d) --
     echo "# Continuing from session (should use latest artifact)..."
-    run $VM0_CLI run continue "$session_id" --verbose "ls && cat counter.txt"
+    run continue_run_fixture "$session_id" "ls && cat counter.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -163,27 +154,26 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
-
     echo "initial-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent with templateVars (was t06-3b) --
     echo "# Running agent with --vars testKey=testValue..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "testKey=testValue" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        --verbose \
-        "echo 'initial run' && cat testfile.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'initial run' && cat testfile.txt" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{
+                vars: {testKey: "testValue"},
+                artifacts: [{name: $name, mountPath: "/home/user/workspace"}]
+            }')"
 
     assert_success
     assert_output --partial "● Bash("
     assert_output --partial "initial-content"
-    assert_output --partial "Session:"
 
     local session_id
-    session_id=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    session_id=$(run_fixture_field "$output" '.sessionId')
     echo "# Session ID: $session_id"
     [ -n "$session_id" ] || {
         echo "# Failed to extract session ID"
@@ -195,12 +185,12 @@ teardown_file() {
     echo "# Updating artifact..."
     cd "$artifact_dir"
     echo "updated-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 4: Continue from session with templateVars (was t06-3d) --
     echo "# Continuing from session..."
-    run $VM0_CLI run continue "$session_id" --verbose "cat testfile.txt"
+    run continue_run_fixture "$session_id" "cat testfile.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -212,12 +202,12 @@ teardown_file() {
 }
 
 # =============================================================================
-# Test 4: Run continue loads secrets from environment variables
+# Test 4: Run continue accepts refreshed secret values
 # Sets up config with secrets, runs agent to create session, then continues
-# and verifies secrets are loaded from environment variables.
+# with a different structured secret value.
 # =============================================================================
 
-@test "t06-4: continue loads secrets from environment variables" {
+@test "t06-4: continue accepts refreshed secret values" {
     local artifact_name="$ARTIFACT_NAME"
     local artifact_dir="$TEST_ARTIFACT_DIR/$artifact_name"
 
@@ -242,32 +232,32 @@ volumes:
 EOF
 
     echo "# Building config with secrets..."
-    run $VM0_CLI compose "$env_config"
+    run seed_compose_fixture "$env_config"
     assert_success
-    assert_output --partial "$env_agent_name"
 
     # Create artifact
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
     echo "test-content" > testfile.txt
-    run $VM0_CLI artifact push
+    run seed_storage_fixture artifact "$artifact_name" .
     assert_success
 
     # -- Step 2: Run agent with secrets to create session (was t06-4b) --
     echo "# Running agent with secrets to create session..."
-    run $VM0_CLI run "$env_agent_name" \
-        --vars "testVar=myTestVar" \
-        --secrets "TEST_SECRET=initial-secret-value" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        "echo 'test' && echo \$TEST_SECRET"
+    run run_compose_fixture "$env_agent_name" \
+        "echo 'test' && echo \$TEST_SECRET" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{
+                vars: {testVar: "myTestVar"},
+                secrets: {TEST_SECRET: "initial-secret-value"},
+                artifacts: [{name: $name, mountPath: "/home/user/workspace"}]
+            }')"
 
     assert_success
-    assert_output --partial "Session:"
 
     local session_id
-    session_id=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    session_id=$(run_fixture_field "$output" '.sessionId')
     echo "# Session ID: $session_id"
     [ -n "$session_id" ] || {
         echo "# Failed to extract session ID"
@@ -275,17 +265,19 @@ EOF
         return 1
     }
 
-    # -- Step 3: Continue and verify secrets loaded from env (was t06-4c) --
-    echo "# Continuing with secret in environment variable..."
+    # -- Step 3: Continue with a refreshed secret (was t06-4c) --
+    echo "# Continuing with refreshed secret value..."
     export TEST_SECRET="env-secret-value"
-    run $VM0_CLI run continue "$session_id" "echo 'continue test'"
+    run continue_run_fixture "$session_id" \
+        "echo 'continue test'" \
+        "$(jq -nc --arg secret "$TEST_SECRET" '{secrets: {TEST_SECRET: $secret}}')"
 
-    # Should succeed - the secret was loaded from environment variable
+    # Should succeed with the explicitly supplied refreshed value.
     assert_success
     assert_output --partial "● Bash("
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"
 
-    echo "# Verified: run continue loads secrets from environment variables"
+    echo "# Verified: run continue accepts refreshed secret values"
 }

@@ -1,6 +1,6 @@
-"""Proxy-side usage extraction and reporting.
+"""Proxy-side usage extraction, reporting, and lifecycle coordination.
 
-Two paths:
+The stable facade covers:
 
 - Observable model-provider responses (SSE streams and non-streaming JSON):
   extract model token counts and buffer them for aggregate platform webhook
@@ -11,11 +11,15 @@ Two paths:
   per-permission billable resource counts and buffer them for aggregate
   platform upload via ``/api/webhooks/agent/usage-event`` — see
   :mod:`usage.providers.connectors`.
+- Lifecycle coordination primitives for buffering and flushing usage events,
+  tracking in-flight flows, and publishing runner-visible pending snapshots
+  used by the runner's usage-flush and shutdown protocol.
 
-This package exposes the stable surface consumed by ``mitm_addon.py`` and
-``response_streaming.py``.
-Tests should exercise these public hook/provider paths and the local HTTP
-webhook boundary instead of patching private transport internals.
+Current production consumers of this package facade are ``mitm_addon.py``,
+``response_streaming.py``, ``runner_flush_lifecycle.py``, and ``terminal_usage.py``.
+Tests should exercise public hook, provider, and lifecycle paths at their
+observable boundaries: runner-visible pending state and in-flight accounting,
+plus the local HTTP webhook boundary. Avoid patching private transport internals.
 Delivery admission tests may target the production ``usage.webhook`` enqueue
 boundary used by the usage buffer; retry and transport helpers remain private.
 """

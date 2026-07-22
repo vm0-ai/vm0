@@ -974,6 +974,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const body = JSON.stringify({
         type: "event_callback",
         team_id: teamId,
+        event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
         event,
       });
       const response = await accept(
@@ -1123,34 +1124,6 @@ export function createBddIntegrationApi(context: TestContext) {
                 defaultProviderType: "openai-api-key",
                 credentialScope: "org",
                 modelProviderId: openai.body.provider.id,
-              },
-            ],
-          },
-        }),
-        [200],
-      );
-    },
-
-    async configureSlackMiniMaxModelPolicy(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
-      const minimax = await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "minimax-api-key", secret: "bdd-minimax-key" },
-        }),
-        [200, 201],
-      );
-      await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
-          headers: authenticate(context, routeMocks, actor),
-          body: {
-            policies: [
-              {
-                model: "MiniMax-M3",
-                isDefault: true,
-                defaultProviderType: "minimax-api-key",
-                credentialScope: "org",
-                modelProviderId: minimax.body.provider.id,
               },
             ],
           },

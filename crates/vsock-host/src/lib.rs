@@ -461,6 +461,7 @@ enum ConnectionCloseKind {
 /// appropriate caller.
 pub struct VsockHost {
     shared: Arc<Shared>,
+    file_write_path_locks: file::FileWritePathLocks,
     _reader: JoinHandle<()>,
     /// Raw fd of the underlying socket, used for shutdown on Drop.
     ///
@@ -973,6 +974,7 @@ impl VsockHost {
 
         Ok(Self {
             shared,
+            file_write_path_locks: file::FileWritePathLocks::default(),
             _reader: reader,
             fd,
         })

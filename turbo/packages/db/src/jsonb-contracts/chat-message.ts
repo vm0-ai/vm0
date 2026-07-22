@@ -1,5 +1,9 @@
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+
 /** attach_files stores legacy file IDs. */
 export type ChatMessageAttachFiles = string[];
+
+export type ChatMessageStructuredPrompt = UserMessageDocument;
 
 export interface ChatMessagePresentationGenerationTemplate {
   readonly type: "presentation";

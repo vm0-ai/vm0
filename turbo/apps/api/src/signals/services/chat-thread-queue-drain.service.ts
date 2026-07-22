@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { pendingWorkflowQueueThreadIds } from "./chat-message-queue.service";
+import { pendingChatThreadQueueThreadIds } from "./chat-message-queue.service";
 import {
   drainQueuedUserMessagesForThread$,
   type ChatCallbackPreCreateTimingCollector,
@@ -92,7 +92,7 @@ export const drainStaleChatThreadQueues$ = command(
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
-    const threadIds = await pendingWorkflowQueueThreadIds(
+    const threadIds = await pendingChatThreadQueueThreadIds(
       db,
       DRAIN_SWEEP_LIMIT,
     );

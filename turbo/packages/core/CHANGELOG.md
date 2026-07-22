@@ -1,5 +1,112 @@
 # Changelog
 
+## [8.447.0](https://github.com/vm0-ai/vm0/compare/core-v8.446.0...core-v8.447.0) (2026-07-21)
+
+
+### Features
+
+* route canonical slack turns through chat message queue ([#22429](https://github.com/vm0-ai/vm0/issues/22429)) ([eddb41b](https://github.com/vm0-ai/vm0/commit/eddb41b47ef26e02468f6fac1926346624e75492))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+
+## [8.446.0](https://github.com/vm0-ai/vm0/compare/core-v8.445.1...core-v8.446.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* **platform:** render structured user messages ([#22400](https://github.com/vm0-ai/vm0/issues/22400)) ([3beae6e](https://github.com/vm0-ai/vm0/commit/3beae6e088745cdfdd63da13b0303d7820d67406))
+
+
+### Refactoring
+
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+
+## [8.445.1](https://github.com/vm0-ai/vm0/compare/core-v8.445.0...core-v8.445.1) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+
+## [8.445.0](https://github.com/vm0-ai/vm0/compare/core-v8.444.4...core-v8.445.0) (2026-07-21)
+
+
+### Features
+
+* enable Zero Mail for staff organizations ([#22360](https://github.com/vm0-ai/vm0/issues/22360)) ([350dc2c](https://github.com/vm0-ai/vm0/commit/350dc2c303affd036faf27c0a801941fb09061d3))
+
+
+### Refactoring
+
+* **platform:** remove agent detail workflows tab ([#22361](https://github.com/vm0-ai/vm0/issues/22361)) ([ea6cf92](https://github.com/vm0-ai/vm0/commit/ea6cf9246a646441986bc930ce653de2c2f947fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+
+## [8.444.4](https://github.com/vm0-ai/vm0/compare/core-v8.444.3...core-v8.444.4) (2026-07-21)
+
+
+### Refactoring
+
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+
+## [8.444.3](https://github.com/vm0-ai/vm0/compare/core-v8.444.2...core-v8.444.3) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.4
+    * @vm0/connectors bumped to 1.173.3
+
+## [8.444.2](https://github.com/vm0-ai/vm0/compare/core-v8.444.1...core-v8.444.2) (2026-07-21)
+
+
+### Refactoring
+
+* **platform:** remove disabled composer inline experiments ([#22299](https://github.com/vm0-ai/vm0/issues/22299)) ([cf84abc](https://github.com/vm0-ai/vm0/commit/cf84abc999b388d627aee71addf49778dbae45e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+
 ## [8.444.1](https://github.com/vm0-ai/vm0/compare/core-v8.444.0...core-v8.444.1) (2026-07-21)
 
 

@@ -51,7 +51,7 @@ agents:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
 EOF
-    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
+    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -74,9 +74,9 @@ teardown_file() {
     # provider OUTRIGHT (rather than triggering refresh), that's a
     # regression in the firewall webhook pipeline and should be triaged
     # before disabling this test.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "codex-oauth-token" \
-        -- "Reply with exactly RESULT=ok"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Reply with exactly RESULT=ok" \
+        '{"modelProviderType":"codex-oauth-token"}'
 
     # Two acceptable outcomes:
     #   - Run succeeds (mock codex echoes prompt → "RESULT=ok" appears)
@@ -122,9 +122,9 @@ teardown_file() {
 
     seed_codex_oauth_via_authjson "$raw_json" -60
 
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "codex-oauth-token" \
-        -- "Reply with exactly RESULT=ok"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Reply with exactly RESULT=ok" \
+        '{"modelProviderType":"codex-oauth-token"}'
 
     if [ "$status" -eq 0 ]; then
         assert_output --partial "RESULT=ok"

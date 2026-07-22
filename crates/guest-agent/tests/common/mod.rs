@@ -27,12 +27,13 @@ use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicUsize, Ordering},
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::{mpsc, oneshot};
 
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
 
@@ -80,6 +81,23 @@ pub struct RecordedRequest {
     pub path: String,
     pub authorization: Option<String>,
     pub body: String,
+}
+
+pub fn event_request_sequences(request: &RecordedRequest) -> Result<Vec<u32>, String> {
+    let body: Value = serde_json::from_str(&request.body)
+        .map_err(|error| format!("parse event request body: {error}"))?;
+    body.get("events")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "event request omitted events array".to_string())?
+        .iter()
+        .map(|event| {
+            event
+                .get("sequenceNumber")
+                .and_then(Value::as_u64)
+                .and_then(|sequence| u32::try_from(sequence).ok())
+                .ok_or_else(|| "event omitted a u32 sequenceNumber".to_string())
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,6 +209,88 @@ impl RecordingServer {
 }
 
 impl Drop for RecordingServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+pub struct ControlledRequest {
+    pub request: RecordedRequest,
+    response: oneshot::Sender<u16>,
+}
+
+impl ControlledRequest {
+    pub fn respond(self, status: u16) -> Result<(), String> {
+        self.response
+            .send(status)
+            .map_err(|_| "controlled HTTP request closed before response".to_string())
+    }
+}
+
+pub struct ControlledHttpServer {
+    pub base_url: String,
+    requests: Arc<AtomicUsize>,
+    request_rx: mpsc::UnboundedReceiver<ControlledRequest>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl ControlledHttpServer {
+    pub async fn start() -> Result<Self, String> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|error| format!("bind controlled HTTP server: {error}"))?;
+        let addr = listener
+            .local_addr()
+            .map_err(|error| format!("controlled HTTP server local_addr: {error}"))?;
+        let requests = Arc::new(AtomicUsize::new(0));
+        let task_requests = Arc::clone(&requests);
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(async move {
+            while let Ok((mut socket, _peer)) = listener.accept().await {
+                let connection_tx = request_tx.clone();
+                let connection_requests = Arc::clone(&task_requests);
+                tokio::spawn(async move {
+                    let Ok(request) = read_http_request(&mut socket).await else {
+                        let _ = write_http_response(&mut socket, 400).await;
+                        return;
+                    };
+                    connection_requests.fetch_add(1, Ordering::SeqCst);
+                    let (response, response_rx) = oneshot::channel();
+                    if connection_tx
+                        .send(ControlledRequest { request, response })
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let Ok(status) = response_rx.await else {
+                        return;
+                    };
+                    let _ = write_http_response(&mut socket, status).await;
+                });
+            }
+        });
+
+        Ok(Self {
+            base_url: format!("http://{addr}"),
+            requests,
+            request_rx,
+            handle,
+        })
+    }
+
+    pub async fn next_request(&mut self, timeout: Duration) -> Result<ControlledRequest, String> {
+        tokio::time::timeout(timeout, self.request_rx.recv())
+            .await
+            .map_err(|_| format!("controlled HTTP server received no request within {timeout:?}"))?
+            .ok_or_else(|| "controlled HTTP server stopped accepting requests".to_string())
+    }
+
+    pub fn request_count(&self) -> usize {
+        self.requests.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for ControlledHttpServer {
     fn drop(&mut self) {
         self.handle.abort();
     }
@@ -792,6 +892,61 @@ pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {
                 format!("timed out waiting for {}", path.display()),
             )
         })?
+}
+
+pub async fn wait_for_file_contains(
+    path: &Path,
+    needle: &str,
+    timeout: Duration,
+) -> io::Result<()> {
+    tokio::time::timeout(
+        timeout,
+        wait_for_file_contains_event(path, needle.as_bytes()),
+    )
+    .await
+    .map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!(
+                "timed out waiting for {} to contain {needle:?}",
+                path.display()
+            ),
+        )
+    })?
+}
+
+async fn wait_for_file_contains_event(path: &Path, needle: &[u8]) -> io::Result<()> {
+    let dir = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path has no parent directory: {}", path.display()),
+        )
+    })?;
+    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
+        .map_err(|error| io::Error::other(format!("inotify init: {error}")))?;
+    inotify
+        .add_watch(
+            dir,
+            AddWatchFlags::IN_CREATE
+                | AddWatchFlags::IN_MODIFY
+                | AddWatchFlags::IN_MOVED_TO
+                | AddWatchFlags::IN_CLOSE_WRITE,
+        )
+        .map_err(|error| io::Error::other(format!("inotify watch: {error}")))?;
+    let async_fd = async_inotify_fd(inotify)?;
+
+    loop {
+        match tokio::fs::read(path).await {
+            Ok(contents) if find_subsequence(&contents, needle).is_some() => return Ok(()),
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+
+        let mut guard = async_fd.readable().await?;
+        drain_inotify_fd(async_fd.get_ref().as_fd());
+        guard.clear_ready();
+    }
 }
 
 async fn wait_for_path_event(path: &Path) -> io::Result<()> {

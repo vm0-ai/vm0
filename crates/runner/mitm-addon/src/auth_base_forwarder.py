@@ -459,23 +459,20 @@ def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
     return resolved_auth_header_pairs(headers)
 
 
-def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
-    return http.Headers(
-        (
-            name.encode("utf-8", "surrogateescape"),
-            value.encode("utf-8", "surrogateescape"),
-        )
-        for name, value in pairs
-    )
-
-
-def _filter_response_headers(raw) -> http.Headers:
+def _filter_response_headers(headers: list[tuple[str, str]]) -> http.Headers:
     """Strip hop-by-hop headers from an upstream response.
 
     The response body is fully read, so headers like transfer-encoding must
     not be forwarded. Headers named by Connection are hop-by-hop too.
+
+    ``HTTPResponse.getheaders()`` exposes raw field octets through a one-to-one
+    ISO-8859-1 decode. Encode with the same codec to restore those octets for
+    mitmproxy's byte-backed header container.
     """
-    return _headers_from_pairs(_filter_header_pairs(raw))
+    return http.Headers(
+        (name.encode("latin-1"), value.encode("latin-1"))
+        for name, value in _filter_header_pairs(headers)
+    )
 
 
 def _normalized_forward_request_host(parsed: urllib.parse.SplitResult) -> str:

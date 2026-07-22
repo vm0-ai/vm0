@@ -26,7 +26,6 @@ import { publishUserSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { bestEffort, tapError } from "../utils";
 import {
-  ensureTelegramArtifactStorage$,
   formatTelegramUserDisplayName,
   linkOfficialTelegramUserToVm0User$,
   linkTelegramUserToVm0User$,
@@ -305,21 +304,6 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-const ensureLinkArtifactStorage$ = command(
-  async (
-    { set },
-    auth: OrganizationAuth,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(
-      ensureTelegramArtifactStorage$,
-      { orgId: auth.orgId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
 const linkOfficialInner$ = command(
   async (
     { set },
@@ -366,8 +350,6 @@ const linkOfficialInner$ = command(
         return officialLinkConflictResponse(result.reason);
       }
 
-      await set(ensureLinkArtifactStorage$, args.auth, signal);
-
       return linkSuccessResponse(config.botUsername ?? "Zero", telegramUserId);
     }
 
@@ -410,8 +392,6 @@ const linkOfficialInner$ = command(
       if (!result.ok) {
         return officialLinkConflictResponse(result.reason);
       }
-
-      await set(ensureLinkArtifactStorage$, args.auth, signal);
 
       sendConnectSuccessMessage({
         botToken: config.botToken,
@@ -466,7 +446,6 @@ const linkCustomWithTelegramAuth$ = command(
       return linkConflictResponse(result.reason);
     }
 
-    await set(ensureLinkArtifactStorage$, args.auth, signal);
     return linkSuccessResponse(
       args.installation.botUsername ?? "Telegram bot",
       telegramUserId,
@@ -519,8 +498,6 @@ const linkCustomWithConnectSignature$ = command(
     if (!result.ok) {
       return linkConflictResponse(result.reason);
     }
-
-    await set(ensureLinkArtifactStorage$, args.auth, signal);
 
     sendConnectSuccessMessage({
       botToken: args.installation.botToken,

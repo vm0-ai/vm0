@@ -10,9 +10,7 @@
 # - turbo/apps/web/src/lib/org/__tests__/org-service.test.ts
 # - turbo/apps/cli/src/commands/zero/org/__tests__/set.test.ts
 #
-# Error handling tests have been moved to CLI integration tests:
-# - turbo/apps/cli/src/commands/run/__tests__/index.test.ts
-#   - "should show error when org does not exist" (org not found)
+# Error handling is covered by CLI integration tests:
 # - turbo/apps/cli/src/commands/zero/org/__tests__/set.test.ts
 #   - "should require --force to update existing organization"
 
@@ -46,27 +44,6 @@ teardown() {
         assert_output --partial "No organization configured"
         assert_output --partial "zero org set"
     fi
-}
-
-# ============================================
-# Compose Tests
-# ============================================
-
-@test "vm0 compose succeeds with minimal config" {
-    TEST_DIR="$(mktemp -d)"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  test-agent:
-    framework: claude-code
-EOF
-
-    # Should succeed - image is resolved server-side based on framework
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    rm -rf "$TEST_DIR"
 }
 
 # ============================================

@@ -54,6 +54,7 @@ export async function seedStorageVersionFixture(values: {
     storageId: values.storageId,
     s3Key,
     size: values.size ?? 1,
+    archiveSize: values.size ?? 1,
     fileCount: values.fileCount ?? 1,
     createdBy: "user",
   });

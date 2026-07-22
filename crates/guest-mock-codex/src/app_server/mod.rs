@@ -15,6 +15,25 @@ use std::thread;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 
+/// Run the mock Codex app server over process stdio.
+///
+/// `listen` must be exactly `stdio://`. The function locks process stdin and
+/// stdout, then synchronously processes newline-delimited JSON-RPC messages on
+/// the calling thread. The loop normally returns when stdin reaches EOF or the
+/// configured scenario requests a stop. Selected scenarios can instead park
+/// the thread indefinitely, either while handling a message or after EOF, or
+/// start a helper process that continues holding stderr after this function
+/// returns.
+///
+/// Mock behavior is selected by `MOCK_CODEX_APP_SERVER_SCENARIO`.
+///
+/// # Errors
+///
+/// Returns an error when `listen` is unsupported, the environment names an
+/// unsupported scenario, stdin cannot be read, an input line cannot be decoded
+/// as JSON, a client response is invalid, input events cannot be persisted, a
+/// response cannot be serialized or written to stdout, stdout cannot be
+/// flushed, or a scenario-specific helper process cannot be started.
 pub fn run_app_server(listen: &str) -> io::Result<()> {
     if listen != "stdio://" {
         return Err(io::Error::new(

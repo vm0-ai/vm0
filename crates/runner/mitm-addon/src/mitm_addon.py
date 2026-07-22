@@ -509,6 +509,8 @@ def _http_network_log_entry(
     entry.update(upstream_admission.upstream_binding_log_fields(flow))
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
+    if flow_metadata.firewall_base(flow.metadata):
+        add_firewall_metadata(flow, entry)
     return entry
 
 
@@ -1262,11 +1264,6 @@ def _handle_response(flow: http.HTTPFlow) -> None:
             response_size=response_size,
         )
 
-        # Add firewall match info if this was a firewall request
-        firewall_base = flow_metadata.firewall_base(flow.metadata)
-        if firewall_base:
-            add_firewall_metadata(flow, log_entry)
-
         # Add captured header names, selected safe header values, and bodies when enabled
         if flow_metadata.should_capture_body(flow.metadata):
             body_capture.add_capture_fields(flow, log_entry)
@@ -1381,11 +1378,6 @@ def _handle_error(flow: http.HTTPFlow) -> None:
         response_size=0,
     )
     log_entry["error"] = error_msg
-
-    # Add firewall context if available
-    firewall_base = flow_metadata.firewall_base(flow.metadata)
-    if firewall_base:
-        add_firewall_metadata(flow, log_entry)
 
     log_network_entry(network_log_path, log_entry)
 

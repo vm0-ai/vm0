@@ -449,7 +449,7 @@ When reviewing tests, watch for these patterns:
 - [ ] Testing empty/loading states without logic
 - [ ] Over-testing error status codes
 - [ ] Over-testing schema validation
-- [ ] Direct component rendering (use bootstrap$)
+- [ ] Direct component rendering
 
 **Service Import Issues**:
 

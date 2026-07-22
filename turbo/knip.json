@@ -5,14 +5,12 @@
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts",
-        "src/commands/logs/index.ts",
-        "src/commands/logs/search.ts",
         "src/commands/zero/logs/index.ts",
         "src/commands/zero/logs/list.ts",
         "src/commands/zero/logs/search.ts"
       ],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["@types/tar"],
+      "ignoreDependencies": ["@types/tar", "yaml"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }

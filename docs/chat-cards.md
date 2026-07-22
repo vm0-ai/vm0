@@ -256,8 +256,9 @@ permission cards refresh without replacing their signals identities.
 A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
 resource key; Gmail draft, thread, and message IDs remain provider metadata and
 are not inferred from Gmail Web URLs. The thread-scoped signals read the Gmail
-draft through the Zero Mail API and share edits and send state across repeated
-card occurrences.
+draft through one reloadable Zero Mail API computed. Repeated card occurrences
+and the detail sidebar share that computed, while Send and Delete invalidate it
+after their mutations complete.
 
 The fixed-height card displays the Gmail identity, subject, sender, and
 `Draft`, `Sent`, or `Deleted` status. Draft and Sent cards open the shared right

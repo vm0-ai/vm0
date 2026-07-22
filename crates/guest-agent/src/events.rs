@@ -16,7 +16,9 @@ use crate::paths;
 use crate::session_metadata;
 use guest_common::{log_error, log_info};
 use guest_contracts::diagnostics::FailureReason;
+use serde::Serialize;
 use serde_json::{Map, Value, json};
+use std::io::Write;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
@@ -64,10 +66,19 @@ pub async fn send_event_for_config(
 }
 
 pub fn prepare_event_payload_for_run_id(
-    mut event: Value,
+    event: Value,
     seq: u32,
     masker: &SecretMasker,
     run_id: &str,
+) -> Value {
+    let event = prepare_event_for_delivery(event, seq, masker);
+    event_payload_for_run_id(vec![event], run_id)
+}
+
+pub(crate) fn prepare_event_for_delivery(
+    mut event: Value,
+    seq: u32,
+    masker: &SecretMasker,
 ) -> Value {
     // Mask event-controlled content before adding system-owned fields.
     masker.mask_value(&mut event);
@@ -77,10 +88,46 @@ pub fn prepare_event_payload_for_run_id(
         obj.insert("sequenceNumber".to_string(), json!(seq));
     }
 
+    event
+}
+
+pub(crate) fn event_payload_for_run_id(events: Vec<Value>, run_id: &str) -> Value {
     let mut payload = Map::new();
     payload.insert("runId".to_string(), Value::String(run_id.to_string()));
-    payload.insert("events".to_string(), Value::Array(vec![event]));
+    payload.insert("events".to_string(), Value::Array(events));
     Value::Object(payload)
+}
+
+pub(crate) fn serialized_event_payload_size_for_run_id(
+    events: &[Value],
+    run_id: &str,
+) -> Result<usize, AgentError> {
+    let mut size = SerializedSize::default();
+    serde_json::to_writer(&mut size, &BorrowedEventPayload { run_id, events })?;
+    Ok(size.bytes)
+}
+
+#[derive(Serialize)]
+struct BorrowedEventPayload<'a> {
+    #[serde(rename = "runId")]
+    run_id: &'a str,
+    events: &'a [Value],
+}
+
+#[derive(Default)]
+struct SerializedSize {
+    bytes: usize,
+}
+
+impl Write for SerializedSize {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.bytes = self.bytes.saturating_add(buffer.len());
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Extract a secret-masked Codex failure diagnostic from stdout JSONL.

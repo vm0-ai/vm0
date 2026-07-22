@@ -5,7 +5,7 @@ import {
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -42,7 +42,7 @@ function escapedLikePrefix(value: string): string {
 function objectKeyPrefixCondition(prefix: string) {
   return and(
     eq(systemStoragePresignedUrlCache.scope, "system_storage"),
-    sql`${systemStoragePresignedUrlCache.objectKey} like ${escapedLikePrefix(prefix)} escape '\\'`,
+    sql`${like(systemStoragePresignedUrlCache.objectKey, escapedLikePrefix(prefix))} escape '\\'`,
   );
 }
 
