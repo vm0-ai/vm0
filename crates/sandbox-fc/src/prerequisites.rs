@@ -60,8 +60,14 @@ const SNAPSHOT_CREATE_COMMAND_GROUPS: &[&[&str]] = &[
     SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
 ];
 
-const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
-const DNS_INPUT_FILTER_COMMANDS: &[&str] = &["ip6tables", "ip6tables-save"];
+const NETWORK_COMMANDS: &[&str] = &[
+    "ip",
+    "iptables",
+    "iptables-save",
+    "iptables-restore",
+    "sysctl",
+];
+const DNS_INPUT_FILTER_COMMANDS: &[&str] = &["ip6tables", "ip6tables-save", "ip6tables-restore"];
 const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
 const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
 const COW_POOL_SNAPSHOT_RESTORE_COMMANDS: &[&str] = &["cp"];
@@ -540,7 +546,14 @@ mod tests {
         let mode = PrerequisiteMode::FactoryFresh;
         assert_eq!(
             required_commands(&mode),
-            vec!["ip", "iptables", "iptables-save", "sysctl", "mkfs.ext4"]
+            vec![
+                "ip",
+                "iptables",
+                "iptables-save",
+                "iptables-restore",
+                "sysctl",
+                "mkfs.ext4"
+            ]
         );
     }
 
@@ -555,6 +568,7 @@ mod tests {
                 "ip",
                 "iptables",
                 "iptables-save",
+                "iptables-restore",
                 "sysctl",
                 "cp",
                 "mkfs.ext4",
@@ -577,6 +591,7 @@ mod tests {
                 "ip",
                 "iptables",
                 "iptables-save",
+                "iptables-restore",
                 "sysctl",
                 "mkfs.ext4",
                 "unshare",
@@ -622,7 +637,13 @@ mod tests {
     fn network_prerequisites_only_require_ipv6_tools_for_dns_filter() {
         assert_eq!(
             network_commands(false),
-            vec!["ip", "iptables", "iptables-save", "sysctl"]
+            vec![
+                "ip",
+                "iptables",
+                "iptables-save",
+                "iptables-restore",
+                "sysctl"
+            ]
         );
         assert_eq!(
             network_commands(true),
@@ -630,9 +651,11 @@ mod tests {
                 "ip",
                 "iptables",
                 "iptables-save",
+                "iptables-restore",
                 "sysctl",
                 "ip6tables",
                 "ip6tables-save",
+                "ip6tables-restore",
             ]
         );
     }

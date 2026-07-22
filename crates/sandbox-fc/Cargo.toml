@@ -18,6 +18,7 @@ serde_json.workspace = true
 hex.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["process", "fs", "rt", "rt-multi-thread", "macros", "sync", "io-util", "net", "time"] }
 tokio-util.workspace = true
 tracing.workspace = true
@@ -28,7 +29,6 @@ which.workspace = true
 
 [dev-dependencies]
 clap = { workspace = true, features = ["derive"] }
-tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tracing-test-support.workspace = true
 tracing-subscriber.workspace = true
