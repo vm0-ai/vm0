@@ -15,7 +15,7 @@ import {
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
 import { getSkillStorageName, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
-import { getSeedSkillNames, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
@@ -36,7 +36,9 @@ const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const TEST_SKILL_PREFIX = "api-test-skill";
-const ALL_SEED_SKILL_NAMES = getSeedSkillNames();
+// The service validates SEED_SKILLS; alpha and beta cover arbitrary repository
+// entries without coupling these route tests to the connector registry size.
+const REQUIRED_SEED_SKILL_NAMES = SEED_SKILLS;
 const STALE_PRESEEDED_COMMIT_SHA = "0".repeat(40);
 
 interface MockSkillEntry {
@@ -216,7 +218,7 @@ function memoizedTarballBuilder(): (
 const createMockTarball = memoizedTarballBuilder();
 
 function seedSkillEntries(): MockSkillEntry[] {
-  return ALL_SEED_SKILL_NAMES.map((name) => {
+  return REQUIRED_SEED_SKILL_NAMES.map((name) => {
     return {
       name,
       files: [
@@ -500,7 +502,7 @@ describe("GET /api/cron/sync-skills", () => {
       [200],
     );
 
-    expect(response.body.total).toBe(ALL_SEED_SKILL_NAMES.length + 2);
+    expect(response.body.total).toBe(REQUIRED_SEED_SKILL_NAMES.length + 2);
     await expect(
       findSkillByUrl(testSkillUrl(nonSkillDirectory.name)),
     ).resolves.toBeNull();
@@ -678,7 +680,7 @@ describe("GET /api/cron/sync-skills", () => {
     mockEnv("AXIOM_DATASET_SUFFIX", "dev");
     const omittedSkills = SEED_SKILLS.slice(0, 2);
     const omittedSkillSet = new Set(omittedSkills);
-    const keptSkills = ALL_SEED_SKILL_NAMES.filter((name) => {
+    const keptSkills = REQUIRED_SEED_SKILL_NAMES.filter((name) => {
       return !omittedSkillSet.has(name);
     });
     const commitSha = newCommitSha();
