@@ -372,7 +372,7 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("keeps inline feedback when the unified send is unavailable", async () => {
+  it("lets the server reconcile an unavailable model for inline feedback", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     let runCreateCount = 0;
@@ -415,14 +415,16 @@ describe("chat inline feedback", () => {
     await user.keyboard("Mention the dates before the risk summary.");
     await user.click(screen.getByLabelText("Send"));
 
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(runCreateCount).toBe(0);
-    expect(feedbackNotes()).toHaveLength(1);
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
   });
 
-  it("submits inline feedback once while model validation is loading", async () => {
+  it("submits inline feedback once while model policy is loading", async () => {
     const user = userEvent.setup({ delay: null });
     const policyGate = context.mocks.deferred<void>();
     const assistantReply = "The rollout dates are unclear in this summary.";
@@ -489,15 +491,14 @@ describe("chat inline feedback", () => {
     await user.keyboard("Mention the dates before the risk summary.");
     await user.keyboard("{Enter}");
 
-    expect(feedbackNotes()).toHaveLength(1);
-    await user.keyboard("{Enter}");
-
-    policyGate.resolve();
-
     await waitFor(() => {
       expect(runCreateCount).toBe(1);
       expect(feedbackNotes()).toHaveLength(0);
     });
+    await user.keyboard("{Enter}");
+    expect(runCreateCount).toBe(1);
+
+    policyGate.resolve();
   });
 
   it("does not submit inline feedback while IME composition is active", async () => {
