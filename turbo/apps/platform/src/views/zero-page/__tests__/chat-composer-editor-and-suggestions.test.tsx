@@ -61,7 +61,7 @@ describe("chat composer models", () => {
     expect(editor).not.toHaveClass("min-h-[44px]");
   });
 
-  it("bounds chat thread composers between mobile and responsive heights", async () => {
+  it("uses the mobile single-line height in chat thread composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -72,12 +72,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass(
-      "min-h-[44px]",
-      "md:min-h-[96px]",
-      "max-h-[min(40vh,320px)]",
-      "overflow-y-auto",
-    );
+    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
