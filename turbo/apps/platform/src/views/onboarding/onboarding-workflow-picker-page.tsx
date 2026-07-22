@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import {
   IconArrowRight,
   IconBox,
@@ -22,6 +22,7 @@ import {
   updateOnboardingDraft$,
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   CUSTOM_WORKFLOW_ID,
@@ -31,13 +32,13 @@ import {
   type OnboardingWorkflowCategory,
   type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
-import { OnboardingConnectorIcon } from "./onboarding-connectors.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
   OnboardingDialog,
   OnboardingFooter,
   OnboardingShell,
 } from "./onboarding-shell.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
 const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
   engineering: IconCode,
@@ -50,6 +51,21 @@ const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
   operations: IconSun,
   everyone: IconSparkles,
 };
+
+function WorkflowConnectorIcon({
+  connectorRef,
+  size,
+}: {
+  readonly connectorRef: string;
+  readonly size: number;
+}) {
+  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
+  const icon =
+    catalogByRefLoadable.state === "hasData"
+      ? catalogByRefLoadable.data.get(connectorRef)?.icon
+      : undefined;
+  return <ConnectorIcon icon={icon} size={size} />;
+}
 
 export function WorkflowConnectorPills({
   connectorIds,
@@ -71,7 +87,7 @@ export function WorkflowConnectorPills({
             key={connectorId}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted/30"
           >
-            <OnboardingConnectorIcon connectorId={connectorId} size={14} />
+            <WorkflowConnectorIcon connectorRef={connectorId} size={14} />
           </span>
         );
       })}
@@ -123,8 +139,8 @@ export function WorkflowPreview({
           <div className="flex w-full max-w-md items-center justify-between gap-3">
             {firstConnector ? (
               <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                <OnboardingConnectorIcon
-                  connectorId={firstConnector}
+                <WorkflowConnectorIcon
+                  connectorRef={firstConnector}
                   size={32}
                 />
               </span>
@@ -152,8 +168,8 @@ export function WorkflowPreview({
                   aria-hidden="true"
                 />
                 <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                  <OnboardingConnectorIcon
-                    connectorId={lastConnector}
+                  <WorkflowConnectorIcon
+                    connectorRef={lastConnector}
                     size={32}
                   />
                 </span>

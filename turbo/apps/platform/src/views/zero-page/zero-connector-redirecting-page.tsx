@@ -1,27 +1,19 @@
 import { IconAlertCircle, IconLoader2 } from "@tabler/icons-react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import {
-  getStaticConnectorIconMetadata,
-  isStaticConnectorIconType,
-} from "@vm0/connectors/static-connector-icons";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
 import type { ConnectorRedirectingStatus } from "../../signals/connectors-page/connector-redirecting.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 
 export function ZeroConnectorRedirectingPage({
-  connectorType,
   connectorLabel,
+  connectorIcon,
   status,
 }: {
-  readonly connectorType: ConnectorRef | null;
   readonly connectorLabel: string;
+  readonly connectorIcon: PublicConnectorCatalogIcon | undefined;
   readonly status: ConnectorRedirectingStatus;
 }) {
-  const icon =
-    connectorType && isStaticConnectorIconType(connectorType)
-      ? getStaticConnectorIconMetadata(connectorType)
-      : undefined;
   const hasError = status === "error";
 
   return (
@@ -30,7 +22,7 @@ export function ZeroConnectorRedirectingPage({
         <VM0Logo />
         <div className="flex w-full flex-col items-center gap-4">
           <div className="flex items-center justify-center rounded-[10px] bg-gray-50 p-2.5 dark:bg-muted">
-            <ConnectorIcon icon={icon} size={20} />
+            <ConnectorIcon icon={connectorIcon} size={20} />
           </div>
           <div className="flex flex-col items-center gap-2.5">
             <h1 className="text-lg font-medium text-foreground">
