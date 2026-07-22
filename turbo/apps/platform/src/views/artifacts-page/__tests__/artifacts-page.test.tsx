@@ -1528,6 +1528,37 @@ describe("artifacts page", () => {
     expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
+  it("renders the cache immediately when returning while the remote refresh is pending", async () => {
+    setupTeam();
+    const scope = testAuthScope("return-to-cache");
+    const artifact = createArtifact({
+      artifactItemId: "return-cache-run:file-1",
+      runId: "return-cache-run",
+      filename: "return-cache-summary.html",
+    });
+    mockArtifacts([artifact]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("return-cache-summary.html");
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        artifact.artifactItemId,
+      ]);
+    });
+
+    context.mocks.api(artifactsContract.list, ({ never }) => {
+      return never();
+    });
+    click(linkByText("Agents"));
+    await screen.findByRole("heading", { level: 1, name: /agents/i });
+    click(linkByText("Artifacts"));
+
+    await expect(
+      screen.findByText("return-cache-summary.html"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("normalizes older remote artifacts without a size", async () => {
     setupTeam();
     const scope = testAuthScope("remote-size-default");
