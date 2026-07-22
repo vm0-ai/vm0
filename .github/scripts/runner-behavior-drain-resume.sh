@@ -24,6 +24,7 @@ SVC="${JOB_REF}-drain"
 UNIT="vm0-runner-${SVC}.service"
 DRAIN_DROP_IN="/run/systemd/system/${UNIT}.d/50-vm0-drain.conf"
 GROUP="vm0/drain-${JOB_REF}"
+GROUP_DIR="/var/lib/vm0-runner/groups/${GROUP}"
 SUBMIT_A_PID=""
 SUBMIT_B_PID=""
 RELEASE_FIFO_READY=""
@@ -48,11 +49,13 @@ cleanup() {
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   cleanup_submit_pid "$SUBMIT_B_PID"
   cleanup_submit_pid "$SUBMIT_A_PID"
+  sudo rm -rf -- "$GROUP_DIR"
 }
 trap cleanup EXIT
 
-# Clean up any residual transient unit from a previous CI run.
+# Clean up residual service and queue state from previous CI attempts.
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+sudo rm -rf -- "$GROUP_DIR"
 
 # Start transient runner service.
 echo "--- Starting runner ---"
