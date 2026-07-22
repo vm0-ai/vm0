@@ -19,6 +19,7 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -39,13 +40,13 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { now } from "../../../lib/time.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignalScope } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { reloadAgentConnectorAuthorizations$ } from "../../../signals/zero-page/agent-connector-authorizations.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
@@ -1001,7 +1002,7 @@ describe("connectors page", () => {
     expect(search()).toContain(agentId);
   });
 
-  it("refreshes agent-filtered connectors when authorizations reload", async () => {
+  it("refreshes connector and agent authorization state after an Ably update", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
     let enabledTypes = ["github"];
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
@@ -1020,14 +1021,82 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
     });
 
     enabledTypes = ["github", "asana"];
-    await context.store.set(reloadAgentConnectorAuthorizations$);
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "asana" },
+    ]);
+    context.mocks.ably.trigger("connector:changed");
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Asana")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("catches connector changes when the Ably subscription attaches", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000010";
+    const realtimeReady = Promise.withResolvers<void>();
+    let enabledTypes = ["github"];
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: params.id === agentId ? enabledTypes : [],
+      });
+    });
+    context.mocks.api(
+      platformRealtimeTokenContract.create,
+      async ({ respond }) => {
+        await realtimeReady.promise;
+        return respond(200, {
+          keyName: "mock-key",
+          clientId: "test-user-123",
+          timestamp: now(),
+          capability: '{"*":["*"]}',
+          nonce: "mock-nonce",
+          mac: "mock-mac",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors?connection=agent:${agentId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
+    });
+
+    enabledTypes = ["github", "asana"];
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "asana" },
+    ]);
+    realtimeReady.resolve();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Asana")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
   });
 
