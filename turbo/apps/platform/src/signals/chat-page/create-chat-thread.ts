@@ -50,6 +50,7 @@ import {
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type PagedChatMessage,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -122,6 +123,7 @@ import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
   MessageImageGroupProjection,
+  QueueMessageOptions,
   QueuedChatMessageItem,
   RecommendedFollowupSource,
   SendMessageOptions,
@@ -1339,42 +1341,54 @@ function registerChatMessage(
   return { message, blocks };
 }
 
-function createWritePersistentMessages(
+function createMergePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerBodyBlocks: BodyBlocksRenderer,
 ) {
+  return command(({ get, set }, msgs: PagedChatMessage[]): void => {
+    if (msgs.length === 0) {
+      return;
+    }
+    const reportedCompletedRunIds = new Set(
+      completedRunIdsFromMessages(
+        get(persistentMessages$).map((entry) => {
+          return entry.message;
+        }),
+      ),
+    );
+    const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
+      (runId) => {
+        return !reportedCompletedRunIds.has(runId);
+      },
+    );
+    for (const _ of newlyCompletedRunIds) {
+      captureTaskCompletedSuccessfully();
+    }
+    const registeredMessages = msgs.map((message) => {
+      return registerChatMessage(message, registerBodyBlocks);
+    });
+    set(persistentMessages$, (prev) => {
+      return mergeRegisteredMessages([prev, registeredMessages]);
+    });
+    set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+  });
+}
+
+function createWritePersistentMessages(
+  threadId: string,
+  mergePersistentMessages$: Command<void, [PagedChatMessage[]]>,
+) {
   return command(
     async (
-      { get, set },
+      { set },
       msgs: PagedChatMessage[],
       signal: AbortSignal,
     ): Promise<void> => {
       if (msgs.length === 0) {
         return;
       }
-      const reportedCompletedRunIds = new Set(
-        completedRunIdsFromMessages(
-          get(persistentMessages$).map((entry) => {
-            return entry.message;
-          }),
-        ),
-      );
-      const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
-        (runId) => {
-          return !reportedCompletedRunIds.has(runId);
-        },
-      );
-      for (const _ of newlyCompletedRunIds) {
-        captureTaskCompletedSuccessfully();
-      }
-      const registeredMessages = msgs.map((message) => {
-        return registerChatMessage(message, registerBodyBlocks);
-      });
-      set(persistentMessages$, (prev) => {
-        return mergeRegisteredMessages([prev, registeredMessages]);
-      });
-      set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
+      set(mergePersistentMessages$, msgs);
       await set(writeIndexedDbChatMessages$, threadId, msgs, signal);
       signal.throwIfAborted();
     },
@@ -2083,28 +2097,24 @@ function createSyncRemoteMessagesCommand({
   threadId,
   persistentMessages$,
   hasReachedOldestMessage$,
-  writePersistentMessages$,
+  mergePersistentMessages$,
   dataSource,
 }: {
   threadId: string;
   persistentMessages$: PersistentChatMessages$;
   hasReachedOldestMessage$: State<boolean>;
-  writePersistentMessages$: Command<
-    Promise<void>,
-    [PagedChatMessage[], AbortSignal]
-  >;
+  mergePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
-  const sinceId$ = computed((get): string | undefined => {
-    return get(persistentMessages$).at(-1)?.message.id;
-  });
-
   return command(async ({ get, set }, signal: AbortSignal) => {
-    const startedWithoutCursor = get(sinceId$) === undefined;
+    const persistentMessages = get(persistentMessages$);
+    const accumulatedMessages: PagedChatMessage[] = [];
+    let sinceId = persistentMessages.at(-1)?.message.id;
+    const startedWithoutCursor = sinceId === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = get(sinceId$);
+      const requestedSinceId = sinceId;
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId: requestedSinceId },
@@ -2125,56 +2135,65 @@ function createSyncRemoteMessagesCommand({
         return;
       }
 
-      await set(writePersistentMessages$, result.messages, signal);
+      accumulatedMessages.push(...result.messages);
+      await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
+      sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
     }
     await syncMessagesAfter();
     signal.throwIfAborted();
 
-    if (get(hasReachedOldestMessage$)) {
-      return;
-    }
-
-    if (
-      (startedWithoutCursor && initialHasHistoryBefore === false) ||
-      get(persistentMessages$).length === 0
-    ) {
-      set(hasReachedOldestMessage$, true);
-      return;
-    }
-
-    let beforeId = get(persistentMessages$)[0]!.message.id;
-    async function syncMessagesBefore(): Promise<void> {
-      const result = await set(
-        dataSource.listMessagesBefore$,
-        { threadId, beforeId },
-        signal,
-      );
-      signal.throwIfAborted();
-      L.debug("syncRemoteMessages$ listMessagesBefore result", {
-        threadId,
-        beforeId,
-        gotCount: result.messages.length,
-        hasHistoryBefore: result.hasHistoryBefore,
-      });
-
-      if (result.messages.length > 0) {
-        await set(writePersistentMessages$, result.messages, signal);
-        signal.throwIfAborted();
-      }
-
-      if (!result.hasHistoryBefore) {
+    if (!get(hasReachedOldestMessage$)) {
+      const oldestMessageId =
+        persistentMessages[0]?.message.id ?? accumulatedMessages[0]?.id;
+      if (
+        (startedWithoutCursor && initialHasHistoryBefore === false) ||
+        oldestMessageId === undefined
+      ) {
         set(hasReachedOldestMessage$, true);
-        return;
+      } else {
+        let beforeId = oldestMessageId;
+        async function syncMessagesBefore(): Promise<void> {
+          const result = await set(
+            dataSource.listMessagesBefore$,
+            { threadId, beforeId },
+            signal,
+          );
+          signal.throwIfAborted();
+          L.debug("syncRemoteMessages$ listMessagesBefore result", {
+            threadId,
+            beforeId,
+            gotCount: result.messages.length,
+            hasHistoryBefore: result.hasHistoryBefore,
+          });
+
+          if (result.messages.length > 0) {
+            accumulatedMessages.push(...result.messages);
+            await set(
+              writeIndexedDbChatMessages$,
+              threadId,
+              result.messages,
+              signal,
+            );
+            signal.throwIfAborted();
+          }
+
+          if (!result.hasHistoryBefore) {
+            set(hasReachedOldestMessage$, true);
+            return;
+          }
+
+          beforeId = result.messages[0]!.id;
+
+          return syncMessagesBefore();
+        }
+        await syncMessagesBefore();
       }
-
-      beforeId = result.messages[0]!.id;
-
-      return syncMessagesBefore();
     }
-    await syncMessagesBefore();
+    signal.throwIfAborted();
+    set(mergePersistentMessages$, accumulatedMessages);
   });
 }
 
@@ -2414,10 +2433,14 @@ function createPagedMessages(
     return mailDraftCardSignals.entries();
   });
 
-  const writePersistentMessages$ = createWritePersistentMessages(
+  const mergePersistentMessages$ = createMergePersistentMessages(
     threadId,
     persistentChatMessages$,
     registerBodyBlocks,
+  );
+  const writePersistentMessages$ = createWritePersistentMessages(
+    threadId,
+    mergePersistentMessages$,
   );
 
   const mergeIndexedDbMessages$ = command(
@@ -2449,7 +2472,7 @@ function createPagedMessages(
     threadId,
     persistentMessages$: persistentChatMessages$,
     hasReachedOldestMessage$,
-    writePersistentMessages$,
+    mergePersistentMessages$,
     dataSource,
   });
   const syncRemoteMessages$ = createTrackedMessageSyncCommand(
@@ -3027,12 +3050,64 @@ function prepareTextOnlyUserMessage(
   };
 }
 
+function structuredPromptForSend({
+  enabled,
+  editorDocument,
+  generationTemplate,
+  attachments,
+}: {
+  readonly enabled: boolean;
+  readonly editorDocument: SendMessageOptions["editorDocument"];
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly attachments: PagedChatMessage["attachFiles"];
+}): UserMessageDocument | undefined {
+  if (!enabled || !editorDocument) {
+    return undefined;
+  }
+  const structuredPrompt = editorDocument.toMessageDocument({
+    generationTemplate,
+    attachments,
+  });
+  if (!structuredPrompt) {
+    throw new Error("Failed to serialize structured prompt");
+  }
+  return structuredPrompt;
+}
+
+function queueStructured(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: QueueMessageOptions,
+  result: PreparedSendMessageResult,
+): UserMessageDocument | undefined {
+  return structuredPromptForSend({
+    enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+    editorDocument: options.editorDocument,
+    generationTemplate: options.generationTemplate,
+    attachments: result.attachments,
+  });
+}
+
+function queueRuntimeOptions(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+  modelSelection: ModelProviderSelection | null,
+) {
+  return {
+    runOptions: runOptionsFromModelProviderSelection(
+      modelSelection,
+      features[FeatureSwitchKey.CodexFastMode] ?? false,
+    ),
+    realAgentInPreviewEnabled:
+      features[FeatureSwitchKey.RealAgentInPreview] ?? false,
+  };
+}
+
 function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
   createdAt,
   result,
   generationTemplate,
+  structuredPrompt,
   options,
 }: {
   threadId: string;
@@ -3040,6 +3115,7 @@ function createSendOptimisticMessageEntry({
   createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
+  structuredPrompt: UserMessageDocument | undefined;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageInput {
   return {
@@ -3051,6 +3127,7 @@ function createSendOptimisticMessageEntry({
       content: result.prompt,
       attachFiles: result.attachments,
       generationTemplate,
+      ...(structuredPrompt ? { structuredPrompt } : {}),
       ...sendMessageRevocationPatch(options),
       createdAt,
     },
@@ -3075,6 +3152,7 @@ function sendMessageRequestBody(params: {
   readonly codexFastModeEnabled: boolean;
   readonly realAgentInPreviewEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly options: SendMessageOptions | undefined;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
@@ -3091,6 +3169,9 @@ function sendMessageRequestBody(params: {
     ...(runOptions ? { runOptions } : {}),
     ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate: params.generationTemplate,
+    ...(params.structuredPrompt
+      ? { structuredPrompt: params.structuredPrompt }
+      : {}),
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
       : {}),
@@ -3113,6 +3194,7 @@ function createAppendOptimisticSendMessage(
         readonly createdAt: string;
         readonly result: PreparedSendMessageResult;
         readonly generationTemplate: GenerationTemplateRequest | undefined;
+        readonly structuredPrompt: UserMessageDocument | undefined;
         readonly options: SendMessageOptions | undefined;
       },
     ) => {
@@ -3130,6 +3212,7 @@ function createAppendOptimisticSendMessage(
           createdAt: args.createdAt,
           result: args.result,
           generationTemplate: args.generationTemplate,
+          structuredPrompt: args.structuredPrompt,
           options: args.options,
         }),
       );
@@ -3191,6 +3274,7 @@ const postSendMessage$ = command(
       readonly result: PreparedSendMessageResult;
       readonly modelSelection: ModelProviderSelection | null;
       readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly structuredPrompt: UserMessageDocument | undefined;
       readonly options: SendMessageOptions | undefined;
       readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
     },
@@ -3216,6 +3300,7 @@ const postSendMessage$ = command(
             codexFastModeEnabled,
             realAgentInPreviewEnabled,
             generationTemplate: args.generationTemplate,
+            structuredPrompt: args.structuredPrompt,
             options: args.options,
           }),
           fetchOptions: { signal },
@@ -3247,7 +3332,9 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = request.options?.editorDocument
+        ? request.options.generationTemplate
+        : get(draft.generationTemplate$);
       const result =
         request.options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(request.prompt)
@@ -3268,6 +3355,13 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
+      const features = get(featureSwitch$);
+      const structuredPrompt = structuredPromptForSend({
+        enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        editorDocument: request.options?.editorDocument,
+        generationTemplate,
+        attachments: result.attachments,
+      });
       set(cancelDraftSync$);
       set(draft.clear$);
       const clientMessageId = crypto.randomUUID();
@@ -3281,6 +3375,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         createdAt,
         result,
         generationTemplate,
+        structuredPrompt,
         options: request.options,
       });
       animationFrame(
@@ -3299,6 +3394,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
           result,
           modelSelection: request.modelSelection,
           generationTemplate,
+          structuredPrompt,
           options: request.options,
           flushDraftClear$,
         },
@@ -3406,10 +3502,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
     async (
       { get, set },
       prompt: string,
-      computerUseHostId: string | null | undefined,
+      options: QueueMessageOptions,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
         L.debug("queueMessage$ optimistic thread create unsettled, abort", {
           threadId,
@@ -3421,8 +3516,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
-      const generationTemplate = get(draft.generationTemplate$);
-
+      const generationTemplate = options.generationTemplate;
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
       const result = await set(
@@ -3437,10 +3531,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
         signal,
       );
       if (!result) {
-        L.debug("queueMessage$ prepare returned null, abort", { threadId });
         return false;
       }
       signal.throwIfAborted();
+
+      const features = get(featureSwitch$);
+      const structuredPrompt = queueStructured(features, options, result);
 
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -3463,6 +3559,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           content: result.prompt,
           attachFiles: result.attachments,
           generationTemplate,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
           createdAt: nowIso,
         },
       });
@@ -3473,14 +3570,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
-      const features = get(featureSwitch$);
-      const codexFastModeEnabled =
-        features[FeatureSwitchKey.CodexFastMode] ?? false;
-      const realAgentInPreviewEnabled =
-        features[FeatureSwitchKey.RealAgentInPreview] ?? false;
-      const runOptions = runOptionsFromModelProviderSelection(
+      const { runOptions, realAgentInPreviewEnabled } = queueRuntimeOptions(
+        features,
         modelSelection,
-        codexFastModeEnabled,
       );
       const [, persistedMessage] = await Promise.all([
         set(flushDraftClear$, signal),
@@ -3497,7 +3589,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(runOptions ? { runOptions } : {}),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             generationTemplate,
-            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+            ...(structuredPrompt ? { structuredPrompt } : {}),
+            ...(options.computerUseHostId === undefined
+              ? {}
+              : { computerUseHostId: options.computerUseHostId }),
           },
           signal,
         ),
@@ -3506,7 +3601,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       await set(writePersistentMessages$, [persistedMessage], signal);
       signal.throwIfAborted();
 
-      L.debug("queueMessage$ done", { threadId });
       return true;
     },
   );

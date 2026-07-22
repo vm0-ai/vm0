@@ -128,6 +128,14 @@ impl RunnerPaths {
         self.base_dir.join("mitm-addon")
     }
 
+    pub fn mitmdump_runtime_dir(&self) -> PathBuf {
+        self.base_dir.join("mitmdump-runtime")
+    }
+
+    pub fn mitmdump_runtime_lock(&self) -> PathBuf {
+        self.base_dir.join("mitmdump-runtime.lock")
+    }
+
     pub fn proxy_registry(&self) -> PathBuf {
         self.base_dir.join("proxy-registry.json")
     }
@@ -595,6 +603,19 @@ mod tests {
         assert_eq!(
             home.mitmdump_bin("11.1.3"),
             PathBuf::from("/test/mitmproxy/11.1.3/mitmdump")
+        );
+    }
+
+    #[test]
+    fn mitmdump_runtime_paths() {
+        let paths = RunnerPaths::new(PathBuf::from("/test/runner"));
+        assert_eq!(
+            paths.mitmdump_runtime_dir(),
+            PathBuf::from("/test/runner/mitmdump-runtime")
+        );
+        assert_eq!(
+            paths.mitmdump_runtime_lock(),
+            PathBuf::from("/test/runner/mitmdump-runtime.lock")
         );
     }
 

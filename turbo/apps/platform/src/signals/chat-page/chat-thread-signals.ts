@@ -1,5 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  GenerationTemplateRequest,
   PagedChatMessage,
   ChatThreadArtifactRun,
   ChatThreadDraft,
@@ -17,6 +18,7 @@ import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
+import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -53,6 +55,14 @@ export interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly computerUseHostId?: string | null;
+  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly editorDocument?: EditorDocumentSnapshot;
+}
+
+export interface QueueMessageOptions {
+  readonly computerUseHostId: string | null | undefined;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly editorDocument: EditorDocumentSnapshot;
 }
 
 export interface ChatThreadSignals {
@@ -88,7 +98,7 @@ export interface ChatThreadSignals {
   composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
-    [string, string | null | undefined, AbortSignal]
+    [string, QueueMessageOptions, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;

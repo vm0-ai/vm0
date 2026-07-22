@@ -150,6 +150,7 @@ const appendQueuedMessage$ = command(
       chatThreadSortEventId,
       hasTextContent,
       generationTemplate,
+      structuredPrompt,
       computerUseHostId,
       runOptions,
       realAgentInPreview,
@@ -167,6 +168,7 @@ const appendQueuedMessage$ = command(
           clientMessageId,
           chatThreadSortEventId,
           generationTemplate,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
           ...(runOptions ? { runOptions } : {}),
           ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
           ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -183,6 +185,7 @@ const appendQueuedMessage$ = command(
       content,
       attachFiles: attachments ?? undefined,
       generationTemplate,
+      ...(structuredPrompt ? { structuredPrompt } : {}),
       createdAt: result.body.createdAt ?? nowDate().toISOString(),
     };
   },

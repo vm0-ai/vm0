@@ -586,6 +586,42 @@ describe("Slack OAuth API routes", () => {
       expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
     });
 
+    it("keeps preview OAuth start and callback handling on the preview API", async () => {
+      const previewApiOrigin = "https://pr-22539-api.vm6.ai";
+      const previewAppOrigin = "https://pr-22539-app.omby.ai";
+      mockEnv("VM0_WEB_URL", previewApiOrigin);
+      mockEnv("APP_URL", previewAppOrigin);
+
+      const start = await appRequest("/api/zero/slack/oauth/install", {
+        origin: previewApiOrigin,
+      });
+      expect(start.status).toBe(307);
+      const authorizationUrl = new URL(start.headers.get("location")!);
+      expect(authorizationUrl.origin).toBe("https://slack.com");
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+      );
+
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: false,
+        error: "invalid_code",
+      });
+      const callback = await appRequest(
+        "/api/zero/slack/oauth/callback?code=valid-code",
+        { origin: previewApiOrigin },
+      );
+
+      expect(callback.status).toBe(307);
+      const callbackLocation = new URL(callback.headers.get("location")!);
+      expect(callbackLocation.origin).toBe(previewAppOrigin);
+      expect(callbackLocation.pathname).toBe("/slack/failed");
+      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirect_uri: `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+        }),
+      );
+    });
+
     it("rejects platform install for a non-admin member", async () => {
       const fixture = await track(
         store.set(

@@ -14,6 +14,7 @@ export interface OrgPlanCapabilities {
   readonly status: "active" | "suspended";
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
+  readonly canBuyCredits: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -28,6 +29,7 @@ const CAPABILITY_SELECTION = {
   status: orgPlanEntitlements.status,
   baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
   canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
+  canBuyCredits: orgPlanEntitlements.canBuyCredits,
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
   supportByok: orgPlanEntitlements.supportByok,
   restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
@@ -57,6 +59,14 @@ function runtimeStatusForEntitlement(
   }
 }
 
+function capabilitiesForTier(tierValue: string): OrgPlanCapabilities {
+  const tier = orgTierSchema.parse(tierValue);
+  return {
+    status: tier === "pro-suspend" ? "suspended" : "active",
+    ...ORG_PLAN_ENTITLEMENT_TIER_VALUES[tier],
+  };
+}
+
 export function orgPlanEntitlementReadsEnabled(orgId: string): boolean {
   return isFeatureEnabled(FeatureSwitchKey.OrgPlanEntitlementReads, { orgId });
 }
@@ -76,6 +86,17 @@ export async function loadOrgPlanCapabilities(
       ? await query.for("update")
       : await query;
     if (!capabilities) {
+      const orgQuery = db
+        .select({ orgId: orgMetadata.orgId })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1);
+      const [org] = options?.forUpdate
+        ? await orgQuery.for("update")
+        : await orgQuery;
+      if (!org) {
+        return null;
+      }
       throw new Error(`Missing org plan entitlement for ${orgId}`);
     }
     return {
@@ -94,9 +115,5 @@ export async function loadOrgPlanCapabilities(
     return null;
   }
 
-  const tier = orgTierSchema.parse(org.tier);
-  return {
-    status: tier === "pro-suspend" ? "suspended" : "active",
-    ...ORG_PLAN_ENTITLEMENT_TIER_VALUES[tier],
-  };
+  return capabilitiesForTier(org.tier);
 }

@@ -175,12 +175,10 @@ pub(crate) fn manifest_json(
         ),
     );
 
-    if let Some((mount_path, archive_url)) = artifact {
-        manifest.insert(
-            "artifacts".to_owned(),
-            Value::Array(vec![manifest_entry(mount_path, archive_url)]),
-        );
-    }
+    let artifacts = artifact
+        .map(|(mount_path, archive_url)| vec![manifest_entry(mount_path, archive_url)])
+        .unwrap_or_default();
+    manifest.insert("artifacts".to_owned(), Value::Array(artifacts));
 
     serde_json::to_vec(&Value::Object(manifest)).map_err(std::io::Error::other)
 }

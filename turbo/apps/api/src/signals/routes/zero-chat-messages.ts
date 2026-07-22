@@ -21,7 +21,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { conversations } from "@vm0/db/schema/conversation";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -104,6 +103,7 @@ import {
   updateChatMessage,
 } from "../services/zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
+import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   claimQueuedUserMessage,
@@ -115,6 +115,7 @@ import {
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -186,6 +187,7 @@ interface ResolvedThread {
 interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  readonly structuredPrompt: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -237,6 +239,7 @@ interface PreparedNormalSend {
   readonly db: Db;
   readonly agent: AgentForChatSend;
   readonly thread: ResolvedThread;
+  readonly body: RuntimeNormalSendBody;
   readonly priorContext: string;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
@@ -262,7 +265,13 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly structuredPromptEnabled: boolean;
   readonly websiteTemplateV2Enabled: boolean;
+}
+
+interface RuntimeNormalSendBody extends NormalSendBody {
+  readonly agentPrompt: string;
+  readonly hasTextContent: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -642,6 +651,29 @@ function buildFullPrompt(
   return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 }
 
+function resolveRuntimeNormalSendBody(
+  body: NormalSendBody,
+  structuredPromptEnabled: boolean,
+): RuntimeNormalSendBody {
+  if (!structuredPromptEnabled || !body.structuredPrompt) {
+    return {
+      ...body,
+      structuredPrompt: body.structuredPrompt,
+      agentPrompt: buildFullPrompt(body.prompt, body.attachFiles),
+      hasTextContent: body.hasTextContent !== false,
+    };
+  }
+  const projection = projectStructuredUserMessage(body.structuredPrompt);
+  return {
+    ...body,
+    prompt: projection.legacyContent,
+    structuredPrompt: body.structuredPrompt,
+    generationTemplate: projection.generationTemplate,
+    agentPrompt: projection.agentPrompt,
+    hasTextContent: projection.hasTextContent,
+  };
+}
+
 function attachFileIds(
   attachFiles: readonly AttachFile[] | undefined,
 ): string[] | null {
@@ -688,8 +720,21 @@ function formatAttachFileIds(
     .join("\n");
 }
 
-function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
+function formatPriorRunMessage(
+  message: WebChatPriorRunMessage,
+  structuredPromptEnabled: boolean,
+): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
+  if (
+    structuredPromptEnabled &&
+    message.role === "user" &&
+    message.structuredPrompt
+  ) {
+    const prompt = projectStructuredUserMessage(
+      message.structuredPrompt,
+    ).agentPrompt;
+    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
+  }
   const attach = formatAttachFileIds(message.attachFiles);
   const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
   return attach ? `${body}\n${attach}` : body;
@@ -697,6 +742,7 @@ function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
 
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
+  structuredPromptEnabled: boolean,
 ): string {
   if (runs.length === 0) {
     return "";
@@ -704,7 +750,9 @@ function buildWebChatPriorRunsContext(
   const total = runs.length;
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
-    const renderedMessages = run.messages.map(formatPriorRunMessage);
+    const renderedMessages = run.messages.map((message) => {
+      return formatPriorRunMessage(message, structuredPromptEnabled);
+    });
     const hasUserMessage = run.messages.some((message) => {
       return message.role === "user";
     });
@@ -842,6 +890,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -872,6 +921,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: row.role,
       content: row.content,
+      structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -1062,6 +1112,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
+    structuredPromptEnabled: isFeatureEnabled(
+      FeatureSwitchKey.StructuredPrompt,
+      context,
+    ),
     websiteTemplateV2Enabled: isFeatureEnabled(
       FeatureSwitchKey.WebsiteTemplateV2,
       context,
@@ -1070,9 +1124,8 @@ async function resolveNormalSendFeatureSwitches(
 }
 
 function validateGenerationTemplatePrompt(
-  body: NormalSendBody,
+  generationTemplate: IncomingGenerationTemplate,
 ): NormalSendFailure | undefined {
-  const generationTemplate = body.generationTemplate;
   if (!generationTemplate) {
     return undefined;
   }
@@ -1474,6 +1527,7 @@ async function prepareRecentChatContext(
   threadId: string,
   isNewThread: boolean,
   incompleteContext: string,
+  structuredPromptEnabled: boolean,
 ): Promise<string> {
   if (isNewThread) {
     return "";
@@ -1483,6 +1537,7 @@ async function prepareRecentChatContext(
   }
   return buildWebChatPriorRunsContext(
     await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
+    structuredPromptEnabled,
   );
 }
 
@@ -2168,6 +2223,7 @@ function prepareTimedRecentChatContext(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
+  structuredPromptEnabled: boolean,
 ): ReturnType<typeof prepareRecentChatContext> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2179,6 +2235,7 @@ function prepareTimedRecentChatContext(
         thread.threadId,
         thread.isNewThread,
         thread.incompleteContext,
+        structuredPromptEnabled,
       );
     },
   );
@@ -2282,16 +2339,22 @@ const prepareNormalSend$ = command(
       return preflightClientMessageResponse;
     }
 
-    const generationTemplateError = validateGenerationTemplatePrompt(args.body);
-    if (generationTemplateError) {
-      return generationTemplateError;
-    }
-
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
     );
     signal.throwIfAborted();
+    const runtimeBody = resolveRuntimeNormalSendBody(
+      args.body,
+      featureSwitches.structuredPromptEnabled,
+    );
+    const generationTemplateError = validateGenerationTemplatePrompt(
+      runtimeBody.generationTemplate,
+    );
+    if (generationTemplateError) {
+      return generationTemplateError;
+    }
+
     const explicitRunConfiguration = await resolveTimedExplicitRunConfiguration(
       args,
       db,
@@ -2324,10 +2387,15 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const priorContext = await prepareTimedRecentChatContext(args, db, thread);
+    const priorContext = await prepareTimedRecentChatContext(
+      args,
+      db,
+      thread,
+      featureSwitches.structuredPromptEnabled,
+    );
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-      explicit: args.body.generationTemplate,
+      explicit: runtimeBody.generationTemplate,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
     });
     const persistedExplicitSelection =
@@ -2349,6 +2417,7 @@ const prepareNormalSend$ = command(
       db,
       agent,
       thread,
+      body: runtimeBody,
       priorContext,
       generationTemplatePrompt,
       computerUseHostGrant,
@@ -2600,15 +2669,11 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
 }): Promise<string> {
-  const [org] = await params.db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, params.orgId))
-    .limit(1);
+  const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL").replace(/\/$/, "");
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing`;
-  if (org?.tier === "free" || org?.tier === "pro-suspend" || !org) {
+  if (capabilities?.canBuyCredits !== true) {
     return [
       "Insufficient credits. This workspace has no spendable credits right now.",
       "",
@@ -2868,7 +2933,6 @@ function buildCreateZeroRunArgs(params: {
   const { args, prepared } = params;
   const { modelPin, providerAdmission, codexServiceTier } =
     prepared.runConfiguration;
-  const fullPrompt = buildFullPrompt(args.body.prompt, args.body.attachFiles);
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
@@ -2890,7 +2954,7 @@ function buildCreateZeroRunArgs(params: {
       },
     ],
     body: {
-      prompt: fullPrompt,
+      prompt: prepared.body.agentPrompt,
       agentId: args.body.agentId,
       ...(prepared.thread.sessionId
         ? { sessionId: prepared.thread.sessionId }
@@ -3003,7 +3067,7 @@ function scheduleNormalChatRunSideEffects(params: {
 }): void {
   scheduleCreatedChatRunSideEffects({
     db: params.prepared.db,
-    body: params.args.body,
+    body: params.prepared.body,
     thread: params.prepared.thread,
     userId: params.args.userId,
     orgId: params.args.orgId,
@@ -3043,7 +3107,7 @@ const createNormalChatRun$ = command(
       }
       return await appendInsufficientCreditsMessages({
         prepared,
-        body: args.body,
+        body: prepared.body,
         userId: args.userId,
         orgId: args.orgId,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
@@ -3260,7 +3324,7 @@ const sendQueueFirstNormalMessage$ = command(
       async () => {
         return await queueUnassociatedNormalMessage({
           prepared,
-          body: args.body,
+          body: prepared.body,
           userId: args.userId,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(
             args.zeroPreCreateSource,

@@ -627,6 +627,7 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {
@@ -731,6 +732,26 @@ describe("zero sidebar account menu", () => {
 
     const reopenedMenu = await openAccountMenu();
     expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("hides debug settings when ZeroDebug is disabled", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat?settings=debug`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(
+      within(dialog).getByRole("heading", { name: "Preference" }),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText("Debug")).not.toBeInTheDocument();
   });
 
   it("restores page interactivity after closing settings", async () => {

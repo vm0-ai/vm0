@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.616.0](https://github.com/vm0-ai/vm0/compare/app-v0.615.2...app-v0.616.0) (2026-07-22)
+
+
+### Features
+
+* **billing:** use org plan entitlements for gated actions ([#22498](https://github.com/vm0-ai/vm0/issues/22498)) ([4d2c428](https://github.com/vm0-ai/vm0/commit/4d2c428c66178ec65cae0ff2fb9483a3f3643097))
+
+
+### Bug Fixes
+
+* **platform:** gate debug settings behind ZeroDebug ([#22526](https://github.com/vm0-ai/vm0/issues/22526)) ([f62e6aa](https://github.com/vm0-ai/vm0/commit/f62e6aaa7971b9f86469039ed1f9c201b475ab8c))
+
+
+### Refactoring
+
+* **platform:** batch paged chat state updates ([#22566](https://github.com/vm0-ai/vm0/issues/22566)) ([2d4e6dd](https://github.com/vm0-ai/vm0/commit/2d4e6dddaeea9ed24893c7ce83e10bbd422d2ee8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.213.0
+    * @vm0/connectors bumped to 1.178.2
+    * @vm0/core bumped to 8.450.0
+
+## [0.615.2](https://github.com/vm0-ai/vm0/compare/app-v0.615.1...app-v0.615.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **chat:** cap long composer drafts at a responsive height ([#22558](https://github.com/vm0-ai/vm0/issues/22558)) ([b44dd5e](https://github.com/vm0-ai/vm0/commit/b44dd5e1542a8b949543cf2d860b3fc0c9acfb15))
+* enforce current policy for chat model routes ([#22549](https://github.com/vm0-ai/vm0/issues/22549)) ([aeed00d](https://github.com/vm0-ai/vm0/commit/aeed00db26f4beaf6c4a22e2caf17a2f5112afe8))
+* **platform:** restore catalog-authored connector icons ([#22538](https://github.com/vm0-ai/vm0/issues/22538)) ([26d78c5](https://github.com/vm0-ai/vm0/commit/26d78c554681ee51ad9d43a707c6603986e7b47f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.1
+    * @vm0/core bumped to 8.449.0
+
 ## [0.615.1](https://github.com/vm0-ai/vm0/compare/app-v0.615.0...app-v0.615.1) (2026-07-22)
 
 

@@ -11,7 +11,11 @@ import type {
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import { clerk$ } from "./auth.ts";
-import { resolveApiBase, resolveApiBaseForTarget } from "./api-base.ts";
+import {
+  resolveApiBase,
+  resolveApiBaseForTarget,
+  resolveOAuthApiBase,
+} from "./api-base.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "./auth-retry.ts";
 
@@ -25,20 +29,20 @@ export type ZeroClientFactory = <T extends AppRouter>(
   options?: ZeroClientOptions,
 ) => InitClientReturn<T, InitClientArgs>;
 
-declare const oauthWebApiBaseBrand: unique symbol;
+declare const oauthApiBaseBrand: unique symbol;
 
-type OAuthWebApiBase = "www" & {
-  readonly [oauthWebApiBaseBrand]: true;
+type OAuthApiBase = "oauth" & {
+  readonly [oauthApiBaseBrand]: true;
 };
 
 /**
- * Web-origin API base is reserved for OAuth and web-origin handoff flows only.
+ * Environment-aware API base reserved for OAuth and origin handoff flows.
  * Normal platform API calls should use the default API backend or `apiBase: "api"`.
  */
-export const OAUTH_WEB_API_BASE = "www" as OAuthWebApiBase;
+export const OAUTH_API_BASE = "oauth" as OAuthApiBase;
 
 export interface ZeroClientOptions {
-  readonly apiBase?: "auto" | "api" | OAuthWebApiBase;
+  readonly apiBase?: "auto" | "api" | OAuthApiBase;
 }
 
 function rebaseApiPath(path: string, apiBase: string): string {
@@ -78,11 +82,8 @@ export const zeroClient$ = computed((get) => {
         if (options?.apiBase === "api") {
           return rebaseApiPath(path, resolveApiBaseForTarget("api"));
         }
-        if (options?.apiBase === OAUTH_WEB_API_BASE) {
-          return rebaseApiPath(
-            path,
-            resolveApiBaseForTarget(OAUTH_WEB_API_BASE),
-          );
+        if (options?.apiBase === OAUTH_API_BASE) {
+          return rebaseApiPath(path, resolveOAuthApiBase());
         }
         return rebaseApiPath(path, resolveApiBase());
       },

@@ -32,6 +32,7 @@ import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -1225,6 +1226,73 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         return run.prompt === suspendedPrompt;
       }),
     ).toHaveLength(0);
+  });
+
+  it("overlaps storage presigning with context encryption while preserving storage errors", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const storageName = `bdd-overlap-${randomUUID().slice(0, 8)}`;
+    const storageFile = storageTextFile(
+      "overlap.txt",
+      `overlap payload ${storageName}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: prepared.versionId,
+      files: [storageFile],
+    });
+
+    const kmsStarted = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!kmsStarted.settled()) {
+        kmsStarted.resolve(undefined);
+      }
+    });
+    const storageError = new Error("storage manifest presign failed");
+    context.mocks.s3.getSignedUrl.mockImplementation(async () => {
+      await kmsStarted.promise;
+      throw storageError;
+    });
+    useSecretKmsClientForTests({
+      failAfterGenerateDataKeys: 0,
+      onGenerateDataKey: () => {
+        if (!kmsStarted.settled()) {
+          kmsStarted.resolve(undefined);
+        }
+      },
+    });
+
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "storage and context preparation should overlap",
+      modelProvider: "anthropic-api-key",
+      additionalVolumes: [
+        {
+          name: storageName,
+          version: prepared.versionId,
+          mountPath: "/overlap",
+        },
+      ],
+    });
+
+    expect(kmsStarted.settled()).toBeTruthy();
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(storageError.message);
+    const stored = await api.readRun(actor, failed.runId);
+    expect(stored.status).toBe("failed");
+    expect(stored.error).toBe(storageError.message);
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: failed.runId }),
+    );
+    await api.requestClaimRunnerJob(true, failed.runId, [404]);
   });
 
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
@@ -4144,6 +4212,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       orgId: STAFF_ORG_ID,
       tier: "limited-free-1",
       credits: 20_000,
+    });
+    // The metadata fixture keeps the production tier/entitlement invariant.
+    // Restore the deliberate staff-only divergence exercised by this test.
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
     });
 
     const run = await api.createRun(actor, {

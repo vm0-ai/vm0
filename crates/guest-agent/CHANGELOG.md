@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.53.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.22...guest-agent-v0.53.23) (2026-07-22)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound stalled codex resume startup ([#22557](https://github.com/vm0-ai/vm0/issues/22557)) ([1bf198e](https://github.com/vm0-ai/vm0/commit/1bf198e0791884e807f70a2d08fff0b93b050698))
+* **guest-agent:** set sol reasoning effort to max ([#22506](https://github.com/vm0-ai/vm0/issues/22506)) ([94040e6](https://github.com/vm0-ai/vm0/commit/94040e656e85766c5357432ab60d540679cd11a5))
+
 ## [0.53.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.21...guest-agent-v0.53.22) (2026-07-22)
 
 

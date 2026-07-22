@@ -92,6 +92,7 @@ import type {
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -303,6 +304,7 @@ import {
   startCheckout$,
   startCreditCheckout$,
 } from "../../signals/zero-page/billing.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -3970,14 +3972,22 @@ function useChatThreadComposerSendState({
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
 
-  const handleSend = (text: string) => {
+  const handleSend = (
+    text: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: EditorDocumentSnapshot,
+  ) => {
     detach(
       (async () => {
         const computerUsePatch =
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
-        const sent = await send(text, { ...computerUsePatch }, rootSignal);
+        const sent = await send(
+          text,
+          { ...computerUsePatch, generationTemplate, editorDocument },
+          rootSignal,
+        );
         if (sent) {
           clearComputerUseHostOverride();
         }
@@ -3986,11 +3996,19 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleQueue = (text: string) => {
+  const handleQueue = (
+    text: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+    editorDocument: EditorDocumentSnapshot,
+  ) => {
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        const queued = await queueMessage(text, computerUseHostId, rootSignal);
+        const queued = await queueMessage(
+          text,
+          { computerUseHostId, generationTemplate, editorDocument },
+          rootSignal,
+        );
         if (queued) {
           clearComputerUseHostOverride();
         }
@@ -5536,34 +5554,29 @@ function CreditsAvailableMessage() {
 }
 
 function insufficientCreditsCopy(params: {
-  readonly isFree: boolean;
-  readonly requiresPro: boolean;
+  readonly canBuyCredits: boolean;
   readonly roleResolved: boolean;
   readonly canManageBilling: boolean;
 }): { readonly headline: string; readonly helper: string } {
-  const headline = params.requiresPro
-    ? "Upgrade to Pro to run Zero"
-    : params.isFree
-      ? "You've used your free credits"
-      : "You're out of credits";
+  const headline = params.canBuyCredits
+    ? "You're out of credits"
+    : "Upgrade to Pro to run Zero";
   if (!params.roleResolved) {
     return { headline, helper: "Checking billing permissions..." };
   }
   if (!params.canManageBilling) {
     return {
       headline,
-      helper:
-        params.requiresPro || params.isFree
-          ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
-          : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+      helper: !params.canBuyCredits
+        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+        : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
     };
   }
   return {
     headline,
-    helper:
-      params.requiresPro || params.isFree
-        ? "Upgrade to Pro to keep chatting with Zero."
-        : "Add credits to keep chatting with Zero.",
+    helper: !params.canBuyCredits
+      ? "Upgrade to Pro to keep chatting with Zero."
+      : "Add credits to keep chatting with Zero.",
   };
 }
 
@@ -5654,15 +5667,15 @@ function InsufficientCreditsCard() {
   const pageSignal = useGet(pageSignal$);
 
   const billingResolved = billingLoadable.state === "hasData";
-  const tier = billingResolved ? billingLoadable.data.tier : null;
   const credits = billingResolved ? billingLoadable.data.credits : null;
+  const canBuyCredits = billingResolved
+    ? orgPlanCapabilitiesFromBilling(billingLoadable.data).canBuyCredits
+    : false;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
-  const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === "limited-free-1";
-  const shouldStartProCheckout = requiresPro || isFree;
+  const hasAvailableCredits = canBuyCredits && credits !== null && credits > 0;
+  const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
   const redirecting =
     checkoutLoadable.state === "loading" ||
@@ -5673,8 +5686,7 @@ function InsufficientCreditsCard() {
   }
 
   const { headline, helper } = insufficientCreditsCopy({
-    isFree,
-    requiresPro,
+    canBuyCredits,
     roleResolved: billingResolved && roleResolved,
     canManageBilling: billingResolved && canManageBilling,
   });
@@ -5991,6 +6003,7 @@ function resolveAttachments(
       contentType,
     });
     return {
+      id: "id" in f && typeof f.id === "string" ? f.id : null,
       filename: f.filename,
       url: f.url,
       contentType,
@@ -6282,18 +6295,18 @@ function StructuredTemplateIcon({
   type: GenerationTemplateRequest["type"];
 }) {
   if (type === "video") {
-    return <IconVideo size={14} stroke={1.8} className="shrink-0" />;
+    return <IconVideo size={15} stroke={1.8} className="shrink-0" />;
   }
   if (type === "illustration") {
-    return <IconPhoto size={14} stroke={1.8} className="shrink-0" />;
+    return <IconPhoto size={15} stroke={1.8} className="shrink-0" />;
   }
   if (type === "workflow") {
-    return <IconRoute size={14} stroke={1.8} className="shrink-0" />;
+    return <IconRoute size={15} stroke={1.8} className="shrink-0" />;
   }
   if (type === "website") {
-    return <IconWorld size={14} stroke={1.8} className="shrink-0" />;
+    return <IconWorld size={15} stroke={1.8} className="shrink-0" />;
   }
-  return <IconPresentation size={14} stroke={1.8} className="shrink-0" />;
+  return <IconPresentation size={15} stroke={1.8} className="shrink-0" />;
 }
 
 function StructuredTemplateReference({
@@ -6305,14 +6318,12 @@ function StructuredTemplateReference({
   return (
     <span
       aria-label={`Message template ${part.titleSnapshot}`}
-      className={STRUCTURED_REFERENCE_CHIP_CLASS}
+      className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground"
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
     >
       <StructuredTemplateIcon type={part.template.type} />
-      <span className="shrink-0 text-muted-foreground">
-        {typeLabel ?? part.template.type}
-      </span>
-      <span className="text-muted-foreground">·</span>
+      <span className="shrink-0">{typeLabel ?? part.template.type}</span>
+      <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
     </span>
   );
@@ -6390,14 +6401,22 @@ function StructuredUserMessagePart({
 function StructuredUserMessage({
   document,
   attachments,
+  elevatedFileIds,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
+  elevatedFileIds: ReadonlySet<string>;
 }) {
   const partOccurrences = new Map<string, number>();
+  const bodyParts = document.parts.filter((part) => {
+    return !isElevatedStructuredPart(part, elevatedFileIds);
+  });
+  if (bodyParts.length === 0) {
+    return null;
+  }
   return (
     <div data-structured-user-message="" className="whitespace-pre-wrap">
-      {document.parts.map((part) => {
+      {bodyParts.map((part) => {
         const identity = JSON.stringify(part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
         partOccurrences.set(identity, occurrence);
@@ -6410,6 +6429,75 @@ function StructuredUserMessage({
         );
       })}
     </div>
+  );
+}
+
+function isElevatedStructuredPart(
+  part: UserMessagePart,
+  elevatedFileIds: ReadonlySet<string>,
+): boolean {
+  return (
+    part.type === "template" ||
+    (part.type === "file" && elevatedFileIds.has(part.fileId))
+  );
+}
+
+function StructuredUserMessageContent({
+  document,
+  attachments,
+  referenceAttachments,
+  onImageClick,
+}: {
+  document: UserMessageDocument;
+  attachments: ReturnType<typeof resolveAttachments>;
+  referenceAttachments: readonly ResolvedAttachFile[];
+  onImageClick: (url: string) => void;
+}) {
+  const imageAttachments = attachments.filter((attachment) => {
+    return attachment.id !== null && attachment.isImage;
+  });
+  const imageAttachmentIds = new Set(
+    imageAttachments.flatMap((attachment) => {
+      return attachment.id ? [attachment.id] : [];
+    }),
+  );
+  const templateParts = document.parts.filter((part) => {
+    return part.type === "template";
+  });
+  const hasBody = document.parts.some((part) => {
+    return !isElevatedStructuredPart(part, imageAttachmentIds);
+  });
+
+  return (
+    <>
+      {templateParts.length > 0 ? (
+        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
+          {templateParts.map((part) => {
+            return (
+              <StructuredTemplateReference
+                key={`${part.template.type}:${part.titleSnapshot}`}
+                part={part}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+      <UserMessageAttachments
+        attachments={imageAttachments}
+        onImageClick={onImageClick}
+      />
+      {hasBody ? (
+        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+          <div className="px-4 py-3">
+            <StructuredUserMessage
+              document={document}
+              attachments={referenceAttachments}
+              elevatedFileIds={imageAttachmentIds}
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -6591,14 +6679,12 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           {structuredPrompt ? (
-            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-              <div className="px-4 py-3">
-                <StructuredUserMessage
-                  document={structuredPrompt}
-                  attachments={message.attachFiles ?? []}
-                />
-              </div>
-            </div>
+            <StructuredUserMessageContent
+              document={structuredPrompt}
+              attachments={allAttachments}
+              referenceAttachments={message.attachFiles ?? []}
+              onImageClick={openLightbox}
+            />
           ) : (
             <>
               <UserMessageGenerationTemplate

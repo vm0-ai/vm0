@@ -4,6 +4,7 @@ interface OrgTierLimits {
   readonly planRank: number;
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
+  readonly canBuyCredits: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -24,6 +25,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 0,
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
+    canBuyCredits: true,
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedVm0Models: false,
@@ -37,6 +39,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 0,
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
+    canBuyCredits: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -50,6 +53,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 0,
     baseConcurrencyLimit: 0,
     canBuyConcurrency: false,
+    canBuyCredits: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -63,6 +67,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 1,
     baseConcurrencyLimit: 2,
     canBuyConcurrency: false,
+    canBuyCredits: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -76,6 +81,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 2,
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
+    canBuyCredits: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -89,6 +95,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     planRank: 3,
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
+    canBuyCredits: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
