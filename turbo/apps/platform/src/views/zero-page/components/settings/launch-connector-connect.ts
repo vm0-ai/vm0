@@ -1,19 +1,21 @@
 import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
 import {
   getConnectorStatusConnectLaunchMode,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
-  type ConnectorStatusAuthMethodDetail,
-  type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 interface LaunchConnectorConnectOptions {
-  readonly connector: ConnectorTypeWithStatus;
+  readonly connector: PublicConnectorCatalogStatusItem;
   readonly openModal: () => void;
   readonly connectBrowserAuth: (
-    authMethod: ConnectorStatusAuthMethodDetail,
+    authMethod: PublicConnectorCatalogAuthMethodDetail,
   ) => Promise<unknown>;
   readonly connectNoAuth: (
     authMethod: ConnectorAuthMethodId,

@@ -4,23 +4,25 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
-  connectFlowType$,
+  connectFlowConnectorRef$,
   getConnectorStatusConnectLaunchMode,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
-  justConnectedTypes$,
-  pollingOAuthAuthCodeConnectorType$,
-  type ConnectorStatusAuthMethodDetail,
-  type ConnectorTypeWithStatus,
+  justConnectedRefs$,
+  pollingOAuthAuthCodeConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  directedAuthorizeType$,
+  directedAuthorizeRef$,
   directedAuthorizeAgentId$,
   directedAuthorizeAgentName$,
   agentEnabledTypes$,
@@ -30,7 +32,7 @@ import {
   directedAuthorizeConnectModalKey$,
   setDirectedAuthorizeConnectModalKey$,
   type DirectedAuthorizeConnectModalKey,
-} from "../../signals/connectors-page/directed-authorize-type.ts";
+} from "../../signals/connectors-page/directed-authorize-ref.ts";
 import {
   routeChatActionCallback$,
   runChatActionCallback$,
@@ -84,48 +86,48 @@ function AuthorizeAction({
 // ---------------------------------------------------------------------------
 
 function useDirectedAuthorizeParams(): {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly agentId: string;
 } | null {
-  const type = useGet(directedAuthorizeType$);
+  const routeType = useGet(directedAuthorizeRef$);
   const agentId = useGet(directedAuthorizeAgentId$);
-  if (!type || !agentId) {
+  if (!routeType || !agentId) {
     return null;
   }
-  const parsed = connectorRefSchema.safeParse(type);
+  const parsed = connectorRefSchema.safeParse(routeType);
   if (!parsed.success) {
     return null;
   }
-  return { connectorType: parsed.data, agentId };
+  return { connectorRef: parsed.data, agentId };
 }
 
-function useDirectedAuthorizeCatalogState(connectorType: ConnectorRef | null) {
-  const justConnected = useGet(justConnectedTypes$);
-  const allLoadable = useLastLoadable(allConnectorTypes$);
+function useDirectedAuthorizeCatalogState(connectorRef: ConnectorRef | null) {
+  const justConnected = useGet(justConnectedRefs$);
+  const allLoadable = useLastLoadable(allConnectorCatalogItems$);
   const catalogLoaded = allLoadable.state === "hasData";
   const allData = catalogLoaded ? allLoadable.data : [];
-  const item = connectorType
+  const item = connectorRef
     ? allData.find((connector) => {
-        return connector.type === connectorType;
+        return connector.connectorRef === connectorRef;
       })
     : undefined;
   const isConnected =
-    connectorType !== null &&
-    (justConnected.has(connectorType) || item?.connected === true);
+    connectorRef !== null &&
+    (justConnected.has(connectorRef) || item?.connected === true);
   return {
     item,
     isConnected,
     catalogLoading:
-      connectorType !== null &&
-      !justConnected.has(connectorType) &&
+      connectorRef !== null &&
+      !justConnected.has(connectorRef) &&
       allLoadable.state === "loading",
     unavailable:
-      connectorType !== null && catalogLoaded && !item && !isConnected,
+      connectorRef !== null && catalogLoaded && !item && !isConnected,
   };
 }
 
 function useDirectedAuthorizePermissionState(
-  connectorType: ConnectorRef | null,
+  connectorRef: ConnectorRef | null,
   agentId: string | null,
 ) {
   const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
@@ -139,13 +141,13 @@ function useDirectedAuthorizePermissionState(
   const enabledTypes = enabledData === null ? [] : enabledData.enabledTypes;
   return {
     isAuthorized:
-      connectorType !== null &&
+      connectorRef !== null &&
       agentId !== null &&
       (isJustAuthorizedConnectorAgent(justAuthorizedKeys, {
-        connectorType,
+        connectorRef,
         agentId,
       }) ||
-        enabledTypes.includes(connectorType)),
+        enabledTypes.includes(connectorRef)),
     permissionLoading:
       agentId !== null &&
       (enabledLoadable.state === "loading" ||
@@ -166,24 +168,22 @@ function useDirectedAuthorizeAgentName(agentId: string | null): string {
 }
 
 function canAuthorizeConnector(
-  item:
-    | { readonly availableAuthMethods: readonly ConnectorAuthMethodId[] }
-    | undefined,
+  item: Pick<PublicConnectorCatalogStatusItem, "authMethods"> | undefined,
   isConnected: boolean,
 ): boolean {
-  return isConnected || (item ? item.availableAuthMethods.length > 0 : false);
+  return isConnected || (item ? item.authMethods.length > 0 : false);
 }
 
 function directedAuthorizeConnectModalOpen(
   key: DirectedAuthorizeConnectModalKey | null,
   args: {
-    readonly connectorType: ConnectorRef | null;
+    readonly connectorRef: ConnectorRef | null;
     readonly agentId: string | null;
     readonly signal: AbortSignal;
   },
 ): boolean {
   return (
-    key?.connectorType === args.connectorType &&
+    key?.connectorRef === args.connectorRef &&
     key.agentId === args.agentId &&
     key.signal === args.signal
   );
@@ -200,7 +200,7 @@ function DirectedAuthorizeCardContent({
   canAuthorize,
   onAuthorize,
 }: {
-  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
+  readonly icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;
@@ -257,20 +257,20 @@ function DirectedAuthorizeCardContent({
 function runDirectedAuthorize(params: {
   readonly canAuthorize: boolean;
   readonly isConnected: boolean;
-  readonly item: ConnectorTypeWithStatus | undefined;
-  readonly connectorType: ConnectorRef;
+  readonly item: PublicConnectorCatalogStatusItem | undefined;
+  readonly connectorRef: ConnectorRef;
   readonly connectorLabel: string;
   readonly agentId: string;
-  readonly authMethod: ConnectorStatusAuthMethodDetail | null;
+  readonly authMethod: PublicConnectorCatalogAuthMethodDetail | null;
   readonly signal: AbortSignal;
   readonly authorize: (
-    connectorType: ConnectorRef,
+    connectorRef: ConnectorRef,
     agentId: string,
     signal: AbortSignal,
   ) => Promise<void>;
   readonly connect: (
-    connectorType: ConnectorRef,
-    method: ConnectorStatusAuthMethodDetail,
+    connectorRef: ConnectorRef,
+    method: PublicConnectorCatalogAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
       readonly agentId?: string;
@@ -279,7 +279,7 @@ function runDirectedAuthorize(params: {
   ) => Promise<boolean>;
   readonly connectNoAuth: (
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options: {
         readonly connectorLabel?: string;
@@ -299,7 +299,7 @@ function runDirectedAuthorize(params: {
     detach(
       (async () => {
         await params.authorize(
-          params.connectorType,
+          params.connectorRef,
           params.agentId,
           params.signal,
         );
@@ -324,7 +324,7 @@ function runDirectedAuthorize(params: {
         let connected = false;
         if (browserAuthMethod) {
           connected = await params.connect(
-            params.connectorType,
+            params.connectorRef,
             browserAuthMethod,
             {
               connectorLabel: params.connectorLabel,
@@ -335,7 +335,7 @@ function runDirectedAuthorize(params: {
         } else if (noAuthMethod) {
           connected = await params.connectNoAuth(
             {
-              type: params.connectorType,
+              connectorRef: params.connectorRef,
               authMethod: noAuthMethod,
               options: {
                 connectorLabel: params.connectorLabel,
@@ -356,15 +356,15 @@ function runDirectedAuthorize(params: {
     );
     return;
   }
-  if (params.item && params.item.availableAuthMethods.length > 0) {
+  if (params.item && params.item.authMethods.length > 0) {
     params.openConnectModal();
   }
 }
 
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
-  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
-  const connectFlowType = useGet(connectFlowType$);
+  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const connectFlowConnectorRef = useGet(connectFlowConnectorRef$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorize = useSet(authorizeConnector$);
@@ -376,17 +376,17 @@ function DirectedAuthorizeCard() {
   );
   const actionCallback = useGet(routeChatActionCallback$);
   const runCallback = useSet(runChatActionCallback$);
-  const connectorTypeForState = params?.connectorType ?? null;
+  const connectorRefForState = params?.connectorRef ?? null;
   const agentName = useDirectedAuthorizeAgentName(params?.agentId ?? null);
   const { item, isConnected, catalogLoading, unavailable } =
-    useDirectedAuthorizeCatalogState(connectorTypeForState);
+    useDirectedAuthorizeCatalogState(connectorRefForState);
   const { isAuthorized, permissionLoading } =
     useDirectedAuthorizePermissionState(
-      connectorTypeForState,
+      connectorRefForState,
       params?.agentId ?? null,
     );
   const connectModalOpen = directedAuthorizeConnectModalOpen(connectModalKey, {
-    connectorType: connectorTypeForState,
+    connectorRef: connectorRefForState,
     agentId: params?.agentId ?? null,
     signal,
   });
@@ -395,9 +395,10 @@ function DirectedAuthorizeCard() {
     return null;
   }
 
-  const { connectorType, agentId } = params;
+  const { connectorRef, agentId } = params;
   const isConnecting =
-    pollingType === connectorType || connectFlowType === connectorType;
+    pollingConnectorRef === connectorRef ||
+    connectFlowConnectorRef === connectorRef;
   if (unavailable) {
     return null;
   }
@@ -407,8 +408,8 @@ function DirectedAuthorizeCard() {
   const selectedAuthMethod = item
     ? getOnlyAvailableStatusBrowserAuthMethodDetail(item)
     : null;
-  const connectorLabel = item?.label ?? connectorType;
-  const connectorDescription = item?.helpText ?? "";
+  const connectorLabel = item?.label ?? connectorRef;
+  const connectorDescription = item?.description ?? "";
   const handleAuthorizeSuccess = async () => {
     if (actionCallback.callbackPrompt && actionCallback.threadId) {
       await runCallback(
@@ -427,7 +428,7 @@ function DirectedAuthorizeCard() {
       canAuthorize,
       isConnected,
       item,
-      connectorType,
+      connectorRef,
       connectorLabel,
       agentId,
       authMethod: selectedAuthMethod,
@@ -438,7 +439,7 @@ function DirectedAuthorizeCard() {
       reloadAuthorization,
       onSuccess: handleAuthorizeSuccess,
       openConnectModal: () => {
-        setDirectedAuthorizeConnectModalKey({ connectorType, agentId, signal });
+        setDirectedAuthorizeConnectModalKey({ connectorRef, agentId, signal });
       },
     });
   };
@@ -458,7 +459,7 @@ function DirectedAuthorizeCard() {
       />
       {connectModalOpen && (
         <ConnectModal
-          selectedType={connectorType}
+          selectedConnectorRef={connectorRef}
           agentId={agentId}
           onSuccess={async () => {
             reloadAuthorization();

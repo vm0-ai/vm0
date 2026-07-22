@@ -10,17 +10,17 @@ import {
   connectorRefSchema,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
-  connectFlowType$,
-  justConnectedTypes$,
-  pollingOAuthAuthCodeConnectorType$,
-  pollingOAuthDeviceAuthConnectorType$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
-  type ConnectorTypeWithStatus,
+  connectFlowConnectorRef$,
+  justConnectedRefs$,
+  pollingOAuthAuthCodeConnectorRef$,
+  pollingOAuthDeviceAuthConnectorRef$,
+  selectedConnectorRef$,
+  setSelectedConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
@@ -66,12 +66,12 @@ function OnboardingConnectorRow({
   onConnect,
 }: {
   readonly connectorRef: ConnectorRef;
-  readonly item: ConnectorTypeWithStatus | undefined;
+  readonly item: PublicConnectorCatalogStatusItem | undefined;
   readonly connected: boolean;
   readonly connecting: boolean;
   readonly loading: boolean;
   readonly variant: ConnectorSetupVariant;
-  readonly onConnect: (item: ConnectorTypeWithStatus) => void;
+  readonly onConnect: (item: PublicConnectorCatalogStatusItem) => void;
 }) {
   const label = item?.label ?? connectorRef;
   return (
@@ -95,7 +95,7 @@ function OnboardingConnectorRow({
           <>
             <p className="truncate text-sm font-medium">{label}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {promptHelpText(item?.helpText)}
+              {promptHelpText(item?.description)}
             </p>
           </>
         )}
@@ -139,25 +139,27 @@ export function OnboardingConnectorSetup({
 }) {
   const refs = connectorRefs(connectorIds);
   const pageSignal = useGet(pageSignal$);
-  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const connectorCatalogItemsLoadable = useLastLoadable(
+    allConnectorCatalogItems$,
+  );
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const connectType = useGet(selectedConnectorType$);
-  const setConnectType = useSet(setSelectedConnectorType$);
-  const connectFlowType = useGet(connectFlowType$);
-  const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
-  const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
-  const justConnectedTypes = useGet(justConnectedTypes$);
+  const connectRef = useGet(selectedConnectorRef$);
+  const setConnectRef = useSet(setSelectedConnectorRef$);
+  const connectFlowRef = useGet(connectFlowConnectorRef$);
+  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
+  const justConnectedRefs = useGet(justConnectedRefs$);
 
   if (refs.length === 0 && children === undefined) {
     return null;
   }
 
-  const connectorTypes =
-    connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data
+  const connectorCatalogItems =
+    connectorCatalogItemsLoadable.state === "hasData"
+      ? connectorCatalogItemsLoadable.data
       : [];
-  const loading = connectorTypesLoadable.state === "loading";
+  const loading = connectorCatalogItemsLoadable.state === "loading";
 
   return (
     <>
@@ -169,15 +171,15 @@ export function OnboardingConnectorSetup({
         )}
       >
         {refs.map((connectorRef) => {
-          const item = connectorTypes.find((candidate) => {
-            return candidate.type === connectorRef;
+          const item = connectorCatalogItems.find((candidate) => {
+            return candidate.connectorRef === connectorRef;
           });
           const connected =
-            item?.connected === true || justConnectedTypes.has(connectorRef);
+            item?.connected === true || justConnectedRefs.has(connectorRef);
           const connecting =
-            connectFlowType === connectorRef ||
-            pollingAuthCodeType === connectorRef ||
-            pollingDeviceAuthType === connectorRef;
+            connectFlowRef === connectorRef ||
+            pollingAuthCodeRef === connectorRef ||
+            pollingDeviceAuthRef === connectorRef;
 
           return (
             <OnboardingConnectorRow
@@ -192,7 +194,7 @@ export function OnboardingConnectorSetup({
                 launchConnectorConnect({
                   connector,
                   openModal: () => {
-                    setConnectType(connectorRef);
+                    setConnectRef(connectorRef);
                   },
                   connectBrowserAuth: (authMethod) => {
                     return connect(
@@ -205,7 +207,7 @@ export function OnboardingConnectorSetup({
                   connectNoAuth: (authMethod) => {
                     return connectNoAuth(
                       {
-                        type: connectorRef,
+                        connectorRef,
                         authMethod,
                         options: { connectorLabel: connector.label },
                       },
@@ -219,10 +221,10 @@ export function OnboardingConnectorSetup({
         })}
         {children}
       </section>
-      {connectType ? (
+      {connectRef ? (
         <ConnectModal
           onClose={() => {
-            setConnectType(null);
+            setConnectRef(null);
           }}
         />
       ) : null}
