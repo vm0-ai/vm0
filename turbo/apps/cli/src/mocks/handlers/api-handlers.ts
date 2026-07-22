@@ -3,8 +3,8 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
-  connectorAuthMethodIdSchema,
-  type ConnectorAuthMethodId,
+  connectorRegistryAuthMethodIdSchema,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type {
@@ -26,8 +26,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isConnectorAuthMethodId(
   value: unknown,
-): value is ConnectorAuthMethodId {
-  return connectorAuthMethodIdSchema.safeParse(value).success;
+): value is ConnectorRegistryAuthMethodId {
+  return connectorRegistryAuthMethodIdSchema.safeParse(value).success;
 }
 
 function defaultPermissionSummary() {
@@ -158,7 +158,9 @@ function defaultPublicCatalogStatus() {
   });
 }
 
-function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
+function manualGrantAuthMethodFromBody(
+  body: unknown,
+): ConnectorRegistryAuthMethodId {
   if (isRecord(body) && isConnectorAuthMethodId(body.authMethod)) {
     return body.authMethod;
   }
@@ -167,7 +169,7 @@ function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
 
 function connectorManualGrantResponse(
   type: string,
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",

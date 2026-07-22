@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import {
-  connectorCatalogAuthMethodIdSchema,
-  connectorCatalogRefSchema,
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
 } from "./connector-identity";
 import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
@@ -11,7 +11,7 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const publicConnectorCatalogAuthMethodSummarySchema = z.object({
-  id: connectorCatalogAuthMethodIdSchema,
+  id: connectorAuthMethodIdSchema,
   label: z.string(),
   description: z.string().nullable(),
   grantKind: z.enum([
@@ -57,7 +57,7 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  connectorRef: connectorCatalogRefSchema,
+  connectorRef: connectorRefSchema,
   label: z.string(),
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
@@ -118,7 +118,7 @@ const publicConnectorCatalogConnectionStatusSchema = z.enum([
 ]);
 
 const publicConnectorCatalogConnectionSchema = z.object({
-  authMethod: connectorCatalogAuthMethodIdSchema,
+  authMethod: connectorAuthMethodIdSchema,
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
   reconnectReason: connectorReconnectReasonSchema.nullable(),
@@ -132,7 +132,7 @@ const publicConnectorCatalogStatusItemSchema =
     scopeMismatch: z.boolean(),
     authMethodSupportsRefresh: z.boolean(),
     tokenExpiresAt: z.string().nullable(),
-    singleAuthCodeAuthMethodId: connectorCatalogAuthMethodIdSchema.nullable(),
+    singleAuthCodeAuthMethodId: connectorAuthMethodIdSchema.nullable(),
     connectNotice: z.enum(["google-security-warning"]).nullable(),
   });
 
@@ -160,7 +160,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  connectorRef: connectorCatalogRefSchema,
+  connectorRef: connectorRefSchema,
   label: z.string(),
   icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
@@ -174,7 +174,7 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  connectorRef: connectorCatalogRefSchema,
+  connectorRef: connectorRefSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<

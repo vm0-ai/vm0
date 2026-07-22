@@ -10,8 +10,8 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   getDefaultModel,
@@ -375,13 +375,13 @@ interface ResolvedCompose {
 type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
   readonly source: ConnectorScopeSource;
 }
 
 interface ExplicitConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
+  readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
@@ -624,7 +624,7 @@ interface ConnectorRuntimeContext {
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
     | undefined;
-  readonly connectorTypes: readonly ConnectorCatalogRef[];
+  readonly connectorTypes: readonly ConnectorRef[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -787,7 +787,7 @@ function buildLegacySystemSkillVolumes(
 }
 
 function buildExternalConnectorSkillVolumes(
-  connectorTypes: readonly ConnectorCatalogRef[],
+  connectorTypes: readonly ConnectorRef[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
@@ -835,7 +835,7 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   framework: SupportedFramework,
@@ -2206,9 +2206,9 @@ function filterSecretConnectorMetadataMap(args: {
 
 interface StoredConnectorRuntimeRow {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly connectorStateRevision: bigint;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly needsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
@@ -2240,9 +2240,9 @@ const storedConnectorVariableValuesDecoder = zodDriverValueDecoder(
 
 interface ConnectorEnvBindingSet {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly connectorStateRevision: bigint;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
 
@@ -2292,7 +2292,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined,
+  allowedConnectorTypes: readonly ConnectorRef[] | undefined,
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2913,7 +2913,7 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -2946,7 +2946,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3053,7 +3053,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3083,7 +3083,7 @@ async function loadStoredConnectorSnapshotRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
@@ -3106,7 +3106,7 @@ function buildStoredConnectorMaterializationPlan(args: {
 function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -3190,7 +3190,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -3822,7 +3822,7 @@ async function buildPermissionManifest(args: {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
-  readonly connectorTypes?: readonly ConnectorCatalogRef[];
+  readonly connectorTypes?: readonly ConnectorRef[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {

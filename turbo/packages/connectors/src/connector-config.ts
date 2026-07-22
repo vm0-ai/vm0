@@ -359,15 +359,19 @@ export type ConnectorAuthMethodConfig = ConnectorAuthMethodRuntimeConfig &
  * These values are connector registry keys, not lifecycle categories. Behavior
  * must be derived from the selected auth method lifecycle config.
  */
-export const CONNECTOR_AUTH_METHOD_IDS = [
+export const CONNECTOR_REGISTRY_AUTH_METHOD_IDS = [
   "oauth",
   "openid",
   "api-token",
   "cli",
   "api",
 ] as const;
-export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
-export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
+export const connectorRegistryAuthMethodIdSchema = z.enum(
+  CONNECTOR_REGISTRY_AUTH_METHOD_IDS,
+);
+export type ConnectorRegistryAuthMethodId = z.infer<
+  typeof connectorRegistryAuthMethodIdSchema
+>;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -577,7 +581,7 @@ export function connectorDisplayCategoryMetadataForItems(
 }
 
 type ConnectorAuthMethods = Partial<
-  Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
+  Record<ConnectorRegistryAuthMethodId, ConnectorAuthMethodConfig>
 >;
 
 type ConnectorConfigBase = {

@@ -1,7 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -33,7 +33,7 @@ import {
 } from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorRef: ConnectorCatalogRef;
+  connectorRef: ConnectorRef;
   agentId: string;
   originalUrl: string;
   callbackPrompt: ChatActionCallback["callbackPrompt"];
@@ -98,7 +98,7 @@ export function parseConnectorAuthorizeUrl(
   );
   const connectorRef = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  const parsedConnectorRef = connectorCatalogRefSchema.safeParse(connectorRef);
+  const parsedConnectorRef = connectorRefSchema.safeParse(connectorRef);
   if (!parsedConnectorRef.success || !agentId) {
     return null;
   }

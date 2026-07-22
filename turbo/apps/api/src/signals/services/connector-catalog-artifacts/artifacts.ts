@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
   artifactKeySchema,
-  connectorCatalogVersionSchema,
   connectorRefSchema,
+  connectorCatalogVersionSchema,
   digestSchema,
   privateNameSchema,
 } from "./common";

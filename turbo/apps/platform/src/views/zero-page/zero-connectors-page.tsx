@@ -17,7 +17,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -548,7 +548,7 @@ function ConnectorAccessButton({
   connectorLabel,
   onClick,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
@@ -896,7 +896,7 @@ function renderBuiltinList({
 
 function connectorLabelForType(
   connectors: readonly ConnectorTypeWithStatus[],
-  type: ConnectorType | null,
+  type: ConnectorRef | null,
 ): string | null {
   if (!type) {
     return null;
@@ -963,7 +963,7 @@ export function ZeroConnectorsPage() {
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
-  const connectHandler = (type: ConnectorType) => {
+  const connectHandler = (type: ConnectorRef) => {
     const ct = filteredConnectors.find((c) => {
       return c.type === type;
     });
@@ -1006,7 +1006,7 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = async (
-    type: ConnectorType,
+    type: ConnectorRef,
     connectorLabel: string,
   ) => {
     if (disconnecting) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-ref";
+import { connectorRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();

@@ -1,5 +1,5 @@
 import type {
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorAuthMethodRuntimeConfig,
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
@@ -45,7 +45,7 @@ function formatPublicFieldList(names: readonly string[]): string {
 
 export function getPublicManualGrantFieldDescriptors(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
 ): readonly PublicManualGrantFieldDescriptor[] | null {
   const method = getConnectorAuthMethod(type, authMethod);
   if (method?.grant.kind !== "manual") {
@@ -71,7 +71,7 @@ function publicManualGrantFieldDescriptors(
 
 export function getPublicDeviceAuthStartOptionDescriptors(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
 ): readonly PublicDeviceAuthStartOptionDescriptor[] | null {
   const method = getConnectorAuthMethod(type, authMethod);
   if (method?.grant.kind !== "device-auth") {

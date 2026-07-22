@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -48,7 +48,7 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 
 interface ConnectorAccessManagementDialogProps {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly connectorLabel: string;
   readonly onClose: () => void;
 }
@@ -320,7 +320,7 @@ function AgentPermissionDialog({
 }: {
   readonly row: ConnectorAgentAccessRow | undefined;
   readonly metadata: PublicConnectorCatalogPermissionDetail | null;
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorRef;
   readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;
   readonly applyGrantPolicies: ApplyUserPermissionGrants;

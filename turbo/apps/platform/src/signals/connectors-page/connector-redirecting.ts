@@ -1,11 +1,11 @@
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { generateRouterPath } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 
 export type ConnectorRedirectingStatus = "redirecting" | "error";
 
 export function connectorRedirectingPath(args: {
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly label: string;
   readonly status?: ConnectorRedirectingStatus;
 }): string {

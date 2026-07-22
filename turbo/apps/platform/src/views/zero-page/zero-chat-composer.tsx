@@ -141,7 +141,7 @@ import {
   type WorkflowTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -415,7 +415,7 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // ---------------------------------------------------------------------------
 
 interface ComposerConnectorItem {
-  type: ConnectorType;
+  type: ConnectorRef;
   label: string;
   helpText: string;
   icon: ConnectorTypeWithStatus["icon"];
@@ -5536,7 +5536,7 @@ function AddConnectorsDialog({
   unconnected: ConnectorTypeWithStatus[];
   pollingType: string | null;
   onClose: () => void;
-  onSelect: (type: ConnectorType) => void;
+  onSelect: (type: ConnectorRef) => void;
 }) {
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
@@ -5801,7 +5801,7 @@ function ConnectorsPopoverButton({
   savingType: string | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
-  onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
+  onToggle: (type: ConnectorRef, checked: boolean) => void | Promise<void>;
 }) {
   const search = useGet(signals.popoverSearch$);
   const setSearch = useSet(signals.setPopoverSearch$);
@@ -6987,7 +6987,7 @@ export function useZeroChatComposer({
     };
   });
 
-  const handleConnectSuccess = async (type: ConnectorType) => {
+  const handleConnectSuccess = async (type: ConnectorRef) => {
     const label = connectorMap.get(type)?.label ?? type;
     const authorized = await tapError(
       (async () => {
@@ -7012,7 +7012,7 @@ export function useZeroChatComposer({
     return true;
   };
 
-  const handleToggle = async (type: ConnectorType, checked: boolean) => {
+  const handleToggle = async (type: ConnectorRef, checked: boolean) => {
     setSavingType(type);
     await bestEffort(
       checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),

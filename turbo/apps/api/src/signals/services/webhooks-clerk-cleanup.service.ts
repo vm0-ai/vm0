@@ -1,4 +1,4 @@
-import { connectorCatalogRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
@@ -373,7 +373,7 @@ const revokeOrgConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorCatalogRefSchema.safeParse(row.type);
+      const parsed = connectorRefSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           orgId,
@@ -407,7 +407,7 @@ const revokeUserConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorCatalogRefSchema.safeParse(row.type);
+      const parsed = connectorRefSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           userId,

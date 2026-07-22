@@ -1,5 +1,5 @@
 import { Command, Option } from "commander";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
@@ -58,7 +58,7 @@ type UrlDiagnosticRequest = Extract<
 
 interface DiagContext {
   readonly environmentNames: readonly string[] | null;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly label: string;
   readonly connectorAvailable: boolean;
   readonly credentialResolution: "network-boundary" | "none";

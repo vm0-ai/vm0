@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -16,36 +16,36 @@ import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 
 export interface ComposerConnectorSignals {
   readonly agentId$: Computed<Promise<string | null>>;
-  readonly authorizedConnectors$: Computed<Promise<readonly ConnectorType[]>>;
+  readonly authorizedConnectors$: Computed<Promise<readonly ConnectorRef[]>>;
   readonly authorizeConnector$: Command<
     Promise<void>,
-    [ConnectorType, AbortSignal]
+    [ConnectorRef, AbortSignal]
   >;
   readonly deauthorizeConnector$: Command<
     Promise<void>,
-    [ConnectorType, AbortSignal]
+    [ConnectorRef, AbortSignal]
   >;
   readonly showAddDialog$: Computed<boolean>;
   readonly setShowAddDialog$: Command<void, [boolean]>;
-  readonly pendingConnectType$: Computed<ConnectorType | null>;
-  readonly setPendingConnectType$: Command<void, [ConnectorType | null]>;
-  readonly selectedConnectType$: Computed<ConnectorType | null>;
-  readonly setSelectedConnectType$: Command<void, [ConnectorType | null]>;
-  readonly savingType$: Computed<ConnectorType | null>;
-  readonly setSavingType$: Command<void, [ConnectorType | null]>;
+  readonly pendingConnectType$: Computed<ConnectorRef | null>;
+  readonly setPendingConnectType$: Command<void, [ConnectorRef | null]>;
+  readonly selectedConnectType$: Computed<ConnectorRef | null>;
+  readonly setSelectedConnectType$: Command<void, [ConnectorRef | null]>;
+  readonly savingType$: Computed<ConnectorRef | null>;
+  readonly setSavingType$: Command<void, [ConnectorRef | null]>;
   readonly addDialogSearch$: Computed<string>;
   readonly setAddDialogSearch$: Command<void, [string]>;
   readonly popoverSearch$: Computed<string>;
   readonly setPopoverSearch$: Command<void, [string]>;
-  readonly popoverSortOrder$: Computed<readonly ConnectorType[] | null>;
+  readonly popoverSortOrder$: Computed<readonly ConnectorRef[] | null>;
   readonly setPopoverSortOrder$: Command<
     void,
-    [readonly ConnectorType[] | null]
+    [readonly ConnectorRef[] | null]
   >;
   readonly computerUseDownloadDialogOpen$: Computed<boolean>;
   readonly setComputerUseDownloadDialogOpen$: Command<void, [boolean]>;
-  readonly permissionConnector$: Computed<ConnectorType | null>;
-  readonly setPermissionConnector$: Command<void, [ConnectorType | null]>;
+  readonly permissionConnector$: Computed<ConnectorRef | null>;
+  readonly setPermissionConnector$: Command<void, [ConnectorRef | null]>;
   readonly permissionMetadata$: Computed<
     Promise<PublicConnectorCatalogPermissionDetail | null>
   >;
@@ -68,14 +68,14 @@ function createStateBinding<T>(initialValue: T) {
 
 interface ComposerConnectorUiState {
   readonly showAddDialog: boolean;
-  readonly pendingConnectType: ConnectorType | null;
-  readonly selectedConnectType: ConnectorType | null;
-  readonly savingType: ConnectorType | null;
+  readonly pendingConnectType: ConnectorRef | null;
+  readonly selectedConnectType: ConnectorRef | null;
+  readonly savingType: ConnectorRef | null;
   readonly addDialogSearch: string;
   readonly popoverSearch: string;
-  readonly popoverSortOrder: readonly ConnectorType[] | null;
+  readonly popoverSortOrder: readonly ConnectorRef[] | null;
   readonly computerUseDownloadDialogOpen: boolean;
-  readonly permissionConnector: ConnectorType | null;
+  readonly permissionConnector: ConnectorRef | null;
 }
 
 function initialComposerConnectorUiState(): ComposerConnectorUiState {
@@ -101,7 +101,7 @@ function createConnectorAuthorizationSignals(
   agentId$: Computed<Promise<string | null>>,
 ): ConnectorAuthorizationSignals {
   const authorizedConnectors$ = computed(
-    async (get): Promise<readonly ConnectorType[]> => {
+    async (get): Promise<readonly ConnectorRef[]> => {
       const agentId = await get(agentId$);
       if (!agentId) {
         return [];
@@ -117,7 +117,7 @@ function createConnectorAuthorizationSignals(
     async (
       { get, set },
       operation: "add" | "remove",
-      connectorType: ConnectorType,
+      connectorType: ConnectorRef,
       signal: AbortSignal,
     ): Promise<void> => {
       const agentId = await get(agentId$);
@@ -150,7 +150,7 @@ function createConnectorAuthorizationSignals(
   const authorizeConnector$ = command(
     async (
       { set },
-      connectorType: ConnectorType,
+      connectorType: ConnectorRef,
       signal: AbortSignal,
     ): Promise<void> => {
       await set(updateAuthorizedConnectors$, "add", connectorType, signal);
@@ -160,7 +160,7 @@ function createConnectorAuthorizationSignals(
   const deauthorizeConnector$ = command(
     async (
       { set },
-      connectorType: ConnectorType,
+      connectorType: ConnectorRef,
       signal: AbortSignal,
     ): Promise<void> => {
       await set(updateAuthorizedConnectors$, "remove", connectorType, signal);

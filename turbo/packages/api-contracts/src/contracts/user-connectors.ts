@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorCatalogRefSchema } from "./connector-identity";
+import { connectorRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -11,7 +11,7 @@ const c = initContract();
  * agent.
  */
 export const userConnectorEnabledTypesSchema = z.object({
-  enabledTypes: z.array(connectorCatalogRefSchema),
+  enabledTypes: z.array(connectorRefSchema),
 });
 export type UserConnectorEnabledTypes = z.infer<
   typeof userConnectorEnabledTypesSchema
