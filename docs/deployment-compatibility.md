@@ -179,10 +179,17 @@ Runners advertise `storage-mounts-v1` through the existing claim
 - legacy `storages` plus `artifacts`
 
 Mixed, incomplete, and representation-free manifests are invalid. The initial
-receiver release does not change backend output: the API continues returning
-the legacy shape and safely ignores the capability. After the receiver fleet is
-deployed, the API may send `storageMounts` only to a Runner that advertised the
-capability; old Runners must continue receiving both legacy arrays.
+receiver release left backend output unchanged. After that receiver fleet was
+deployed, the API began sending `storageMounts` only to a Runner that advertises
+the capability; old Runners continue receiving both legacy arrays.
+
+New run, session, and checkpoint writers persist canonical Storage mounts and a
+legacy rollback projection. Readers prefer canonical persistence and fall back
+to the legacy projection for old rows. Explicit legacy checkpoint overrides
+also remain on the compatibility reader because canonical mounts intentionally
+do not retain the old compose-volume versus additional-volume distinction.
+Remove the rollback projection only after canonical output and persistence have
+been observed in production and historical rows have been backfilled.
 
 Runner and guest binaries ship together, so the Runner-to-guest manifest uses
 the canonical shape immediately while the guest reader temporarily accepts both

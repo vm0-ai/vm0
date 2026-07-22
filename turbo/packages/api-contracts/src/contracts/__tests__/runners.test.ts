@@ -8,6 +8,7 @@ import {
   heartbeatBodySchema,
   heldSessionStateSchema,
   jobSchema,
+  legacyStorageManifestSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -114,9 +115,50 @@ describe("runner storage manifest contract", () => {
     ).toBe(false);
   });
 
+  it("accepts exactly one canonical or legacy wire representation", () => {
+    const canonical = {
+      storageMounts: [
+        {
+          name: "workspace",
+          storageId: "storage-id-1",
+          versionId: "version-1",
+          mountPath: "/workspace",
+          archiveUrl: "https://storage.example/workspace.tar.gz",
+        },
+      ],
+    };
+    const legacy = { storages: [], artifacts: [] };
+
+    expect(storageManifestSchema.parse(canonical)).toEqual(canonical);
+    expect(storageManifestSchema.parse(legacy)).toEqual(legacy);
+    expect(
+      storageManifestSchema.safeParse({ ...canonical, ...legacy }).success,
+    ).toBe(false);
+    expect(storageManifestSchema.safeParse({ storages: [] }).success).toBe(
+      false,
+    );
+    expect(storageManifestSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects duplicate canonical mount paths", () => {
+    const mount = {
+      name: "workspace",
+      storageId: "storage-id-1",
+      versionId: "version-1",
+      mountPath: "/workspace",
+      archiveUrl: "https://storage.example/workspace.tar.gz",
+    };
+
+    expect(
+      storageManifestSchema.safeParse({
+        storageMounts: [mount, { ...mount, name: "replacement" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts the web-produced claim manifest shape", () => {
     expect(
-      storageManifestSchema.parse({
+      legacyStorageManifestSchema.parse({
         storages: [
           {
             name: "workspace",
@@ -160,7 +202,7 @@ describe("runner storage manifest contract", () => {
 
   it("strips legacy artifact manifest urls", () => {
     expect(
-      storageManifestSchema.parse({
+      legacyStorageManifestSchema.parse({
         storages: [],
         artifacts: [
           {
@@ -188,7 +230,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("accepts explicit empty artifact entries with compatibility archive urls", () => {
-    const manifest = storageManifestSchema.parse({
+    const manifest = legacyStorageManifestSchema.parse({
       storages: [],
       artifacts: [
         {
@@ -209,7 +251,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("accepts explicit empty artifact entries without archive urls", () => {
-    const manifest = storageManifestSchema.parse({
+    const manifest = legacyStorageManifestSchema.parse({
       storages: [],
       artifacts: [
         {
@@ -229,7 +271,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("rejects non-empty artifact entries without archive urls", () => {
-    const result = storageManifestSchema.safeParse({
+    const result = legacyStorageManifestSchema.safeParse({
       storages: [],
       artifacts: [
         {
@@ -245,7 +287,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("rejects guest-download-only nullable archive urls", () => {
-    const result = storageManifestSchema.safeParse({
+    const result = legacyStorageManifestSchema.safeParse({
       storages: [
         {
           name: "workspace",
@@ -262,7 +304,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("rejects nullable artifact archive urls even for explicit empty artifacts", () => {
-    const result = storageManifestSchema.safeParse({
+    const result = legacyStorageManifestSchema.safeParse({
       storages: [],
       artifacts: [
         {
@@ -280,7 +322,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("accepts preserve-parent missing-root policy on artifact entries", () => {
-    const manifest = storageManifestSchema.parse({
+    const manifest = legacyStorageManifestSchema.parse({
       storages: [],
       artifacts: [
         {
@@ -300,7 +342,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("accepts explicit fail missing-root policy on artifact entries", () => {
-    const manifest = storageManifestSchema.parse({
+    const manifest = legacyStorageManifestSchema.parse({
       storages: [],
       artifacts: [
         {
@@ -318,7 +360,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("rejects unknown artifact missing-root policies", () => {
-    const result = storageManifestSchema.safeParse({
+    const result = legacyStorageManifestSchema.safeParse({
       storages: [],
       artifacts: [
         {
@@ -336,7 +378,7 @@ describe("runner storage manifest contract", () => {
   });
 
   it("strips runner-derived guest-download fields", () => {
-    const manifest = storageManifestSchema.parse({
+    const manifest = legacyStorageManifestSchema.parse({
       storages: [
         {
           name: "workspace",

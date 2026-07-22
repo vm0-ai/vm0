@@ -197,7 +197,7 @@ const uploadVolumeServerSideInner$ = command(
         fileCount: 0,
       })
       .onConflictDoUpdate({
-        target: [storages.orgId, storages.userId, storages.name, storages.type],
+        target: [storages.orgId, storages.userId, storages.name],
         set: { updatedAt: timestamp },
       })
       .returning();

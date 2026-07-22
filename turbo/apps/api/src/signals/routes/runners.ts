@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -11,6 +12,7 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
+  type StorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -1501,6 +1503,7 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly capabilities: readonly string[];
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1569,6 +1572,8 @@ async function buildClaimResponseBody(args: {
       args.signal.throwIfAborted();
       const {
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
+        storageManifest: _legacyStorageManifest,
+        storageMounts: _storedStorageMounts,
         ...runnerStoredContext
       } = args.storedContext;
       return {
@@ -1582,6 +1587,10 @@ async function buildClaimResponseBody(args: {
           connectorVars: args.storedContext.vars,
         }),
         checkpointId: args.run.resumedFromCheckpointId ?? null,
+        storageManifest: storageManifestForRunner(
+          args.storedContext,
+          args.capabilities,
+        ),
         resumeSession,
         sandboxToken,
         secretValues,
@@ -1592,6 +1601,24 @@ async function buildClaimResponseBody(args: {
   );
 }
 
+function storageManifestForRunner(
+  storedContext: StoredExecutionContext,
+  capabilities: readonly string[],
+): StorageManifest | null {
+  if (
+    storedContext.storageMounts !== undefined &&
+    capabilities.includes(RUNNER_STORAGE_MOUNTS_CAPABILITY)
+  ) {
+    return {
+      storageMounts: storedContext.storageMounts.map((storedMount) => {
+        const { orgId: _orgId, userId: _userId, ...mount } = storedMount;
+        return mount;
+      }),
+    };
+  }
+  return storedContext.storageManifest;
+}
+
 const buildClaimResponseBodyForClaim$ = command(
   async (
     { set },
@@ -1599,6 +1626,7 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly db: Db;
       readonly run: ClaimedRun;
       readonly storedContext: StoredExecutionContext;
+      readonly capabilities: readonly string[];
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1607,6 +1635,7 @@ const buildClaimResponseBodyForClaim$ = command(
       db: args.db,
       run: args.run,
       storedContext: args.storedContext,
+      capabilities: args.capabilities,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2016,6 +2045,7 @@ const claimAuthorizedJob$ = command(
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
+      readonly capabilities: readonly string[];
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
@@ -2057,6 +2087,7 @@ const claimAuthorizedJob$ = command(
         db,
         run,
         storedContext,
+        capabilities: args.capabilities,
         timing: claimRouteTiming,
         signal,
       }),
@@ -2151,6 +2182,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     jobWithRun,
     telemetry: body.data.telemetry,
+    capabilities: body.data.capabilities ?? [],
     claimRequestStartedAtMs,
     claimRouteTiming,
     signal,

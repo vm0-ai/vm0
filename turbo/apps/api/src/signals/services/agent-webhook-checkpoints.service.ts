@@ -8,7 +8,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
-import type { ContextArtifact } from "@vm0/db/types";
+import type { ContextArtifact, PersistedStorageMount } from "@vm0/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -57,6 +57,7 @@ interface EnrichedVolumeVersionsSnapshot {
 interface CheckpointRunContext {
   readonly agentComposeVersionId: string | null;
   readonly additionalVolumes: typeof agentRuns.$inferSelect.additionalVolumes;
+  readonly storageMounts: typeof agentRuns.$inferSelect.storageMounts;
   readonly secretNames: readonly string[] | null;
   readonly sessionId: string;
   readonly vars: unknown;
@@ -119,6 +120,46 @@ function responseArtifacts(
   return snapshots && snapshots.length > 0 ? snapshots : undefined;
 }
 
+function checkpointStorageMounts(args: {
+  readonly runStorageMounts: readonly PersistedStorageMount[] | null;
+  readonly artifactSnapshots: CheckpointCreateBody["artifactSnapshots"];
+}): PersistedStorageMount[] | null {
+  if (!args.runStorageMounts) {
+    return null;
+  }
+  const snapshotsByIdentity = new Map(
+    (args.artifactSnapshots ?? []).map((snapshot) => {
+      return [
+        JSON.stringify([snapshot.name, snapshot.mountPath]),
+        snapshot,
+      ] as const;
+    }),
+  );
+  return args.runStorageMounts.map((mount) => {
+    if (!mount.writeback) {
+      return mount;
+    }
+    const snapshot = snapshotsByIdentity.get(
+      JSON.stringify([mount.name, mount.mountPath]),
+    );
+    if (!snapshot) {
+      return mount;
+    }
+    const {
+      version: _runVersion,
+      missingRootPolicy: _runMissingRootPolicy,
+      ...mountBase
+    } = mount;
+    const missingRootPolicy =
+      snapshot.missingRootPolicy ?? mount.missingRootPolicy;
+    return {
+      ...mountBase,
+      version: snapshot.version,
+      ...(missingRootPolicy === undefined ? {} : { missingRootPolicy }),
+    };
+  });
+}
+
 function enrichVolumeSnapshot(args: {
   readonly request: CheckpointCreateBody["volumeVersionsSnapshot"];
   readonly additionalVolumes:
@@ -161,6 +202,7 @@ async function loadCheckpointRunContext(
     .select({
       agentComposeVersionId: agentRuns.agentComposeVersionId,
       additionalVolumes: agentRuns.additionalVolumes,
+      storageMounts: agentRuns.storageMounts,
       secretNames: agentRuns.secretNames,
       sessionId: agentRuns.sessionId,
       vars: agentRuns.vars,
@@ -434,12 +476,17 @@ export const createAgentCheckpoint$ = command(
       request: input.body.volumeVersionsSnapshot,
       additionalVolumes: run.additionalVolumes,
     });
+    const storageMounts = checkpointStorageMounts({
+      runStorageMounts: run.storageMounts,
+      artifactSnapshots: input.body.artifactSnapshots,
+    });
 
     const checkpointFields = {
       conversationId: conversation.id,
       agentComposeSnapshot,
       artifactSnapshots,
       volumeVersionsSnapshot,
+      storageMounts,
     };
     const [checkpoint] = await db
       .insert(checkpoints)

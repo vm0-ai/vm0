@@ -1,4 +1,7 @@
-import type { StorageManifest } from "@vm0/api-contracts/contracts/runners";
+import type {
+  LegacyStorageManifest,
+  StoredStorageMountEntry,
+} from "@vm0/api-contracts/contracts/runners";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import {
   getInstructionsFilename,
@@ -11,6 +14,7 @@ import {
 } from "@vm0/core/storage-names";
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import type { PersistedStorageMount } from "@vm0/db/types";
 import { computed, type Computed } from "ccstate";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 
@@ -41,9 +45,8 @@ import {
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
-type StorageType = "artifact" | "volume";
-type ManifestStorage = StorageManifest["storages"][number];
-type ManifestArtifact = StorageManifest["artifacts"][number];
+type ManifestStorage = LegacyStorageManifest["storages"][number];
+type ManifestArtifact = LegacyStorageManifest["artifacts"][number];
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StorageManifestEntryKind = "compose" | "additional" | "artifact";
 export type StorageManifestSource =
@@ -113,6 +116,12 @@ interface PrepareAgentRunStorageManifestArgs {
     | readonly StorageManifestSource[]
     | undefined;
   readonly framework: SupportedFramework;
+  /** Canonical persistence reader. Complete snapshots replace all declarations;
+   * writeback snapshots replace only matching legacy artifact declarations. */
+  readonly persistedStorageMounts?: {
+    readonly mounts: readonly PersistedStorageMount[];
+    readonly mode: "complete" | "writeback";
+  };
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
 }
@@ -135,13 +144,13 @@ interface StorageResolution {
   readonly archiveSize: number;
   readonly fileCount: number;
   readonly resolvedOrgId: string;
+  readonly resolvedUserId: string;
 }
 
 interface StorageLookup {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-  readonly type: StorageType;
 }
 
 interface ArtifactStorageRow {
@@ -171,8 +180,16 @@ interface StorageManifestEntries {
   readonly composeEntries: readonly ManifestStorage[];
   readonly additionalEntries: readonly ManifestStorage[];
   readonly artifactEntries: ManifestArtifact[];
+  readonly storageMounts: readonly StoredStorageMountEntry[];
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
   readonly resolvedComposeEntryCount: number;
   readonly resolvedAdditionalEntryCount: number;
+}
+
+export interface PreparedAgentRunStorageManifest {
+  readonly storageManifest: LegacyStorageManifest;
+  readonly storageMounts: readonly StoredStorageMountEntry[];
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
 }
 
 interface BuildStorageManifestEntriesArgs {
@@ -232,7 +249,7 @@ interface StorageManifestPhaseTimingWindow {
 }
 
 /**
- * Pre-fetched (orgId, userId, name, type) -> storage row map. A single run
+ * Pre-fetched (orgId, userId, name) -> storage row map. A single run
  * resolves dozens to hundreds of volumes/artifacts; looking each up with its
  * own `SELECT storages` round-trip saturates the connection pool, so the exact
  * requested rows are loaded once and resolved from memory instead.
@@ -1028,20 +1045,14 @@ async function findStorage(
         eq(storages.orgId, lookup.orgId),
         eq(storages.userId, lookup.userId),
         eq(storages.name, lookup.name),
-        eq(storages.type, lookup.type),
       ),
     )
     .limit(1);
   return storage;
 }
 
-function storageIndexKey(
-  orgId: string,
-  userId: string,
-  name: string,
-  type: string,
-): string {
-  return JSON.stringify([orgId, userId, name, type]);
+function storageIndexKey(orgId: string, userId: string, name: string): string {
+  return JSON.stringify([orgId, userId, name]);
 }
 
 function artifactStorageLookup(
@@ -1049,7 +1060,7 @@ function artifactStorageLookup(
   userId: string,
   name: string,
 ): StorageLookup {
-  return { orgId, userId, name, type: "artifact" };
+  return { orgId, userId, name };
 }
 
 async function loadStorageIndex(
@@ -1059,7 +1070,7 @@ async function loadStorageIndex(
   const lookupsByKey = new Map<string, StorageLookup>();
   for (const lookup of lookups) {
     lookupsByKey.set(
-      storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+      storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
       lookup,
     );
   }
@@ -1077,9 +1088,6 @@ async function loadStorageIndex(
   const names = uniqueLookups.map((lookup) => {
     return lookup.name;
   });
-  const types = uniqueLookups.map((lookup) => {
-    return lookup.type;
-  });
   // Raw array interpolation expands to a SQL tuple in Drizzle. Keep each
   // zipped array in one driver parameter so the statement shape stays fixed.
   const rows = await db
@@ -1087,7 +1095,6 @@ async function loadStorageIndex(
       orgId: storages.orgId,
       userId: storages.userId,
       name: storages.name,
-      type: storages.type,
       storageId: storages.id,
       headVersionId: storages.headVersionId,
       s3Prefix: storages.s3Prefix,
@@ -1101,19 +1108,17 @@ async function loadStorageIndex(
       sql`unnest(
         ${sql.param(orgIds)}::text[],
         ${sql.param(userIds)}::text[],
-        ${sql.param(names)}::varchar(256)[],
-        ${sql.param(types)}::varchar(16)[]
-      ) AS requested(org_id, user_id, name, type)`,
+        ${sql.param(names)}::varchar(256)[]
+      ) AS requested(org_id, user_id, name)`,
       sql`${storages.orgId} = requested.org_id
         AND ${storages.userId} = requested.user_id
-        AND ${storages.name} = requested.name
-        AND ${storages.type} = requested.type`,
+        AND ${storages.name} = requested.name`,
     )
     .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id));
 
   const index = new Map<string, StorageIndexEntry>();
   for (const row of rows) {
-    index.set(storageIndexKey(row.orgId, row.userId, row.name, row.type), {
+    index.set(storageIndexKey(row.orgId, row.userId, row.name), {
       storageId: row.storageId,
       headVersionId: row.headVersionId,
       s3Prefix: row.s3Prefix,
@@ -1301,7 +1306,7 @@ function resolveLatestVersion(
   lookup: StorageLookup,
 ): StorageResolution {
   const entry = index.get(
-    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
   );
 
   if (!entry) {
@@ -1322,6 +1327,7 @@ function resolveLatestVersion(
     archiveSize: entry.headVersion.archiveSize,
     fileCount: entry.headVersion.fileCount,
     resolvedOrgId: lookup.orgId,
+    resolvedUserId: lookup.userId,
   };
 }
 
@@ -1348,7 +1354,6 @@ async function resolveExactVersion(
         eq(storages.orgId, lookup.orgId),
         eq(storages.userId, lookup.userId),
         eq(storages.name, lookup.name),
-        eq(storages.type, lookup.type),
       ),
     )
     .limit(1);
@@ -1361,6 +1366,7 @@ async function resolveExactVersion(
         archiveSize: match.archiveSize,
         fileCount: match.fileCount,
         resolvedOrgId: lookup.orgId,
+        resolvedUserId: lookup.userId,
       }
     : null;
 }
@@ -1372,7 +1378,7 @@ async function resolvePinnedVersion(
   version: string,
 ): Promise<StorageResolution> {
   const storage = index.get(
-    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
   );
   if (!storage) {
     throw new Error(`Storage "${lookup.name}" not found in database`);
@@ -1428,6 +1434,7 @@ async function resolvePinnedVersion(
     archiveSize: match.archiveSize,
     fileCount: match.fileCount,
     resolvedOrgId: lookup.orgId,
+    resolvedUserId: lookup.userId,
   };
 }
 
@@ -1468,7 +1475,6 @@ function volumeStorageLookup(
     orgId,
     userId: VOLUME_ORG_USER_ID,
     name: volumeStorageName(volume),
-    type: "volume",
   };
 }
 
@@ -1596,7 +1602,7 @@ async function resolveConnectorSkillStorageInput(args: {
 
   const lookup = volumeStorageLookup(SYSTEM_ORG_ID, args.volume);
   const storage = args.index.get(
-    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
   );
   if (!storage) {
     throw connectorSkillRegistrationError();
@@ -1729,6 +1735,100 @@ function buildStorageManifestEntry(args: {
     archiveUrl: args.archiveUrl,
     ...(archiveSize === undefined ? {} : { archiveSize }),
   };
+}
+
+function storedStorageMountFromStorageEntry(args: {
+  readonly plan: ResolvedManifestStoragePlan;
+  readonly entry: ManifestStorage;
+}): StoredStorageMountEntry {
+  return {
+    orgId: args.plan.resolved.resolvedOrgId,
+    userId: args.plan.resolved.resolvedUserId,
+    name: args.plan.vasStorageName,
+    storageId: args.plan.resolved.storageId,
+    versionId: args.plan.resolved.versionId,
+    mountPath: args.entry.mountPath,
+    archiveUrl: args.entry.archiveUrl,
+    ...(args.entry.archiveSize === undefined
+      ? {}
+      : { archiveSize: args.entry.archiveSize }),
+    ...(args.entry.instructionsTargetFilename === undefined
+      ? {}
+      : {
+          instructionsTargetFilename: args.entry.instructionsTargetFilename,
+        }),
+  };
+}
+
+function storedStorageMountFromArtifactEntry(args: {
+  readonly input: ResolvedManifestArtifactInput;
+  readonly entry: ManifestArtifact;
+}): StoredStorageMountEntry {
+  return {
+    orgId: args.input.resolved.resolvedOrgId,
+    userId: args.input.resolved.resolvedUserId,
+    name: args.input.artifact.name,
+    storageId: args.input.resolved.storageId,
+    versionId: args.input.resolved.versionId,
+    mountPath: args.entry.mountPath,
+    ...(args.entry.archiveUrl === undefined
+      ? {}
+      : { archiveUrl: args.entry.archiveUrl }),
+    ...(args.entry.archiveSize === undefined
+      ? {}
+      : { archiveSize: args.entry.archiveSize }),
+    ...(args.entry.empty === undefined ? {} : { empty: args.entry.empty }),
+    ...(args.entry.missingRootPolicy === undefined
+      ? {}
+      : { missingRootPolicy: args.entry.missingRootPolicy }),
+    writeback: true,
+  };
+}
+
+function persistedStorageMountFromStoragePlan(
+  plan: ResolvedManifestStoragePlan,
+): PersistedStorageMount {
+  return {
+    orgId: plan.resolved.resolvedOrgId,
+    userId: plan.resolved.resolvedUserId,
+    name: plan.vasStorageName,
+    storageId: plan.resolved.storageId,
+    version: plan.resolved.versionId,
+    mountPath: plan.mountPath,
+    ...(plan.instructionsTargetFilename === undefined
+      ? {}
+      : { instructionsTargetFilename: plan.instructionsTargetFilename }),
+  };
+}
+
+function persistedStorageMountFromArtifactInput(
+  input: ResolvedManifestArtifactInput,
+): PersistedStorageMount {
+  return {
+    orgId: input.resolved.resolvedOrgId,
+    userId: input.resolved.resolvedUserId,
+    name: input.artifact.name,
+    storageId: input.resolved.storageId,
+    version: input.resolved.versionId,
+    mountPath: input.artifact.mountPath,
+    writeback: true,
+    ...(input.artifact.missingRootPolicy === undefined
+      ? {}
+      : { missingRootPolicy: input.artifact.missingRootPolicy }),
+  };
+}
+
+function normalizeLegacyMountOverlay<T extends { readonly mountPath: string }>(
+  mounts: readonly T[],
+): readonly T[] {
+  const byMountPath = new Map<string, T>();
+  for (const mount of mounts) {
+    // Legacy mount application is last-wins. Delete first so the canonical
+    // list also preserves the winning entry's relative order.
+    byMountPath.delete(mount.mountPath);
+    byMountPath.set(mount.mountPath, mount);
+  }
+  return [...byMountPath.values()];
 }
 
 async function buildStorageEntriesFromPlans(
@@ -2274,10 +2374,38 @@ async function generateStorageManifestEntriesFromPlans(args: {
       }),
     ]);
 
+  const storageMounts = normalizeLegacyMountOverlay([
+    ...composeEntries.map((entry, index) => {
+      return storedStorageMountFromStorageEntry({
+        plan: finalComposePlans[index]!,
+        entry,
+      });
+    }),
+    ...additionalEntries.map((entry, index) => {
+      return storedStorageMountFromStorageEntry({
+        plan: finalAdditionalPlans[index]!,
+        entry,
+      });
+    }),
+    ...artifactEntries.map((entry, index) => {
+      return storedStorageMountFromArtifactEntry({
+        input: args.resolved.artifactInputs[index]!,
+        entry,
+      });
+    }),
+  ]);
+  const persistedStorageMounts = normalizeLegacyMountOverlay([
+    ...finalComposePlans.map(persistedStorageMountFromStoragePlan),
+    ...finalAdditionalPlans.map(persistedStorageMountFromStoragePlan),
+    ...args.resolved.artifactInputs.map(persistedStorageMountFromArtifactInput),
+  ]);
+
   return {
     composeEntries,
     additionalEntries,
     artifactEntries,
+    storageMounts,
+    persistedStorageMounts,
     resolvedComposeEntryCount: args.resolved.composePlans.length,
     resolvedAdditionalEntryCount: args.resolved.additionalPlans.length,
   };
@@ -2320,15 +2448,206 @@ async function buildStorageManifestEntries(
   );
 }
 
+function persistedMountIdentity(
+  mount: Pick<PersistedStorageMount, "name" | "mountPath">,
+): string {
+  return JSON.stringify([mount.name, mount.mountPath]);
+}
+
+function assertUniquePersistedMountPaths(
+  mounts: readonly PersistedStorageMount[],
+): void {
+  const paths = new Set<string>();
+  for (const mount of mounts) {
+    if (paths.has(mount.mountPath)) {
+      throw new Error(`Duplicate Storage mount path "${mount.mountPath}"`);
+    }
+    paths.add(mount.mountPath);
+  }
+}
+
+async function resolvePersistedStorageMounts(args: {
+  readonly db: Db;
+  readonly index: StorageIndex;
+  readonly mounts: readonly PersistedStorageMount[];
+}): Promise<ResolvedStorageManifestEntryPlans> {
+  const additionalPlans: ResolvedManifestStoragePlan[] = [];
+  const artifactInputs: ResolvedManifestArtifactInput[] = [];
+
+  for (const mount of args.mounts) {
+    if (mount.writeback && mount.orgId === SYSTEM_ORG_ID) {
+      throw new Error("System Storage cannot be mounted with writeback");
+    }
+    const lookup: StorageLookup = {
+      orgId: mount.orgId,
+      userId: mount.userId,
+      name: mount.name,
+    };
+    const storage = args.index.get(
+      storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
+    );
+    if (!storage) {
+      if (mount.optional) {
+        continue;
+      }
+      throw new Error(`Storage "${mount.name}" not found in database`);
+    }
+    if (storage.storageId !== mount.storageId) {
+      throw new Error(`Storage "${mount.name}" identity does not match`);
+    }
+
+    const resolvedResult = await settle(
+      resolveStorageVersion(args.db, args.index, lookup, mount.version),
+    );
+    if (!resolvedResult.ok) {
+      if (mount.optional && isMissingStorageError(resolvedResult.error)) {
+        continue;
+      }
+      throw resolvedResult.error;
+    }
+    const resolved = resolvedResult.value;
+
+    if (mount.writeback) {
+      artifactInputs.push({
+        artifact: {
+          name: mount.name,
+          version: mount.version,
+          mountPath: mount.mountPath,
+          ...(mount.missingRootPolicy === undefined
+            ? {}
+            : { missingRootPolicy: mount.missingRootPolicy }),
+        },
+        resolved,
+        source: "artifact",
+      });
+      continue;
+    }
+
+    additionalPlans.push({
+      name: mount.name,
+      vasStorageName: mount.name,
+      mountPath: mount.mountPath,
+      ...(mount.instructionsTargetFilename === undefined
+        ? {}
+        : {
+            instructionsTargetFilename: mount.instructionsTargetFilename,
+          }),
+      resolved,
+      entryKind: "additional",
+      source: "unknown",
+    });
+  }
+
+  return { composePlans: [], additionalPlans, artifactInputs };
+}
+
+async function buildEntriesFromPersistedStorageMounts(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly bucket: string;
+    readonly mounts: readonly PersistedStorageMount[];
+    readonly timing?: ApiDispatchTimingCollector;
+    readonly stats?: StorageManifestBuildStats;
+  },
+): Promise<StorageManifestEntries> {
+  assertUniquePersistedMountPaths(args.mounts);
+  const storageIndex = await loadTimedStorageIndex({
+    db: args.db,
+    lookups: args.mounts.map((mount) => {
+      return {
+        orgId: mount.orgId,
+        userId: mount.userId,
+        name: mount.name,
+      };
+    }),
+    timing: args.timing,
+  });
+  const phaseTimings = createStorageManifestEntryPhaseTimings(args);
+  return await (async () => {
+    const input: BuildStorageManifestEntriesArgs = {
+      db: args.db,
+      bucket: args.bucket,
+      storageIndex,
+      agentOrgId: "",
+      runtimeOrgId: "",
+      userId: "",
+      composeVolumes: [],
+      additionalVolumes: undefined,
+      additionalVolumeSources: undefined,
+      artifacts: [],
+      timing: args.timing,
+      stats: args.stats,
+    };
+    const resolved = await resolvePersistedStorageMounts({
+      db: args.db,
+      index: storageIndex,
+      mounts: args.mounts,
+    });
+    args.stats?.recordResolvedEntry(
+      "additional",
+      "unknown",
+      resolved.additionalPlans.length,
+    );
+    args.stats?.recordResolvedEntry(
+      "artifact",
+      "artifact",
+      resolved.artifactInputs.length,
+    );
+    return await generateStorageManifestEntriesFromPlans({
+      get,
+      input,
+      phaseTimings,
+      resolved,
+    });
+  })().finally(() => {
+    phaseTimings.compose.flush();
+    phaseTimings.additional.flush();
+    phaseTimings.artifact.flush();
+  });
+}
+
+function combineStorageManifestEntries(args: {
+  readonly legacy: StorageManifestEntries;
+  readonly canonicalWriteback: StorageManifestEntries;
+}): StorageManifestEntries {
+  const persistedStorageMounts = [
+    ...args.legacy.persistedStorageMounts,
+    ...args.canonicalWriteback.persistedStorageMounts,
+  ];
+  return {
+    composeEntries: args.legacy.composeEntries,
+    additionalEntries: [
+      ...args.legacy.additionalEntries,
+      ...args.canonicalWriteback.additionalEntries,
+    ],
+    artifactEntries: [
+      ...args.legacy.artifactEntries,
+      ...args.canonicalWriteback.artifactEntries,
+    ],
+    storageMounts: normalizeLegacyMountOverlay([
+      ...args.legacy.storageMounts,
+      ...args.canonicalWriteback.storageMounts,
+    ]),
+    persistedStorageMounts: normalizeLegacyMountOverlay(persistedStorageMounts),
+    resolvedComposeEntryCount: args.legacy.resolvedComposeEntryCount,
+    resolvedAdditionalEntryCount:
+      args.legacy.resolvedAdditionalEntryCount +
+      args.canonicalWriteback.resolvedAdditionalEntryCount,
+  };
+}
+
 async function assembleStorageManifest(args: {
   readonly composeEntries: readonly ManifestStorage[];
   readonly additionalEntries: readonly ManifestStorage[];
   readonly artifactEntries: ManifestArtifact[];
+  readonly storageMounts: readonly StoredStorageMountEntry[];
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
   readonly resolvedComposeEntryCount: number;
   readonly resolvedAdditionalEntryCount: number;
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
-}): Promise<StorageManifest> {
+}): Promise<PreparedAgentRunStorageManifest> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_assemble",
@@ -2347,8 +2666,12 @@ async function assembleStorageManifest(args: {
         resolvedAdditionalEntryCount: args.resolvedAdditionalEntryCount,
       });
       return {
-        storages: [...storages],
-        artifacts: args.artifactEntries,
+        storageManifest: {
+          storages: [...storages],
+          artifacts: args.artifactEntries,
+        },
+        storageMounts: args.storageMounts,
+        persistedStorageMounts: args.persistedStorageMounts,
       };
     },
     () => {
@@ -2357,13 +2680,85 @@ async function assembleStorageManifest(args: {
   );
 }
 
+async function prepareCompletePersistedStorageManifest(
+  get: ComputedGetter,
+  args: PrepareAgentRunStorageManifestArgs,
+  bucket: string,
+): Promise<PreparedAgentRunStorageManifest> {
+  const mounts = args.persistedStorageMounts?.mounts ?? [];
+  const writebackCount = mounts.filter((mount) => {
+    return Boolean(mount.writeback);
+  }).length;
+  args.stats?.recordRequestedInputs({
+    composeCount: 0,
+    additionalCount: mounts.length - writebackCount,
+    artifactCount: writebackCount,
+    dedupedArtifactCount: writebackCount,
+  });
+  const entries = await buildEntriesFromPersistedStorageMounts(get, {
+    db: args.db,
+    bucket,
+    mounts,
+    timing: args.timing,
+    stats: args.stats,
+  });
+  return await assembleStorageManifest({
+    ...entries,
+    timing: args.timing,
+    stats: args.stats,
+  });
+}
+
 export function prepareAgentRunStorageManifest(
   args: PrepareAgentRunStorageManifestArgs,
-): Computed<Promise<StorageManifest>> {
-  return computed(async (get): Promise<StorageManifest> => {
+): Computed<Promise<PreparedAgentRunStorageManifest>> {
+  return computed(async (get): Promise<PreparedAgentRunStorageManifest> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    if (args.persistedStorageMounts?.mode === "complete") {
+      return await prepareCompletePersistedStorageManifest(get, args, bucket);
+    }
+
     const { artifacts, composeVolumes } =
       await resolveStorageManifestInputs(args);
+    const canonicalWritebackByIdentity = new Map(
+      (args.persistedStorageMounts?.mounts ?? []).map((mount) => {
+        if (!mount.writeback) {
+          throw new Error(
+            "Session Storage persistence may only contain writeback mounts",
+          );
+        }
+        return [persistedMountIdentity(mount), mount] as const;
+      }),
+    );
+    const canonicalWritebackMounts = artifacts.flatMap((artifact) => {
+      const mount = canonicalWritebackByIdentity.get(
+        persistedMountIdentity(artifact),
+      );
+      if (!mount) {
+        return [];
+      }
+      const {
+        version: _storedVersion,
+        missingRootPolicy: _storedMissingRootPolicy,
+        ...mountBase
+      } = mount;
+      return [
+        {
+          ...mountBase,
+          ...(artifact.version === undefined
+            ? {}
+            : { version: artifact.version }),
+          ...(artifact.missingRootPolicy === undefined
+            ? {}
+            : { missingRootPolicy: artifact.missingRootPolicy }),
+        },
+      ];
+    });
+    const legacyArtifacts = artifacts.filter((artifact) => {
+      return !canonicalWritebackByIdentity.has(
+        persistedMountIdentity(artifact),
+      );
+    });
     const additionalVolumeSources = normalizeAdditionalVolumeSources({
       volumes: args.additionalVolumes,
       sources: args.additionalVolumeSources,
@@ -2379,7 +2774,7 @@ export function prepareAgentRunStorageManifest(
       db: args.db,
       runtimeOrgId: args.runtimeOrgId,
       userId: args.userId,
-      artifacts,
+      artifacts: legacyArtifacts,
       timing: args.timing,
       stats: args.stats,
     });
@@ -2393,7 +2788,7 @@ export function prepareAgentRunStorageManifest(
         composeVolumes,
         additionalVolumes: args.additionalVolumes,
         additionalVolumeSources,
-        artifacts,
+        artifacts: legacyArtifacts,
       }),
       timing: args.timing,
     });
@@ -2408,13 +2803,30 @@ export function prepareAgentRunStorageManifest(
       composeVolumes,
       additionalVolumes: args.additionalVolumes,
       additionalVolumeSources,
-      artifacts,
+      artifacts: legacyArtifacts,
       timing: args.timing,
       stats: args.stats,
     });
 
+    const finalEntries =
+      canonicalWritebackMounts.length === 0
+        ? entries
+        : combineStorageManifestEntries({
+            legacy: entries,
+            canonicalWriteback: await buildEntriesFromPersistedStorageMounts(
+              get,
+              {
+                db: args.db,
+                bucket,
+                mounts: canonicalWritebackMounts,
+                timing: args.timing,
+                stats: args.stats,
+              },
+            ),
+          });
+
     return await assembleStorageManifest({
-      ...entries,
+      ...finalEntries,
       timing: args.timing,
       stats: args.stats,
     });

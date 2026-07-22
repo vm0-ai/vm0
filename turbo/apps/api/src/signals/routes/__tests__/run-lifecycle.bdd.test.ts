@@ -13,7 +13,10 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import {
+  RUNNER_STORAGE_MOUNTS_CAPABILITY,
+  type Job as RunnerJob,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import {
@@ -59,7 +62,10 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectLegacyStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -1357,7 +1363,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       orgId: actor.orgId,
       userId: actor.userId,
       name: "memory",
-      type: "artifact",
     });
     const emptyArtifactPutCount = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
@@ -1518,7 +1523,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     const claim = await api.claimRunnerJob(created.runId);
-    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+    const memoryArtifact = expectLegacyStorageManifest(
+      claim.storageManifest,
+    )?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "memory";
     });
     expect(memoryArtifact).toMatchObject({
@@ -1655,7 +1662,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(created.status).toBe("pending");
 
     const claim = await api.claimRunnerJob(created.runId);
-    expect(claim.storageManifest?.storages).toStrictEqual([
+    expect(
+      expectLegacyStorageManifest(claim.storageManifest)?.storages,
+    ).toStrictEqual([
       expect.objectContaining({
         mountPath: "/primary",
         vasStorageName: storageName,
@@ -1663,12 +1672,210 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ]);
     expect(
-      claim.storageManifest?.artifacts.some((artifact) => {
-        return artifact.vasStorageName === "memory";
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.artifacts.some(
+        (artifact) => {
+          return artifact.vasStorageName === "memory";
+        },
+      ),
     ).toBeTruthy();
 
     await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("selects exactly one storage manifest representation from runner capabilities", async () => {
+    const api = createRunsApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-storage-capability-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const canonicalRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "canonical storage claim",
+    });
+    const canonicalClaim = await api.claimRunnerJob(canonicalRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const canonicalManifest = canonicalClaim.storageManifest;
+    if (!canonicalManifest || !("storageMounts" in canonicalManifest)) {
+      throw new Error("Expected canonical storageMounts manifest");
+    }
+    expect(canonicalManifest).not.toHaveProperty("storages");
+    expect(canonicalManifest).not.toHaveProperty("artifacts");
+    expect(canonicalManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          writeback: true,
+        }),
+      ]),
+    );
+    for (const mount of canonicalManifest.storageMounts) {
+      expect(mount).not.toHaveProperty("orgId");
+      expect(mount).not.toHaveProperty("userId");
+    }
+
+    const legacyRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "legacy storage claim",
+    });
+    const legacyClaim = await api.claimRunnerJob(legacyRun.runId);
+    const legacyManifest = legacyClaim.storageManifest;
+    if (!legacyManifest || !("storages" in legacyManifest)) {
+      throw new Error("Expected legacy storages and artifacts manifest");
+    }
+    expect(legacyManifest).not.toHaveProperty("storageMounts");
+    expect(legacyManifest.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ vasStorageName: "memory" }),
+      ]),
+    );
+
+    await api.requestCancelRun(actor, canonicalRun.runId, [200]);
+    await api.requestCancelRun(actor, legacyRun.runId, [200]);
+  });
+
+  it("persists canonical mounts across session and checkpoint resumes", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "persist canonical storage mounts",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected an initial canonical Storage manifest");
+    }
+    const initialMemory = initialManifest.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the canonical memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `canonical memory ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [memoryFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+
+    const historyHash = createHash("sha256")
+      .update(`canonical storage history ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [
+          {
+            name: initialMemory.name,
+            version: preparedMemory.versionId,
+            mountPath: initialMemory.mountPath,
+            ...(initialMemory.missingRootPolicy === undefined
+              ? {}
+              : { missingRootPolicy: initialMemory.missingRootPolicy }),
+          },
+        ],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the canonical checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    const sessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "continue canonical storage session",
+    });
+    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const sessionManifest = sessionClaim.storageManifest;
+    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
+      throw new Error("Expected canonical mounts from session persistence");
+    }
+    expect(sessionManifest).not.toHaveProperty("storages");
+    expect(sessionManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          storageId: initialMemory.storageId,
+          versionId: preparedMemory.versionId,
+          mountPath: initialMemory.mountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume canonical storage checkpoint",
+    });
+    const checkpointClaim = await api.claimRunnerJob(checkpointRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const checkpointManifest = checkpointClaim.storageManifest;
+    if (!checkpointManifest || !("storageMounts" in checkpointManifest)) {
+      throw new Error("Expected canonical mounts from checkpoint persistence");
+    }
+    expect(checkpointManifest).not.toHaveProperty("artifacts");
+    expect(checkpointManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          storageId: initialMemory.storageId,
+          versionId: preparedMemory.versionId,
+          mountPath: initialMemory.mountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
   it("keeps a committed artifact head after initial empty artifact creation", async () => {
@@ -1695,11 +1902,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, initialRun.runId, [200]);
     });
     const initialClaim = await api.claimRunnerJob(initialRun.runId);
-    const initialMemory = initialClaim.storageManifest?.artifacts.find(
-      (artifact) => {
-        return artifact.vasStorageName === "memory";
-      },
-    );
+    const initialMemory = expectLegacyStorageManifest(
+      initialClaim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
     expect(initialMemory).toMatchObject({
       empty: true,
       vasVersionId: expect.any(String),
@@ -1757,7 +1964,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       orgId: actor.orgId,
       userId: actor.userId,
       name: "memory",
-      type: "artifact",
     });
     const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
@@ -1795,11 +2001,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, committedRun.runId, [200]);
     });
     const committedClaim = await api.claimRunnerJob(committedRun.runId);
-    const committedMemory = committedClaim.storageManifest?.artifacts.find(
-      (artifact) => {
-        return artifact.vasStorageName === "memory";
-      },
-    );
+    const committedMemory = expectLegacyStorageManifest(
+      committedClaim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
     expect(committedMemory).toMatchObject({
       archiveUrl: expect.any(String),
       vasVersionId: prepared.versionId,
@@ -4893,9 +5099,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
 
     const mountPaths =
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ) ?? [];
     for (const workflowName of workflowNames) {
       expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
     }
@@ -7817,9 +8025,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       inlineFirewallApis(claim.firewalls, customConnectorName),
     ).toHaveLength(1);
     expect(
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ),
     ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -7891,11 +8101,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const workflowMounts =
-      claim.storageManifest?.storages.filter((storage) => {
-        return (
-          storage.mountPath === `/home/user/.claude/skills/${workflowName}`
-        );
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.filter(
+        (storage) => {
+          return (
+            storage.mountPath === `/home/user/.claude/skills/${workflowName}`
+          );
+        },
+      ) ?? [];
 
     expect(workflowMounts).toHaveLength(1);
     expect(workflowMounts[0]?.vasStorageName).toBe(
@@ -8049,9 +8261,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.cliAgentType).toBe("claude-code");
     expect(
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ),
     ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -9528,9 +9742,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(created.runId);
     const mountPaths =
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ) ?? [];
     expect(mountPaths).toContain("/cache");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 

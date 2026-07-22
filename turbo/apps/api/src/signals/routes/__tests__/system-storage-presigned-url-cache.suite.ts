@@ -20,7 +20,10 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectLegacyStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
@@ -341,11 +344,11 @@ describe("system storage presigned URL cache", () => {
             });
             await api.heartbeatRunner(runnerGroup);
             const firstClaim = await api.claimRunnerJob(firstRun.runId);
-            const firstSkillEntry = firstClaim.storageManifest?.storages.find(
-              (storage) => {
-                return storage.vasStorageName === skill.storageName;
-              },
-            );
+            const firstSkillEntry = expectLegacyStorageManifest(
+              firstClaim.storageManifest,
+            )?.storages.find((storage) => {
+              return storage.vasStorageName === skill.storageName;
+            });
             expect(firstSkillEntry?.archiveSize).toBe(1024);
 
             const secondRun = await api.createRun(actor, {
@@ -355,11 +358,11 @@ describe("system storage presigned URL cache", () => {
             });
             await api.heartbeatRunner(runnerGroup);
             const secondClaim = await api.claimRunnerJob(secondRun.runId);
-            const secondSkillEntry = secondClaim.storageManifest?.storages.find(
-              (storage) => {
-                return storage.vasStorageName === skill.storageName;
-              },
-            );
+            const secondSkillEntry = expectLegacyStorageManifest(
+              secondClaim.storageManifest,
+            )?.storages.find((storage) => {
+              return storage.vasStorageName === skill.storageName;
+            });
 
             expect(secondSkillEntry?.archiveUrl).toBe(
               firstSkillEntry?.archiveUrl,
@@ -420,11 +423,11 @@ describe("system storage presigned URL cache", () => {
           });
           await api.heartbeatRunner(runnerGroup);
           const systemClaim = await api.claimRunnerJob(systemRun.runId);
-          const systemStorage = systemClaim.storageManifest?.storages.find(
-            (storage) => {
-              return storage.vasStorageName === skill.storageName;
-            },
-          );
+          const systemStorage = expectLegacyStorageManifest(
+            systemClaim.storageManifest,
+          )?.storages.find((storage) => {
+            return storage.vasStorageName === skill.storageName;
+          });
           expect(systemStorage).toMatchObject({
             vasVersionId: skill.versionId,
             archiveSize: 1024,
@@ -451,7 +454,9 @@ describe("system storage presigned URL cache", () => {
           });
           const fallbackClaim = await api.claimRunnerJob(fallbackRun.runId);
           expect(
-            fallbackClaim.storageManifest?.storages.find((storage) => {
+            expectLegacyStorageManifest(
+              fallbackClaim.storageManifest,
+            )?.storages.find((storage) => {
               return storage.vasStorageName === skill.storageName;
             }),
           ).toMatchObject({
@@ -459,7 +464,9 @@ describe("system storage presigned URL cache", () => {
             archiveSize: 2048,
           });
           expect(
-            fallbackClaim.storageManifest?.artifacts.some((artifact) => {
+            expectLegacyStorageManifest(
+              fallbackClaim.storageManifest,
+            )?.artifacts.some((artifact) => {
               return artifact.vasStorageName === "memory";
             }),
           ).toBeTruthy();

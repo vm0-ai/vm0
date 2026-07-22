@@ -4773,7 +4773,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
           orgId,
           userId: doomed.userId,
           name: "memory",
-          type: "artifact",
         }),
       ).rejects.toThrow();
     });
@@ -4782,7 +4781,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         orgId,
         userId: peer.userId,
         name: "memory",
-        type: "artifact",
       }),
     ).resolves.toBe(sharedPrefix);
   });
