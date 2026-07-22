@@ -153,7 +153,8 @@ pub struct NormalOperationFence {
     _inner: operation_tracker::NormalOperationFence,
 }
 
-/// Reason why [`VsockHost::try_fence_normal_operations`] could not acquire a
+/// Reason why [`VsockHost::try_fence_normal_operations`] or
+/// [`VsockHost::exec_operation_capture_with_fence`] could not acquire a
 /// [`NormalOperationFence`].
 ///
 /// The variants identify caller-visible recovery paths for normal-operation
@@ -186,6 +187,36 @@ impl From<TrackerNormalOperationFenceRejection> for NormalOperationFenceRejectio
             TrackerNormalOperationFenceRejection::AlreadyFenced => Self::AlreadyFenced,
             TrackerNormalOperationFenceRejection::NotParkable => Self::NotParkable,
             TrackerNormalOperationFenceRejection::Closed => Self::Closed,
+        }
+    }
+}
+
+/// Failure while atomically fencing normal operations and running one final
+/// capture exec.
+#[derive(Debug)]
+pub enum FencedExecError {
+    /// The connection could not enter the fenced final-operation state.
+    FenceRejected(NormalOperationFenceRejection),
+    /// The reserved capture exec did not produce a trustworthy terminal result.
+    Operation(io::Error),
+}
+
+impl std::fmt::Display for FencedExecError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FenceRejected(reason) => {
+                write!(formatter, "normal-operation fence rejected: {reason:?}")
+            }
+            Self::Operation(error) => write!(formatter, "fenced exec failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for FencedExecError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::FenceRejected(_) => None,
+            Self::Operation(error) => Some(error),
         }
     }
 }
@@ -441,6 +472,39 @@ impl CompositeNormalOperation {
             Ok(()) | Err(NormalOperationTransitionError::UnknownOperation { .. }) => Ok(()),
             Err(error) => Err(normal_operation_transition_error(error)),
         }
+    }
+}
+
+struct FencedNormalOperationGuard {
+    normal_operation: Option<CompositeNormalOperation>,
+    fence: Option<NormalOperationFence>,
+}
+
+impl FencedNormalOperationGuard {
+    fn complete(mut self) -> io::Result<NormalOperationFence> {
+        let normal_operation = self.normal_operation.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fenced normal operation already completed",
+            )
+        })?;
+        normal_operation.complete()?;
+        self.fence.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fenced normal operation is missing its fence",
+            )
+        })
+    }
+}
+
+impl Drop for FencedNormalOperationGuard {
+    fn drop(&mut self) {
+        // Release the operation token before the fence. If a request may have
+        // reached the guest, dropping the token first makes the tracker
+        // NotParkable before the fence can consider reopening it.
+        drop(self.normal_operation.take());
+        drop(self.fence.take());
     }
 }
 
@@ -1177,6 +1241,50 @@ impl VsockHost {
         request: ExecCaptureRequest<'_>,
     ) -> io::Result<ExecOperationResult> {
         exec_operation::exec_operation_capture_on_shared(&self.shared, request).await
+    }
+
+    /// Atomically reserve one final normal operation and fence every competing
+    /// normal operation while running a capture exec.
+    ///
+    /// Reservation succeeds only when the normal-operation tracker is open and
+    /// idle. The returned fence remains held after the exec reaches a terminal
+    /// result, allowing a lifecycle owner to quiesce and pause the guest without
+    /// reopening normal-operation admission in between.
+    ///
+    /// Dropping this future or losing terminal proof releases the operation
+    /// token before the fence. If the request may have reached the guest, that
+    /// ordering leaves the connection not parkable rather than reopening it.
+    pub async fn exec_operation_capture_with_fence(
+        &self,
+        request: ExecCaptureRequest<'_>,
+    ) -> Result<(ExecOperationResult, NormalOperationFence), FencedExecError> {
+        let (normal_operation, fence) = self
+            .shared
+            .normal_operations
+            .try_reserve_and_fence()
+            .map_err(|error| FencedExecError::FenceRejected(error.into()))?;
+        let mut guard = FencedNormalOperationGuard {
+            normal_operation: Some(CompositeNormalOperation {
+                normal_operation: Some(normal_operation),
+            }),
+            fence: Some(NormalOperationFence { _inner: fence }),
+        };
+        let normal_operation = guard.normal_operation.as_mut().ok_or_else(|| {
+            FencedExecError::Operation(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fenced normal operation is unavailable",
+            ))
+        })?;
+        let result = exec_operation::exec_operation_capture_with_composite_on_shared_and_observer(
+            &self.shared,
+            request,
+            normal_operation,
+            FrameWriteObserver::default(),
+        )
+        .await
+        .map_err(FencedExecError::Operation)?;
+        let fence = guard.complete().map_err(FencedExecError::Operation)?;
+        Ok((result, fence))
     }
 
     /// Start a streaming exec operation with a bounded output event receiver.

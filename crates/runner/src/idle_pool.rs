@@ -13,7 +13,7 @@ use sandbox::{
     SandboxParkOutcome,
 };
 
-use crate::idle_reuse_preparation::prepare_sandbox_for_idle_reuse;
+use crate::idle_reuse_preparation::IdleReusePreparation;
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
@@ -245,10 +245,19 @@ pub(crate) enum IdleParkOutcome {
 
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
 pub(crate) struct IdleParkFailure {
-    resources: IdleSandboxResources,
-    budget_lease: BudgetLease,
+    ownership: IdleParkFailureOwnership,
     reason: &'static str,
     error: String,
+}
+
+enum IdleParkFailureOwnership {
+    Active {
+        resources: IdleSandboxResources,
+        budget_lease: BudgetLease,
+    },
+    Parked {
+        rejected: RejectedParkedIdleCandidate,
+    },
 }
 
 #[must_use = "active idle-park parts still own a sandbox and budget lease"]
@@ -260,10 +269,17 @@ pub(crate) struct IdleParkActiveParts {
 }
 
 #[must_use = "idle park failure parts must be logged and cleaned up"]
-pub(crate) struct IdleParkFailureParts {
-    pub(crate) active: IdleParkActiveParts,
-    pub(crate) reason: &'static str,
-    pub(crate) error: String,
+pub(crate) enum IdleParkFailureParts {
+    Active {
+        active: IdleParkActiveParts,
+        reason: &'static str,
+        error: String,
+    },
+    Parked {
+        rejected: RejectedParkedIdleCandidate,
+        reason: &'static str,
+        error: String,
+    },
 }
 
 impl IdleParkRequest {
@@ -328,37 +344,50 @@ impl IdleParkRequest {
             )
             .await;
             return Err(IdleParkFailure {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    workspace_promotion: None,
+                ownership: IdleParkFailureOwnership::Active {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion: None,
+                    },
+                    budget_lease,
                 },
-                budget_lease,
                 reason: "promotion_identity_mismatch",
                 error: format!("workspace promotion identity mismatch: {mismatch}"),
             });
         }
 
-        if let Err(error) = prepare_sandbox_for_idle_reuse(
-            sandbox.as_ref(),
+        let preparation = match IdleReusePreparation::new(
+            sandbox.id(),
             run_id,
             retained_runtime_dir.as_deref(),
-        )
-        .await
-        {
-            return Err(IdleParkFailure {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    workspace_promotion,
-                },
-                budget_lease,
-                reason: "reuse_preparation_failed",
-                error: error.to_string(),
-            });
-        }
+        ) {
+            Ok(preparation) => preparation,
+            Err(error) => {
+                return Err(IdleParkFailure {
+                    ownership: IdleParkFailureOwnership::Active {
+                        resources: IdleSandboxResources {
+                            sandbox,
+                            factory,
+                            workspace_promotion,
+                        },
+                        budget_lease,
+                    },
+                    reason: "reuse_preparation_failed",
+                    error: error.to_string(),
+                });
+            }
+        };
 
-        match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
+        let final_exec_and_park = {
+            let request = preparation.exec_request();
+            AssertUnwindSafe(
+                sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
+            )
+            .catch_unwind()
+            .await
+        };
+        match final_exec_and_park {
             Ok(Ok(outcome)) => {
                 let candidate = ParkedIdleCandidate {
                     resources: IdleSandboxResources {
@@ -369,7 +398,16 @@ impl IdleParkRequest {
                     metadata,
                     budget_lease,
                 };
-                Ok(match outcome {
+                if let Err(error) = preparation.validate_result(&outcome.exec_result) {
+                    return Err(IdleParkFailure {
+                        ownership: IdleParkFailureOwnership::Parked {
+                            rejected: candidate.into_rejected(),
+                        },
+                        reason: "reuse_preparation_failed",
+                        error: error.to_string(),
+                    });
+                }
+                Ok(match outcome.park_outcome {
                     SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
                     SandboxParkOutcome::NonReusable(reason) => {
                         IdleParkOutcome::NonReusable { candidate, reason }
@@ -377,12 +415,14 @@ impl IdleParkRequest {
                 })
             }
             Ok(Err(e)) => Err(IdleParkFailure {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    workspace_promotion,
+                ownership: IdleParkFailureOwnership::Active {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion,
+                    },
+                    budget_lease,
                 },
-                budget_lease,
                 reason: "park_failed",
                 error: e.to_string(),
             }),
@@ -391,12 +431,14 @@ impl IdleParkRequest {
                 // the sandbox, but do not publish a workspace cache image.
                 abandon_unpublished_workspace_promotion(workspace_promotion, "park_panicked").await;
                 Err(IdleParkFailure {
-                    resources: IdleSandboxResources {
-                        sandbox,
-                        factory,
-                        workspace_promotion: None,
+                    ownership: IdleParkFailureOwnership::Active {
+                        resources: IdleSandboxResources {
+                            sandbox,
+                            factory,
+                            workspace_promotion: None,
+                        },
+                        budget_lease,
                     },
-                    budget_lease,
                     reason: "park_panicked",
                     error: "sandbox park panicked".into(),
                 })
@@ -428,27 +470,46 @@ impl IdleParkOutcome {
 }
 
 impl IdleParkFailure {
-    pub(crate) fn into_active_parts(self) -> IdleParkFailureParts {
+    pub(crate) fn into_parts(self) -> IdleParkFailureParts {
         let Self {
-            resources,
-            budget_lease,
+            ownership,
             reason,
             error,
         } = self;
-        let IdleSandboxResources {
-            sandbox,
-            factory,
-            workspace_promotion,
-        } = resources;
-        IdleParkFailureParts {
-            active: IdleParkActiveParts {
-                sandbox,
-                factory,
+        match ownership {
+            IdleParkFailureOwnership::Active {
+                resources,
                 budget_lease,
-                workspace_promotion,
+            } => {
+                let IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion,
+                } = resources;
+                IdleParkFailureParts::Active {
+                    active: IdleParkActiveParts {
+                        sandbox,
+                        factory,
+                        budget_lease,
+                        workspace_promotion,
+                    },
+                    reason,
+                    error,
+                }
+            }
+            IdleParkFailureOwnership::Parked { rejected } => IdleParkFailureParts::Parked {
+                rejected,
+                reason,
+                error,
             },
-            reason,
-            error,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn into_error(self) -> String {
+        match self.into_parts() {
+            IdleParkFailureParts::Active { error, .. }
+            | IdleParkFailureParts::Parked { error, .. } => error,
         }
     }
 }
@@ -1387,6 +1448,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn idle_park_request_semantic_rejection_returns_parked_ownership() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "prepare-for-reuse".into(),
+            exit_code: 0,
+            stdout: b"not-json".to_vec(),
+            stderr: Vec::new(),
+        });
+        let request = make_idle_park_request(
+            Arc::clone(&overrides),
+            "session-invalid-report",
+            make_budget_lease(2, 2048),
+        )
+        .await;
+
+        let failure = match request.park_for_idle().await {
+            Ok(_) => panic!("invalid report must reject idle admission"),
+            Err(failure) => failure,
+        };
+        let IdleParkFailureParts::Parked {
+            rejected,
+            reason,
+            error,
+        } = failure.into_parts()
+        else {
+            panic!("semantic rejection after park must retain parked ownership");
+        };
+
+        assert_eq!(overrides.park_call_count(), 1);
+        assert_eq!(reason, "reuse_preparation_failed");
+        assert!(error.contains("invalid report"));
+        let (payload, budget_lease) = rejected.into_active_destroy_parts();
+        assert_eq!(budget_lease.vcpu(), 2);
+        assert_eq!(budget_lease.memory_mb(), 2048);
+        assert_eq!(payload.stop_and_destroy().await, DestroyOutcome::Completed);
+        assert_eq!(overrides.destroy_call_count(), 1);
+    }
+
+    #[tokio::test]
     async fn idle_park_request_protects_retained_identity_runtime_directory() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         let session_id = "session-retained-runtime";
@@ -1563,12 +1663,14 @@ mod tests {
             Ok(_) => panic!("park should fail"),
             Err(failure) => failure,
         };
-        let failure = failure.into_active_parts();
+        let IdleParkFailureParts::Active { active, error, .. } = failure.into_parts() else {
+            panic!("park operation errors must retain active ownership");
+        };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert!(failure.error.contains("simulated park error"));
-        assert_eq!(failure.active.budget_lease.vcpu(), 2);
-        assert_eq!(failure.active.budget_lease.memory_mb(), 2048);
+        assert!(error.contains("simulated park error"));
+        assert_eq!(active.budget_lease.vcpu(), 2);
+        assert_eq!(active.budget_lease.memory_mb(), 2048);
     }
 
     #[tokio::test]
@@ -1586,12 +1688,14 @@ mod tests {
             Ok(_) => panic!("park should panic"),
             Err(failure) => failure,
         };
-        let failure = failure.into_active_parts();
+        let IdleParkFailureParts::Active { active, error, .. } = failure.into_parts() else {
+            panic!("park panics must retain active ownership");
+        };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(failure.error, "sandbox park panicked");
-        assert_eq!(failure.active.budget_lease.vcpu(), 2);
-        assert_eq!(failure.active.budget_lease.memory_mb(), 2048);
+        assert_eq!(error, "sandbox park panicked");
+        assert_eq!(active.budget_lease.vcpu(), 2);
+        assert_eq!(active.budget_lease.memory_mb(), 2048);
     }
 
     #[test]

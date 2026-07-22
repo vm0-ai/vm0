@@ -6,8 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
-    SandboxFactory, SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
-    StartProcessRequest,
+    SandboxFactory, SandboxFinalExecParkOutcome, SandboxInitializationPhase, SandboxOperation,
+    SandboxOperationReason, StartProcessRequest,
 };
 use sandbox_mock::MockSandboxFactory;
 
@@ -217,6 +217,16 @@ impl Sandbox for OperationGateSandbox {
         self.inner.park().await
     }
 
+    async fn final_exec_and_park(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        self.inner
+            .final_exec_and_park(request, diagnostic_label)
+            .await
+    }
+
     async fn unpark(&mut self) -> sandbox::Result<()> {
         self.inner.unpark().await
     }
@@ -300,6 +310,16 @@ impl Sandbox for CancelAtProcessBoundarySandbox {
 
     async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
         self.inner.park().await
+    }
+
+    async fn final_exec_and_park(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        self.inner
+            .final_exec_and_park(request, diagnostic_label)
+            .await
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
@@ -418,6 +438,16 @@ impl Sandbox for QueuedCopyFileSandbox {
 
     async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
         self.inner.park().await
+    }
+
+    async fn final_exec_and_park(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        self.inner
+            .final_exec_and_park(request, diagnostic_label)
+            .await
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {

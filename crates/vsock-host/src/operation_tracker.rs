@@ -63,6 +63,39 @@ impl NormalOperationTracker {
         }
     }
 
+    pub(crate) fn try_reserve_and_fence(
+        &self,
+    ) -> Result<(NormalOperationToken, NormalOperationFence), NormalOperationFenceRejection> {
+        let mut inner = self.inner();
+        match inner.state {
+            TrackerState::Open if inner.operations.is_empty() => {
+                let operation_id = NormalOperationId(inner.next_operation_id);
+                inner.next_operation_id += 1;
+                let fence_id = NormalOperationFenceId(inner.next_fence_id);
+                inner.next_fence_id += 1;
+                inner
+                    .operations
+                    .insert(operation_id, OperationPhase::ReservedBeforeWrite);
+                inner.state = TrackerState::Fenced { id: fence_id };
+                Ok((
+                    NormalOperationToken {
+                        id: operation_id,
+                        inner: Arc::clone(&self.inner),
+                        released: false,
+                    },
+                    NormalOperationFence {
+                        id: fence_id,
+                        inner: Arc::clone(&self.inner),
+                    },
+                ))
+            }
+            TrackerState::Open => Err(NormalOperationFenceRejection::Busy),
+            TrackerState::Fenced { .. } => Err(NormalOperationFenceRejection::AlreadyFenced),
+            TrackerState::NotParkable => Err(NormalOperationFenceRejection::NotParkable),
+            TrackerState::Closed => Err(NormalOperationFenceRejection::Closed),
+        }
+    }
+
     pub(crate) fn mark_not_parkable(&self) {
         let mut inner = self.inner();
         inner.state = TrackerState::NotParkable;
@@ -473,6 +506,55 @@ mod tests {
             tracker.reserve(),
             Err(NormalOperationRejection::Fenced)
         ));
+    }
+
+    #[test]
+    fn reserved_operation_and_fence_are_acquired_atomically() {
+        let tracker = NormalOperationTracker::new();
+
+        let (token, fence) = tracker
+            .try_reserve_and_fence()
+            .expect("idle tracker should reserve and fence");
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Fenced);
+        assert!(matches!(
+            tracker.reserve(),
+            Err(NormalOperationRejection::Fenced)
+        ));
+        token
+            .complete()
+            .expect("reserved operation should complete");
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Fenced);
+
+        drop(fence);
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Idle);
+    }
+
+    #[test]
+    fn reserved_operation_and_fence_reject_busy_tracker() {
+        let tracker = NormalOperationTracker::new();
+        let _token = reserve(&tracker);
+
+        assert!(matches!(
+            tracker.try_reserve_and_fence(),
+            Err(NormalOperationFenceRejection::Busy)
+        ));
+    }
+
+    #[test]
+    fn uncertain_reserved_and_fenced_write_remains_not_parkable() {
+        let tracker = NormalOperationTracker::new();
+        let (mut token, fence) = tracker
+            .try_reserve_and_fence()
+            .expect("idle tracker should reserve and fence");
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        drop(token);
+        drop(fence);
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
     }
 
     #[test]

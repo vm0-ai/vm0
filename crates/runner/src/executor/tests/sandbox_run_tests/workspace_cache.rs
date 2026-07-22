@@ -1016,7 +1016,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     .park_for_idle()
     .await
     .unwrap_or_else(|failure| {
-        let error = failure.into_active_parts().error;
+        let error = failure.into_error();
         panic!("test sandbox should park: {error}");
     })
     .expect_reusable()
@@ -1127,7 +1127,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     .park_for_idle()
     .await
     .unwrap_or_else(|failure| {
-        let error = failure.into_active_parts().error;
+        let error = failure.into_error();
         panic!("test sandbox should park: {error}");
     })
     .expect_reusable()

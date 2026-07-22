@@ -1160,40 +1160,6 @@ pub(super) async fn execute_reused_sandbox(
         }
     };
 
-    let mount_started = Instant::now();
-    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
-        telemetry.record(
-            "workspace_drive_mount",
-            mount_started.elapsed(),
-            false,
-            Some(&e.to_string()),
-        );
-        if let Err(unregister_error) =
-            unregister_proxy_registry(config, &source_ip, context.run_id).await
-        {
-            warn!(
-                run_id = %context.run_id,
-                error = %unregister_error,
-                "failed to unregister VM from proxy after reused sandbox mount failure"
-            );
-        }
-        telemetry.record(
-            "runner_reused_sandbox_prepare",
-            prepare_started.elapsed(),
-            false,
-            Some(&e.to_string()),
-        );
-        return ExecuteOutcome {
-            failure: Some(ExecutionFailure::from_error(e.to_string())),
-            sandbox: Some(sandbox),
-            source_ip,
-            network_log_session: Some(network_log_session),
-            workspace_image: None,
-            discovered_cli_agent_session_id: None,
-            restored_session_identity: None,
-        };
-    }
-    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
     telemetry.record(
         "runner_reused_sandbox_prepare",
         prepare_started.elapsed(),

@@ -11,17 +11,17 @@ use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
-    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver,
-    SandboxStartStage, StartProcessRequest, WriteFileEntry,
+    SandboxError, SandboxFinalExecParkOutcome, SandboxIdleTransition, SandboxInvalidStateContext,
+    SandboxOperation, SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome,
+    SandboxStartObserver, SandboxStartStage, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
 use vsock_host::{
-    ExecOutputEvent, ExecOwnedCapturedOutput, NormalOperationFence, NormalOperationFenceRejection,
-    SupervisedExecControl, SupervisedExecRequest, VsockHost,
+    ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, NormalOperationFence,
+    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest, VsockHost,
 };
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
@@ -1955,6 +1955,90 @@ impl Sandbox for FirecrackerSandbox {
         Ok(outcome)
     }
 
+    async fn final_exec_and_park(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+        if self.is_parked {
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "final guest exec cannot run on an already parked sandbox",
+            ));
+        }
+
+        let operation = SandboxOperation::Exec;
+        Self::validate_exec_env_keys(operation, request.env)?;
+        let timeout_ms = request.timeout_ms();
+        validate_exec_capture_timeout(timeout_ms)
+            .map_err(|error| Self::operation_error(operation, error, self.has_backend_crashed()))?;
+
+        let coordinator = self.park_coordinator.clone();
+        let guest = Arc::clone(&self.guest);
+        let final_exec_guest = Arc::clone(&guest);
+        let id = self.id.clone();
+        let api_sock = self.sock_paths.api_sock();
+        let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
+        let (normal_operations_fence, park_outcome, exec_result) =
+            park_with_ready_for_park_and_preparation(
+                &id,
+                &coordinator,
+                || async move {
+                    let guest =
+                        final_exec_guest
+                            .lock()
+                            .await
+                            .as_ref()
+                            .cloned()
+                            .ok_or_else(|| {
+                                ParkNormalOperationFenceError::GuestUnavailable(io::Error::new(
+                                    io::ErrorKind::NotConnected,
+                                    "guest connection missing during final park operation",
+                                ))
+                            })?;
+                    let (result, fence) = guest
+                        .exec_operation_capture_with_fence(final_exec_request)
+                        .await
+                        .map_err(|error| match error {
+                            FencedExecError::FenceRejected(error) => {
+                                ParkNormalOperationFenceError::Rejected(error)
+                            }
+                            FencedExecError::Operation(error) => {
+                                ParkNormalOperationFenceError::FinalOperation(error)
+                            }
+                        })?;
+                    let result = exec_result_from_operation_result(result)
+                        .map_err(ParkNormalOperationFenceError::FinalOperation)?;
+                    Ok((fence, result))
+                },
+                || async move {
+                    let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::NotConnected,
+                            "guest connection missing during park quiesce",
+                        )
+                    })?;
+                    guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+                },
+                || {
+                    park_inner(
+                        &mut self.is_parked,
+                        self.config.resources.memory_mb,
+                        self.runtime.balloon_mut(),
+                        &api_sock,
+                        &id,
+                    )
+                },
+            )
+            .await?;
+        self.park_fence = Some(normal_operations_fence);
+        self.park_outcome = Some(park_outcome);
+        Ok(SandboxFinalExecParkOutcome {
+            exec_result,
+            park_outcome,
+        })
+    }
+
     async fn unpark(&mut self) -> sandbox::Result<()> {
         if !self.is_parked {
             if self.park_fence.is_some() {
@@ -2273,6 +2357,7 @@ enum ParkBoundaryGuardState {
 enum ParkNormalOperationFenceError {
     GuestUnavailable(io::Error),
     Rejected(NormalOperationFenceRejection),
+    FinalOperation(io::Error),
 }
 
 struct ParkBoundaryGuard<Fence> {
@@ -2441,6 +2526,42 @@ where
     P: FnOnce() -> PF,
     PF: Future<Output = sandbox::Result<Outcome>>,
 {
+    let (fence, outcome, ()) = park_with_ready_for_park_and_preparation(
+        log_id,
+        coordinator,
+        || async move { fence_normal_operations().await.map(|fence| (fence, ())) },
+        quiesce_guest,
+        park_firecracker,
+    )
+    .await?;
+    Ok((fence, outcome))
+}
+
+async fn park_with_ready_for_park_and_preparation<
+    Fence,
+    Outcome,
+    Preparation,
+    F,
+    FF,
+    Q,
+    QF,
+    P,
+    PF,
+>(
+    log_id: &str,
+    coordinator: &ParkCoordinator,
+    fence_and_prepare: F,
+    quiesce_guest: Q,
+    park_firecracker: P,
+) -> sandbox::Result<(Fence, Outcome, Preparation)>
+where
+    F: FnOnce() -> FF,
+    FF: Future<Output = Result<(Fence, Preparation), ParkNormalOperationFenceError>>,
+    Q: FnOnce() -> QF,
+    QF: Future<Output = io::Result<()>>,
+    P: FnOnce() -> PF,
+    PF: Future<Output = sandbox::Result<Outcome>>,
+{
     info!(
         id = %log_id,
         transition = "park",
@@ -2480,9 +2601,10 @@ where
         phase = "normal_operations_fence",
         "sandbox park lifecycle normal-operation fence started"
     );
-    match fence_normal_operations().await {
-        Ok(fence) => {
+    let preparation = match fence_and_prepare().await {
+        Ok((fence, preparation)) => {
             guard.mark_normal_operations_fenced(fence);
+            preparation
         }
         Err(ParkNormalOperationFenceError::Rejected(NormalOperationFenceRejection::Busy)) => {
             warn!(
@@ -2526,7 +2648,20 @@ where
             guard.mark_dirty(message.clone());
             return Err(idle_transition_error(SandboxIdleTransition::Park, message));
         }
-    }
+        Err(ParkNormalOperationFenceError::FinalOperation(error)) => {
+            let message = format!("final guest operation failed while preparing park: {error}");
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "final_guest_operation",
+                reason_kind = "protocol_or_transport",
+                error = %error,
+                "sandbox park lifecycle final guest operation failed"
+            );
+            guard.mark_dirty(message.clone());
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+    };
 
     info!(
         id = %log_id,
@@ -2619,7 +2754,7 @@ where
         phase = "parked",
         "sandbox park lifecycle marked parked"
     );
-    Ok((normal_operations_fence, outcome))
+    Ok((normal_operations_fence, outcome, preparation))
 }
 
 async fn unpark_with_ready_for_operations<U, UF, R, RF, F>(
