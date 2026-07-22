@@ -3,21 +3,146 @@
 use serde::{Deserialize, Serialize};
 
 /// Storage preparation manifest sent from the runner to `guest-download`.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Manifest {
     /// Volume storage entries.
-    #[serde(default)]
     pub storages: Vec<StorageEntry>,
     /// Artifact entries.
-    #[serde(default)]
     pub artifacts: Vec<ArtifactEntry>,
     /// Paths to remove before materializing changed entries.
-    #[serde(default)]
     pub cleanup_paths: Vec<String>,
     /// Instruction-specific cleanup operations.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub instruction_cleanups: Vec<InstructionCleanupEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestWire {
+    #[serde(default)]
+    storages: Option<Vec<StorageEntry>>,
+    #[serde(default)]
+    artifacts: Option<Vec<ArtifactEntry>>,
+    #[serde(default)]
+    storage_mounts: Option<Vec<StorageMountEntry>>,
+    #[serde(default)]
+    cleanup_paths: Vec<String>,
+    #[serde(default)]
+    instruction_cleanups: Vec<InstructionCleanupEntry>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CanonicalManifest<'a> {
+    storage_mounts: Vec<StorageMountEntry>,
+    cleanup_paths: &'a [String],
+    #[serde(skip_serializing_if = "instruction_cleanup_slice_is_empty")]
+    instruction_cleanups: &'a [InstructionCleanupEntry],
+}
+
+fn instruction_cleanup_slice_is_empty(value: &&[InstructionCleanupEntry]) -> bool {
+    value.is_empty()
+}
+
+impl Serialize for Manifest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let storage_mounts = self
+            .storages
+            .iter()
+            .map(StorageMountEntry::from_storage)
+            .chain(self.artifacts.iter().map(StorageMountEntry::from_artifact))
+            .collect();
+        CanonicalManifest {
+            storage_mounts,
+            cleanup_paths: &self.cleanup_paths,
+            instruction_cleanups: &self.instruction_cleanups,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Manifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ManifestWire::deserialize(deserializer)?;
+        match (wire.storages, wire.artifacts, wire.storage_mounts) {
+            (Some(storages), Some(artifacts), None) => Ok(Self {
+                storages,
+                artifacts,
+                cleanup_paths: wire.cleanup_paths,
+                instruction_cleanups: wire.instruction_cleanups,
+            }),
+            (None, None, Some(storage_mounts)) => Self::from_storage_mounts(
+                storage_mounts,
+                wire.cleanup_paths,
+                wire.instruction_cleanups,
+            )
+            .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "storage manifest must contain exactly storageMounts or both storages and artifacts",
+            )),
+        }
+    }
+}
+
+impl Manifest {
+    fn from_storage_mounts(
+        storage_mounts: Vec<StorageMountEntry>,
+        cleanup_paths: Vec<String>,
+        instruction_cleanups: Vec<InstructionCleanupEntry>,
+    ) -> Result<Self, String> {
+        let mut storages = Vec::new();
+        let mut artifacts = Vec::new();
+
+        for mount in storage_mounts {
+            if mount.writeback {
+                if mount.extract_path.is_some() || mount.instructions_target_filename.is_some() {
+                    return Err(
+                        "writeback storage mount cannot contain instruction normalization fields"
+                            .to_string(),
+                    );
+                }
+                artifacts.push(ArtifactEntry {
+                    mount_path: mount.mount_path,
+                    archive_url: mount.archive_url,
+                    empty: mount.empty,
+                    cached: mount.cached,
+                    vas_storage_name: mount.name,
+                    vas_storage_id: mount.storage_id,
+                    vas_version_id: mount.version_id,
+                    missing_root_policy: mount.missing_root_policy,
+                });
+                continue;
+            }
+
+            if mount.empty {
+                return Err("read-only storage mount cannot be empty".to_string());
+            }
+            if mount.missing_root_policy.is_some() {
+                return Err("read-only storage mount cannot contain missingRootPolicy".to_string());
+            }
+            storages.push(StorageEntry {
+                mount_path: mount.mount_path,
+                extract_path: mount.extract_path,
+                archive_url: mount.archive_url,
+                instructions_target_filename: mount.instructions_target_filename,
+                cached: mount.cached,
+                vas_storage_name: mount.name,
+                vas_version_id: mount.version_id,
+            });
+        }
+
+        Ok(Self {
+            storages,
+            artifacts,
+            cleanup_paths,
+            instruction_cleanups,
+        })
+    }
 }
 
 /// Volume storage entry in the guest storage manifest.
@@ -75,6 +200,78 @@ pub struct ArtifactEntry {
     pub missing_root_policy: Option<String>,
 }
 
+/// Canonical Storage mount exchanged between the runner and guest downloader.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageMountEntry {
+    /// Storage name retained for diagnostics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Immutable Storage identifier, present for writeback mounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_id: Option<String>,
+    /// Resolved Storage version identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    /// Guest filesystem path where the Storage is mounted.
+    pub mount_path: String,
+    /// Optional staging path used before instruction normalization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extract_path: Option<String>,
+    /// Archive URL, or `None` when existing contents are reused or explicitly empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_url: Option<String>,
+    /// Optional filename used when normalizing instruction Storage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions_target_filename: Option<String>,
+    /// Whether existing contents match the current fingerprint.
+    #[serde(default)]
+    pub cached: bool,
+    /// Whether the resolved Storage version is explicitly empty.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub empty: bool,
+    /// Guest behavior label for a missing writeback mount root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_root_policy: Option<String>,
+    /// Whether changed contents are written back to the same Storage.
+    #[serde(default)]
+    pub writeback: bool,
+}
+
+impl StorageMountEntry {
+    fn from_storage(entry: &StorageEntry) -> Self {
+        Self {
+            name: entry.vas_storage_name.clone(),
+            storage_id: None,
+            version_id: entry.vas_version_id.clone(),
+            mount_path: entry.mount_path.clone(),
+            extract_path: entry.extract_path.clone(),
+            archive_url: entry.archive_url.clone(),
+            instructions_target_filename: entry.instructions_target_filename.clone(),
+            cached: entry.cached,
+            empty: false,
+            missing_root_policy: None,
+            writeback: false,
+        }
+    }
+
+    fn from_artifact(entry: &ArtifactEntry) -> Self {
+        Self {
+            name: entry.vas_storage_name.clone(),
+            storage_id: entry.vas_storage_id.clone(),
+            version_id: entry.vas_version_id.clone(),
+            mount_path: entry.mount_path.clone(),
+            extract_path: None,
+            archive_url: entry.archive_url.clone(),
+            instructions_target_filename: None,
+            cached: entry.cached,
+            empty: entry.empty,
+            missing_root_policy: entry.missing_root_policy.clone(),
+            writeback: true,
+        }
+    }
+}
+
 /// Instruction-specific cleanup operation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,25 +325,28 @@ mod tests {
         assert_eq!(
             serde_json::to_value(manifest).unwrap(),
             json!({
-                "storages": [{
-                    "mountPath": "/home/user/.codex",
-                    "extractPath": "/run/storage-instructions/0",
-                    "archiveUrl": "https://example.com/storage.tar.gz",
-                    "instructionsTargetFilename": "AGENTS.md",
-                    "cached": false,
-                    "vasStorageName": "instructions",
-                    "vasVersionId": "storage-v1"
-                }],
-                "artifacts": [{
-                    "mountPath": "/workspace",
-                    "archiveUrl": null,
-                    "empty": true,
-                    "cached": true,
-                    "vasStorageName": "artifact",
-                    "vasStorageId": "artifact-id",
-                    "vasVersionId": "artifact-v1",
-                    "missingRootPolicy": "preserveParentVersion"
-                }],
+                "storageMounts": [
+                    {
+                        "name": "instructions",
+                        "versionId": "storage-v1",
+                        "mountPath": "/home/user/.codex",
+                        "extractPath": "/run/storage-instructions/0",
+                        "archiveUrl": "https://example.com/storage.tar.gz",
+                        "instructionsTargetFilename": "AGENTS.md",
+                        "cached": false,
+                        "writeback": false
+                    },
+                    {
+                        "name": "artifact",
+                        "storageId": "artifact-id",
+                        "versionId": "artifact-v1",
+                        "mountPath": "/workspace",
+                        "cached": true,
+                        "empty": true,
+                        "missingRootPolicy": "preserveParentVersion",
+                        "writeback": true
+                    }
+                ],
                 "cleanupPaths": ["/data"],
                 "instructionCleanups": [{
                     "mountPath": "/home/user/.codex",
@@ -154,6 +354,58 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[test]
+    fn canonical_manifest_deserializes_to_execution_projection() {
+        let manifest: Manifest = serde_json::from_value(json!({
+            "storageMounts": [
+                {
+                    "name": "instructions",
+                    "versionId": "storage-v1",
+                    "mountPath": "/home/user/.codex",
+                    "archiveUrl": "https://example.com/storage.tar.gz",
+                    "cached": false,
+                    "writeback": false
+                },
+                {
+                    "name": "memory",
+                    "storageId": "memory-id",
+                    "versionId": "memory-v1",
+                    "mountPath": "/memory",
+                    "empty": true,
+                    "cached": true,
+                    "writeback": true
+                }
+            ],
+            "cleanupPaths": ["/stale"]
+        }))
+        .unwrap();
+
+        assert_eq!(manifest.storages.len(), 1);
+        assert_eq!(
+            manifest.storages[0].vas_storage_name.as_deref(),
+            Some("instructions")
+        );
+        assert_eq!(manifest.artifacts.len(), 1);
+        assert_eq!(
+            manifest.artifacts[0].vas_storage_id.as_deref(),
+            Some("memory-id")
+        );
+        assert!(manifest.artifacts[0].empty);
+        assert_eq!(manifest.cleanup_paths, ["/stale"]);
+    }
+
+    #[test]
+    fn manifest_rejects_ambiguous_representations() {
+        for value in [
+            json!({ "storageMounts": [], "storages": [], "artifacts": [] }),
+            json!({ "storages": [] }),
+            json!({ "artifacts": [] }),
+            json!({}),
+        ] {
+            assert!(serde_json::from_value::<Manifest>(value).is_err());
+        }
     }
 
     #[test]

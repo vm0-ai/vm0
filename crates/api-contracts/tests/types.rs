@@ -401,6 +401,30 @@ fn generated_storage_manifest_serializes_empty_artifacts() {
 }
 
 #[test]
+fn generated_storage_mount_entry_preserves_canonical_shape() {
+    let mount: runner_storage::StorageMountEntry = serde_json::from_value(json!({
+        "name": "memory",
+        "storageId": "storage-id-1",
+        "versionId": "version-1",
+        "mountPath": "/memory",
+        "empty": true,
+        "missingRootPolicy": "preserveParentVersion",
+        "writeback": true,
+    }))
+    .unwrap();
+
+    assert_eq!(mount.name, "memory");
+    assert_eq!(mount.storage_id, "storage-id-1");
+    assert_eq!(mount.version_id, "version-1");
+    assert_eq!(mount.empty, Some(true));
+    assert_eq!(mount.writeback, Some(true));
+    assert_eq!(
+        mount.missing_root_policy,
+        Some(runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+    );
+}
+
+#[test]
 fn generated_storage_manifest_rejects_guest_download_null_archive_url() {
     let result = serde_json::from_value::<runner_storage::StorageManifest>(json!({
         "storages": [{
