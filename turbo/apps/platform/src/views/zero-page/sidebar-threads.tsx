@@ -67,6 +67,8 @@ import {
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
   scrollToThread$,
+  scrollCurrentChatThreadOnRef$,
+  currentChatThreadListed$,
   type SidebarChatThread,
   sidebarChatThreadCount$,
   sidebarChatThreadWindow$,
@@ -1004,7 +1006,10 @@ function ExpandedChatThreadsContent() {
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
+  const currentMainThreadListed =
+    useLastResolved(currentChatThreadListed$) ?? false;
   const scrollToThread = useSet(scrollToThread$);
+  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
   const pageSignal = useGet(pageSignal$);
   const focusThreadLink = (
     viewport: HTMLElement,
@@ -1059,6 +1064,14 @@ function ExpandedChatThreadsContent() {
 
   const content = (
     <div className="flex flex-col gap-1">
+      {currentMainThreadId && currentMainThreadListed ? (
+        <span
+          key={currentMainThreadId}
+          ref={scrollCurrentChatThreadOnRef}
+          data-chat-thread-id={currentMainThreadId}
+          hidden
+        />
+      ) : null}
       {chatThreadsLoading ? (
         <ChatThreadsSkeleton />
       ) : (
