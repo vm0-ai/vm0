@@ -481,8 +481,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {

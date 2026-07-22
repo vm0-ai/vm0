@@ -31,7 +31,6 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -261,25 +260,30 @@ describe("GET /api/zero/billing/status", () => {
     expect(Number.isFinite(response.body.concurrencyLimit)).toBeTruthy();
   });
 
-  it("caps the staff entitlement base concurrency limit in billing status", async () => {
+  it("returns entitlement capabilities for a non-staff org", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "3");
     const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
     onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
+      orgId,
       tier: "pro",
       credits: 0,
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      canBuyCredits: false,
+      autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: true,
+      workflowWebhookAutomationAllowed: true,
     });
-    mocks.clerk.session(userId, STAFF_ORG_ID);
+    mocks.clerk.session(userId, orgId);
 
     const response = await accept(
       setupApp({ context })(zeroBillingStatusContract).get({
@@ -289,8 +293,12 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.canBuyConcurrency).toBeTruthy();
+    expect(response.body.canBuyCredits).toBeFalsy();
+    expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
+    expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
   });
 

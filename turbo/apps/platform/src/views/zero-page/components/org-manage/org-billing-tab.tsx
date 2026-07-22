@@ -59,6 +59,10 @@ import {
 import { planFreeImg, planProImg, planTeamImg } from "../../platform-assets.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
+import {
+  orgPlanCapabilitiesFromBilling,
+  type OrgPlanCapabilities,
+} from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
   billingScrollTarget$,
@@ -892,17 +896,6 @@ function PlanActionButtons({
   );
 }
 
-function shouldShowBuyCreditsSection(
-  hasBillingStatus: boolean,
-  currentTier: BillingTier,
-): boolean {
-  return (
-    hasBillingStatus &&
-    currentTier !== "limited-free-1" &&
-    currentTier !== "pro-suspend"
-  );
-}
-
 function currentPlanNameLabel(currentTier: BillingTier): string {
   if (isNoActivePlanTier(currentTier)) {
     return "No active plan";
@@ -918,10 +911,6 @@ function currentPlanStatusLabel(
     return "Custom access with 10 concurrent runs";
   }
   return periodLabel ?? "No active subscription";
-}
-
-function shouldShowConcurrencyBilling(currentTier: BillingTier): boolean {
-  return currentTier === "team" || isCustomTier(currentTier);
 }
 
 function billingPeriodLabel(args: {
@@ -947,6 +936,24 @@ function billingPeriodLabel(args: {
     return `Downgrades to ${scheduledTargetLabel(scheduledChange)} on ${date}`;
   }
   return `Renews ${date}`;
+}
+
+const HIDDEN_BILLING_CONTROLS = Object.freeze({
+  canBuyConcurrency: false,
+  canBuyCredits: false,
+  autoRechargeAllowed: false,
+});
+
+function billingControlCapabilities(
+  status: BillingStatusResponse | null,
+): Pick<
+  OrgPlanCapabilities,
+  "canBuyConcurrency" | "canBuyCredits" | "autoRechargeAllowed"
+> {
+  if (!status) {
+    return HIDDEN_BILLING_CONTROLS;
+  }
+  return orgPlanCapabilitiesFromBilling(status);
 }
 
 function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
@@ -1299,6 +1306,7 @@ export function OrgBillingTab() {
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const statusLoading = statusLoadable.state === "loading";
   const statusError = statusLoadable.state === "hasError";
+  const capabilities = billingControlCapabilities(status);
 
   const currentTier = apiTierToBillingTier(status?.tier);
   const isPaid = isPaidTier(currentTier);
@@ -1326,11 +1334,8 @@ export function OrgBillingTab() {
     currentTier,
     periodLabel,
   );
-  const showBuyCredits = shouldShowBuyCreditsSection(
-    status !== null,
-    currentTier,
-  );
-  const showConcurrency = shouldShowConcurrencyBilling(currentTier);
+  const showBuyCredits = capabilities.canBuyCredits;
+  const showConcurrency = capabilities.canBuyConcurrency;
   const canManageBilling = isPaid && status?.hasSubscription === true;
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
@@ -1499,7 +1504,10 @@ export function OrgBillingTab() {
       )}
 
       {status && (
-        <AutoRechargeSection currentTier={currentTier} loading={loading} />
+        <AutoRechargeSection
+          allowed={capabilities.autoRechargeAllowed}
+          loading={loading}
+        />
       )}
 
       {showConcurrency && <ConcurrencyBillingSection status={status} />}

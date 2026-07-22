@@ -19,6 +19,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly status: string;
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
+  readonly canBuyCredits: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -39,8 +40,12 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly orgId: string;
   readonly status?: string;
   readonly baseConcurrencyLimit?: number;
+  readonly canBuyConcurrency?: boolean;
+  readonly canBuyCredits?: boolean;
+  readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
   readonly restrictedVm0Models?: boolean;
+  readonly workflowWebhookAutomationAllowed?: boolean;
 }): Promise<void> {
   const row = {
     orgId: values.orgId,
@@ -49,8 +54,12 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     source: "test_fixture",
     status: values.status ?? "active",
     baseConcurrencyLimit: values.baseConcurrencyLimit ?? 0,
+    canBuyConcurrency: values.canBuyConcurrency,
+    canBuyCredits: values.canBuyCredits,
+    autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
     restrictedVm0Models: values.restrictedVm0Models,
+    workflowWebhookTriggerAllowed: values.workflowWebhookAutomationAllowed,
   };
   await createStore()
     .set(writeDb$)
@@ -64,12 +73,26 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         source: row.source,
         status: row.status,
         baseConcurrencyLimit: row.baseConcurrencyLimit,
+        ...(row.canBuyConcurrency === undefined
+          ? {}
+          : { canBuyConcurrency: row.canBuyConcurrency }),
+        ...(row.canBuyCredits === undefined
+          ? {}
+          : { canBuyCredits: row.canBuyCredits }),
+        ...(row.autoRechargeAllowed === undefined
+          ? {}
+          : { autoRechargeAllowed: row.autoRechargeAllowed }),
         ...(row.supportByok === undefined
           ? {}
           : { supportByok: row.supportByok }),
         ...(row.restrictedVm0Models === undefined
           ? {}
           : { restrictedVm0Models: row.restrictedVm0Models }),
+        ...(row.workflowWebhookTriggerAllowed === undefined
+          ? {}
+          : {
+              workflowWebhookTriggerAllowed: row.workflowWebhookTriggerAllowed,
+            }),
       },
     });
 }
@@ -87,6 +110,7 @@ export async function readOrgPlanEntitlementFixture(
       status: orgPlanEntitlements.status,
       baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
       canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
+      canBuyCredits: orgPlanEntitlements.canBuyCredits,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,
       restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,

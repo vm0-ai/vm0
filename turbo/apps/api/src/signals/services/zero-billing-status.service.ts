@@ -122,8 +122,12 @@ interface BillingOrgRow {
 
 interface BillingStatusResponse {
   tier: string;
+  canBuyConcurrency: boolean;
+  canBuyCredits: boolean;
+  autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
+  workflowWebhookAutomationAllowed: boolean;
   credits: number;
   onboardingPaymentPending: boolean;
   subscriptionStatus: string | null;
@@ -540,8 +544,12 @@ function scheduledBillingChange(
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
+  canBuyConcurrency: boolean;
+  canBuyCredits: boolean;
+  autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
+  workflowWebhookAutomationAllowed: boolean;
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
@@ -563,8 +571,12 @@ function billingStatusResponse(args: {
 
   return {
     tier: org.tier,
+    canBuyConcurrency: args.canBuyConcurrency,
+    canBuyCredits: args.canBuyCredits,
+    autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
+    workflowWebhookAutomationAllowed: args.workflowWebhookAutomationAllowed,
     credits: displayedCredits,
     onboardingPaymentPending: org.onboardingPaymentPending,
     subscriptionStatus: org.subscriptionStatus,
@@ -680,8 +692,13 @@ export function zeroBillingStatus(
     return billingStatusResponse({
       orgId,
       org: org[0],
+      canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
+      canBuyCredits: capabilities?.canBuyCredits ?? false,
+      autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,
+      workflowWebhookAutomationAllowed:
+        capabilities?.workflowWebhookAutomationAllowed ?? false,
       unsettledExpired: unsettledExpiredRow[0]?.total ?? 0,
       activeRecords,
       concurrencySubscriptions,
