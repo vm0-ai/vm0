@@ -396,11 +396,11 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("uses App callbacks for enabled connectors", async () => {
+  it("uses App callbacks for allowlisted connectors", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     mockAuthenticatedSession();
 
-    const response = await requestOauthStart("github", {
+    const response = await requestOauthStart("google-maps", {
       callbackTarget: "app",
       headers: authHeaders(),
       origin: API_ORIGIN,
@@ -409,7 +409,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.test/connectors/github/callback",
+      "https://app.vm0.test/connectors/google-maps/callback",
     );
     await rejectProviderAuthorization(authorizationUrl);
   });
