@@ -18,6 +18,8 @@ import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -28,6 +30,8 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
+const chatFilesApi = createChatFilesBddApi(context);
+const computerUseApi = createComputerUseBddApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
@@ -60,6 +64,16 @@ function expectOk(response: Response, operation: string): void {
     return;
   }
   throw new Error(`${operation} failed with ${response.status}`);
+}
+
+function zeroTokenFromClaim(
+  claim: Awaited<ReturnType<typeof runsApi.claimRunnerJob>>,
+): string {
+  const token = claim.environment?.ZERO_TOKEN;
+  if (!token || !token.startsWith("vm0_sandbox_")) {
+    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+  }
+  return token;
 }
 
 async function setup(
@@ -235,6 +249,56 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
 }
 
 describe("zero workflow automation scheduler", () => {
+  it("inherits the chat thread computer-use grant for automation runs", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 3600);
+    const host = await computerUseApi.startComputerUseHost(scenario.actor, {
+      hostName: "Automation Desktop",
+    });
+    await chatFilesApi.updateThreadComputerUseHost(
+      scenario.actor,
+      automation.threadId,
+      host.hostId,
+    );
+
+    await executeDueWorkflowAutomations();
+
+    const run = await onlyWorkflowRunMessage(automation.threadId);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.runId);
+    await computerUseApi.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(claim) },
+      [200],
+    );
+    const createdRun = await runsApi.readRun(scenario.actor, run.runId);
+    expect(createdRun.appendSystemPrompt).toContain(
+      "Computer Use is enabled for this run on Automation Desktop.",
+    );
+    await disableAutomation(automation.automationId);
+  });
+
+  it("returns actionable authorization guidance when an automation has no computer-use grant", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 3600);
+
+    await executeDueWorkflowAutomations();
+
+    const run = await onlyWorkflowRunMessage(automation.threadId);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.runId);
+    const denied = await computerUseApi.requestCreateComputerUseWriteCommand(
+      { bearer: zeroTokenFromClaim(claim) },
+      [403],
+    );
+    expect(denied.body).toMatchObject({
+      error: {
+        message:
+          "Computer Use is not authorized for this run. Authorize a computer once in the conversation, then retry.",
+      },
+    });
+    await disableAutomation(automation.automationId);
+  });
+
   it("uses agent connector authorization and permission grants for automation runs", async () => {
     const scenario = await setup();
 
