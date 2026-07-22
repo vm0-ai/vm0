@@ -108,6 +108,9 @@ export const dispatchProgressCallbacks$ = command(
         if (!callback.url) {
           return;
         }
+        if (!callback.encryptedSecret) {
+          return;
+        }
         const body = JSON.stringify({
           callbackId: callback.id,
           runId,

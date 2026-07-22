@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { z } from "zod";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testTelegramStateRoutes } from "../../test-telegram-state";
@@ -11,17 +12,25 @@ interface SeedAgentRunCallbackOptions {
   readonly internalKind?: string;
   readonly payload: Record<string, unknown>;
   readonly secret?: string;
+  readonly persistSecret?: boolean;
   readonly status?: "pending" | "delivered" | "failed";
 }
 
-interface AgentRunCallbackSnapshot {
-  readonly id: string;
-  readonly internalKind: string | null;
-  readonly payload: unknown;
-  readonly status: "pending" | "delivered" | "failed";
-  readonly attempts: number;
-  readonly lastError: string | null;
-}
+const agentRunCallbackSnapshotSchema = z.object({
+  id: z.string(),
+  internalKind: z.string().nullable(),
+  hasEncryptedSecret: z.boolean(),
+  payload: z.unknown(),
+  status: z.enum(["pending", "delivered", "failed"]),
+  attempts: z.number(),
+  lastError: z.string().nullable(),
+});
+
+const agentRunCallbacksResponseSchema = z.object({
+  callbacks: z.array(agentRunCallbackSnapshotSchema),
+});
+
+type AgentRunCallbackSnapshot = z.infer<typeof agentRunCallbackSnapshotSchema>;
 
 interface ReadAgentRunCallbacksOptions {
   readonly orgId: string;
@@ -52,45 +61,6 @@ function expectOk(response: Response, operation: string): void {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
-function agentRunCallbackSnapshot(
-  value: unknown,
-): AgentRunCallbackSnapshot | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-  const id = "id" in value && typeof value.id === "string" ? value.id : null;
-  const internalKind =
-    "internalKind" in value &&
-    (typeof value.internalKind === "string" || value.internalKind === null)
-      ? value.internalKind
-      : null;
-  const status =
-    "status" in value &&
-    (value.status === "pending" ||
-      value.status === "delivered" ||
-      value.status === "failed")
-      ? value.status
-      : null;
-  if (!id || !status) {
-    return null;
-  }
-  return {
-    id,
-    internalKind,
-    payload: "payload" in value ? value.payload : undefined,
-    status,
-    attempts:
-      "attempts" in value && typeof value.attempts === "number"
-        ? value.attempts
-        : 0,
-    lastError:
-      "lastError" in value &&
-      (typeof value.lastError === "string" || value.lastError === null)
-        ? value.lastError
-        : null,
-  };
-}
-
 export const seedAgentRunCallback$ = command(
   async (
     _,
@@ -110,6 +80,7 @@ export const seedAgentRunCallback$ = command(
           internal_kind: options.internalKind ?? null,
           payload: options.payload,
           secret: options.secret,
+          persist_secret: options.persistSecret,
           status: options.status,
         }),
       },
@@ -151,14 +122,8 @@ export const readAgentRunCallbacks$ = command(
     signal.throwIfAborted();
     expectOk(response, "readAgentRunCallbacks$");
     signal.throwIfAborted();
-    const body = await readJson<Record<string, unknown>>(response);
+    const body = await readJson<unknown>(response);
     signal.throwIfAborted();
-    if (!Array.isArray(body.callbacks)) {
-      return [];
-    }
-    return body.callbacks.flatMap((value) => {
-      const callback = agentRunCallbackSnapshot(value);
-      return callback ? [callback] : [];
-    });
+    return agentRunCallbacksResponseSchema.parse(body).callbacks;
   },
 );
