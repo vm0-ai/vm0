@@ -1738,7 +1738,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("enables a single no-auth connector without opening the connect dialog", async () => {
+  it("enables a no-auth connector for the default agent without dialogs", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -1766,6 +1766,8 @@ describe("connectors page", () => {
         connectCount += 1;
         expect(params.type).toBe("stripe");
         expect(body.authMethod).toBe("api");
+        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
           type: params.type,
@@ -1798,6 +1800,11 @@ describe("connectors page", () => {
     expect(
       screen.queryByText(/You've successfully connected with/u),
     ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
     expect(screen.queryByText("Public catalog")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Enable public catalog data."),
@@ -2267,7 +2274,7 @@ describe("connectors page", () => {
       context.store.set(
         submitManualGrant$,
         {
-          type: "axiom",
+          connectorRef: "axiom",
           authMethod: "api-token",
           inputValues: { apiToken: "xaat-test" },
           options: { connectorLabel: "Public Axiom" },
@@ -2392,10 +2399,139 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects a manual grant connector without showing a permission dialog", async () => {
-    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+  it("connects manual-grant connectors without permission dialogs", async () => {
     mockConnectors([]);
-    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiKey",
+                label: "Public API key",
+                required: true,
+                placeholder: "public-stripe-key",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.agentId).toBeUndefined();
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    let authorizationUpdateCount = 0;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      authorizationUpdateCount += 1;
+      return respond(200, { enabledTypes: [] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
+    click(await screen.findByLabelText("Connect Public Axiom"));
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-test",
+    );
+    click(buttonByText("Save", axiomDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Public Axiom connected successfully"),
+      ).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("You've successfully connected with Public Axiom!"),
+    ).not.toBeInTheDocument();
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+    const stripeDialog = await screen.findByRole("dialog", {
+      name: "Public Stripe",
+    });
+    await fill(
+      within(stripeDialog).getByPlaceholderText("public-stripe-key"),
+      "sk-test",
+    );
+    click(buttonByText("Save", stripeDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Public Stripe connected successfully"),
+      ).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("You've successfully connected with Public Stripe!"),
+    ).not.toBeInTheDocument();
+    expect(authorizationUpdateCount).toBe(0);
+    expect(
+      screen.queryByText("Public Stripe enabled for 1 agent"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not issue a client-side authorization update after connecting", async () => {
+    mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "axiom",
@@ -2439,6 +2575,19 @@ describe("connectors page", () => {
         });
       },
     );
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    let authorizationUpdateCount = 0;
+    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      authorizationUpdateCount += 1;
+      return respond(400, {
+        error: {
+          code: "CONNECTOR_ACCESS_UPDATE_FAILED",
+          message: "Could not update connector access",
+        },
+      });
+    });
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -2459,25 +2608,20 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
     });
     expect(
+      within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+    ).toBeInTheDocument();
+    expect(authorizationUpdateCount).toBe(0);
+    expect(
       screen.queryByText("You've successfully connected with Public Axiom!"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Could not update connector access")).toBeNull();
+    expect(
+      screen.queryByText("Public Axiom enabled for 1 agent"),
     ).not.toBeInTheDocument();
   });
 
-  it("connects AWS with an authorization code and authorizes an agent", async () => {
+  it("connects AWS without a post-connect permission dialog", async () => {
     mockConnectors([]);
-    context.mocks.data.team([
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        ownerId: "test-user-123",
-        displayName: "Research Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        visibility: "public",
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
     context.mocks.browser.open(createMockAuthWindow());
 
     detachedSetupPage({

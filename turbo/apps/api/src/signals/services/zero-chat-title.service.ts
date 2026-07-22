@@ -201,7 +201,7 @@ async function getLatestTitleContextMessages(
     eq(chatMessages.chatThreadId, threadId),
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
-    visibleChatMessageCondition(),
+    visibleChatMessageCondition(db),
     completedConversationContextMessageCondition(db),
   ];
   if (options?.excludeRunId !== undefined) {
@@ -428,7 +428,7 @@ async function getLatestFollowupContextMessages(
         eq(chatMessages.chatThreadId, threadId),
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(),
+        visibleChatMessageCondition(db),
         completedConversationContextMessageCondition(db),
       ),
     )

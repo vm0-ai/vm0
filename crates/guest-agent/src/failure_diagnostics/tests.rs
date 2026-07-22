@@ -913,6 +913,16 @@ fn cli_failure_reason_classifies_codex_usage_limit() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_codex_quota_exceeded_as_usage_limit() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::Codex,
+        "Quota exceeded. Check your plan and billing details.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::UsageLimit));
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_session_limit() {
     for message in [
         "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits. Resets 12:50pm (Asia/Shanghai).",
@@ -1079,6 +1089,22 @@ fn cli_failure_reason_classifies_claude_usage_limit() {
     );
 
     assert_eq!(reason, Some(FailureReason::UsageLimit));
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_fable_limits() {
+    for message in [
+        "Fable 5 requires usage credits. /model to switch models.",
+        "You've reached your Fable 5 limit. /model to switch models.",
+    ] {
+        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+        assert_eq!(
+            reason,
+            Some(FailureReason::UsageLimit),
+            "message: {message}"
+        );
+    }
 }
 
 #[test]

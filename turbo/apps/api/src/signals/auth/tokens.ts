@@ -25,6 +25,9 @@ import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
+// Covers the runner's two-hour execution budget plus claim, startup,
+// finalization, and terminal report time.
+const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
@@ -282,7 +285,7 @@ export function generateSandboxToken(
     runId,
     orgId,
     iat: nowSeconds,
-    exp: nowSeconds + 2 * 60 * 60,
+    exp: nowSeconds + SANDBOX_TOKEN_TTL_SECONDS,
   };
 
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);

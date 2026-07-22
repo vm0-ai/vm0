@@ -252,10 +252,6 @@ function appUrl(): string {
   return env("APP_URL");
 }
 
-function webUrl(): string {
-  return env("VM0_WEB_URL");
-}
-
 export function buildIntegrationPrompt(): string {
   return "# Current Integration\nYou are currently running inside: Email";
 }
@@ -394,7 +390,13 @@ function generateUnsubscribeToken(userId: string): string {
 }
 
 export function buildUnsubscribeUrl(userId: string): string {
-  return `${webUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+  return `${appUrl()}/email/unsubscribe?token=${generateUnsubscribeToken(
+    userId,
+  )}`;
+}
+
+export function buildOneClickUnsubscribeUrl(userId: string): string {
+  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }

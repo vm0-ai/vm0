@@ -1,6 +1,7 @@
 """Tests for shared HTTP body decoding helpers."""
 
 import gzip
+import hashlib
 import zlib
 
 import brotli
@@ -15,7 +16,12 @@ from body_decoding import (
     decompress_body,
     decompress_json_usage_body,
 )
-from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
+from body_limits import (
+    DEFAULT_BODY_DECODE_LIMIT,
+    STREAM_DECODE_CHUNK_LIMIT,
+    STREAM_DECODE_EXPANSION_GRACE,
+    STREAM_DECODE_MAX_EXPANSION_RATIO,
+)
 from tests.body_decode_helpers import (
     pseudo_random_ascii,
     track_brotli_decompressor,
@@ -135,6 +141,118 @@ class TestStreamDecodeFeed:
         assert b"".join(chunks) == plaintext
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_expansion_budget_allows_exact_grace_and_empty_member(self, headers, encoding):
+        plaintext = b"A" * STREAM_DECODE_EXPANSION_GRACE
+        compressed = _compress_one_shot_body(encoding, plaintext) + _compress_one_shot_body(
+            encoding, b""
+        )
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < len(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_high_ratio_output_stops_at_expansion_budget(self, headers, encoding):
+        plaintext = b"A" * (64 * 1024 * 1024)
+        compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) < STREAM_DECODE_CHUNK_LIMIT
+        expected_decoded_bytes = max(
+            STREAM_DECODE_EXPANSION_GRACE,
+            len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO,
+        )
+        assert expected_decoded_bytes < len(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext[:expected_decoded_bytes]
+        assert (
+            len(chunks)
+            == (expected_decoded_bytes + STREAM_DECODE_CHUNK_LIMIT - 1) // STREAM_DECODE_CHUNK_LIMIT
+        )
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert session.finish_error() == "decoded body limit exceeded"
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext[:expected_decoded_bytes]
+        assert session.finish_error() == "decoded body limit exceeded"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_expansion_budget_is_shared_across_callbacks(self, headers, encoding):
+        plaintext = b"A" * (8 * 1024 * 1024)
+        compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < STREAM_DECODE_EXPANSION_GRACE
+        split_at = len(compressed) // 3
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed[:split_at])
+        decoded_after_first_callback = sum(len(chunk) for chunk in chunks)
+        assert 0 < decoded_after_first_callback < STREAM_DECODE_EXPANSION_GRACE
+        session.feed(compressed[split_at:])
+
+        assert b"".join(chunks) == plaintext[:STREAM_DECODE_EXPANSION_GRACE]
+        assert session.finish_error() == "decoded body limit exceeded"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_share_expansion_budget(self, headers, encoding):
+        first_plaintext = b"A" * (3 * 1024 * 1024)
+        second_plaintext = b"B" * (3 * 1024 * 1024)
+        first_member = _compress_one_shot_body(encoding, first_plaintext)
+        second_member = _compress_one_shot_body(encoding, second_plaintext)
+        assert (
+            len(first_member + second_member) * STREAM_DECODE_MAX_EXPANSION_RATIO
+            < STREAM_DECODE_EXPANSION_GRACE
+        )
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(first_member)
+        assert b"".join(chunks) == first_plaintext
+        assert session.finish_error() is None
+        session.feed(second_member)
+
+        remaining = STREAM_DECODE_EXPANSION_GRACE - len(first_plaintext)
+        assert b"".join(chunks) == first_plaintext + second_plaintext[:remaining]
+        assert session.finish_error() == "decoded body limit exceeded"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_low_ratio_output_can_exceed_expansion_grace(self, headers, encoding):
+        plaintext = hashlib.shake_256(b"vm0-streaming-zlib-low-ratio").digest(
+            STREAM_DECODE_EXPANSION_GRACE + STREAM_DECODE_CHUNK_LIMIT
+        )
+        compressed = _compress_one_shot_body(encoding, plaintext)
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO > len(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() is None
 
     def test_gzip_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
         chunks: list[bytes] = []

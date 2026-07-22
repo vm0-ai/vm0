@@ -206,7 +206,7 @@ async function resolveRequestScope(args: {
     return "run_not_found";
   }
 
-  if (run.triggerSource === "web" && run.chatThreadId) {
+  if (run.chatThreadId) {
     return { source: "chat", chatThreadId: run.chatThreadId };
   }
 

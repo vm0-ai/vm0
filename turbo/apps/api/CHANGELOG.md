@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.299.0](https://github.com/vm0-ai/vm0/compare/api-v1.298.0...api-v1.299.0) (2026-07-22)
+
+
+### Features
+
+* deliver canonical slack chat replies exactly once ([#22496](https://github.com/vm0-ai/vm0/issues/22496)) ([fb8bb00](https://github.com/vm0-ai/vm0/commit/fb8bb0076dd372cb6a23c46e233716d374ee21f1))
+* report unread chat threads in the morning brief email ([#22507](https://github.com/vm0-ai/vm0/issues/22507)) ([c94c2d3](https://github.com/vm0-ai/vm0/commit/c94c2d3372d4c79ec011c143a82f04155104636d))
+* serve the morning brief unsubscribe page from the platform app ([#22495](https://github.com/vm0-ai/vm0/issues/22495)) ([44b0f9a](https://github.com/vm0-ai/vm0/commit/44b0f9a4de8e8fb4456f80492c694fc38987f44e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+    * @vm0/db bumped to 1.125.4
+
+## [1.298.0](https://github.com/vm0-ai/vm0/compare/api-v1.297.1...api-v1.298.0) (2026-07-22)
+
+
+### Features
+
+* **computer-use:** share chat thread grants with automations ([#22485](https://github.com/vm0-ai/vm0/issues/22485)) ([482c97d](https://github.com/vm0-ai/vm0/commit/482c97d79d9be463b7794a293444dda612784c78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+    * @vm0/db bumped to 1.125.3
+
+## [1.297.1](https://github.com/vm0-ai/vm0/compare/api-v1.297.0...api-v1.297.1) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+    * @vm0/db bumped to 1.125.2
+
 ## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
 
 

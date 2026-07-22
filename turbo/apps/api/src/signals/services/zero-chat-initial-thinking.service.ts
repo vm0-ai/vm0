@@ -89,7 +89,7 @@ async function loadThinkingContextMessages(args: {
         eq(chatMessages.chatThreadId, args.threadId),
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(),
+        visibleChatMessageCondition(args.db),
         not(queuedUserMessageExists(args.db)),
         isNull(chatMessages.runLifecycleEvent),
         isNull(chatMessages.recommendedFollowups),

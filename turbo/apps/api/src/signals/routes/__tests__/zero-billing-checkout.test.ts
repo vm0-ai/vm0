@@ -869,8 +869,8 @@ describe("POST /api/zero/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://www.vm0.ai/onboarding?billing=pro",
-          cancelUrl: "https://www.vm0.ai/onboarding?billing=canceled",
+          successUrl: "https://www.vm0.ai/billing?billing=pro",
+          cancelUrl: "https://www.vm0.ai/billing?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -879,38 +879,6 @@ describe("POST /api/zero/billing/checkout", () => {
 
     expect(response.body).toStrictEqual({
       url: "https://checkout.stripe.com/session/so-trial",
-    });
-  });
-
-  it("accepts successUrl on the configured onboarding origin", async () => {
-    mockEnv("ONBOARDING_URL", "https://www.vm7.ai:8443");
-
-    const fixture = await trackedPendingSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
-    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-      url: "https://checkout.stripe.com/session/so-vm7-trial",
-    });
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          trialDays: 7,
-          successUrl: "https://www.vm7.ai:8443/onboarding?billing=pro",
-          cancelUrl: "https://www.vm7.ai:8443/onboarding?billing=canceled",
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      url: "https://checkout.stripe.com/session/so-vm7-trial",
     });
   });
 

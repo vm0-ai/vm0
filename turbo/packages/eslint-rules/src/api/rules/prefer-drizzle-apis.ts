@@ -33,6 +33,7 @@ import {
   isDrizzleColumnType,
   isDrizzleSqlTag,
   isDrizzleSymbol,
+  isDrizzleTableType,
   isDrizzleWrapperType,
   isNamedDrizzleSignature,
   resolvedSymbol,
@@ -50,6 +51,33 @@ const COMPARISON_HELPERS = new Map<string, string>([
 
 type BooleanToken = "operand" | "and" | "or" | "(" | ")";
 type BooleanExpressionKind = "operand" | "and" | "or";
+type ExistenceKeyword =
+  | "and"
+  | "exists"
+  | "from"
+  | "inner"
+  | "join"
+  | "limit"
+  | "not"
+  | "on"
+  | "select"
+  | "where"
+  | "one"
+  | "("
+  | ")";
+
+interface ExistenceExpressionToken {
+  readonly kind: "expression";
+  readonly index: number;
+}
+
+type ExistenceToken = ExistenceKeyword | ExistenceExpressionToken;
+
+interface ExistenceTemplateMatch {
+  readonly helper: "exists" | "notExists";
+  readonly tableExpressionIndexes: readonly number[];
+  readonly predicateExpressionIndexes: readonly number[];
+}
 
 function quasiText(node: TSESTree.TemplateElement): string {
   return node.value.cooked ?? node.value.raw;
@@ -299,6 +327,147 @@ function booleanHelper(quasis: readonly string[]): "and" | "or" | undefined {
     : undefined;
 }
 
+function tokenizeExistenceQuasi(quasi: string): ExistenceKeyword[] | undefined {
+  const tokens: ExistenceKeyword[] = [];
+  let offset = 0;
+  while (offset < quasi.length) {
+    const whitespace = /^\s+/.exec(quasi.slice(offset));
+    if (whitespace !== null) {
+      offset += whitespace[0].length;
+      continue;
+    }
+    const character = quasi[offset];
+    if (character === "(" || character === ")") {
+      tokens.push(character);
+      offset += 1;
+      continue;
+    }
+    const one = /^1\b/.exec(quasi.slice(offset));
+    if (one !== null) {
+      tokens.push("one");
+      offset += one[0].length;
+      continue;
+    }
+    const keyword =
+      /^(AND|EXISTS|FROM|INNER|JOIN|LIMIT|NOT|ON|SELECT|WHERE)\b/i.exec(
+        quasi.slice(offset),
+      );
+    if (keyword === null) {
+      return undefined;
+    }
+    const value = keyword[1]?.toLowerCase();
+    if (
+      value !== "and" &&
+      value !== "exists" &&
+      value !== "from" &&
+      value !== "inner" &&
+      value !== "join" &&
+      value !== "limit" &&
+      value !== "not" &&
+      value !== "on" &&
+      value !== "select" &&
+      value !== "where"
+    ) {
+      return undefined;
+    }
+    tokens.push(value);
+    offset += keyword[0].length;
+  }
+  return tokens;
+}
+
+function existenceTokens(
+  quasis: readonly string[],
+): ExistenceToken[] | undefined {
+  const tokens: ExistenceToken[] = [];
+  for (let index = 0; index < quasis.length; index += 1) {
+    const quasiTokens = tokenizeExistenceQuasi(quasis[index] ?? "");
+    if (quasiTokens === undefined) {
+      return undefined;
+    }
+    tokens.push(...quasiTokens);
+    if (index < quasis.length - 1) {
+      tokens.push({ kind: "expression", index });
+    }
+  }
+  return tokens;
+}
+
+function existenceTemplateMatch(
+  quasis: readonly string[],
+): ExistenceTemplateMatch | undefined {
+  const tokens = existenceTokens(quasis);
+  if (tokens === undefined) {
+    return undefined;
+  }
+  const parsedTokens = tokens;
+  let offset = 0;
+  const tableExpressionIndexes: number[] = [];
+  const predicateExpressionIndexes: number[] = [];
+
+  function consume(keyword: ExistenceKeyword): boolean {
+    if (parsedTokens[offset] !== keyword) {
+      return false;
+    }
+    offset += 1;
+    return true;
+  }
+
+  function consumeExpression(target: number[]): boolean {
+    const token = parsedTokens[offset];
+    if (typeof token === "string" || token === undefined) {
+      return false;
+    }
+    target.push(token.index);
+    offset += 1;
+    return true;
+  }
+
+  const negated = consume("not");
+  if (
+    !consume("exists") ||
+    !consume("(") ||
+    !consume("select") ||
+    !consume("one") ||
+    !consume("from") ||
+    !consumeExpression(tableExpressionIndexes)
+  ) {
+    return undefined;
+  }
+
+  while (consume("inner")) {
+    if (
+      !consume("join") ||
+      !consumeExpression(tableExpressionIndexes) ||
+      !consume("on") ||
+      !consumeExpression(predicateExpressionIndexes)
+    ) {
+      return undefined;
+    }
+  }
+
+  if (!consume("where") || !consumeExpression(predicateExpressionIndexes)) {
+    return undefined;
+  }
+  while (consume("and")) {
+    if (!consumeExpression(predicateExpressionIndexes)) {
+      return undefined;
+    }
+  }
+  if (consume("limit") && !consume("one")) {
+    return undefined;
+  }
+  if (!consume(")") || offset !== parsedTokens.length) {
+    return undefined;
+  }
+
+  return {
+    helper: negated ? "notExists" : "exists",
+    tableExpressionIndexes,
+    predicateExpressionIndexes,
+  };
+}
+
 export const preferDrizzleApis = createRule({
   name: "prefer-drizzle-apis",
   defaultOptions: [],
@@ -317,6 +486,8 @@ export const preferDrizzleApis = createRule({
       emptyFragment:
         "Use Drizzle sql.empty() for this intentionally empty SQL fragment.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
+      existencePredicate:
+        "Use Drizzle {{helper}}(...) with a select builder for this equivalent existence predicate.",
     },
   },
   create(context) {
@@ -755,6 +926,36 @@ export const preferDrizzleApis = createRule({
           quasis[0] === ""
         ) {
           context.report({ node, messageId: "emptyFragment" });
+          return;
+        }
+        const existence = existenceTemplateMatch(quasis);
+        if (
+          existence !== undefined &&
+          existence.tableExpressionIndexes.every((index) => {
+            const expressionNode = expressions[index];
+            if (expressionNode === undefined) {
+              return false;
+            }
+            const expression = expressionType(expressionNode);
+            return isDrizzleTableType(
+              checker,
+              expression.type,
+              expression.location,
+            );
+          }) &&
+          existence.predicateExpressionIndexes.every((index) => {
+            const expressionNode = expressions[index];
+            return (
+              expressionNode !== undefined &&
+              isDrizzleWrapperType(checker, expressionType(expressionNode).type)
+            );
+          })
+        ) {
+          context.report({
+            node,
+            messageId: "existencePredicate",
+            data: { helper: existence.helper },
+          });
           return;
         }
         for (let index = 0; index < expressions.length - 1; index += 1) {

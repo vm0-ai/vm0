@@ -6,7 +6,8 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { eq, isNotNull, isNull, ne, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { env } from "../../lib/env";
 import {
@@ -53,6 +54,7 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   htm: "text/html",
   json: "application/json",
 };
+const revoker = alias(chatMessages, "revoker");
 
 interface InsertAssistantEventMessagesInput {
   readonly runId: string;
@@ -103,24 +105,30 @@ export async function touchChatThreadLastMessageAt(
   });
 }
 
-export function visibleChatMessageCondition() {
-  return sql`NOT EXISTS (
-      SELECT 1
-      FROM ${chatMessages} AS revoker
-      WHERE revoker.revokes_message_id = ${chatMessages.id}
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${isNull(chatMessages.runId)}
-      AND ${isNotNull(chatMessages.revokesMessageId)}
-      AND ${isNull(chatMessages.content)}
-      AND ${isNull(chatMessages.error)}
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${isNull(chatMessages.runId)}
-      AND ${isNotNull(chatMessages.interruptsRunId)}
-    )`;
+export function visibleChatMessageCondition(db: Pick<Db, "select">) {
+  return sql.join(
+    [
+      notExists(
+        db
+          .select({ id: revoker.id })
+          .from(revoker)
+          .where(eq(revoker.revokesMessageId, chatMessages.id)),
+      ),
+      or(
+        ne(chatMessages.role, "user"),
+        isNotNull(chatMessages.runId),
+        isNull(chatMessages.revokesMessageId),
+        isNotNull(chatMessages.content),
+        isNotNull(chatMessages.error),
+      ),
+      or(
+        ne(chatMessages.role, "user"),
+        isNotNull(chatMessages.runId),
+        isNull(chatMessages.interruptsRunId),
+      ),
+    ],
+    sql` AND `,
+  );
 }
 
 export function resolveAttachFileUrls(

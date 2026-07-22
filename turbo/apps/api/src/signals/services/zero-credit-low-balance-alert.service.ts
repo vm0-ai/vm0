@@ -14,6 +14,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import {
   buildFromAddress,
+  buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
   CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
@@ -316,7 +317,9 @@ export const enqueueCreditLowBalanceAlert$ = command(
           ccAddresses: null,
           subject: CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
           replyTo: null,
-          headers: buildUnsubscribeHeaders(unsubscribeUrl),
+          headers: buildUnsubscribeHeaders(
+            buildOneClickUnsubscribeUrl(recipient.userId),
+          ),
           template,
           postSendAction: null,
           status: "pending",
