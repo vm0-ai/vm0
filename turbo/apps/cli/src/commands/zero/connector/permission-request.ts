@@ -14,7 +14,7 @@ import {
 } from "../../../lib/api";
 import {
   addRequestedCallbackSearchParams,
-  connectorActionCallbackEnabled,
+  connectorActionCallbackAvailable,
   printCallbackTurnInstruction,
 } from "./action-url";
 
@@ -148,7 +148,7 @@ const callbackPromptOption = new Option(
   "--callback-prompt <prompt>",
   "Start the next web chat round with this prompt after the permission is granted",
 );
-const callbackPromptAvailable = connectorActionCallbackEnabled();
+const callbackPromptAvailable = connectorActionCallbackAvailable();
 if (!callbackPromptAvailable) {
   callbackPromptOption.hideHelp();
 }

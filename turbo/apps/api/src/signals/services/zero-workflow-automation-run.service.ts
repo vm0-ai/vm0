@@ -27,6 +27,7 @@ import {
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { admitWorkflowAutomationEvent } from "./chat-message-queue.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
@@ -104,6 +105,10 @@ interface WorkflowAutomationRunInput {
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
 
+type ComputerUseHostGrant = Awaited<
+  ReturnType<typeof loadComputerUseHostGrantForAutoSend>
+>;
+
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -174,6 +179,20 @@ function buildAppendSystemPrompt(workflowName: string): string {
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
     "Connector permissions use the same agent-run permission settings as chat runs. If a connector request fails, do not retry blindly or assume an HTTP error came from Zero permission policy. Run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`; only when it reports a deny or ask outcome, request access with `zero connector permission-request <connector-ref> --permission <name>` and tell the user which permission this automation needs. The user chooses the grant duration in the confirmation UI. Omit query strings or fragments when they may contain secrets because permission matching does not need them.",
   ].join("\n");
+}
+
+function appendComputerUseSystemPrompt(
+  prompt: string,
+  grant: ComputerUseHostGrant,
+): string {
+  if (!grant) {
+    return prompt;
+  }
+  return [
+    prompt,
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${grant.displayName}.`,
+  ].join("\n\n");
 }
 
 export function buildChatOnlyWorkflowAutomationCallbacks(
@@ -347,6 +366,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
+  readonly computerUseHostGrant: ComputerUseHostGrant;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<WorkflowAutomationRunInput> {
   return await measureApiDispatchTiming(
@@ -356,9 +376,11 @@ async function buildTimedWorkflowAutomationRunInput(args: {
     () => {
       return {
         prompt: args.command.prompt ?? `/${args.workflowName}`,
-        appendSystemPrompt:
+        appendSystemPrompt: appendComputerUseSystemPrompt(
           args.command.appendSystemPrompt ??
-          buildAppendSystemPrompt(args.workflowName),
+            buildAppendSystemPrompt(args.workflowName),
+          args.computerUseHostGrant,
+        ),
         callbacks:
           args.command.callbacks ??
           buildWorkflowAutomationCallbacks(
@@ -383,27 +405,35 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 async function enqueueWorkflowAutomationEventIfBusy(input: {
   readonly db: Db;
   readonly args: RunWorkflowAutomationNowArgs;
+  readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const { db, args, signal } = input;
+  const { db, args, signal, timing } = input;
   const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
     return false;
   }
-  const admission = await admitWorkflowAutomationEvent(db, {
-    automation,
-    chatThreadId,
-    triggerSource: args.triggerSource ?? "workflow-schedule",
-    triggerBrief: args.triggerBrief,
-    params: {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt: args.appendSystemPrompt,
-      callbacks: args.callbacks,
-      recordLastRunId: args.recordLastRunId,
-      recordLastRunAt: args.recordLastRunAt,
+  const admission = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
+    "nested",
+    async () => {
+      return await admitWorkflowAutomationEvent(db, {
+        automation,
+        chatThreadId,
+        triggerSource: args.triggerSource ?? "workflow-schedule",
+        triggerBrief: args.triggerBrief,
+        params: {
+          version: 1,
+          prompt: args.prompt,
+          appendSystemPrompt: args.appendSystemPrompt,
+          callbacks: args.callbacks,
+          recordLastRunId: args.recordLastRunId,
+          recordLastRunAt: args.recordLastRunAt,
+        },
+      });
     },
-  });
+  );
   signal.throwIfAborted();
   if (admission === "enqueued") {
     await publishChatThreadWorkflowQueueChangedSafely(
@@ -474,6 +504,7 @@ export const runWorkflowAutomationNow$ = command(
     const enqueued = await enqueueWorkflowAutomationEventIfBusy({
       db,
       args,
+      timing,
       signal,
     });
     if (enqueued) {
@@ -516,12 +547,21 @@ export const runWorkflowAutomationNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
+    const computerUseHostGrant = await loadComputerUseHostGrantForAutoSend({
+      db,
+      threadId: chatThreadId,
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
+    });
+    signal.throwIfAborted();
+
     const runInput = await buildTimedWorkflowAutomationRunInput({
       command: args,
       automation,
       agentId,
       workflowName,
       chatThreadId,
+      computerUseHostGrant,
       timing,
     });
     signal.throwIfAborted();
@@ -550,6 +590,7 @@ export const runWorkflowAutomationNow$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: args.triggerSource ?? "workflow-schedule",
         chatThreadId,
+        computerUseHostId: computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,

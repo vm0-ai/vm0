@@ -7,19 +7,23 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 load "${TEST_ROOT}/helpers/storage-fixtures"
+load "${TEST_ROOT}/helpers/compose-fixtures"
+load "${TEST_ROOT}/helpers/run-fixtures"
 
-# Path to CLI binaries (trace wrappers log each invocation for timeout debugging)
-export VM0_CLI="${TEST_ROOT}/helpers/trace-vm0.sh"
+# Path to the supported CLI binary (trace wrapper logs each invocation for timeout debugging)
 export ZERO_CLI="${TEST_ROOT}/helpers/trace-zero.sh"
 
 # Show system logs when test fails
 # This hook is called by BATS before teardown() when a test fails
 bats::on_failure() {
     local run_id
-    run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
+    run_id=$(sed -n '1p' <<< "$output" | jq -r '.runId // empty' 2>/dev/null)
+    if [[ -z "$run_id" ]]; then
+        run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
+    fi
     if [[ -n "$run_id" ]]; then
         echo "# === System logs for failed run ($run_id) ==="
-        $VM0_CLI logs "$run_id" --system
+        fetch_run_log "$run_id" system
     fi
 }
 
@@ -40,14 +44,14 @@ VOLEOF
     cd - >/dev/null
 }
 
-# Retry `vm0 logs --all` until output contains ALL expected strings or timeout.
+# Retry fetching run logs until output contains ALL expected strings or timeout.
 # Sets $output and $status for subsequent assert_* calls.
-# Automatically appends --all to fetch complete logs on each attempt.
-# Usage: wait_for_log [vm0 logs args...] -- <expected1> [expected2...]
+# Usage: wait_for_log <run_id> [--agent|--system|--metrics|--network] -- <expected1> [expected2...]
 # Example: wait_for_log "$RUN_ID" --system -- "Tool timeout" "WebFetch"
 # Example: wait_for_log "$RUN_ID" --network -- "TCP" ":22" ":443"
 wait_for_log() {
-    local -a _wfl_args=()
+    local _wfl_run_id=""
+    local _wfl_mode="agent"
     local -a _wfl_expected=()
     local _wfl_sep_found=false
     for arg in "$@"; do
@@ -55,8 +59,10 @@ wait_for_log() {
             _wfl_sep_found=true
         elif $_wfl_sep_found; then
             _wfl_expected+=("$arg")
+        elif [[ "$arg" == "--agent" || "$arg" == "--system" || "$arg" == "--metrics" || "$arg" == "--network" ]]; then
+            _wfl_mode="${arg#--}"
         else
-            _wfl_args+=("$arg")
+            _wfl_run_id="$arg"
         fi
     done
     if [[ ${#_wfl_expected[@]} -eq 0 ]]; then
@@ -66,12 +72,7 @@ wait_for_log() {
     local _wfl_timeout="${WAIT_FOR_LOG_TIMEOUT:-30}"
     local _wfl_elapsed=0
     while (( _wfl_elapsed < _wfl_timeout )); do
-        # Append --all for non-search commands to fetch complete logs
-        if [[ "${_wfl_args[0]:-}" == "search" ]]; then
-            output="$($VM0_CLI logs "${_wfl_args[@]}" 2>&1)"
-        else
-            output="$($VM0_CLI logs "${_wfl_args[@]}" --all 2>&1)"
-        fi
+        output="$(fetch_run_log "$_wfl_run_id" "$_wfl_mode" 2>&1)"
         status=$?
         if [[ "$status" -eq 0 ]]; then
             local _wfl_all=true
@@ -100,37 +101,189 @@ cleanup_test_volume() {
     fi
 }
 
-zero_auth_token() {
-    if [[ -n "${ZERO_TOKEN:-}" ]]; then
-        printf '%s' "$ZERO_TOKEN"
-    elif [[ -n "${VM0_TOKEN:-}" ]]; then
-        printf '%s' "$VM0_TOKEN"
-    else
-        jq -r '.token // empty' "$HOME/.vm0/config.json"
+e2e_api_token() {
+    if [[ -z "${E2E_API_TOKEN:-}" ]]; then
+        echo "E2E_API_TOKEN is required" >&2
+        return 1
     fi
+    printf '%s' "$E2E_API_TOKEN"
 }
 
-zero_api_url() {
-    if [[ -n "${VM0_API_BACKEND_URL:-}" ]]; then
-        case "$VM0_API_BACKEND_URL" in
-            http*) printf '%s' "$VM0_API_BACKEND_URL" ;;
-            *)     printf 'https://%s' "$VM0_API_BACKEND_URL" ;;
-        esac
-    else
-        jq -r '.apiUrl // "https://api.vm0.ai"' "$HOME/.vm0/config.json"
+e2e_api_url() {
+    if [[ -z "${E2E_API_URL:-}" ]]; then
+        echo "E2E_API_URL is required" >&2
+        return 1
     fi
+    case "$E2E_API_URL" in
+        http*) printf '%s' "$E2E_API_URL" ;;
+        *)     printf 'https://%s' "$E2E_API_URL" ;;
+    esac
 }
 
-zero_curl() {
+require_e2e_api_credentials() {
+    e2e_api_token >/dev/null && e2e_api_url >/dev/null
+}
+
+e2e_api_curl() {
     local path="$1"; shift
     local token base
-    token=$(zero_auth_token)
-    base=$(zero_api_url)
+    token=$(e2e_api_token) || return 1
+    base=$(e2e_api_url) || return 1
     local -a hdrs=(-H "Authorization: Bearer $token" -H "Content-Type: application/json")
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
+}
+
+configure_e2e_model_provider() {
+    local provider_type="$1"
+    local secret="$2"
+    local payload
+    payload=$(jq -nc \
+        --arg type "$provider_type" \
+        --arg secret "$secret" \
+        '{type: $type, secret: $secret}')
+    e2e_api_curl "/api/zero/model-providers" -X POST -d "$payload" >/dev/null
+}
+
+connect_e2e_connector() {
+    local connector_type="$1"
+    local values_json="$2"
+    local auth_method="${3:-api-token}"
+    local payload
+    payload=$(jq -nc \
+        --arg authMethod "$auth_method" \
+        --argjson values "$values_json" \
+        '{authMethod: $authMethod, values: $values}')
+    e2e_api_curl "/api/zero/connectors/$connector_type/manual-grant" \
+        -X POST \
+        -d "$payload" >/dev/null
+}
+
+delete_e2e_agent() {
+    local agent_id="$1"
+    e2e_api_curl "/api/zero/agents/$agent_id" -X DELETE >/dev/null
+}
+
+delete_e2e_secret() {
+    local secret_name="$1"
+    local encoded_name
+    encoded_name=$(jq -rn --arg value "$secret_name" '$value | @uri')
+    e2e_api_curl "/api/zero/secrets/$encoded_name" -X DELETE >/dev/null
+}
+
+set_e2e_variable() {
+    local variable_name="$1"
+    local variable_value="$2"
+    local payload
+    payload=$(jq -nc \
+        --arg name "$variable_name" \
+        --arg value "$variable_value" \
+        '{name: $name, value: $value}')
+    e2e_api_curl "/api/zero/variables" -X POST -d "$payload" >/dev/null
+}
+
+delete_e2e_variable() {
+    local variable_name="$1"
+    local encoded_name
+    encoded_name=$(jq -rn --arg value "$variable_name" '$value | @uri')
+    e2e_api_curl "/api/zero/variables/$encoded_name" -X DELETE >/dev/null
+}
+
+set_e2e_timezone() {
+    local timezone="$1"
+    local payload
+    payload=$(jq -nc --arg timezone "$timezone" '{timezone: $timezone}')
+    e2e_api_curl "/api/zero/user-preferences" -X POST -d "$payload" >/dev/null
+}
+
+# jq program rendering one network log entry per line, mirroring the text the
+# retired `vm0 logs --network` produced so existing substring assertions keep
+# matching (protocol upcased, host:port, [firewall-name $], [browser],
+# url-rewrite / SECRET (refreshed) auth tags, connector diagnostics, and
+# request_headers:/request_body:/response_body: capture lines).
+_NETWORK_LOG_JQ='.networkLogs[] |
+  [ "[\(.timestamp)]",
+    ((.type // "http") | ascii_upcase),
+    (.method // empty),
+    (.action // empty),
+    "\(.host // "unknown"):\(.port // 0)",
+    (.url // empty),
+    (if .firewall_name then "[\(.firewall_name)\(if .firewall_billable then " $" else "" end)]" else empty end),
+    (if .browser_user_agent then "[browser]" else empty end),
+    (.error // empty),
+    (.firewall_error // empty),
+    (if .dns_result then "-> \(.dns_result)" else empty end),
+    (if (.connector_diagnostic_type or .connector_diagnostic_reason) then
+      "[connector diagnostic: \([(.connector_diagnostic_type // empty), (.connector_diagnostic_reason // empty),
+        (if ((.connector_diagnostic_env_names // []) | length) > 0 then "env: \(.connector_diagnostic_env_names | join(", "))" else empty end),
+        (if .connector_diagnostic_base then "base: \(.connector_diagnostic_base)" else empty end)] | join("; "))]"
+      else empty end),
+    (if (.connector_route_reason or (((.connector_route_candidates // []) | length) > 0)) then
+      "[connector route: \([(.connector_route_reason // empty),
+        (if ((.connector_route_candidates // []) | length) > 0 then "candidates: \(.connector_route_candidates | join(", "))" else empty end)] | join("; "))]"
+      else empty end),
+    (if .auth_url_rewrite then "url-rewrite" else empty end),
+    (if ((.auth_resolved_secrets // []) | length) > 0 then
+      ((.auth_refreshed_secrets // []) as $r | (.auth_cache_hit // false) as $c |
+        ([.auth_resolved_secrets[] | . + (if IN($r[]) then " (refreshed)" elif $c then " (cached)" else "" end)] | join(", ")))
+      else empty end),
+    (if .request_headers then "request_headers: \([.request_headers | to_entries[] | "\(.key): \(.value)"] | join(", "))" else empty end),
+    (if .request_body then "request_body: \(.request_body)" else empty end),
+    (if .response_body then "response_body: \(.response_body)" else empty end)
+  ] | join(" ")'
+
+# Fetch a paginated log route, printing each page through a jq extractor.
+# Usage: _paginate_run_log <path> <jq_expr>
+_paginate_run_log() {
+    local path="$1" jq_expr="$2"
+    local cursor="" body has_more page=0
+    while (( page < 50 )); do
+        local url="${path}?limit=100&order=asc"
+        [[ -n "$cursor" ]] && url+="&cursor=$(jq -rn --arg c "$cursor" '$c | @uri')"
+        body=$(e2e_api_curl "$url") || return 1
+        jq -r "$jq_expr" <<< "$body" || return 1
+        has_more=$(jq -r '.hasMore' <<< "$body")
+        cursor=$(jq -r '.nextCursor // empty' <<< "$body")
+        if [[ "$has_more" != "true" || -z "$cursor" ]]; then
+            return 0
+        fi
+        (( page++ ))
+    done
+}
+
+# Fetch run logs (replacement for the retired `vm0 logs` command).
+# Usage: fetch_run_log <run_id> [agent|system|metrics|network]
+# - agent:   structured agent event payloads from the API
+# - system:  sandbox system log (legacy telemetry route; zero equivalent pending)
+# - metrics: resource metrics (legacy telemetry route; zero equivalent pending)
+# - network: mitmproxy network log via /api/zero/runs/:id/network
+fetch_run_log() {
+    local run_id="$1" mode="${2:-agent}"
+    case "$mode" in
+        agent)
+            _paginate_run_log "/api/zero/runs/$run_id/telemetry/agent" \
+                '.events[].eventData |
+                    if type == "string" then .
+                    else (tojson, (.. | strings))
+                    end'
+            ;;
+        system)
+            _paginate_run_log "/api/agent/runs/$run_id/telemetry/system-log" '.systemLog'
+            ;;
+        metrics)
+            _paginate_run_log "/api/agent/runs/$run_id/telemetry/metrics" \
+                '.metrics[] | "[\(.ts)] CPU: \(.cpu)% | Mem: \(.mem_used)/\(.mem_total) | Disk: \(.disk_used)/\(.disk_total)"'
+            ;;
+        network)
+            _paginate_run_log "/api/zero/runs/$run_id/network" "$_NETWORK_LOG_JQ"
+            ;;
+        *)
+            echo "fetch_run_log: unknown mode '$mode'" >&2
+            return 1
+            ;;
+    esac
 }
 
 create_private_zero_agent() {
@@ -140,7 +293,7 @@ create_private_zero_agent() {
     payload=$(jq -nc \
         --arg displayName "$display_name" \
         '{displayName: $displayName, visibility: "private"}')
-    response=$(zero_curl "/api/zero/agents" -X POST -d "$payload") || return 1
+    response=$(e2e_api_curl "/api/zero/agents" -X POST -d "$payload") || return 1
     agent_id=$(printf '%s' "$response" | jq -r '.agentId // empty')
     if [[ -z "$agent_id" ]]; then
         echo "# Failed to extract agentId from zero agent create response" >&2
@@ -153,12 +306,12 @@ create_private_zero_agent() {
 
 zero_usage_runs_response() {
     local run_id="$1"
-    zero_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
+    e2e_api_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
 }
 
 zero_run_response() {
     local run_id="$1"
-    zero_curl "/api/zero/runs/$run_id"
+    e2e_api_curl "/api/zero/runs/$run_id"
 }
 
 wait_for_zero_run_completed() {
@@ -219,7 +372,7 @@ wait_for_zero_usage_run() {
 zero_model_provider_id_by_type() {
     local provider_type="$1"
     local body provider_id
-    body=$(zero_curl "/api/zero/model-providers")
+    body=$(e2e_api_curl "/api/zero/model-providers")
     provider_id=$(printf '%s' "$body" \
         | jq -r --arg type "$provider_type" \
             '.modelProviders[] | select(.type == $type) | .id' \
@@ -249,7 +402,7 @@ zero_chat_run_with_model() {
         --argjson realAgentInPreview "$real_agent_in_preview" \
         '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
-    body=$(zero_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    body=$(e2e_api_curl "/api/zero/chat/messages" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
     LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
     export LAST_RUN_ID LAST_THREAD_ID
@@ -275,7 +428,7 @@ zero_chat_run_with_model_selection() {
         --argjson realAgentInPreview "$real_agent_in_preview" \
         '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
-    body=$(zero_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    body=$(e2e_api_curl "/api/zero/chat/messages" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
     LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
     export LAST_RUN_ID LAST_THREAD_ID

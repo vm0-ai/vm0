@@ -207,6 +207,27 @@ function sidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
 }
 
+function mobileSidebar(): HTMLElement {
+  const drawer = screen.getByLabelText("Collapse sidebar").closest("aside");
+  if (!(drawer instanceof HTMLElement)) {
+    throw new Error("Mobile sidebar not found");
+  }
+  return drawer;
+}
+
+function pinnedAgentLink(
+  container: HTMLElement,
+  name: string,
+): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link", container).find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`${name} pinned agent link not found`);
+  }
+  return link;
+}
+
 function setupSidebarPage(
   options: Parameters<typeof detachedSetupPage>[0],
 ): void {
@@ -1526,6 +1547,78 @@ describe("zero sidebar", () => {
 
     expect(createRequests).toBe(0);
   });
+
+  it.each([
+    { label: "single-column", threeColumnNav: false },
+    { label: "three-column", threeColumnNav: true },
+  ])(
+    "closes the $label mobile sidebar after selecting a pinned agent",
+    async ({ threeColumnNav }) => {
+      prepareAgentTeam();
+      context.mocks.data.userPreferences({
+        pinnedAgentIds: [RESEARCH_AGENT_ID],
+      });
+      const openedTargets = context.mocks.browser.open();
+
+      setupSidebarPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+        featureSwitches: {
+          [FeatureSwitchKey.ThreeColumnNav]: threeColumnNav,
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          pinnedAgentLink(mobileSidebar(), "Research Agent"),
+        ).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Open menu"));
+      await waitFor(() => {
+        expect(mobileSidebar()).toHaveAttribute(
+          "data-sidebar-expanded",
+          "true",
+        );
+      });
+
+      fireEvent.click(pinnedAgentLink(mobileSidebar(), "Research Agent"), {
+        metaKey: true,
+      });
+      await waitFor(() => {
+        expect(openedTargets.calls).toStrictEqual([
+          expect.objectContaining({
+            target: "_blank",
+            url: expect.stringContaining(`/agents/${RESEARCH_AGENT_ID}/chat`),
+          }),
+        ]);
+        expect(mobileSidebar()).toHaveAttribute(
+          "data-sidebar-expanded",
+          "true",
+        );
+      });
+
+      click(pinnedAgentLink(mobileSidebar(), "Zero"));
+      await waitFor(() => {
+        expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+        expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+      });
+
+      click(screen.getByLabelText("Open menu"));
+      await waitFor(() => {
+        expect(mobileSidebar()).toHaveAttribute(
+          "data-sidebar-expanded",
+          "true",
+        );
+      });
+
+      click(pinnedAgentLink(mobileSidebar(), "Research Agent"));
+      await waitFor(() => {
+        expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+        expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+      });
+    },
+  );
 
   it("opens the agent picker from the global shortcut", async () => {
     prepareAgentTeam();

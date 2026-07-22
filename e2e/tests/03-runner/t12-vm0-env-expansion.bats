@@ -49,7 +49,7 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -61,17 +61,22 @@ teardown_file() {
 
 # Environment variable expansion tests with --secrets flag
 
-@test "vm0 run expands vars and secrets via --secrets flag" {
+@test "direct run expands supplied vars and secrets" {
     local secret_value="secret-value-${UNIQUE_ID}"
     local var_value="var-value-${UNIQUE_ID}"
 
     echo "# Running with --vars and --secrets flags"
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "testVar=${var_value}" \
-        --secrets "TEST_SECRET=${secret_value}" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET" \
+        "$(jq -nc \
+            --arg varValue "$var_value" \
+            --arg secretValue "$secret_value" \
+            --arg artifactName "$ARTIFACT_NAME" \
+            '{
+                vars: {testVar: $varValue},
+                secrets: {TEST_SECRET: $secretValue},
+                artifacts: [{name: $artifactName, mountPath: "/home/user/workspace"}]
+            }')"
     assert_success
 
     echo "# Verify vars are expanded"
@@ -98,9 +103,9 @@ teardown_file() {
 #    - 404 not found, 404 different user (security)
 #
 # Removed E2E tests (covered by route integration tests):
-#    - "vm0 run with multiple --secrets flags" - validates same code path as Test 1
-#    - "vm0 run continue requires secrets to be re-provided"
-#    - "vm0 run resume requires secrets to be re-provided"
+#    - multiple supplied secrets - validates the same code path as Test 1
+#    - session continuation requires secrets to be re-provided
+#    - checkpoint resume requires secrets to be re-provided
 #
-# This E2E test (1 vm0 run) validates the happy path end-to-end, while route
+# This E2E test (1 direct run) validates the happy path end-to-end, while route
 # integration tests cover error cases with faster feedback.

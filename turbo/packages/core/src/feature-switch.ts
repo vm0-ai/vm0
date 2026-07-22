@@ -223,6 +223,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.CanonicalSlackIngress]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Route newly admitted per-user Slack threads through canonical chat ingress.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroScrape]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -250,18 +262,28 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
+  },
+  [FeatureSwitchKey.ManualMorningBrief]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
+  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AgentDetailWorkflowsTab]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Workflows tab on agent detail pages, scoped to workflows visible for that agent.",
-    enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -291,19 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
 
-  [FeatureSwitchKey.ApiKeys]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CodexFrameworkForMinimax]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Expose the experimental MiniMax Codex framework provider route for Responses API compatibility testing.",
-    enabled: false,
-  },
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -328,6 +337,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.StructuredPrompt]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable structured user prompt rendering, sends, and drafts while preserving the legacy content fallback.",
+    enabled: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -369,12 +384,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show unread chat thread shortcuts between the mobile agent chat composer and suggested prompt cards.",
-    enabled: false,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
@@ -454,11 +463,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactPreviewImage]: {
+  [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
-    enabled: true,
+      "Generate poster images asynchronously when video artifacts are recorded.",
+    enabled: false,
+    enabledUserHashes: ["032a75d8"],
   },
   [FeatureSwitchKey.WebsiteTemplateV2]: {
     maintainer: "bingjie@vm0.ai",
@@ -483,17 +493,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
-  [FeatureSwitchKey.ConnectorActionCallback]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Resume a web chat with a callback prompt after a connector or permission action succeeds.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZeroMail]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "ethan@vm0.ai",
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",

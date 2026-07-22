@@ -26,7 +26,6 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../external/time";
-import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -930,7 +929,6 @@ async function finalizeTeamsConnection(args: {
   readonly connectArgs: ConnectTeamsInstallationArgs;
   readonly installation: TeamsInstallation;
   readonly role: "admin" | "member";
-  readonly ensureArtifactStorage: () => Promise<unknown>;
   readonly signal: AbortSignal;
 }): Promise<Extract<TeamsConnectResult, { readonly kind: "ok" }>> {
   const { connectArgs } = args;
@@ -942,9 +940,6 @@ async function finalizeTeamsConnection(args: {
     teamsUserDisplayName: connectArgs.teamsUserDisplayName,
     teamsUserPrincipalName: connectArgs.teamsUserPrincipalName,
   });
-  args.signal.throwIfAborted();
-
-  await args.ensureArtifactStorage();
   args.signal.throwIfAborted();
 
   await notifyTeamsConnect({
@@ -973,7 +968,7 @@ async function finalizeTeamsConnection(args: {
 
 export const prepareTeamsInstallation$ = command(
   async (
-    { get, set },
+    { set },
     args: ConnectTeamsInstallationArgs,
     signal: AbortSignal,
   ): Promise<TeamsPrepareInstallResult> => {
@@ -1038,23 +1033,13 @@ export const prepareTeamsInstallation$ = command(
     });
     signal.throwIfAborted();
 
-    await get(
-      ensureUserArtifactStorage({
-        db: writeDb,
-        orgId: args.orgId,
-        userId: args.userId,
-        name: "artifact",
-      }),
-    );
-    signal.throwIfAborted();
-
     return { kind: "ok", connectionId, installation };
   },
 );
 
 export const connectTeamsInstallation$ = command(
   async (
-    { get, set },
+    { set },
     args: ConnectTeamsInstallationArgs,
     signal: AbortSignal,
   ): Promise<TeamsConnectResult> => {
@@ -1097,16 +1082,6 @@ export const connectTeamsInstallation$ = command(
         connectArgs: args,
         installation: bindResult.installation,
         role: "admin",
-        ensureArtifactStorage: () => {
-          return get(
-            ensureUserArtifactStorage({
-              db: writeDb,
-              orgId: args.orgId,
-              userId: args.userId,
-              name: "artifact",
-            }),
-          );
-        },
         signal,
       });
     }
@@ -1128,16 +1103,6 @@ export const connectTeamsInstallation$ = command(
       connectArgs: args,
       installation,
       role: args.orgRole,
-      ensureArtifactStorage: () => {
-        return get(
-          ensureUserArtifactStorage({
-            db: writeDb,
-            orgId: args.orgId,
-            userId: args.userId,
-            name: "artifact",
-          }),
-        );
-      },
       signal,
     });
   },

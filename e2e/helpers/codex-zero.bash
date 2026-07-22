@@ -7,29 +7,14 @@
 # directly (no new CLI surface area) to keep scope minimal — same pattern
 # as helpers/slack.bash.
 
-# Resolve the token the CLI would use for authenticated calls.
-# Priority matches turbo/apps/cli/src/lib/api/config.ts:
-#   ZERO_TOKEN > VM0_TOKEN > ~/.vm0/config.json#token
+# Resolve the explicit E2E-only API credential.
 _codex_zero_token() {
-    if [[ -n "${ZERO_TOKEN:-}" ]]; then
-        printf '%s' "$ZERO_TOKEN"
-    elif [[ -n "${VM0_TOKEN:-}" ]]; then
-        printf '%s' "$VM0_TOKEN"
-    else
-        jq -r '.token // empty' "$HOME/.vm0/config.json"
-    fi
+    e2e_api_token
 }
 
-# Resolve the API base URL (matches CLI getApiUrl()).
+# Resolve the explicit E2E API base URL.
 _codex_zero_api_url() {
-    if [[ -n "${VM0_API_BACKEND_URL:-}" ]]; then
-        case "$VM0_API_BACKEND_URL" in
-            http*) printf '%s' "$VM0_API_BACKEND_URL" ;;
-            *)     printf 'https://%s' "$VM0_API_BACKEND_URL" ;;
-        esac
-    else
-        jq -r '.apiUrl // "https://api.vm0.ai"' "$HOME/.vm0/config.json"
-    fi
+    e2e_api_url
 }
 
 # Issue an authenticated curl with vercel-bypass header.

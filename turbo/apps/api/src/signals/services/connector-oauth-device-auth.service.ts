@@ -7,9 +7,10 @@ import type {
   ConnectorOauthDeviceAuthSessionStartResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  connectorCatalogAuthMethodIdSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
@@ -86,7 +87,7 @@ type PollSuccess = {
 function deviceAuthStartResponse(args: {
   readonly sessionId: string;
   readonly sessionToken: string;
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly startResult: Awaited<
     ReturnType<typeof startConnectorDeviceAuthorizationWithMethod>
   >;
@@ -108,7 +109,7 @@ function deviceAuthStartResponse(args: {
 const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
 
 const encryptedProviderStateSchema = z.object({
-  connectorType: z.string(),
+  connectorType: connectorRefSchema,
   deviceCode: z.string(),
   pollState: z.string().optional(),
 });
@@ -147,8 +148,8 @@ type PollClaimedSessionArgs = ResolvedDeviceAuthClient & {
 };
 
 type DeviceAuthSessionOwner = {
-  readonly type: ConnectorCatalogRef;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly type: ConnectorRef;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly orgId: string;
   readonly userId: string;
 };
@@ -166,8 +167,8 @@ const connectorOauthDeviceAuthDisabled = Object.freeze({
 function deviceAuthResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
-    readonly connectorRef: ConnectorCatalogRef;
-    readonly authMethodId: ConnectorCatalogAuthMethodId;
+    readonly connectorRef: ConnectorRef;
+    readonly authMethodId: ConnectorAuthMethodId;
   },
 ) {
   switch (resolution.reason) {
@@ -307,8 +308,8 @@ function resolveRequiredAuthClient(
 
 async function resolveRequestedDeviceAuthMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorCatalogRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly connectorRef: ConnectorRef;
+  readonly authMethodId: ConnectorAuthMethodId;
 }) {
   const resolved = await args.resolver.resolveNewActionMethod({
     connectorRef: args.connectorRef,
@@ -323,10 +324,10 @@ async function resolveRequestedDeviceAuthMethod(args: {
 
 async function resolveStoredDeviceAuthMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethodId: string;
 }) {
-  const storedAuthMethod = connectorCatalogAuthMethodIdSchema.safeParse(
+  const storedAuthMethod = connectorAuthMethodIdSchema.safeParse(
     args.authMethodId,
   );
   if (!storedAuthMethod.success) {
@@ -417,7 +418,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -519,7 +520,7 @@ async function claimSession(args: {
 
 async function parseEncryptedProviderState(args: {
   readonly session: DeviceAuthSessionRow;
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
 }): Promise<EncryptedProviderState> {
   const decrypted = await decryptPersistentSecretValue(
     args.session.encryptedProviderState,
@@ -727,7 +728,7 @@ const authorizeDeviceSessionConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly session: DeviceAuthSessionRow;
-      readonly connectorType: ConnectorCatalogRef;
+      readonly connectorType: ConnectorRef;
     },
     signal: AbortSignal,
   ) => {
@@ -884,8 +885,8 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       readonly userId: string;
       readonly agentId: string | undefined;
       readonly authorizeAgent: true | undefined;
-      readonly type: ConnectorCatalogRef;
-      readonly authMethod: ConnectorCatalogAuthMethodId;
+      readonly type: ConnectorRef;
+      readonly authMethod: ConnectorAuthMethodId;
       readonly options?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
@@ -1017,7 +1018,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorCatalogRef;
+      readonly type: ConnectorRef;
       readonly sessionId: string;
       readonly sessionToken: string;
     },

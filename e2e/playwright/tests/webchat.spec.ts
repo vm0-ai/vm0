@@ -1,9 +1,21 @@
+import type { Locator } from "@playwright/test";
+
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 
-test("send a chat message and receive a response", async ({ page }) => {
+async function elementHeight(locator: Locator): Promise<number> {
+  const bounds = await locator.boundingBox();
+  if (bounds === null) {
+    throw new Error("Composer bounds are unavailable");
+  }
+  return bounds.height;
+}
+
+test("send a chat message and preserve composer height with a template", async ({
+  page,
+}) => {
   // Navigate to chat page (default agent)
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -33,4 +45,22 @@ test("send a chat message and receive a response", async ({ page }) => {
   await expect(page.locator('[data-role="assistant"]').first()).toBeVisible({
     timeout: 120_000,
   });
+
+  // The completed run leaves us on a chat-thread composer, whose responsive
+  // minimum height is compact on mobile and three lines on desktop.
+  await expect.poll(() => elementHeight(composer)).toBe(96);
+
+  await page.getByRole("button", { name: "Template", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Select template / })
+    .first()
+    .click();
+
+  await expect.poll(() => elementHeight(composer)).toBe(134);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => elementHeight(composer)).toBe(82);
+
+  await page.getByRole("button", { name: /^Remove template / }).click();
+  await expect.poll(() => elementHeight(composer)).toBe(44);
 });

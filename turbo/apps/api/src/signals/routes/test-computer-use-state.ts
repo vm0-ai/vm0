@@ -115,7 +115,7 @@ async function sourceComputerUseHostId(
   db: Db,
   run: RunState,
 ): Promise<string | null> {
-  if (run.triggerSource === "web" && run.chatThreadId) {
+  if (run.chatThreadId) {
     const [thread] = await db
       .select({ computerUseHostId: chatThreads.computerUseHostId })
       .from(chatThreads)
@@ -173,12 +173,14 @@ async function seedBaseComputerUseRun(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly triggerSource: ComputerUseTriggerSource;
+  readonly canonicalThread: boolean;
   readonly signal: AbortSignal;
 }): Promise<BaseComputerUseRunSeed> {
   const composeId = randomUUID();
   const sessionId = randomUUID();
   const runId = randomUUID();
-  const threadId = args.triggerSource === "web" ? randomUUID() : null;
+  const threadId =
+    args.triggerSource === "web" || args.canonicalThread ? randomUUID() : null;
 
   await args.db.insert(agentComposes).values({
     id: composeId,
@@ -371,6 +373,7 @@ const postComputerUseState$ = command(
       userId: body.user_id,
       orgId: body.org_id,
       triggerSource: body.trigger_source,
+      canonicalThread: body.canonical_thread === true,
       signal,
     });
     const slack =

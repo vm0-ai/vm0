@@ -65,15 +65,15 @@ cleanup_tracked_test_oauth_agents() {
 
     local agent_id
     while IFS= read -r agent_id; do
-        [ -n "$agent_id" ] && $ZERO_CLI agent delete "$agent_id" -y >/dev/null 2>&1 || true
+        [ -n "$agent_id" ] && delete_e2e_agent "$agent_id" >/dev/null 2>&1 || true
     done < "$ids_file"
 }
 
 teardown_file() {
     cleanup_tracked_test_oauth_agents
 
-    $ZERO_CLI secret delete -y TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
-    $ZERO_CLI secret delete -y TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
+    delete_e2e_secret TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
+    delete_e2e_secret TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -89,7 +89,7 @@ encode_test_email() {
 }
 
 enable_test_oauth_feature_switch() {
-    zero_curl "/api/zero/feature-switches" \
+    e2e_api_curl "/api/zero/feature-switches" \
         -X POST \
         -d '{"switches":{"testOauthConnector":true}}' \
         >/dev/null
@@ -140,7 +140,7 @@ run_zero_agent_via_api() {
         --arg prompt "$prompt" \
         '{agentId: $agentId, prompt: $prompt}')
 
-    body=$(zero_curl "/api/zero/runs" -X POST -d "$payload") || {
+    body=$(e2e_api_curl "/api/zero/runs" -X POST -d "$payload") || {
         echo "# Failed to create zero run"
         return 1
     }
@@ -161,7 +161,7 @@ run_zero_agent_via_api() {
     logs=""
     status_value=1
     while (( SECONDS - start < timeout )); do
-        logs="$($VM0_CLI logs "$run_id" --all 2>&1)"
+        logs="$(fetch_run_log "$run_id" agent 2>&1)"
         status_value=$?
         if [[ "$status_value" -eq 0 && ( -z "$expected_log" || "$logs" == *"$expected_log"* ) ]]; then
             echo "$logs"
@@ -233,7 +233,7 @@ connect_test_oauth_via_authorization_code() {
     enable_test_oauth_feature_switch || return 1
 
     local start_body
-    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
+    start_body=$(e2e_api_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
     local authorization_url
     authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
     [ -n "$authorization_url" ] || {
@@ -310,14 +310,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-refresh.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-refresh.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"
@@ -392,14 +392,14 @@ agents:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
 
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-stale.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-stale.yaml"
     echo "$output"
     assert_success
 
     local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    COMPOSE_ID=$(echo "$output" | jq -r '.composeId')
     [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+        echo "# Failed to extract composeId from fixture response"
         return 1
     }
     track_test_oauth_agent "$COMPOSE_ID"

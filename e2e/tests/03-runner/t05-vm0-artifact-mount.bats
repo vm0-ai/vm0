@@ -31,7 +31,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -54,12 +54,6 @@ teardown() {
     fi
 }
 
-@test "Build VM0 artifact mount test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
 @test "VM0 artifact files are visible in sandbox working directory" {
     # Step 1: Create artifact with known content
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
@@ -74,10 +68,10 @@ teardown() {
 
     # Step 2: Run agent with artifact, list files
     # Use extended timeout for CI environments which may be slower
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "ls -la && cat test-file.txt && cat subdir/nested.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "ls -la && cat test-file.txt && cat subdir/nested.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
@@ -89,8 +83,7 @@ teardown() {
     assert_output --partial "nested content"
 
     # Step 4: Verify run completes properly
-    assert_output --partial "Run completed successfully"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 }
 
 @test "VM0 artifact run completes with checkpoint" {
@@ -103,12 +96,12 @@ teardown() {
 
     # Simple run that should complete
     # Use extended timeout for CI environments which may be slower
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo done"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo done" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
-    # Verify run completed successfully
-    assert_output --partial "Run completed successfully"
+    assert_equal "$(run_fixture_field "$output" '.status')" "completed"
 }

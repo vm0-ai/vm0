@@ -135,6 +135,10 @@ grep -q "service stop" "${TMPDIR}/arm64-success/service-stop.log" || fail "expec
 run_deploy x86-success x86_64 env >"${TMPDIR}/x86-success.out" 2>"${TMPDIR}/x86-success.err"
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-success/cargo.log" || fail "expected x86_64 cargo target"
 grep -q "service stop" "${TMPDIR}/x86-success/service-stop.log" || fail "expected x86_64 service stop"
+gc_command=$(grep " gc --keep-latest 3$" "${TMPDIR}/x86-success/cf-ssh.log")
+[[ "$gc_command" != *"R2_"* ]] || fail "gc should not receive R2 credentials"
+build_command=$(grep " build --profile vm0/default$" "${TMPDIR}/x86-success/cf-ssh.log")
+[[ "$build_command" == *"R2_ACCOUNT_ID="* ]] || fail "build should retain R2 credentials"
 
 run_deploy x86-explicit-success x86_64 env RUNNER_TARGET_TRIPLE=x86_64-unknown-linux-musl >"${TMPDIR}/x86-explicit-success.out" 2>"${TMPDIR}/x86-explicit-success.err"
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-explicit-success/cargo.log" || fail "expected explicit x86_64 cargo target"

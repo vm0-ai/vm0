@@ -29,6 +29,7 @@ import {
 } from "./helpers/api-bdd-agentphone";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -271,6 +272,23 @@ const EXPECTED_PLAIN_RUN_OUTPUT = [
 ].join("\n");
 
 describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
+  it("links an AgentPhone user without provisioning artifact storage", async () => {
+    const bdd = createBddApi(context);
+    const integrations = createBddIntegrationApi(context);
+    const ap = createAgentPhoneBddApi(context);
+    const storages = createStoragesBddApi(context);
+    const actor = bdd.user();
+    integrations.configureAgentPhoneProvider();
+    integrations.configureAgentPhoneWebhook();
+    const sends = ap.captureAgentPhoneSends();
+
+    await ap.linkViaWebhookConnectPrompt(actor, uniquePhoneHandle(), sends);
+
+    await expect(
+      storages.listStorages(actor, "artifact"),
+    ).resolves.toStrictEqual([]);
+  });
+
   it("dispatches linked iMessage DMs, refreshes typing, replies with plain-text completions, and controls sessions", async () => {
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);

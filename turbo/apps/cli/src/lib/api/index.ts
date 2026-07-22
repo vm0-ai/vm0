@@ -6,29 +6,6 @@ export { ApiRequestError } from "./core/client-factory";
 
 // HTTP utilities (only export what's actually used)
 
-// Domain modules - Composes
-export {
-  getComposeByName,
-  getComposeById,
-  getComposeVersion,
-  createOrUpdateCompose,
-} from "./domains/composes";
-
-// Domain modules - Runs
-export {
-  createRun,
-  getEvents,
-  listRuns,
-  cancelRun,
-  getRunQueue,
-} from "./domains/runs";
-
-// Domain modules - Sessions
-export { getSession, getCheckpoint } from "./domains/sessions";
-
-// Domain modules - Storages
-export { prepareStorage, commitStorage } from "./domains/storages";
-
 // Domain modules - Registry Resources
 export { getRegistryResourceDownload } from "./domains/registry-resources";
 
@@ -48,7 +25,6 @@ export {
   removeZeroOrgMember,
   leaveZeroOrg,
   deleteZeroOrg,
-  switchZeroOrg,
 } from "./domains/zero-orgs";
 
 // Domain modules - Zero Billing
@@ -197,6 +173,10 @@ export {
 
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";
+export type {
+  RunEvent,
+  LogsSearchResponse,
+} from "@vm0/api-contracts/contracts/runs";
 
 // Domain modules - Zero Logs
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
@@ -208,19 +188,6 @@ export {
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
-
-// Domain modules - Logs
-export {
-  getSystemLog,
-  getMetrics,
-  getAgentEvents,
-  getNetworkLogs,
-  searchLogs,
-  type RunEvent,
-  type TelemetryMetric,
-  type NetworkLogEntry,
-  type LogsSearchResponse,
-} from "./domains/logs";
 
 // Domain modules - Zero Developer Support
 export {

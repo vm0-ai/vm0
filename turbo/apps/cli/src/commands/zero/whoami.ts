@@ -176,21 +176,22 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 async function showLocalInfo(): Promise<void> {
   const token = await getToken();
   const apiUrl = await getApiUrl();
-  const activeOrg = await getActiveOrg();
+  const payload = token ? decodeZeroTokenPayload(token) : undefined;
+  const isExpired = payload ? payload.exp * 1000 <= Date.now() : false;
+  const activeOrg = !isExpired ? await getActiveOrg() : undefined;
 
   // Auth section
   console.log(chalk.bold("Auth:"));
-  if (token) {
-    const tokenSource = process.env.ZERO_TOKEN
-      ? "ZERO_TOKEN env var"
-      : process.env.VM0_TOKEN
-        ? "VM0_TOKEN env var"
-        : "config file";
-    console.log(
-      `  Status:     ${chalk.green("Authenticated")} (via ${tokenSource})`,
-    );
-  } else {
+  if (!token) {
     console.log(`  Status:     ${chalk.dim("Not authenticated")}`);
+  } else if (!payload) {
+    console.log(`  Status:     ${chalk.red("Invalid ZERO_TOKEN")}`);
+  } else if (isExpired) {
+    console.log(`  Status:     ${chalk.red("Expired ZERO_TOKEN")}`);
+  } else {
+    console.log(
+      `  Status:     ${chalk.green("Authenticated")} (via ZERO_TOKEN env var)`,
+    );
   }
   console.log(`  API:        ${apiUrl}`);
   console.log();

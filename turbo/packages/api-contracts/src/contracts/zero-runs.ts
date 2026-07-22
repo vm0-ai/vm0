@@ -148,7 +148,7 @@ export const zeroRunsQueueContract = c.router({
 
 /**
  * Zero run agent events contract (GET /api/zero/runs/:id/telemetry/agent)
- * Proxies to runAgentEventsContract
+ * Zero-namespaced agent events read (same response shape as the retired /api/agent telemetry route)
  */
 export const zeroRunAgentEventsContract = c.router({
   getAgentEvents: {

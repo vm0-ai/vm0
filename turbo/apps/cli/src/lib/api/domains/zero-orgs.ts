@@ -4,7 +4,6 @@ import {
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
 } from "@vm0/api-contracts/contracts/zero-org";
-import { cliAuthOrgContract } from "@vm0/api-contracts/contracts/cli-auth";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
   zeroOrgInviteContract,
@@ -13,44 +12,7 @@ import {
 import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
-import {
-  ApiRequestError,
-  getClientConfig,
-  getBaseUrl,
-  handleError,
-} from "../core/client-factory";
-import { getToken } from "../config";
-import { cliClientHeaderApi } from "../client-headers";
-
-/**
- * Get client config that always uses the user token,
- * not the org token. Used for org list operations.
- */
-async function getUserTokenClientConfig(): Promise<{
-  baseUrl: string;
-  baseHeaders: Record<string, string>;
-  jsonQuery: false;
-  api: typeof cliClientHeaderApi;
-}> {
-  const baseUrl = await getBaseUrl();
-  const token = await getToken();
-  if (!token) {
-    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
-  }
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-  return {
-    baseUrl,
-    baseHeaders: headers,
-    jsonQuery: false,
-    api: cliClientHeaderApi,
-  };
-}
+import { getClientConfig, handleError } from "../core/client-factory";
 
 /**
  * Get current org info via zero API
@@ -88,10 +50,10 @@ export async function updateZeroOrg(body: {
 }
 
 /**
- * List all accessible orgs (always uses user token)
+ * List all accessible orgs.
  */
 export async function listZeroOrgs(): Promise<OrgListResponse> {
-  const config = await getUserTokenClientConfig();
+  const config = await getClientConfig();
   const client = initClient(zeroOrgListContract, config);
 
   const result = await client.list({ headers: {} });
@@ -192,26 +154,4 @@ export async function deleteZeroOrg(slug: string): Promise<void> {
   }
 
   handleError(result, "Failed to delete organization");
-}
-
-/**
- * Switch active organization and get a new CLI JWT token.
- * Uses the user's current token for auth (not org-scoped).
- */
-export async function switchZeroOrg(
-  slug: string,
-): Promise<{ access_token: string }> {
-  const config = await getUserTokenClientConfig();
-  const client = initClient(cliAuthOrgContract, config);
-
-  const result = await client.switchOrg({
-    headers: {},
-    body: { slug },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to switch organization");
 }

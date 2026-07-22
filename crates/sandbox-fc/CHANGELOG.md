@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.37.141](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.140...sandbox-fc-v0.37.141) (2026-07-22)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** wait for legacy xtables lock ([#22484](https://github.com/vm0-ai/vm0/issues/22484)) ([8ec23c1](https://github.com/vm0-ai/vm0/commit/8ec23c14812cc77b0dba0c99b64bc938ca775ee3))
+
+## [0.37.140](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.139...sandbox-fc-v0.37.140) (2026-07-21)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize startup orchestration ([#22427](https://github.com/vm0-ai/vm0/issues/22427)) ([db8d8f7](https://github.com/vm0-ai/vm0/commit/db8d8f74db3d09751d3944251e43ae44e2754e8c))
+
+## [0.37.139](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.138...sandbox-fc-v0.37.139) (2026-07-21)
+
 ## [0.37.138](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.137...sandbox-fc-v0.37.138) (2026-07-21)
 
 ## [0.37.137](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.136...sandbox-fc-v0.37.137) (2026-07-20)

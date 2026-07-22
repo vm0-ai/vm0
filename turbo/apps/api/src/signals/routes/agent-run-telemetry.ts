@@ -1,9 +1,7 @@
 import { computed } from "ccstate";
 import {
-  runAgentEventsContract,
   runEventsContract,
   runMetricsContract,
-  runNetworkLogsContract,
   runSystemLogContract,
 } from "@vm0/api-contracts/contracts/runs";
 
@@ -12,10 +10,8 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
-  agentRunAgentEvents,
   agentRunEvents,
   agentRunMetrics,
-  agentRunNetworkLogs,
   agentRunSystemLog,
 } from "../services/agent-run-telemetry.service";
 import type { RouteEntry } from "../route-entry";
@@ -38,28 +34,6 @@ const getEventsInner$ = computed(async (get) => {
       orgId: auth.orgId,
       since: query.since,
       limit: query.limit,
-    }),
-  );
-  if (!result) {
-    return agentRunNotFound;
-  }
-  return { status: 200 as const, body: result };
-});
-
-const getAgentEventsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(runAgentEventsContract.getAgentEvents));
-  const query = get(queryOf(runAgentEventsContract.getAgentEvents));
-  const result = await get(
-    agentRunAgentEvents({
-      runId: params.id,
-      userId: auth.userId,
-      orgId: auth.orgId,
-      since: query.since,
-      sinceTime: query.sinceTime,
-      cursor: query.cursor,
-      limit: query.limit,
-      order: query.order,
     }),
   );
   if (!result) {
@@ -112,36 +86,10 @@ const getMetricsInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getNetworkLogsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(runNetworkLogsContract.getNetworkLogs));
-  const query = get(queryOf(runNetworkLogsContract.getNetworkLogs));
-  const result = await get(
-    agentRunNetworkLogs({
-      runId: params.id,
-      userId: auth.userId,
-      orgId: auth.orgId,
-      since: query.since,
-      sinceTime: query.sinceTime,
-      cursor: query.cursor,
-      limit: query.limit,
-      order: query.order,
-    }),
-  );
-  if (!result) {
-    return agentRunNotFound;
-  }
-  return { status: 200 as const, body: result };
-});
-
 export const agentRunTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: runEventsContract.getEvents,
     handler: authRoute(anySandboxOrgAuth, getEventsInner$),
-  },
-  {
-    route: runAgentEventsContract.getAgentEvents,
-    handler: authRoute(anySandboxOrgAuth, getAgentEventsInner$),
   },
   {
     route: runSystemLogContract.getSystemLog,
@@ -150,9 +98,5 @@ export const agentRunTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: runMetricsContract.getMetrics,
     handler: authRoute(anySandboxOrgAuth, getMetricsInner$),
-  },
-  {
-    route: runNetworkLogsContract.getNetworkLogs,
-    handler: authRoute(anySandboxOrgAuth, getNetworkLogsInner$),
   },
 ];

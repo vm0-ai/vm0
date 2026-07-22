@@ -1184,10 +1184,16 @@ function normalizeUrlHostname(
   return normalized;
 }
 
+interface NormalizedUrlAuthority {
+  readonly hostname: string;
+  readonly port: string | null;
+  readonly authority: string;
+}
+
 function normalizedUrlAuthority(
   parsed: URL,
   options: { allowHostParams?: boolean } = {},
-): string | null {
+): NormalizedUrlAuthority | null {
   if (parsed.username !== "" || parsed.password !== "") {
     return null;
   }
@@ -1197,7 +1203,12 @@ function normalizedUrlAuthority(
     return null;
   }
 
-  return parsed.port === "" ? hostname : `${hostname}:${parsed.port}`;
+  const port = parsed.port === "" ? null : parsed.port;
+  return {
+    hostname,
+    port,
+    authority: port === null ? hostname : `${hostname}:${port}`,
+  };
 }
 
 function matchStaticFirewallBaseUrl(
@@ -1221,12 +1232,16 @@ function matchStaticFirewallBaseUrl(
   });
   if (urlAuthority === null || baseAuthority === null) return null;
   if (baseHasParams) {
+    if (urlAuthority.port !== baseAuthority.port) return null;
     const hostParams =
       options.tolerateMalformedBaseParams === true
-        ? matchFirewallHostForMalformedBaseDecision(urlAuthority, baseAuthority)
-        : matchFirewallHost(urlAuthority, baseAuthority);
+        ? matchFirewallHostForMalformedBaseDecision(
+            urlAuthority.hostname,
+            baseAuthority.hostname,
+          )
+        : matchFirewallHost(urlAuthority.hostname, baseAuthority.hostname);
     if (hostParams === null) return null;
-  } else if (urlAuthority !== baseAuthority) {
+  } else if (urlAuthority.authority !== baseAuthority.authority) {
     return null;
   }
 
@@ -1246,7 +1261,9 @@ function matchStaticFirewallBaseUrl(
     displayBase,
     relativePath,
     score: baseUrlSpecificityScore({
-      authority: baseAuthority,
+      authority: baseHasParams
+        ? baseAuthority.hostname
+        : baseAuthority.authority,
       path: basePath,
       hasParams: baseHasParams,
       tolerateMalformedBaseParams: options.tolerateMalformedBaseParams === true,

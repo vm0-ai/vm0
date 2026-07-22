@@ -9,6 +9,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   installTeamsForTest,
   postTeamsActivityForTest,
@@ -21,6 +22,7 @@ import {
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const storages = createStoragesBddApi(context);
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
@@ -341,7 +343,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     setupTeamsConnectTestEnv();
   });
 
-  it("binds an unbound Teams installation for an admin and creates one connection", async () => {
+  it("binds an unbound Teams installation without provisioning artifact storage", async () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -370,6 +372,17 @@ describe("POST /api/zero/integrations/teams/connect", () => {
       isConnected: true,
       tenantId: fixture.teamsTenantId,
     });
+    await expect(
+      storages.listStorages(
+        {
+          userId: fixture.userId,
+          orgId: fixture.orgId,
+          orgRole: "org:admin",
+          email: `${fixture.userId}@example.test`,
+        },
+        "artifact",
+      ),
+    ).resolves.toStrictEqual([]);
   });
 
   it("rejects a member connecting an unbound Teams installation", async () => {

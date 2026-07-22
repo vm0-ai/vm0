@@ -97,6 +97,15 @@ function generateOpaqueToken(): string {
   return `${COMPUTER_USE_AUTHORIZATION_URL_PREFIX}_${randomBytes(32).toString("base64url")}`;
 }
 
+function requiredChatThreadId(request: AuthorizationRequestRow): string {
+  if (!request.chatThreadId) {
+    throw new Error(
+      `Chat authorization request ${request.id} is missing its thread ID`,
+    );
+  }
+  return request.chatThreadId;
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
@@ -197,7 +206,7 @@ async function resolveRequestScope(args: {
     return "run_not_found";
   }
 
-  if (run.triggerSource === "web" && run.chatThreadId) {
+  if (run.chatThreadId) {
     return { source: "chat", chatThreadId: run.chatThreadId };
   }
 
@@ -294,7 +303,7 @@ async function loadAuthorizedComputerUseHostId(args: {
       .from(chatThreads)
       .where(
         and(
-          eq(chatThreads.id, args.request.chatThreadId ?? ""),
+          eq(chatThreads.id, requiredChatThreadId(args.request)),
           eq(chatThreads.userId, args.userId),
         ),
       )
@@ -426,7 +435,7 @@ async function applyChatAuthorizationScope(args: {
     })
     .where(
       and(
-        eq(chatThreads.id, args.request.chatThreadId ?? ""),
+        eq(chatThreads.id, requiredChatThreadId(args.request)),
         eq(chatThreads.userId, args.userId),
       ),
     )

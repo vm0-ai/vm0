@@ -23,11 +23,15 @@ setup_file() {
     export ARTIFACT_NAME="e2e-zendesk-fw-artifact-${UNIQUE_ID}"
     export TEST_SUBDOMAIN="e2etest${RANDOM}"
 
-    # Set up zendesk connector via real CLI — same as user doing it in web UI.
-    $ZERO_CLI connector connect zendesk \
-        --value ZENDESK_API_TOKEN=fake-zendesk-token-for-e2e \
-        --value ZENDESK_SUBDOMAIN="$TEST_SUBDOMAIN" \
-        --value ZENDESK_EMAIL=e2e@test.vm0.ai
+    connect_e2e_connector \
+        "zendesk" \
+        "$(jq -nc \
+            --arg subdomain "$TEST_SUBDOMAIN" \
+            '{
+                ZENDESK_API_TOKEN: "fake-zendesk-token-for-e2e",
+                ZENDESK_SUBDOMAIN: $subdomain,
+                ZENDESK_EMAIL: "e2e@test.vm0.ai"
+            }')"
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
@@ -38,7 +42,7 @@ setup_file() {
 }
 
 teardown_file() {
-    zero_curl "/api/zero/connectors/zendesk" -X DELETE >/dev/null 2>&1 || true
+    e2e_api_curl "/api/zero/connectors/zendesk" -X DELETE >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -55,18 +59,17 @@ agents:
     framework: claude-code
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-placeholder.yaml"
     echo "$output"
     assert_success
 
-    run $VM0_CLI run "${AGENT_NAME}-placeholder" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo \"TOKEN=\$ZENDESK_API_TOKEN\" && echo \"SUBDOMAIN=\$ZENDESK_SUBDOMAIN\""
+    run run_compose_fixture "${AGENT_NAME}-placeholder" \
+        "echo \"TOKEN=\$ZENDESK_API_TOKEN\" && echo \"SUBDOMAIN=\$ZENDESK_SUBDOMAIN\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Token should be the placeholder (not the real fake token)
     assert_output --partial "TOKEN=zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa"
     # Subdomain should be the real value (it's a variable, not a secret)
@@ -83,28 +86,27 @@ agents:
     framework: claude-code
 EOF
 
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0-proxy.yaml"
     echo "$output"
     assert_success
 
     # Make a request to the zendesk API through the proxy.
     # If proxy matched: zendesk returns 401 (bad token) or 404 (subdomain not found)
     # If proxy blocked: returns 403 with "no matching permission" error
-    run $VM0_CLI run "${AGENT_NAME}-proxy" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\""
+    run run_compose_fixture "${AGENT_NAME}-proxy" \
+        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Verify proxy did NOT block the request (403 = firewall blocked, no match).
     # Any other status (401, 404) means proxy matched and forwarded successfully.
     refute_output --partial "ZENDESK_STATUS=403"
     assert_output --regexp "ZENDESK_STATUS=(401|404)"
 
     # Check network logs confirm firewall match
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.16...guest-contracts-v0.3.17) (2026-07-21)
+
+
+### Performance Improvements
+
+* align session-history sidecar capacity with resume limit ([#22392](https://github.com/vm0-ai/vm0/issues/22392)) ([6eee854](https://github.com/vm0-ai/vm0/commit/6eee8548718c69c4d46afe9b1ddcd8c7babcca59))
+
 ## [0.3.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.15...guest-contracts-v0.3.16) (2026-07-19)
 
 

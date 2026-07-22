@@ -35,7 +35,7 @@ describe("static connector icons", () => {
       }
     }
 
-    expect(urls.size).toBe(309);
+    expect(urls.size).toBe(310);
   });
 
   it("preserves aliases and representative appearance behavior", () => {

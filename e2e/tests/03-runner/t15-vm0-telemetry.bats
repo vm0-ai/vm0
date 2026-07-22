@@ -4,9 +4,9 @@
 # This test verifies that:
 # 1. Agent runs display Run ID at start
 # 2. Agent runs collect telemetry data (system log and metrics)
-# 3. The vm0 logs command can retrieve telemetry data
+# 3. Telemetry data is retrievable (agent/system/metrics log views)
 #
-# Test count: 2 tests with 1 vm0 run call
+# Test count: 1 test with 1 direct run
 
 load '../../helpers/setup'
 
@@ -33,7 +33,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -56,12 +56,6 @@ teardown() {
     fi
 }
 
-@test "Build VM0 telemetry test agent configuration" {
-    run $VM0_CLI compose "$SHARED_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
 @test "VM0 telemetry: run displays Run ID and logs command retrieves data" {
     # Step 1: Create artifact with initial content
     echo "# Step 1: Creating initial artifact..."
@@ -73,27 +67,18 @@ teardown() {
 
     # Step 2: Run agent with a simple command
     echo "# Step 2: Running agent to trigger telemetry collection..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo 'hello from agent'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'hello from agent'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
-    # Verify "Run started" message with Run ID is displayed
-    assert_output --partial "Run started"
-    assert_output --partial "Run ID:"
-
     # Verify run completed successfully
-    assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Run completed successfully"
-
-    # Verify "vm0 logs" command hint is shown in next steps
-    assert_output --partial "View agent logs:"
-    assert_output --partial "vm0 logs"
+    assert_output --partial '"subtype":"success"'
 
     # Step 3: Extract Run ID from output
-    # Format: "  Run ID:   abc12345-6789-..."
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     echo "# Run ID: $RUN_ID"
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID from output"
@@ -101,15 +86,15 @@ teardown() {
         return 1
     }
 
-    # Step 4: Verify vm0 logs command (default: agent events)
+    # Step 4: Verify agent events (default log view)
     echo "# Step 4: Fetching agent events (default)..."
     # Mock-claude produces: Claude Code Started, text, tool calls, Completed
-    wait_for_log "$RUN_ID" -- "▷ Claude Code Started" "◆ Claude Code Completed"
+    wait_for_log "$RUN_ID" -- '"subtype":"init"' '"subtype":"success"'
     echo "# Agent events contain expected event types"
 
     # Step 5: Verify --agent option explicitly shows agent events
     echo "# Step 5: Testing --agent option..."
-    wait_for_log "$RUN_ID" --agent -- "▷ Claude Code Started"
+    wait_for_log "$RUN_ID" --agent -- '"subtype":"init"'
     echo "# --agent option works correctly"
 
     # Step 6: Verify --system option shows system logs
@@ -126,17 +111,10 @@ teardown() {
     wait_for_log "$RUN_ID" --metrics -- "CPU:" "Mem:" "Disk:"
     echo "# Metrics contain expected resource data"
 
-    # Step 8: Verify --tail option limits output
-    echo "# Step 8: Testing --tail option..."
-    run $VM0_CLI logs "$RUN_ID" --tail 2
-
+    # Step 8: Verify API pagination limits structured agent events.
+    echo "# Step 8: Testing agent-event page limit..."
+    run e2e_api_curl "/api/zero/runs/$RUN_ID/telemetry/agent?limit=2&order=desc"
     assert_success
-    # With tail=2, should see at most 2 events
-    # If more exist, should see "Use --tail to see more"
-    echo "# Tail option works correctly"
-
-    # Note: Mutually exclusive options validation (--agent, --system, etc.)
-    # is tested in CLI integration tests:
-    # turbo/apps/cli/src/commands/logs/__tests__/index.test.ts
-    #   - "should exit with error when multiple log types specified"
+    assert_equal "$(jq -r '.events | length' <<< "$output")" "2"
+    echo "# Agent-event page limit works correctly"
 }

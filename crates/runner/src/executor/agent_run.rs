@@ -64,7 +64,7 @@ use crate::restored_session_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
-use crate::storage_plan::build_storage_plan;
+use crate::storage_plan::{StoragePlan, build_storage_plan};
 use crate::telemetry::{
     JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
 };
@@ -880,6 +880,7 @@ pub(super) struct RunControls {
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
+    pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
 }
 
 impl RunControls {
@@ -892,6 +893,7 @@ impl RunControls {
             active_input_source,
             spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
+            prepared_storage: None,
         }
     }
 
@@ -934,6 +936,189 @@ async fn run_pre_spawn_phase<T>(
     }
 }
 
+fn record_storage_plan_state(
+    plan: &StoragePlan,
+    previous_storage: bool,
+    planning_started: Instant,
+    telemetry: &mut JobTelemetry,
+) {
+    if previous_storage {
+        telemetry.record(
+            "runner_storage_manifest_fingerprint_reuse",
+            planning_started.elapsed(),
+            true,
+            None,
+        );
+    }
+    if plan.reused_entries() > 0 {
+        info!(
+            skipped = plan.reused_entries(),
+            total = plan.entry_count(),
+            "filtered unchanged manifest entries"
+        );
+    }
+    if plan.cleanup_path_count() > 0 {
+        info!(
+            count = plan.cleanup_path_count(),
+            "computed cleanup paths for stale file removal"
+        );
+    }
+    if plan.instruction_cleanup_count() > 0 {
+        info!(
+            count = plan.instruction_cleanup_count(),
+            "computed instruction cleanup entries for stale file removal"
+        );
+    }
+}
+
+async fn populate_storage_plan(
+    plan: &mut StoragePlan,
+    fresh_delivery: Option<&mut crate::storage_cache::FreshArchiveDelivery>,
+    sandbox: &dyn Sandbox,
+    config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
+) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
+    let cache_started = Instant::now();
+    let result = crate::storage_cache::populate_cache_with_fresh_delivery(
+        plan,
+        sandbox,
+        &config.home,
+        telemetry,
+        fresh_delivery,
+    )
+    .await;
+    telemetry.record(
+        "runner_storage_manifest_cache_populate",
+        cache_started.elapsed(),
+        result.is_ok(),
+        result.is_err().then_some(STORAGE_CACHE_POPULATE_FAILED),
+    );
+    result
+}
+
+async fn prepare_guest_storage(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: &RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    prepared_storage: &mut Option<crate::storage_cache::PreparedFreshStorage>,
+) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
+    if start.restore_guest_state {
+        let started = Instant::now();
+        let result = restore_guest_state(sandbox, context).await;
+        let error = result.as_ref().err().map(ToString::to_string);
+        telemetry.record(
+            "runner_guest_state_restore",
+            started.elapsed(),
+            result.is_ok(),
+            error.as_deref(),
+        );
+        result?;
+    } else {
+        let started = Instant::now();
+        sync_guest_timezone(sandbox, context).await;
+        telemetry.record("runner_guest_timezone_sync", started.elapsed(), true, None);
+    }
+
+    let Some(manifest) = &context.storage_manifest else {
+        return Ok(None);
+    };
+    let apply_started = Instant::now();
+    let planning_started = Instant::now();
+
+    let result: RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> = async {
+        if let Some(prepared) = prepared_storage.as_mut() {
+            record_storage_plan_state(
+                &prepared.plan,
+                start.prev_storage.is_some(),
+                planning_started,
+                telemetry,
+            );
+            let has_work = prepared.plan.requires_guest_work();
+            telemetry.record(
+                "runner_storage_manifest_has_work",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            if !has_work {
+                info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
+                prepared.delivery.cancel_and_drain(telemetry).await;
+                let _ = prepared_storage.take();
+                Ok(None)
+            } else {
+                let deferred = populate_storage_plan(
+                    &mut prepared.plan,
+                    Some(&mut prepared.delivery),
+                    sandbox,
+                    config,
+                    telemetry,
+                )
+                .await?;
+                let prepared = prepared_storage.take().ok_or_else(|| {
+                    RunnerError::Internal(
+                        "prepared storage disappeared after cache population".into(),
+                    )
+                })?;
+                let guest_manifest = prepared.plan.into_guest_manifest();
+                let download_started = Instant::now();
+                let download_result = download_storages(sandbox, context, &guest_manifest).await;
+                telemetry.record(
+                    "runner_storage_manifest_guest_download",
+                    download_started.elapsed(),
+                    download_result.is_ok(),
+                    download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
+                );
+                download_result.map(|()| deferred)
+            }
+        } else {
+            let runtime_dir = guest_runtime_dir(context.run_id)?;
+            let mut plan = build_storage_plan(manifest, runtime_dir.as_str(), start.prev_storage)?;
+            record_storage_plan_state(
+                &plan,
+                start.prev_storage.is_some(),
+                planning_started,
+                telemetry,
+            );
+            let has_work = plan.requires_guest_work();
+            telemetry.record(
+                "runner_storage_manifest_has_work",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            if !has_work {
+                info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
+                Ok(None)
+            } else {
+                let deferred =
+                    populate_storage_plan(&mut plan, None, sandbox, config, telemetry).await?;
+                let guest_manifest = plan.into_guest_manifest();
+                let download_started = Instant::now();
+                let download_result = download_storages(sandbox, context, &guest_manifest).await;
+                telemetry.record(
+                    "runner_storage_manifest_guest_download",
+                    download_started.elapsed(),
+                    download_result.is_ok(),
+                    download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
+                );
+                download_result.map(|()| deferred)
+            }
+        }
+    }
+    .await;
+
+    let error = result.as_ref().err().map(ToString::to_string);
+    telemetry.record(
+        "runner_storage_manifest_apply",
+        apply_started.elapsed(),
+        result.is_ok(),
+        error.as_deref(),
+    );
+    result
+}
+
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -968,9 +1153,51 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         active_input_source,
         spawn_timing,
         session_history_restore_plan,
+        mut prepared_storage,
     } = controls;
     let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
+    let storage_result = run_pre_spawn_phase(
+        &cancel,
+        prepare_guest_storage(
+            sandbox,
+            context,
+            config,
+            &start,
+            telemetry,
+            &mut prepared_storage,
+        ),
+    )
+    .await;
+    let deferred_background_fill = match storage_result {
+        Some(Ok(deferred)) => deferred,
+        Some(Err(error)) => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            return Err(error);
+        }
+        None => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            info!(
+                run_id = %context.run_id,
+                "cancel received before guest process started"
+            );
+            let result = AgentExecutionResult::cancelled();
+            telemetry.record(
+                "agent_execute",
+                pre_spawn_started.elapsed(),
+                false,
+                result
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.error.as_str()),
+            );
+            return Ok(result);
+        }
+    };
     let pre_spawn_cancel = cancel.clone();
     let pre_spawn_start = &start;
     let pre_spawn_telemetry = &mut *telemetry;
@@ -978,129 +1205,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let cancel = pre_spawn_cancel;
         let start = pre_spawn_start;
         let telemetry = pre_spawn_telemetry;
-        let mut deferred_background_fill = None;
-
-    // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
-    //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
-    //    When this exec already runs, fold best-effort timezone sync into it
-    //    to avoid another pre-spawn guest round trip.
-    if start.restore_guest_state {
-        let t = Instant::now();
-        let result = restore_guest_state(sandbox, context).await;
-        let err = result.as_ref().err().map(|e| e.to_string());
-        telemetry.record(
-            "runner_guest_state_restore",
-            t.elapsed(),
-            result.is_ok(),
-            err.as_deref(),
-        );
-        result?;
-    } else {
-        // 2. Set guest timezone from user preference (best-effort, never fails).
-        let t = Instant::now();
-        sync_guest_timezone(sandbox, context).await;
-        telemetry.record("runner_guest_timezone_sync", t.elapsed(), true, None);
-    }
-
-    // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
-    if let Some(manifest) = &context.storage_manifest {
-        let runtime_dir = guest_runtime_dir(context.run_id)?;
-        let planning_t = Instant::now();
-        let mut plan = match build_storage_plan(manifest, runtime_dir.as_str(), start.prev_storage)
-        {
-            Ok(plan) => plan,
-            Err(error) => {
-                let error_message = error.to_string();
-                telemetry.record(
-                    "runner_storage_manifest_apply",
-                    planning_t.elapsed(),
-                    false,
-                    Some(&error_message),
-                );
-                return Err(error);
-            }
-        };
-        if start.prev_storage.is_some() {
-            telemetry.record(
-                "runner_storage_manifest_fingerprint_reuse",
-                planning_t.elapsed(),
-                true,
-                None,
-            );
-        }
-        if plan.reused_entries() > 0 {
-            info!(
-                skipped = plan.reused_entries(),
-                total = plan.entry_count(),
-                "filtered unchanged manifest entries"
-            );
-        }
-        if plan.cleanup_path_count() > 0 {
-            info!(
-                count = plan.cleanup_path_count(),
-                "computed cleanup paths for stale file removal"
-            );
-        }
-        if plan.instruction_cleanup_count() > 0 {
-            info!(
-                count = plan.instruction_cleanup_count(),
-                "computed instruction cleanup entries for stale file removal"
-            );
-        }
-        let has_work_t = Instant::now();
-        let has_work = plan.requires_guest_work();
-        telemetry.record(
-            "runner_storage_manifest_has_work",
-            has_work_t.elapsed(),
-            true,
-            None,
-        );
-        if !has_work {
-            info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
-        }
-        let t = Instant::now();
-        let result = if has_work {
-            let cache_t = Instant::now();
-            let cache_result =
-                crate::storage_cache::populate_cache(&mut plan, sandbox, &config.home, telemetry)
-                    .await;
-            telemetry.record(
-                "runner_storage_manifest_cache_populate",
-                cache_t.elapsed(),
-                cache_result.is_ok(),
-                cache_result
-                    .is_err()
-                    .then_some(STORAGE_CACHE_POPULATE_FAILED),
-            );
-            match cache_result {
-                Ok(deferred) => {
-                    deferred_background_fill = deferred;
-                    let guest_manifest = plan.into_guest_manifest();
-                    let download_t = Instant::now();
-                    let download_result =
-                        download_storages(sandbox, context, &guest_manifest).await;
-                    telemetry.record(
-                        "runner_storage_manifest_guest_download",
-                        download_t.elapsed(),
-                        download_result.is_ok(),
-                        download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
-                    );
-                    download_result
-                }
-                Err(error) => Err(error),
-            }
-        } else {
-            Ok(())
-        };
-        let err = result.as_ref().err().map(|e| e.to_string());
-        telemetry.record(
-            "runner_storage_manifest_apply",
-            t.elapsed(),
-            result.is_ok(),
-            err.as_deref(),
-        );
-        result?;
-    }
+        let deferred_background_fill = deferred_background_fill;
 
     let mut session_restore_diagnostics = None;
     let mut pre_run_restored_session_identity = None;

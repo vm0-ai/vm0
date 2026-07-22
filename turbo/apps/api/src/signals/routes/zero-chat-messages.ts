@@ -6,6 +6,7 @@ import {
   type AttachFile,
   type CodexServiceTier,
   type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   isCodexFastModeModel,
@@ -140,6 +141,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
+  readonly structuredPrompt?: UserMessageDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -758,7 +760,7 @@ async function latestSessionForThread(
     // never resumes an automated one. The 'web' filter (before .limit) is
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
-    // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
+    // (zero-goal-continuation.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
     .where(
       and(
@@ -880,21 +882,21 @@ async function activeRunExistsForThread(
     sql`
       SELECT ${zeroRuns.id} AS "id"
       FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+      WHERE ${eq(zeroRuns.chatThreadId, threadId)}
         AND ${agentRuns.status} IN ('queued', 'pending', 'running')
         AND (
           NOT EXISTS (
             SELECT 1
             FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
               AND ${agentRunCallbacks.internalKind} = 'chat'
               AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
           )
           OR EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            WHERE ${eq(chatMessages.runId, zeroRuns.id)}
               AND ${chatMessages.role} = 'user'
           )
         )
@@ -1603,13 +1605,18 @@ function appendUnassociatedUserMessage(params: {
   readonly clientMessageId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly orgId: string;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftStructuredPrompt: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.threadId),
@@ -1627,6 +1634,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         role: "user",
         content: params.prompt,
+        structuredPrompt: params.structuredPrompt,
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1714,7 +1722,11 @@ async function clearThreadDraft(
 ): Promise<void> {
   await tx
     .update(chatThreads)
-    .set({ draftContent: null, draftAttachments: null })
+    .set({
+      draftContent: null,
+      draftStructuredPrompt: null,
+      draftAttachments: null,
+    })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 }
 
@@ -1729,6 +1741,7 @@ async function appendAssociatedUserMessage(params: {
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly revokesMessageId: string | undefined;
+  readonly structuredPrompt: UserMessageDocument | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
   // When false, the thread's in-progress draft is preserved. Automation posts
@@ -1747,6 +1760,7 @@ async function appendAssociatedUserMessage(params: {
       chatThreadId: params.threadId,
       role: "user",
       content: params.prompt,
+      structuredPrompt: params.structuredPrompt,
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2461,6 +2475,7 @@ async function queueUnassociatedNormalMessage(params: {
     clientMessageId: params.body.clientMessageId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
+    structuredPrompt: params.body.structuredPrompt,
     generationTemplate: params.body.generationTemplate,
     orgId: params.orgId,
   });
@@ -2541,6 +2556,7 @@ function scheduleAssociatedUserMessage(params: {
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
         revokesMessageId: params.body.revokesMessageId,
+        structuredPrompt: params.body.structuredPrompt,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         clearDraft: true,
@@ -2713,6 +2729,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2747,6 +2764,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: queuedMessage.content,
+      structuredPrompt: queuedMessage.structuredPrompt,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2813,7 +2831,11 @@ async function appendInsufficientCreditsMessages(params: {
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
+      .set({
+        draftContent: null,
+        draftStructuredPrompt: null,
+        draftAttachments: null,
+      })
       .where(
         and(
           eq(chatThreads.id, params.prepared.thread.threadId),
@@ -2832,6 +2854,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
       content: params.body.prompt,
+      structuredPrompt: params.body.structuredPrompt,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -3274,7 +3297,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-export const sendNormalMessage$ = command(
+const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,

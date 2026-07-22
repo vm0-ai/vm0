@@ -1,3 +1,7 @@
+import { isDeepStrictEqual } from "node:util";
+
+import { normalizeConnectorFixedHost } from "@vm0/connectors/firewall-metadata/server";
+
 import {
   type ConnectorCatalogIntegrityArtifact,
   type ConnectorCatalogPrivateArtifact,
@@ -379,6 +383,22 @@ function validateFirewallProjection(args: {
       `Firewall label mismatch: ${args.publicConnector.connectorRef}`,
     );
   }
+  const baseUrlTemplates = new Map<
+    string,
+    (typeof args.privateFirewall.routing.baseUrlTemplates)[number]
+  >();
+  for (const template of args.privateFirewall.routing.baseUrlTemplates) {
+    const existing = baseUrlTemplates.get(template.base);
+    if (
+      existing &&
+      !isDeepStrictEqual(existing.hostPolicy, template.hostPolicy)
+    ) {
+      throw new Error(
+        `Firewall base URL host policies conflict: ${args.publicConnector.connectorRef} (${template.base})`,
+      );
+    }
+    baseUrlTemplates.set(template.base, template);
+  }
   validateFirewallBindings(args);
   if (
     JSON.stringify(args.privateFirewall.routing) !==
@@ -407,6 +427,7 @@ function validateFirewallSemantics(args: {
       return [connector.connectorRef, connector];
     }),
   );
+  const fixedHostOwners = new Map<string, string>();
   for (const connector of args.privateFirewallsArtifact.connectors) {
     validateFirewallGeneratorResult({
       connectorRef: connector.connectorRef,
@@ -427,6 +448,24 @@ function validateFirewallSemantics(args: {
       privateConnector,
       privateFirewall: connector,
     });
+    for (const rawHost of connector.routing.fixedHosts) {
+      const host = normalizeConnectorFixedHost(rawHost);
+      if (!host) {
+        throw new Error(
+          `Firewall fixed host is invalid: ${connector.connectorRef}`,
+        );
+      }
+      const existingOwner = fixedHostOwners.get(host);
+      if (
+        existingOwner !== undefined &&
+        existingOwner !== connector.connectorRef
+      ) {
+        throw new Error(
+          `Firewall fixed host collision: ${host} (${existingOwner}, ${connector.connectorRef})`,
+        );
+      }
+      fixedHostOwners.set(host, connector.connectorRef);
+    }
   }
 }
 

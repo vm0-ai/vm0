@@ -5,7 +5,7 @@
 # Validates the chain added by epic #11520:
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
 #   →  model policy routes the selected Codex model to that BYOK provider
-#   →  vm0 compose  →
+#   →  compose fixture API  →
 #   POST /api/zero/chat/messages (the same unified create-thread + run endpoint
 #   the web composer uses) → thread pins the selected model  →  real codex CLI runs with
 #   $OPENAI_API_KEY  →  response contains the expected sentinel.
@@ -33,7 +33,7 @@ setup_file() {
 
     # 2. Org-level openai-api-key provider. Chat writes only carry the selected
     # model; provider resolution comes from org model policy.
-    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+    configure_e2e_model_provider "openai-api-key" "$OPENAI_API_KEY"
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
     configure_codex_zero_model_policy \
@@ -59,11 +59,11 @@ agents:
 EOF
 
     local compose_json
-    compose_json=$($VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" --json)
+    compose_json=$(seed_compose_fixture "$TEST_DIR/vm0-basic.yaml")
     export AGENT_ID
     AGENT_ID=$(printf '%s' "$compose_json" | jq -r '.composeId')
     [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]] \
-        || { echo "# compose --json output: $compose_json" >&2; return 1; }
+        || { echo "# compose fixture response: $compose_json" >&2; return 1; }
 
     # 4. Seed the zero_agents row (PK = composeId) without changing the
     # compose version created above; the product PUT route rewrites server-side
@@ -81,7 +81,7 @@ teardown() {
 
 teardown_file() {
     if [[ -n "${AGENT_ID:-}" ]]; then
-        $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+        delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
     disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then

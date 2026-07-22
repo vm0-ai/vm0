@@ -17,6 +17,7 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   type AttachFile,
+  type ArtifactFavoritesResponse,
   type ArtifactsListResponse,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
@@ -28,12 +29,8 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
   type PersistedAttachment,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  chatThreadV1GetContract,
-  chatThreadV1MessagesContract,
-  chatThreadV1SendContract,
-} from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import {
@@ -66,7 +63,6 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { chatThreadsV1Routes } from "../../chat-threads-v1";
 import { storagesCommitRoutes } from "../../storages-commit";
 import { storagesDownloadRoutes } from "../../storages-download";
 import { storagesListRoutes } from "../../storages-list";
@@ -167,6 +163,7 @@ type BddSendMessageBody =
       readonly clientThreadId?: string;
       readonly model?: string;
       readonly runOptions?: ChatRunOptionsRequest;
+      readonly structuredPrompt?: UserMessageDocument;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -243,7 +240,6 @@ const chatFilesRoutes = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatMessagesRoutes,
-  ...chatThreadsV1Routes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsHtmlDomEditSnapshotRoutes,
@@ -340,18 +336,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function chatSearchClient() {
     return chatFilesApp(context)(chatSearchContract);
-  }
-
-  function threadV1Client() {
-    return chatFilesApp(context)(chatThreadV1GetContract);
-  }
-
-  function threadV1MessagesClient() {
-    return chatFilesApp(context)(chatThreadV1MessagesContract);
-  }
-
-  function threadV1SendClient() {
-    return chatFilesApp(context)(chatThreadV1SendContract);
   }
 
   /**
@@ -671,6 +655,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftStructuredPrompt?: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -678,6 +663,9 @@ export function createChatFilesBddApi(context: TestContext) {
         ...(body.draftContent === undefined
           ? {}
           : { draftContent: body.draftContent }),
+        ...(body.draftStructuredPrompt === undefined
+          ? {}
+          : { draftStructuredPrompt: body.draftStructuredPrompt }),
         ...(body.draftAttachments === undefined
           ? {}
           : {
@@ -702,6 +690,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
+        readonly draftStructuredPrompt?: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -714,6 +703,9 @@ export function createChatFilesBddApi(context: TestContext) {
             ...(body.draftContent === undefined
               ? {}
               : { draftContent: body.draftContent }),
+            ...(body.draftStructuredPrompt === undefined
+              ? {}
+              : { draftStructuredPrompt: body.draftStructuredPrompt }),
             ...(body.draftAttachments === undefined
               ? {}
               : {
@@ -1059,6 +1051,18 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async listArtifactFavorites(
+      actor: ApiTestUser,
+    ): Promise<ArtifactFavoritesResponse> {
+      const response = await accept(
+        artifactsClient().listFavorites({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async favoriteArtifact(
       actor: ApiTestUser,
       artifactUrl: string,
@@ -1278,6 +1282,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.runOptions === undefined
                   ? {}
                   : { runOptions: body.runOptions }),
+                ...(body.structuredPrompt === undefined
+                  ? {}
+                  : { structuredPrompt: body.structuredPrompt }),
                 ...(body.generationTemplate === undefined
                   ? {}
                   : { generationTemplate: body.generationTemplate }),
@@ -1621,68 +1628,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async requestV1Thread(
-      authorization: string | undefined,
-      threadId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1Client().get({
-          headers: bearerAuth(authorization),
-          params: { threadId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1ThreadMessages(
-      authorization: string | undefined,
-      threadId: string,
-      query: {
-        readonly sinceId?: string;
-        readonly beforeId?: string;
-        readonly limit?: number;
-      },
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1MessagesClient().list({
-          headers: bearerAuth(authorization),
-          params: { threadId },
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1Send(
-      authorization: string | undefined,
-      body: { readonly prompt: string; readonly threadId: string },
-      statuses: readonly (201 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      return await accept(
-        threadV1SendClient().send({
-          headers: bearerAuth(authorization),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestV1SendUnchecked(
-      authorization: string,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadV1SendClient().send({
-          headers: bearerAuth(authorization),
-          body: body as { prompt: string; threadId: string },
-        }),
-        statuses,
-      );
     },
 
     expectApiError(body: unknown): asserts body is ApiErrorResponse {

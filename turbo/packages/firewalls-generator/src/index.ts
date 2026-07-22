@@ -243,6 +243,7 @@ import { generate as generateTikTokAds } from "./tiktok-ads";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
+import { generate as generateTopvisor } from "./topvisor";
 import { generate as generateTripo } from "./tripo";
 import { generate as generateTwenty } from "./twenty";
 import { generate as generateTypeform } from "./typeform";
@@ -530,6 +531,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,
+  topvisor: generateTopvisor,
   tripo: generateTripo,
   twenty: generateTwenty,
   typeform: generateTypeform,

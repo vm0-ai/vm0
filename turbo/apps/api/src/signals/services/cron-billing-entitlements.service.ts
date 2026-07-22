@@ -1009,12 +1009,17 @@ export const reconcileBillingEntitlements$ = command(
       );
     }
     for (const candidate of usageAllowanceCandidates) {
+      if (!candidate.stripeSubscriptionId) {
+        throw new Error(
+          `Usage allowance entitlement for org ${candidate.orgId} is missing its Stripe subscription ID`,
+        );
+      }
       reconciledUsageAllowances.push(
         ...(await reconcileUsageAllowanceCandidate(
           { db, stripe, now, staleBefore, signal },
           {
             orgId: candidate.orgId,
-            stripeSubscriptionId: candidate.stripeSubscriptionId ?? "",
+            stripeSubscriptionId: candidate.stripeSubscriptionId,
           },
         )),
       );

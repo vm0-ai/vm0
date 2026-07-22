@@ -9,6 +9,7 @@ import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -1012,16 +1013,14 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
 
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(
+    click(await screen.findByLabelText("Template"));
+    click(
       await screen.findByLabelText(
         `Preview ${template.title} at current slide`,
       ),
     );
-    await user.click(await screen.findByLabelText("Select style Gold Luxe"));
-    await user.click(
-      await screen.findByLabelText(`Select template ${template.title}`),
-    );
+    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(
         screen.getByLabelText(`Remove template ${templateChipLabel}`),
@@ -1049,10 +1048,12 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    click(buttonByText("Provide feedback"));
 
-    await findFeedbackNote();
-    await user.keyboard("Use the attached brief as supporting context.");
+    pastePlainText(
+      await findFeedbackNote(),
+      "Use the attached brief as supporting context.",
+    );
     expect(
       screen.getByLabelText(`Remove template ${templateChipLabel}`),
     ).toBeInTheDocument();
@@ -1060,7 +1061,7 @@ describe("chat inline feedback", () => {
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Send"));
+    click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(sentBodies[0]).toMatchObject({

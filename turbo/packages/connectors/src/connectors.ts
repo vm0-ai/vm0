@@ -3,7 +3,7 @@ import type {
   ConnectorAccessKind,
   ConnectorAuthClientConfig,
   ConnectorAuthMethodConfig,
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorConfig,
   ConnectorGrantKind,
   ConnectorRevokeKind,
@@ -302,6 +302,7 @@ import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
+import { topvisor } from "./connectors/topvisor";
 import { tripo } from "./connectors/tripo";
 import { twenty } from "./connectors/twenty";
 import { twilio } from "./connectors/twilio";
@@ -324,13 +325,13 @@ import { zeptomail } from "./connectors/zeptomail";
 import { zoom } from "./connectors/zoom";
 
 export {
-  CONNECTOR_AUTH_METHOD_IDS,
+  CONNECTOR_REGISTRY_AUTH_METHOD_IDS,
   CONNECTOR_DISPLAY_CATEGORY_GROUPS,
   CONNECTOR_DISPLAY_CATEGORY_META,
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   CONNECTOR_PLATFORM_SECRET_NAMES,
   connectorDisplayCategoryMetadataForItems,
-  connectorAuthMethodIdSchema,
+  connectorRegistryAuthMethodIdSchema,
 } from "./connector-config";
 export type {
   ConnectorAccessConfig,
@@ -341,7 +342,7 @@ export type {
   ConnectorAuthCodeGrantConfig,
   ConnectorAuthMethodConfig,
   ConnectorAuthMethodRuntimeConfig,
-  ConnectorAuthMethodId,
+  ConnectorRegistryAuthMethodId,
   ConnectorConfig,
   ConnectorDeviceAuthGrantConfig,
   ConnectorDeviceAuthStartOptionConfig,
@@ -732,6 +733,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...ticketmaster,
   ...tldv,
   ...together,
+  ...topvisor,
   ...tripo,
   ...twenty,
   ...twilio,
@@ -760,7 +762,7 @@ type ConnectorAuthMethodsOf<Type extends ConnectorType> =
 
 export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
-  ConnectorAuthMethodId
+  ConnectorRegistryAuthMethodId
 >;
 export type ConnectorAuthMethodConfigFor<
   Type extends ConnectorType,

@@ -1,8 +1,4 @@
-import {
-  isFirewallServerMetadataConnectorType,
-  loadFirewallPermissionIndex,
-  type FirewallServerMetadataConnectorType,
-} from "@vm0/connectors/firewall-metadata/server";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -13,7 +9,18 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  countDistinct,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+  sql,
+} from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
@@ -28,6 +35,8 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { tapError } from "../utils";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 const L = logger("CronAggregateInsights");
 const OTHER_USAGE_AGENT_NAME = "Other usage";
@@ -49,7 +58,7 @@ type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
 
 interface NetworkInsightRow {
   readonly runId: string;
-  readonly firewallName: FirewallServerMetadataConnectorType;
+  readonly firewallName: ConnectorRef;
   readonly firewallPermission: string;
   readonly action: NetworkInsightAction;
 }
@@ -252,27 +261,16 @@ interface CurrentOrgMemberScope {
 }
 
 type PermissionLabelResolver = (
-  firewallName: FirewallServerMetadataConnectorType,
+  firewallName: ConnectorRef,
   permissionName: string,
 ) => Promise<string>;
 
-function createPermissionLabelResolver(): PermissionLabelResolver {
-  const indexes = new Map<
-    FirewallServerMetadataConnectorType,
-    ReturnType<typeof loadFirewallPermissionIndex>
-  >();
-
+function createPermissionLabelResolver(
+  catalog: ConnectorServerFirewallCatalog,
+): PermissionLabelResolver {
   return async (firewallName, permissionName) => {
     const key = `${firewallName}:${permissionName}`;
-    const cached = indexes.get(firewallName);
-    const load =
-      cached ??
-      (() => {
-        const index = loadFirewallPermissionIndex(firewallName);
-        indexes.set(firewallName, index);
-        return index;
-      })();
-    const index = await load;
+    const index = await catalog.loadPermissionIndex(firewallName);
     return index?.permissionDescription(permissionName) ?? key;
   };
 }
@@ -297,6 +295,7 @@ function networkInsightRunId(value: unknown): string | null {
 
 function normalizeNetworkInsightRows(
   values: readonly unknown[],
+  catalog: ConnectorServerFirewallCatalog,
 ): NormalizedNetworkInsightRows {
   const rows: NetworkInsightRow[] = [];
   let invalidRows = 0;
@@ -319,7 +318,7 @@ function normalizeNetworkInsightRows(
     const firewallNameValue = value.firewall_name;
     if (
       typeof firewallNameValue !== "string" ||
-      !isFirewallServerMetadataConnectorType(firewallNameValue)
+      !catalog.has(firewallNameValue)
     ) {
       invalidFirewallNames++;
       continue;
@@ -790,7 +789,7 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql`MAX(${agentRuns.completedAt})`
+        lastActivity: max(agentRuns.completedAt)
           .mapWith(agentRuns.completedAt)
           .as("last_activity"),
       })
@@ -806,7 +805,7 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql`MAX(${usageEvent.processedAt})`
+        lastActivity: max(usageEvent.processedAt)
           .mapWith(usageEvent.processedAt)
           .as("last_activity"),
       })
@@ -895,7 +894,7 @@ async function queryCompletedRunCounts(
       agentName: sql`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`
         .mapWith(pgTextDecoder)
         .as("agent_name"),
-      runs: sql`COUNT(DISTINCT ${agentRuns.id})::int`
+      runs: sql`${countDistinct(agentRuns.id)}::int`
         .mapWith(pgIntegerDecoder)
         .as("runs"),
     })
@@ -930,7 +929,7 @@ async function queryUsageEventCreditRows(
   dayEnd: Date,
   signal: AbortSignal,
 ): Promise<LedgerCreditRow[]> {
-  const isRunless = sql`${usageEvent.runId} IS NULL`;
+  const isRunless = isNull(usageEvent.runId);
   const rows = await db
     .select({
       orgId: usageEvent.orgId,
@@ -1109,6 +1108,7 @@ async function loadWindowUsageData(
 function queryWindowNetworkData(
   db: Db,
   scope: WindowScope,
+  catalog: ConnectorServerFirewallCatalog,
   signal: AbortSignal,
 ): Computed<Promise<NetworkQueryResult>> {
   return computed(async (get): Promise<NetworkQueryResult> => {
@@ -1140,7 +1140,10 @@ function queryWindowNetworkData(
       )) ?? [];
     signal.throwIfAborted();
 
-    const normalizedNetworkRows = normalizeNetworkInsightRows(rawNetworkRows);
+    const normalizedNetworkRows = normalizeNetworkInsightRows(
+      rawNetworkRows,
+      catalog,
+    );
     logSkippedNetworkInsightRows(normalizedNetworkRows.stats);
 
     const networkRunIds = [
@@ -1180,7 +1183,7 @@ function queryWindowNetworkData(
     const userNetworkMap = await aggregateNetworkDataPerUser(
       normalizedNetworkRows.rows,
       runIdToInfo,
-      createPermissionLabelResolver(),
+      createPermissionLabelResolver(catalog),
     );
     signal.throwIfAborted();
 
@@ -1230,28 +1233,36 @@ async function upsertWindowInsights(
   return upserted;
 }
 
-function processWindowGroup(
-  db: Db,
-  clerk: ClerkLike,
-  group: WindowGroup,
-  currentOrgMembers: CurrentOrgMemberScope,
-  signal: AbortSignal,
-): Computed<
+function processWindowGroup(args: {
+  readonly db: Db;
+  readonly clerk: ClerkLike;
+  readonly group: WindowGroup;
+  readonly currentOrgMembers: CurrentOrgMemberScope;
+  readonly catalog: ConnectorServerFirewallCatalog;
+  readonly signal: AbortSignal;
+}): Computed<
   Promise<{ readonly upserted: number; readonly networkRows: number }>
 > {
   return computed(
     async (
       get,
     ): Promise<{ readonly upserted: number; readonly networkRows: number }> => {
-      const scope = windowScope(group, currentOrgMembers);
-      const usageData = await loadWindowUsageData(db, clerk, scope, signal);
-      const networkData = await get(queryWindowNetworkData(db, scope, signal));
+      const scope = windowScope(args.group, args.currentOrgMembers);
+      const usageData = await loadWindowUsageData(
+        args.db,
+        args.clerk,
+        scope,
+        args.signal,
+      );
+      const networkData = await get(
+        queryWindowNetworkData(args.db, scope, args.catalog, args.signal),
+      );
       const upserted = await upsertWindowInsights(
-        db,
-        group,
+        args.db,
+        args.group,
         usageData,
         networkData,
-        signal,
+        args.signal,
       );
       return { upserted, networkRows: networkData.networkRows };
     },
@@ -1299,7 +1310,7 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql`MAX(${insightsDaily.updatedAt})`
+        lastUpdated: max(insightsDaily.updatedAt)
           .mapWith(insightsDaily.updatedAt)
           .as("last_updated"),
       })
@@ -1335,6 +1346,9 @@ export const aggregateInsights$ = command(
       return { users: 0, skipped: true };
     }
 
+    const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+
     const userTimezoneMap = await resolveUserTimezones(
       db,
       usersToAggregate,
@@ -1360,7 +1374,14 @@ export const aggregateInsights$ = command(
     let totalNetworkRows = 0;
     for (const group of windowGroups.values()) {
       const result = await get(
-        processWindowGroup(db, clerk, group, currentOrgMembers, signal),
+        processWindowGroup({
+          db,
+          clerk,
+          group,
+          currentOrgMembers,
+          catalog: connectorCatalogSnapshot.serverFirewalls,
+          signal,
+        }),
       );
       signal.throwIfAborted();
       upserted += result.upserted;

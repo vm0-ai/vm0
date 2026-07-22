@@ -21,7 +21,7 @@ import {
   CONNECTOR_TYPES,
   connectorDisplayCategoryMetadataForItems,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -116,7 +116,7 @@ function listStaticConnectorCatalogReferenceMetadata(
 function availableAuthMethodsForCatalog(
   type: ConnectorType,
   args: StaticConnectorCatalogReadArgs,
-): ConnectorAuthMethodId[] {
+): ConnectorRegistryAuthMethodId[] {
   return getAvailableConnectorAuthMethodIds(type, args.featureStates, {
     apiAuthMethodPolicy: args.apiAuthMethodPolicy ?? "include",
   });
@@ -167,7 +167,7 @@ function publicTextOrNull(
 }
 
 function authMethodSummaryForCatalog(
-  id: ConnectorAuthMethodId,
+  id: ConnectorRegistryAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogAuthMethodSummary {
@@ -181,7 +181,7 @@ function authMethodSummaryForCatalog(
 
 function manualFieldsForCatalog(
   type: ConnectorType,
-  id: ConnectorAuthMethodId,
+  id: ConnectorRegistryAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogManualField[] {
@@ -206,7 +206,7 @@ function manualFieldsForCatalog(
 
 function startOptionsForCatalog(
   type: ConnectorType,
-  id: ConnectorAuthMethodId,
+  id: ConnectorRegistryAuthMethodId,
   method: ConnectorAuthMethodConfig,
 ): PublicConnectorCatalogStartOption[] {
   if (method.grant.kind !== "device-auth") {
@@ -231,7 +231,7 @@ function startOptionsForCatalog(
 
 function authMethodDetailForCatalog(
   type: ConnectorType,
-  id: ConnectorAuthMethodId,
+  id: ConnectorRegistryAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogAuthMethodDetail {
@@ -244,7 +244,7 @@ function authMethodDetailForCatalog(
 
 function connectorCatalogItem(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
+  authMethods: readonly ConnectorRegistryAuthMethodId[],
 ): PublicConnectorCatalogItem {
   const config = CONNECTOR_TYPES[type];
   const privateNames = new Set(getConnectorPrivateNames(type, authMethods));
@@ -268,7 +268,7 @@ function connectorCatalogItem(
 
 function connectorCatalogDetail(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
+  authMethods: readonly ConnectorRegistryAuthMethodId[],
 ): PublicConnectorCatalogDetail {
   const item = connectorCatalogItem(type, authMethods);
   const privateNames = new Set(getConnectorPrivateNames(type, authMethods));
@@ -299,8 +299,8 @@ function connectionForCatalogStatus(
 
 function singleAuthCodeAuthMethodId(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): ConnectorAuthMethodId | null {
+  authMethods: readonly ConnectorRegistryAuthMethodId[],
+): ConnectorRegistryAuthMethodId | null {
   const [authMethod] = authMethods;
   if (authMethods.length !== 1 || !authMethod) {
     return null;
@@ -322,7 +322,7 @@ function connectorAuthMethodSupportsRefresh(
 
 function connectorCatalogStatusItem(args: {
   readonly type: ConnectorType;
-  readonly authMethods: readonly ConnectorAuthMethodId[];
+  readonly authMethods: readonly ConnectorRegistryAuthMethodId[];
   readonly connector: ConnectorResponse | null;
 }): PublicConnectorCatalogStatusItem {
   const detail = connectorCatalogDetail(args.type, args.authMethods);

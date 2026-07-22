@@ -9,8 +9,8 @@ import {
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodAccessMetadata,
@@ -357,6 +357,17 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
   readonly forceRefreshStartedAtMicros: bigint | null;
 }
 
+function requiredModelProviderMetadataKey(
+  args: Pick<RefreshAccessTokenArgs, "connectorType" | "metadataKey">,
+): string {
+  if (!args.metadataKey) {
+    throw new Error(
+      `metadataKey required for model-provider source on ${args.connectorType}`,
+    );
+  }
+  return args.metadataKey;
+}
+
 type RefreshInputSource =
   | {
       readonly kind: "secret";
@@ -418,8 +429,8 @@ type PreparedRefreshTokenContext =
 type ConnectorPreparedRefreshTokenContext = {
   readonly sourceType: "connector";
   readonly connectorId: string;
-  readonly connectorRef: ConnectorCatalogRef;
-  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly connectorRef: ConnectorRef;
+  readonly authMethodId: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly authClient?: ConnectorAuthClient;
   readonly context: RefreshTokenContext;
@@ -528,7 +539,7 @@ interface RefreshSourceState {
 interface ConnectorAccessState extends RefreshSourceState {
   readonly access: ConnectorCredentialAccess;
   readonly connectorId: string;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly storageVersion: number;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
@@ -1756,7 +1767,7 @@ async function loadModelProviderRefreshStateRow(
       and(
         eq(modelProviders.orgId, args.orgId),
         eq(modelProviders.userId, context.secretUserId),
-        eq(modelProviders.type, args.metadataKey ?? ""),
+        eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
       ),
     );
   const rows = lockRow
@@ -1944,7 +1955,7 @@ async function markRefreshSuccess(
         and(
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, context.secretUserId),
-          eq(modelProviders.type, args.metadataKey ?? ""),
+          eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
         ),
       );
     return Object.fromEntries(returnedSecretValues);
@@ -1993,7 +2004,7 @@ async function markRefreshFailure(
         and(
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, context.secretUserId),
-          eq(modelProviders.type, args.metadataKey ?? ""),
+          eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
         ),
       );
     return;

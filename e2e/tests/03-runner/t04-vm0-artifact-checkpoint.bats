@@ -5,9 +5,7 @@
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
 #
-# All tests are independent and parallelizable.
-# t04-1 validates compose config.
-# t04-2 runs the full checkpoint versioning workflow in a single test.
+# The test runs the full checkpoint versioning workflow in a single test.
 
 load '../../helpers/setup'
 
@@ -45,7 +43,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -60,12 +58,6 @@ teardown_file() {
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
-}
-
-@test "t04-1: build agent configuration" {
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
 }
 
 @test "t04-2: resume from checkpoint restores checkpoint version not HEAD" {
@@ -85,21 +77,22 @@ teardown_file() {
     # --- Phase 2: Run agent to create checkpoint (~15s) ---
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$artifact_name:/home/user/workspace" \
-        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt" \
+        "$(jq -nc --arg name "$artifact_name" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 
     # Verify mock-claude execution events
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo 'created by agent'"
-    assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
+    assert_output --partial '"subtype":"success"'
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 
     # Extract checkpoint ID as a local variable
     local checkpoint_id
-    checkpoint_id=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    checkpoint_id=$(run_fixture_field "$output" '.checkpointId')
     echo "# Checkpoint ID: $checkpoint_id"
     [ -n "$checkpoint_id" ] || {
         echo "# Failed to extract checkpoint ID"
@@ -123,14 +116,12 @@ teardown_file() {
     # --- Phase 4: Resume from checkpoint and verify ---
     # Should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $checkpoint_id"
-    run $VM0_CLI run resume "$checkpoint_id" \
-        --verbose \
-        "ls && cat counter.txt"
+    run resume_run_fixture "$checkpoint_id" "ls && cat counter.txt"
 
     assert_success
 
     # Verify mock-claude execution events for resume
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "ls && cat counter.txt"
 
     # Verify checkpoint version is restored:

@@ -46,7 +46,7 @@ volumes:
     name: $CLAUDE_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -63,32 +63,6 @@ setup() {
     export TEST_CONFIG="$TEST_DIR/vm0-${UNIQUE_ID}.yaml"
 }
 
-@test "t33-1: compose succeeds with optional volume that does not exist" {
-    # Create config with optional volume that doesn't exist
-    cat > "$TEST_CONFIG" <<EOF
-version: "1.0"
-agents:
-  ${AGENT_NAME}:
-    description: "Test agent with optional volume"
-    framework: claude-code
-    volumes:
-      - optional-data:/home/user/optional-data
-      - claude-files:/home/user/.config/claude
-volumes:
-  optional-data:
-    name: $OPTIONAL_VOLUME_NAME
-    version: latest
-    optional: true
-  claude-files:
-    name: $CLAUDE_VOLUME_NAME
-    version: latest
-EOF
-
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-    assert_output --partial "$AGENT_NAME"
-}
-
 @test "t33-2: run succeeds when optional volume does not exist (skip silently)" {
     # Agent already composed in setup_file() — no need to re-compose here
 
@@ -102,10 +76,10 @@ EOF
 
     # Run agent - should succeed even though optional volume doesn't exist
     # The optional volume mount point should simply not exist
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     # The optional directory should not be mounted (volume doesn't exist)
@@ -146,7 +120,7 @@ volumes:
 EOF
 
     # Compose the agent
-    run $VM0_CLI compose "$TEST_CONFIG"
+    run seed_compose_fixture "$TEST_CONFIG"
     assert_success
 
     # Create artifact
@@ -159,10 +133,10 @@ EOF
     cd - >/dev/null
 
     # Run agent - should succeed with required volume mounted, optional skipped
-    run $VM0_CLI run "${AGENT_NAME}-mixed" \
-        --artifact "$ARTIFACT_NAME_MIXED:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')"
+    run run_compose_fixture "${AGENT_NAME}-mixed" \
+        "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME_MIXED" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     # Required volume should be mounted and readable

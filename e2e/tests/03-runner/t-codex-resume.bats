@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Codex resume test — verifies vm0 run continue resumes a codex thread
+# Codex resume test — verifies session continuation resumes a codex thread
 # via the framework-aware checkpoint scan path.
 #
 # The first turn writes a mock session file at
@@ -40,7 +40,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -51,18 +51,14 @@ teardown_file() {
 
 @test "t-codex-resume-1: continue resumes codex thread from session" {
     # Initial turn: creates a codex thread and writes the first mock session file.
-    run $VM0_CLI run "$AGENT_NAME" \
-        "first turn"
+    run run_compose_fixture "$AGENT_NAME" "first turn"
     assert_success
-    assert_output --partial "▷ Codex Started"
-    assert_output --partial "● first turn"
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "first turn"
+    assert_output --partial '"type":"turn.completed"'
 
-    # The renderRunCompleted block prints the agent session UUID as the
-    # last "Session:" line; the init event prints the codex thread_id
-    # earlier (a different UUID). Use tail -1 to pick the agent session.
     local session_id
-    session_id=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | tail -1)
+    session_id=$(run_fixture_field "$output" '.sessionId')
     [ -n "$session_id" ] || {
         echo "# Failed to extract agent session id"
         echo "$output"
@@ -73,10 +69,9 @@ teardown_file() {
     # Continue the run: framework-aware restore_session resolves the
     # codex thread_id from the prior session, restores that history into
     # Codex's rollout filename shape, and the next turn renders.
-    run $VM0_CLI run continue "$session_id" \
-        "second turn"
+    run continue_run_fixture "$session_id" "second turn"
     assert_success
-    assert_output --partial "▷ Codex Started"
-    assert_output --partial "● second turn"
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "second turn"
+    assert_output --partial '"type":"turn.completed"'
 }

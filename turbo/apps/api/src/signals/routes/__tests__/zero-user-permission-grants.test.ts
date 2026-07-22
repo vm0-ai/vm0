@@ -295,6 +295,20 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
+    const malformedConnector = await accept(
+      client.apply({
+        body: {
+          agentId,
+          connectorRef: "INVALID_REF",
+          mode: "patch",
+          grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+    expect(malformedConnector.body.error.code).toBe("BAD_REQUEST");
+
     const unknownConnector = await accept(
       client.apply({
         body: {

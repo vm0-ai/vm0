@@ -22,7 +22,6 @@ function benchmarkEnv(): NodeJS.ProcessEnv {
     CI: "1",
     NO_COLOR: "1",
     SENTRY_DSN: "",
-    VM0_TOKEN: "",
     ZERO_TOKEN: "",
   };
 

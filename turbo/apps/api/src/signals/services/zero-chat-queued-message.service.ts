@@ -4,20 +4,56 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
+  type ChatMessageStructuredPrompt,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 
-import { pgNullDecoder } from "../../lib/db-structured-result";
+import {
+  pgNullDecoder,
+  zodDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
   deleteChatMessage,
   updateChatMessage,
 } from "./zero-chat-message.service";
+import {
+  decryptPersistentSecretsMap,
+  encryptPersistentSecretsMap,
+} from "./crypto.utils";
+
+const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
+const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
+  z.enum(["web", "slack"]),
+);
+
+const queuedUserMessageRunParamsSchema = z.object({
+  version: z.literal(1),
+  prompt: z.string(),
+  appendSystemPrompt: z.string(),
+  userInfoExtras: z
+    .object({
+      slackDisplayName: z.string().optional(),
+      slackUserId: z.string().optional(),
+    })
+    .optional(),
+});
+
+type QueuedUserMessageRunParams = z.infer<
+  typeof queuedUserMessageRunParamsSchema
+>;
+
+const queuedUserMessageItemTypes = [
+  "user_message",
+  "slack_user_message",
+] as const;
 
 export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
+  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -25,6 +61,37 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
+  readonly triggerSource: "web" | "slack";
+  readonly encryptedParams: string | null;
+}
+
+export async function encryptQueuedUserMessageRunParams(
+  params: QueuedUserMessageRunParams,
+  ctx: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  const encrypted = await encryptPersistentSecretsMap(
+    { [USER_MESSAGE_QUEUE_RUN_PARAMS_KEY]: JSON.stringify(params) },
+    ctx,
+  );
+  if (!encrypted) {
+    throw new Error("Failed to encrypt queued user message run params");
+  }
+  return encrypted;
+}
+
+export async function decryptQueuedUserMessageRunParams(
+  encryptedParams: string | null,
+  ctx: { readonly orgId: string; readonly userId: string },
+): Promise<QueuedUserMessageRunParams | null> {
+  if (!encryptedParams) {
+    return null;
+  }
+  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
+  const raw = decrypted?.[USER_MESSAGE_QUEUE_RUN_PARAMS_KEY];
+  if (!raw) {
+    return null;
+  }
+  return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
 function unclaimedQueuedUserMessageCondition(
@@ -32,7 +99,7 @@ function unclaimedQueuedUserMessageCondition(
 ): SQL | undefined {
   return and(
     eq(chatMessageQueue.chatThreadId, threadId),
-    eq(chatMessageQueue.itemType, "user_message"),
+    inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
   );
 }
 
@@ -44,7 +111,7 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
       .from(chatMessageQueue)
       .where(
         and(
-          eq(chatMessageQueue.itemType, "user_message"),
+          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
           eq(chatMessageQueue.chatMessageId, chatMessages.id),
         ),
       ),
@@ -59,6 +126,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .select({
       id: chatMessages.id,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -66,6 +134,11 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
+      triggerSource: sql`CASE
+        WHEN ${chatMessageQueue.triggerSource} = 'slack' THEN 'slack'
+        ELSE 'web'
+      END`.mapWith(queuedUserMessageTriggerSourceDecoder),
+      encryptedParams: chatMessageQueue.encryptedParams,
     })
     .from(chatMessageQueue)
     .innerJoin(
@@ -101,6 +174,8 @@ export async function enqueueUserMessageQueueItem(
     readonly userId: string;
     readonly chatThreadId: string;
     readonly chatMessageId: string;
+    readonly triggerSource?: "web" | "slack";
+    readonly encryptedParams?: string;
   },
 ): Promise<void> {
   await db
@@ -109,8 +184,11 @@ export async function enqueueUserMessageQueueItem(
       orgId: args.orgId,
       userId: args.userId,
       chatThreadId: args.chatThreadId,
-      itemType: "user_message",
+      itemType:
+        args.triggerSource === "slack" ? "slack_user_message" : "user_message",
       chatMessageId: args.chatMessageId,
+      triggerSource: args.triggerSource,
+      encryptedParams: args.encryptedParams,
     })
     .onConflictDoNothing();
 }
@@ -126,7 +204,7 @@ export async function deleteUserMessageQueueItem(
     .delete(chatMessageQueue)
     .where(
       and(
-        eq(chatMessageQueue.itemType, "user_message"),
+        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessageQueue.chatMessageId, args.messageId),
       ),
@@ -154,6 +232,7 @@ export async function appendClaimedUserMessage(
   const [queued] = await db
     .select({
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -166,7 +245,7 @@ export async function appendClaimedUserMessage(
     )
     .where(
       and(
-        eq(chatMessageQueue.itemType, "user_message"),
+        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
         eq(chatMessageQueue.chatMessageId, args.messageId),
         eq(chatMessageQueue.chatThreadId, args.threadId),
         eq(chatMessages.chatThreadId, args.threadId),
@@ -183,6 +262,7 @@ export async function appendClaimedUserMessage(
     chatThreadId: args.threadId,
     role: "user",
     content: queued.content,
+    structuredPrompt: queued.structuredPrompt,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
     attachFileMetadata: queued.attachFileMetadata

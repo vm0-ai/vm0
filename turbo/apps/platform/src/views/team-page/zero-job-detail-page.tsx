@@ -19,10 +19,8 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
-  IconRoute,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -93,31 +91,30 @@ import {
   currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   matchesConnectorSearch,
-  type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
   currentAgentVisibleWorkflows$,
-  allWorkflowAutomationEntries$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  permConnectorType$,
+  permConnectorRef$,
   agentPermissionMetadata$,
-  setPermConnectorType$,
+  setPermConnectorRef$,
   permSearch$,
   setPermSearch$,
   permSearchActive$,
   setPermSearchActive$,
-  permSavingType$,
-  setPermSavingType$,
+  permSavingRef$,
+  setPermSavingRef$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type {
+  PublicConnectorCatalogPermissionDetail,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import {
@@ -126,11 +123,6 @@ import {
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
-import {
-  WorkflowListPanel,
-  workflowAutomationEntryMap,
-} from "../workflows-page/workflows-page.tsx";
-
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
@@ -248,19 +240,11 @@ const TAB_TRIGGER_CLASS =
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
-  showWorkflows: boolean,
 ): string {
-  if (rawTab === "automations") {
+  if (rawTab === "automations" || rawTab === "workflows") {
     return "authorization";
   }
-  if (rawTab === "workflows" && !showWorkflows) {
-    return "authorization";
-  }
-  if (
-    hideProfileAndInstructions &&
-    rawTab !== "authorization" &&
-    rawTab !== "workflows"
-  ) {
+  if (hideProfileAndInstructions && rawTab !== "authorization") {
     return "authorization";
   }
   return rawTab;
@@ -270,12 +254,10 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
-  showWorkflows,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
-  showWorkflows: boolean;
 }) {
   return (
     <Tabs
@@ -291,9 +273,6 @@ function AgentTabNav({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
-            {showWorkflows && (
-              <SelectItem value="workflows">Workflows</SelectItem>
-            )}
             {showProfileAndInstructions && (
               <SelectItem value="profile">Profile</SelectItem>
             )}
@@ -309,12 +288,6 @@ function AgentTabNav({
           <IconShield size={14} stroke={1.5} />
           Authorization
         </TabsTrigger>
-        {showWorkflows && (
-          <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
-            <IconRoute size={14} stroke={1.5} />
-            Workflows
-          </TabsTrigger>
-        )}
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
             <IconUserCircle size={14} stroke={1.5} />
@@ -351,7 +324,7 @@ function PermissionRow({
   onManage,
   isLast,
 }: {
-  connector: ConnectorTypeWithStatus;
+  connector: PublicConnectorCatalogStatusItem;
   enabled: boolean;
   onToggle: (checked: boolean) => void;
   loading?: boolean;
@@ -368,15 +341,15 @@ function PermissionRow({
             <span className="text-sm font-medium text-foreground">
               {connector.label}
             </span>
-            {connector.connector?.externalUsername && (
+            {connector.connection?.externalUsername && (
               <span className="text-xs text-muted-foreground">
-                @{connector.connector.externalUsername}
+                @{connector.connection.externalUsername}
               </span>
             )}
           </div>
-          {connector.helpText && (
+          {connector.description && (
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-              {connector.helpText
+              {connector.description
                 .replace(/^Connect your \w+ account to /i, "")
                 .replace(/^access /i, "")
                 .replace(/^create /i, "Create ")
@@ -499,21 +472,21 @@ export function ConnectedConnectorPermissions({
   setSearch,
   searchActive,
   setSearchActive,
-  savingType,
+  savingConnectorRef,
   canManagePermissions,
   onToggle,
   onManage,
 }: {
-  filteredConnectors: readonly ConnectorTypeWithStatus[];
+  filteredConnectors: readonly PublicConnectorCatalogStatusItem[];
   authorizedSet: ReadonlySet<string>;
   search: string;
   setSearch: (value: string) => void;
   searchActive: boolean;
   setSearchActive: (active: boolean) => void;
-  savingType: string | null;
+  savingConnectorRef: ConnectorRef | null;
   canManagePermissions: boolean;
-  onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
-  onManage: (type: ConnectorType) => void;
+  onToggle: (connectorRef: ConnectorRef, checked: boolean) => Promise<void>;
+  onManage: (connectorRef: ConnectorRef) => void;
 }) {
   return (
     <>
@@ -584,18 +557,18 @@ export function ConnectedConnectorPermissions({
           filteredConnectors.map((c, i) => {
             return (
               <PermissionRow
-                key={c.type}
+                key={c.connectorRef}
                 connector={c}
-                enabled={authorizedSet.has(c.type)}
+                enabled={authorizedSet.has(c.connectorRef)}
                 onToggle={onDomEventFn(async (checked) => {
-                  await onToggle(c.type, checked);
+                  await onToggle(c.connectorRef, checked);
                 })}
-                loading={savingType === c.type}
+                loading={savingConnectorRef === c.connectorRef}
                 showManage={
                   canManagePermissions && c.permissionSummary.hasPermissions
                 }
                 onManage={() => {
-                  return onManage(c.type);
+                  return onManage(c.connectorRef);
                 }}
                 isLast={i === filteredConnectors.length - 1}
               />
@@ -616,7 +589,7 @@ export function ConnectedConnectorPermissions({
 export function AgentPermissionsDrawer({
   targetId,
   targetKind = "agent",
-  connectorType,
+  connectorRef,
   connectorLabel,
   displayName,
   initialPolicies,
@@ -631,7 +604,7 @@ export function AgentPermissionsDrawer({
 }: {
   targetId: string;
   targetKind?: "agent" | "workflow";
-  connectorType: ConnectorType | null;
+  connectorRef: ConnectorRef | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -649,14 +622,14 @@ export function AgentPermissionsDrawer({
   ) => Promise<void>;
   onClose: () => void;
 }) {
-  if (!connectorType) {
+  if (!connectorRef) {
     return null;
   }
   return (
     <PermissionsDrawer
       agentId={targetId}
       targetKind={targetKind}
-      connectorType={connectorType}
+      connectorRef={connectorRef}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
@@ -705,55 +678,62 @@ function JobPermissionsTab({
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
-  const connectorType = useGet(permConnectorType$);
-  const setConnectorType = useSet(setPermConnectorType$);
+  const connectorRef = useGet(permConnectorRef$);
+  const setConnectorRef = useSet(setPermConnectorRef$);
   const search = useGet(permSearch$);
   const setSearch = useSet(setPermSearch$);
   const searchActive = useGet(permSearchActive$);
   const setSearchActive = useSet(setPermSearchActive$);
-  const savingType = useGet(permSavingType$);
-  const setSavingType = useSet(setPermSavingType$);
+  const savingRef = useGet(permSavingRef$);
+  const setSavingRef = useSet(setPermSavingRef$);
 
   const connectorsLoading = connectorsLoadable.state === "loading";
 
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const catalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
   const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+    catalogItemsLoadable.state === "hasData" ? catalogItemsLoadable.data : [];
   const canManagePermissions = true;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
   });
-  const connectorLabel = connectorType
+  const connectorLabel = connectorRef
     ? (allConnectors.find((connector) => {
-        return connector.type === connectorType;
-      })?.label ?? connectorType)
+        return connector.connectorRef === connectorRef;
+      })?.label ?? connectorRef)
     : "";
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
   });
   const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = async (type: ConnectorType, checked: boolean) => {
-    if (savingType !== null) {
+  const handleToggle = async (
+    targetConnectorRef: ConnectorRef,
+    checked: boolean,
+  ) => {
+    if (savingRef !== null) {
       return;
     }
     const modify = checked
-      ? authorizeFn(type, pageSignal)
-      : deauthorizeFn(type, pageSignal);
-    setSavingType(type);
+      ? authorizeFn(targetConnectorRef, pageSignal)
+      : deauthorizeFn(targetConnectorRef, pageSignal);
+    setSavingRef(targetConnectorRef);
     await bestEffort(
       (async () => {
         await modify;
-        await saveConnectors(type, checked ? "add" : "remove", pageSignal);
+        await saveConnectors(
+          targetConnectorRef,
+          checked ? "add" : "remove",
+          pageSignal,
+        );
         toast.success("Connectors saved");
       })(),
     );
-    setSavingType(null);
+    setSavingRef(null);
   };
 
   if (
-    allTypesLoadable.state !== "hasData" ||
+    catalogItemsLoadable.state !== "hasData" ||
     connectorsLoading ||
     userGrantsLoadable.state === "loading"
   ) {
@@ -777,14 +757,14 @@ function JobPermissionsTab({
             setSearch={setSearch}
             searchActive={searchActive}
             setSearchActive={setSearchActive}
-            savingType={savingType}
+            savingConnectorRef={savingRef}
             canManagePermissions={canManagePermissions}
             onToggle={handleToggle}
-            onManage={setConnectorType}
+            onManage={setConnectorRef}
           />
           <AgentPermissionsDrawer
             targetId={agentId}
-            connectorType={connectorType}
+            connectorRef={connectorRef}
             connectorLabel={connectorLabel}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
@@ -792,12 +772,12 @@ function JobPermissionsTab({
             resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
-              if (connectorType === null) {
+              if (connectorRef === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
               await savePermissionDraftPolicies({
                 scope: { agentId },
-                connectorRef: connectorType,
+                connectorRef,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: activeUserGrantSnapshot.grants,
@@ -808,7 +788,7 @@ function JobPermissionsTab({
               toast.success("Permissions updated");
             }}
             onClose={() => {
-              return setConnectorType(null);
+              return setConnectorRef(null);
             }}
           />
         </>
@@ -863,41 +843,6 @@ function JobInstructionsTab() {
   );
 }
 
-function AgentWorkflowsTab() {
-  const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
-  const automationEntriesLoadable = useLastLoadable(
-    allWorkflowAutomationEntries$,
-  );
-  const preferences = useLastResolved(userPreferences$);
-  const loading =
-    workflowsLoadable.state === "loading" ||
-    automationEntriesLoadable.state === "loading";
-  const workflows =
-    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
-  const automationEntries =
-    automationEntriesLoadable.state === "hasData"
-      ? automationEntriesLoadable.data
-      : [];
-  const displayTimezone =
-    preferences?.timezone ??
-    new Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  return (
-    <div className="mx-auto max-w-[900px]">
-      <WorkflowListPanel
-        workflows={workflows}
-        loading={loading}
-        emptyDescription="Create a workflow for this agent from chat or save one from a useful run."
-        automationEntriesByWorkflowId={workflowAutomationEntryMap(
-          automationEntries,
-        )}
-        displayTimezone={displayTimezone}
-        showAgentColumn={false}
-      />
-    </div>
-  );
-}
-
 function AgentHeader({
   displayName,
   description,
@@ -905,7 +850,6 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
-  showWorkflows,
 }: {
   displayName: string;
   description: string;
@@ -913,7 +857,6 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
-  showWorkflows: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
@@ -981,7 +924,6 @@ function AgentHeader({
           activeTab={activeTab}
           onTabChange={onTabChange}
           showProfileAndInstructions={showProfileAndInstructions}
-          showWorkflows={showWorkflows}
         />
       </div>
     </DetailPageHeader>
@@ -1098,9 +1040,6 @@ function AgentTabContent({
     case "authorization": {
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
-    case "workflows": {
-      return <AgentWorkflowsTab />;
-    }
     case "profile": {
       return (
         <AgentProfileSettings
@@ -1155,7 +1094,6 @@ function useAgentFields() {
 }
 
 function useTabVisibility(agentId: string, ownerId: string) {
-  const features = useGet(featureSwitch$);
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
@@ -1172,19 +1110,12 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
-  const showWorkflows =
-    features[FeatureSwitchKey.AgentDetailWorkflowsTab] ?? false;
-  const activeTab = resolveVisibleTab(
-    rawTab,
-    hideProfileAndInstructions,
-    showWorkflows,
-  );
+  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
-    showWorkflows,
     activeTab,
     setActiveTab,
   };
@@ -1200,7 +1131,6 @@ export function ZeroJobDetailPage() {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
-    showWorkflows,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -1223,7 +1153,6 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
-        showWorkflows={showWorkflows}
       />
       <DetailPageMain>
         <AgentTabContent

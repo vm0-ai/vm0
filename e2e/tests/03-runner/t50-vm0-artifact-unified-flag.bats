@@ -1,10 +1,6 @@
 #!/usr/bin/env bats
 
-# Test unified --artifact flag with Docker-style name:version syntax (E2E happy path only)
-# This test verifies that --artifact <name> and --artifact <name:version> work correctly.
-#
-# Note: resume/continue with --artifact uses the same parsing code path and is tested
-# via CLI Command Integration Tests (see run/__tests__/resume.test.ts, continue.test.ts).
+# Test direct artifact overrides with explicit versions (E2E happy path only).
 
 load '../../helpers/setup'
 
@@ -32,7 +28,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
+    seed_compose_fixture "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -63,11 +59,11 @@ teardown() {
     run seed_storage_fixture artifact "$ARTIFACT_NAME" .
     assert_success
 
-    # Step 2: Run agent using unified --artifact flag (name only = latest)
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/workspace/marker.txt"
+    # Step 2: Run with an artifact name only, which resolves to latest.
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/workspace/marker.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
     assert_output --partial "unified-flag-content"
@@ -91,10 +87,10 @@ teardown() {
     echo "# HEAD version pushed"
 
     # Step 3: Run agent with --artifact name:version to pin to version 1
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:$VERSION1:/home/user/workspace" \
-        --verbose \
-        "cat /home/user/workspace/marker.txt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "cat /home/user/workspace/marker.txt" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" --arg version "$VERSION1" \
+            '{artifacts: [{name: $name, version: $version, mountPath: "/home/user/workspace"}]}')"
 
     assert_success
 

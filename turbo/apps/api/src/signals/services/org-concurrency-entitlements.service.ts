@@ -1,5 +1,5 @@
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql, sum } from "drizzle-orm";
 
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
@@ -74,7 +74,7 @@ export async function activePaidConcurrencySlots(
   const [row] = await db
     .select({
       slots:
-        sql`COALESCE(SUM(${orgConcurrencySubscriptions.slots}), 0)::int`.mapWith(
+        sql`COALESCE(${sum(orgConcurrencySubscriptions.slots)}, 0)::int`.mapWith(
           pgIntegerDecoder,
         ),
     })

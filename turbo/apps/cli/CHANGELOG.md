@@ -1,5 +1,113 @@
 # Changelog
 
+## [9.245.3](https://github.com/vm0-ai/vm0/compare/cli-v9.245.2...cli-v9.245.3) (2026-07-22)
+
+
+### Refactoring
+
+* **cli:** remove the vm0 binary and isolate e2e api auth ([#22431](https://github.com/vm0-ai/vm0/issues/22431)) ([2cbeb0d](https://github.com/vm0-ai/vm0/commit/2cbeb0de58e1947627e25ea9ceaf1a7f11d7edee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+
+## [9.245.2](https://github.com/vm0-ai/vm0/compare/cli-v9.245.1...cli-v9.245.2) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
+## [9.245.1](https://github.com/vm0-ai/vm0/compare/cli-v9.245.0...cli-v9.245.1) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+
+## [9.245.0](https://github.com/vm0-ai/vm0/compare/cli-v9.244.8...cli-v9.245.0) (2026-07-21)
+
+
+### Features
+
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Refactoring
+
+* **cli:** remove vm0 run command ([#22384](https://github.com/vm0-ai/vm0/issues/22384)) ([dcbb8fa](https://github.com/vm0-ai/vm0/commit/dcbb8fa01cafecf559efdcd71a0e445a6278c78d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+
+## [9.244.8](https://github.com/vm0-ai/vm0/compare/cli-v9.244.7...cli-v9.244.8) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+
+## [9.244.7](https://github.com/vm0-ai/vm0/compare/cli-v9.244.6...cli-v9.244.7) (2026-07-21)
+
+
+### Refactoring
+
+* **cli:** replace vm0 compose with api fixtures ([#22366](https://github.com/vm0-ai/vm0/issues/22366)) ([1eabe0e](https://github.com/vm0-ai/vm0/commit/1eabe0e825b941854adbe04c40d94115ea5a6c8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+
+## [9.244.6](https://github.com/vm0-ai/vm0/compare/cli-v9.244.5...cli-v9.244.6) (2026-07-21)
+
+
+### Refactoring
+
+* **cli:** remove vm0 volume and artifact commands ([#22350](https://github.com/vm0-ai/vm0/issues/22350)) ([e26a104](https://github.com/vm0-ai/vm0/commit/e26a104bc415ce98a4a89965e18d1f52cb19de2f)), closes [#22342](https://github.com/vm0-ai/vm0/issues/22342)
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+
 ## [9.244.5](https://github.com/vm0-ai/vm0/compare/cli-v9.244.4...cli-v9.244.5) (2026-07-21)
 
 

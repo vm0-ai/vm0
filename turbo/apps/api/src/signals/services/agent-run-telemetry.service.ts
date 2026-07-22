@@ -1,9 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type {
-  AgentEventsResponse,
   EventsResponse,
   MetricsResponse,
-  NetworkLogsResponse,
   RunEvent,
   RunResult,
   RunState,
@@ -24,17 +22,12 @@ import {
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
 import {
-  buildAgentEventPaginationFilters,
   buildTimeCursorProjection,
   buildTimePaginationFilters,
   buildTimePaginationOrder,
-  filterTimedAxiomRecords,
-  nextSequenceCursor,
   nextTimeCursor,
-  sequenceCursorValue,
   timeCursorBoundary,
 } from "./log-pagination";
-import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 import { runContextCliAgentType } from "./run-context-framework.service";
 
 interface AgentComposeContent {
@@ -262,96 +255,6 @@ export function agentRunEvents(
   });
 }
 
-export function agentRunAgentEvents(
-  params: PagedTelemetryParams,
-): Computed<Promise<AgentEventsResponse | null>> {
-  return computed(async (get): Promise<AgentEventsResponse | null> => {
-    const db = get(db$);
-    const [runWithCompose] = await db
-      .select({
-        id: agentRuns.id,
-        lastEventSequence: agentRuns.lastEventSequence,
-        composeContent: agentComposeVersions.content,
-      })
-      .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .where(
-        and(
-          eq(agentRuns.id, params.runId),
-          eq(agentRuns.userId, params.userId),
-          eq(agentRuns.orgId, params.orgId),
-        ),
-      )
-      .limit(1);
-
-    if (!runWithCompose) {
-      return null;
-    }
-
-    const previousCursorValue = sequenceCursorValue(
-      params.cursor,
-      params.order,
-    );
-    const sequenceSince = previousCursorValue ?? params.since;
-    const requiresFullWatermark =
-      params.sinceTime !== undefined && sequenceSince === undefined;
-    const watermarkTarget = requiresFullWatermark
-      ? runWithCompose.lastEventSequence
-      : params.order === "asc"
-        ? getAgentEventPageWatermarkTarget(
-            runWithCompose.lastEventSequence,
-            sequenceSince,
-            params.limit + 1,
-          )
-        : sequenceSince !== undefined &&
-            runWithCompose.lastEventSequence !== null &&
-            sequenceSince >= runWithCompose.lastEventSequence
-          ? null
-          : runWithCompose.lastEventSequence;
-    if (watermarkTarget !== null) {
-      await waitForRunEventWatermarkVisible(params.runId, watermarkTarget);
-    }
-
-    const paginationFilter = buildAgentEventPaginationFilters(params);
-    const dataset = getDatasetName("agent-run-events");
-    const apl = `['${dataset}']
-| where runId == "${escapeAplString(params.runId)}"
-${paginationFilter}
-| order by sequenceNumber ${params.order}
-| limit ${params.limit + 1}`;
-
-    const events = (
-      await get(
-        queryAxiom<AxiomAgentEvent>(
-          apl,
-          watermarkTarget !== null ? { noCache: true } : undefined,
-        ),
-      )
-    ).slice();
-    const pageHasMore = events.length > params.limit;
-    const resultEvents = pageHasMore ? events.slice(0, params.limit) : events;
-    const nextCursor = nextSequenceCursor(
-      resultEvents,
-      pageHasMore,
-      params.order,
-      previousCursorValue,
-    );
-    const hasMore = nextCursor !== null;
-
-    return {
-      events: resultEvents.map(toRunEvent),
-      hasMore,
-      ...(nextCursor ? { nextCursor } : {}),
-      framework:
-        (await get(runContextCliAgentType(params.runId))) ??
-        extractFramework(runWithCompose.composeContent),
-    };
-  });
-}
-
 export function agentRunSystemLog(
   params: PagedTelemetryParams,
 ): Computed<Promise<SystemLogResponse | null>> {
@@ -457,57 +360,6 @@ ${buildTimeCursorProjection()}
           disk_total: event.disk_total,
         };
       }),
-      hasMore,
-      ...(nextCursor ? { nextCursor } : {}),
-    };
-  });
-}
-
-export function agentRunNetworkLogs(
-  params: PagedTelemetryParams,
-): Computed<Promise<NetworkLogsResponse | null>> {
-  return computed(async (get): Promise<NetworkLogsResponse | null> => {
-    const owned = await get(verifyRunOwnership(params));
-    if (!owned) {
-      return null;
-    }
-
-    const dataset = getDatasetName("sandbox-telemetry-network");
-    const previousCursorBoundary = timeCursorBoundary(
-      params.cursor,
-      params.order,
-    );
-    const apl = `['${dataset}']
-| where runId == "${escapeAplString(params.runId)}"
-${buildTimePaginationFilters(params)}
-${buildTimePaginationOrder(params.order)}
-${buildTimeCursorProjection()}
-| limit ${params.limit + 1}`;
-
-    const events = (
-      await get(
-        queryAxiom(
-          apl,
-          previousCursorBoundary
-            ? { cursor: previousCursorBoundary.tieBreaker }
-            : undefined,
-        ),
-      )
-    ).slice();
-    const pageHasMore = events.length > params.limit;
-    const records = pageHasMore ? events.slice(0, params.limit) : events;
-    const networkLogs = sanitizeAxiomNetworkEvents(records);
-    const timedRecords = filterTimedAxiomRecords(records);
-    const nextCursor = nextTimeCursor(
-      timedRecords,
-      pageHasMore,
-      params.order,
-      previousCursorBoundary,
-    );
-    const hasMore = nextCursor !== null;
-
-    return {
-      networkLogs,
       hasMore,
       ...(nextCursor ? { nextCursor } : {}),
     };

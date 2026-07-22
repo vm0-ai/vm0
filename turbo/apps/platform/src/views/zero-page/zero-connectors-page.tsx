@@ -17,7 +17,8 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -31,25 +32,23 @@ import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  allConnectorTypes$,
+  allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
-  connectFlowType$,
+  connectFlowConnectorRef$,
   connectorsSearch$,
   connectorsConnectionFilter$,
-  closePermissionDialog$,
   disconnectConnector$,
-  filteredConnectorTypes$,
+  filteredConnectorCatalogItems$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
-  pollingOAuthAuthCodeConnectorType$,
-  pollingOAuthDeviceAuthConnectorType$,
-  justConnectedTypes$,
-  scopeReviewType$,
-  setScopeReviewType$,
-  permissionDialog$,
+  selectedConnectorRef$,
+  setSelectedConnectorRef$,
+  pollingOAuthAuthCodeConnectorRef$,
+  pollingOAuthDeviceAuthConnectorRef$,
+  justConnectedRefs$,
+  scopeReviewConnectorRef$,
+  setScopeReviewConnectorRef$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
@@ -58,7 +57,6 @@ import {
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
-  type ConnectorTypeWithStatus,
   type ConnectorsConnectionFilter,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -73,13 +71,12 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
-import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
   closeConnectorAccessManagement$,
-  connectorAuthorizedAgentsByType$,
-  managedConnectorAccessType$,
-  setManagedConnectorAccessType$,
+  connectorAuthorizedAgentsByRef$,
+  managedConnectorAccessRef$,
+  setManagedConnectorAccessRef$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
@@ -125,7 +122,7 @@ function ConnectorCategoryMenu({
   groups,
 }: {
   activeCategoryId: string | null;
-  groups: readonly ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+  groups: readonly ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
 }) {
   if (groups.length <= 1) {
     return null;
@@ -480,8 +477,8 @@ function ConnectorCategoryGroupSection({
   group,
   renderCard,
 }: {
-  group: ConnectorCategoryGroup<ConnectorTypeWithStatus>;
-  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+  group: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>;
+  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
 }) {
   if (group.kind === "group") {
     return (
@@ -547,22 +544,20 @@ function truncateAgentName(name: string): string {
 }
 
 function ConnectorAccessButton({
-  connectorType,
+  connectorRef,
   connectorLabel,
   onClick,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly connectorRef: ConnectorRef;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const agentsByTypeLoadable = useLastLoadable(
-    connectorAuthorizedAgentsByType$,
-  );
+  const agentsByRefLoadable = useLastLoadable(connectorAuthorizedAgentsByRef$);
   const agents =
-    agentsByTypeLoadable.state === "hasData"
-      ? (agentsByTypeLoadable.data.get(connectorType) ?? [])
+    agentsByRefLoadable.state === "hasData"
+      ? (agentsByRefLoadable.data.get(connectorRef) ?? [])
       : [];
-  const loading = agentsByTypeLoadable.state === "loading";
+  const loading = agentsByRefLoadable.state === "loading";
   const visibleNames = agents
     .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
     .map((agent) => {
@@ -608,6 +603,7 @@ function ConnectorAccessButton({
 
 function GlobalConnectorCard({
   connector,
+  isConnected,
   isPolling,
   onConnect,
   onDisconnect,
@@ -616,7 +612,8 @@ function GlobalConnectorCard({
   isDisconnecting,
   showManageAccess,
 }: {
-  connector: ConnectorTypeWithStatus;
+  connector: PublicConnectorCatalogStatusItem;
+  isConnected: boolean;
   isPolling: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -638,7 +635,7 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected && connectionStatus === "reconnect-required") {
+    if (isConnected && connectionStatus === "reconnect-required") {
       return (
         <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -648,7 +645,7 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected && connectionStatus === "scope-mismatch") {
+    if (isConnected && connectionStatus === "scope-mismatch") {
       return (
         <span className="flex min-w-0 items-center gap-2 text-[11px]">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -658,12 +655,12 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected) {
+    if (isConnected) {
       const expiryText = connectorExpiryCountdownText(connector);
       const connectedText =
         expiryText ??
-        (connector.connector?.externalUsername
-          ? `@${connector.connector.externalUsername}`
+        (connector.connection?.externalUsername
+          ? `@${connector.connection.externalUsername}`
           : "Connected");
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
@@ -700,11 +697,11 @@ function GlobalConnectorCard({
         <div className="flex shrink-0 items-center gap-2 overflow-hidden">
           {status}
         </div>
-        {connector.connected && (
+        {isConnected && (
           <div className="flex min-w-0 flex-1 items-center justify-end gap-0">
             {showManageAccess && (
               <ConnectorAccessButton
-                connectorType={connector.type}
+                connectorRef={connector.connectorRef}
                 connectorLabel={connector.label}
                 onClick={onManageAccess}
               />
@@ -751,7 +748,7 @@ function AvailableConnectorCard({
   isPolling,
   onConnect,
 }: {
-  connector: ConnectorTypeWithStatus;
+  connector: PublicConnectorCatalogStatusItem;
   isPolling: boolean;
   onConnect: () => void;
 }) {
@@ -808,7 +805,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {connector.helpText ?? ""}
+          {connector.description}
         </div>
       </div>
     </div>
@@ -824,9 +821,9 @@ function renderBuiltinList({
   connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  grouped: ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+  grouped: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
   filteredCount: number;
-  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
   search: string;
   connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
@@ -897,41 +894,41 @@ function renderBuiltinList({
   });
 }
 
-function connectorLabelForType(
-  connectors: readonly ConnectorTypeWithStatus[],
-  type: ConnectorType | null,
+function connectorLabelForRef(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+  connectorRef: ConnectorRef | null,
 ): string | null {
-  if (!type) {
+  if (!connectorRef) {
     return null;
   }
   return (
     connectors.find((connector) => {
-      return connector.type === type;
-    })?.label ?? type
+      return connector.connectorRef === connectorRef;
+    })?.label ?? connectorRef
   );
 }
 
 export function ZeroConnectorsPage() {
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const filteredTypesLoadable = useLastLoadable(filteredConnectorTypes$);
+  const allCatalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const filteredCatalogItemsLoadable = useLastLoadable(
+    filteredConnectorCatalogItems$,
+  );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
-  const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
-  const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
-  const connectFlowType = useGet(connectFlowType$);
+  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
+  const connectFlowRef = useGet(connectFlowConnectorRef$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
-  const selectedType = useGet(selectedConnectorType$);
-  const setSelected = useSet(setSelectedConnectorType$);
-  const scopeReviewType = useGet(scopeReviewType$);
-  const setScopeReviewType = useSet(setScopeReviewType$);
-  const permissionDialog = useGet(permissionDialog$);
-  const closePermissionDialog = useSet(closePermissionDialog$);
-  const managedConnectorType = useGet(managedConnectorAccessType$);
-  const setManagedConnectorType = useSet(setManagedConnectorAccessType$);
+  const selectedConnectorRef = useGet(selectedConnectorRef$);
+  const setSelected = useSet(setSelectedConnectorRef$);
+  const scopeReviewConnectorRef = useGet(scopeReviewConnectorRef$);
+  const setScopeReviewConnectorRef = useSet(setScopeReviewConnectorRef$);
+  const managedConnectorRef = useGet(managedConnectorAccessRef$);
+  const setManagedConnectorRef = useSet(setManagedConnectorAccessRef$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
-  const optimisticConnected = useGet(justConnectedTypes$);
+  const optimisticConnected = useGet(justConnectedRefs$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
@@ -940,7 +937,7 @@ export function ZeroConnectorsPage() {
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
   const resetActiveCategory = useSet(resetActiveConnectorCategory$);
   const categoryTrackingEnabled =
-    activeTab === "builtin" && filteredTypesLoadable.state === "hasData";
+    activeTab === "builtin" && filteredCatalogItemsLoadable.state === "hasData";
   const scrollContainerRef = useScrollTrackingRef(
     categoryTrackingEnabled,
     attachScrollTracking,
@@ -955,64 +952,58 @@ export function ZeroConnectorsPage() {
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
   const filteredConnectors =
-    filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
+    filteredCatalogItemsLoadable.state === "hasData"
+      ? filteredCatalogItemsLoadable.data
+      : [];
   const categoryMetadata =
     catalogStatusLoadable.state === "hasData"
       ? catalogStatusLoadable.data.categoryMetadata
       : undefined;
   const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const permissionDialogConnector = permissionDialog
-    ? allConnectors.find((connector) => {
-        return connector.type === permissionDialog.type;
-      })
-    : undefined;
-  const managedConnectorLabel = connectorLabelForType(
+    allCatalogItemsLoadable.state === "hasData"
+      ? allCatalogItemsLoadable.data
+      : [];
+  const managedConnectorLabel = connectorLabelForRef(
     allConnectors,
-    managedConnectorType,
+    managedConnectorRef,
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
-  const connectHandler = (type: ConnectorType) => {
+  const connectHandler = (connectorRef: ConnectorRef) => {
     const ct = filteredConnectors.find((c) => {
-      return c.type === type;
+      return c.connectorRef === connectorRef;
     });
     if (!ct) {
       return;
     }
     const launchMode = getConnectorStatusConnectLaunchMode(ct);
     if (launchMode === "modal") {
-      setSelected(type);
+      setSelected(connectorRef);
       return;
     }
     if (launchMode === "browser-auth") {
       const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(ct);
       if (!authMethod) {
-        setSelected(type);
+        setSelected(connectorRef);
         return;
       }
       detach(
-        connect(
-          type,
-          authMethod,
-          { showPermissionDialog: true, connectorLabel: ct.label },
-          signal,
-        ),
+        connect(connectorRef, authMethod, { connectorLabel: ct.label }, signal),
         Reason.DomCallback,
       );
       return;
     }
     const authMethod = getOnlyAvailableStatusNoAuthMethod(ct);
     if (!authMethod) {
-      setSelected(type);
+      setSelected(connectorRef);
       return;
     }
     detach(
       connectNoAuth(
         {
-          type,
+          connectorRef,
           authMethod,
-          options: { showPermissionDialog: true, connectorLabel: ct.label },
+          options: { connectorLabel: ct.label },
         },
         signal,
       ),
@@ -1021,69 +1012,67 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = async (
-    type: ConnectorType,
+    connectorRef: ConnectorRef,
     connectorLabel: string,
   ) => {
     if (disconnecting) {
       return;
     }
-    await disconnect(type, connectorLabel, signal);
+    await disconnect(connectorRef, connectorLabel, signal);
   };
 
-  const getOptimisticConnector = (c: ConnectorTypeWithStatus) => {
-    return optimisticConnected.has(c.type) && !c.connected
-      ? { ...c, connected: true }
-      : c;
-  };
-
-  const renderCard = (c: ConnectorTypeWithStatus) => {
-    const optimisticConnector = getOptimisticConnector(c);
+  const renderCard = (c: PublicConnectorCatalogStatusItem) => {
+    const isConnected = c.connected || optimisticConnected.has(c.connectorRef);
     const isPolling =
-      pollingAuthCodeType === c.type ||
-      pollingDeviceAuthType === c.type ||
-      connectFlowType === c.type;
-    if (!optimisticConnector.connected) {
+      pollingAuthCodeRef === c.connectorRef ||
+      pollingDeviceAuthRef === c.connectorRef ||
+      connectFlowRef === c.connectorRef;
+    if (!isConnected) {
       return (
         <AvailableConnectorCard
-          key={c.type}
-          connector={optimisticConnector}
+          key={c.connectorRef}
+          connector={c}
           isPolling={isPolling}
           onConnect={() => {
-            return connectHandler(c.type);
+            return connectHandler(c.connectorRef);
           }}
         />
       );
     }
     return (
       <GlobalConnectorCard
-        key={c.type}
-        connector={optimisticConnector}
+        key={c.connectorRef}
+        connector={c}
+        isConnected={isConnected}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
         showManageAccess
         onConnect={() => {
-          return connectHandler(c.type);
+          return connectHandler(c.connectorRef);
         }}
         onDisconnect={() => {
-          detach(disconnectHandler(c.type, c.label), Reason.DomCallback);
+          detach(
+            disconnectHandler(c.connectorRef, c.label),
+            Reason.DomCallback,
+          );
         }}
         onManageAccess={() => {
-          setManagedConnectorType(c.type);
+          setManagedConnectorRef(c.connectorRef);
         }}
         onReviewScopes={() => {
-          return setScopeReviewType(c.type);
+          return setScopeReviewConnectorRef(c.connectorRef);
         }}
       />
     );
   };
 
   const grouped = groupConnectorsByCategory(
-    filteredConnectors.map(getOptimisticConnector),
+    filteredConnectors,
     categoryMetadata,
   );
 
   const builtinList = renderBuiltinList({
-    loadingState: filteredTypesLoadable.state,
+    loadingState: filteredCatalogItemsLoadable.state,
     grouped,
     filteredCount: filteredConnectors.length,
     renderCard,
@@ -1111,7 +1100,7 @@ export function ZeroConnectorsPage() {
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">
           {activeTab === "builtin" &&
-            filteredTypesLoadable.state === "hasData" && (
+            filteredCatalogItemsLoadable.state === "hasData" && (
               <ConnectorCategoryMenu
                 activeCategoryId={activeCategoryId}
                 groups={grouped}
@@ -1151,36 +1140,35 @@ export function ZeroConnectorsPage() {
         </div>
       </main>
 
-      {selectedType && (
+      {selectedConnectorRef && (
         <ConnectModal
           onClose={() => {
             return setSelected(null);
           }}
-          showPermissionDialogOnConnect
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
-                return c.type === selectedType;
-              })?.label ?? selectedType;
+                return c.connectorRef === selectedConnectorRef;
+              })?.label ?? selectedConnectorRef;
             toast.success(`${label} connected`);
           }}
         />
       )}
 
-      {scopeReviewType && (
+      {scopeReviewConnectorRef && (
         <ScopeReviewModal
-          connectorType={scopeReviewType}
+          connectorRef={scopeReviewConnectorRef}
           onClose={() => {
-            return setScopeReviewType(null);
+            return setScopeReviewConnectorRef(null);
           }}
-          onReconnect={(type) => {
-            setScopeReviewType(null);
+          onReconnect={(connectorRef) => {
+            setScopeReviewConnectorRef(null);
             const connector = allConnectors.find((connector) => {
-              return connector.type === type;
+              return connector.connectorRef === connectorRef;
             });
-            const connection = connector?.connector ?? null;
+            const connection = connector?.connection ?? null;
             if (!connector || !connection) {
-              setSelected(type);
+              setSelected(connectorRef);
               return;
             }
             const authMethodId = getAvailableStatusAuthCodeAuthMethod(
@@ -1191,17 +1179,14 @@ export function ZeroConnectorsPage() {
               ? getConnectorStatusAuthMethod(connector, authMethodId)
               : null;
             if (!authMethod) {
-              setSelected(type);
+              setSelected(connectorRef);
               return;
             }
             detach(
               connect(
-                type,
+                connectorRef,
                 authMethod,
-                {
-                  showPermissionDialog: true,
-                  connectorLabel: connector.label,
-                },
+                { connectorLabel: connector.label },
                 signal,
               ),
               Reason.DomCallback,
@@ -1210,18 +1195,9 @@ export function ZeroConnectorsPage() {
         />
       )}
 
-      {permissionDialog && (
-        <ConnectorPermissionDialog
-          connectorType={permissionDialog.type}
-          connectorLabel={permissionDialog.label}
-          icon={permissionDialogConnector?.icon}
-          onClose={closePermissionDialog}
-        />
-      )}
-
-      {managedConnectorType && managedConnectorLabel && (
+      {managedConnectorRef && managedConnectorLabel && (
         <ConnectorAccessManagementDialog
-          connectorType={managedConnectorType}
+          connectorRef={managedConnectorRef}
           connectorLabel={managedConnectorLabel}
           onClose={closeManagedConnector}
         />

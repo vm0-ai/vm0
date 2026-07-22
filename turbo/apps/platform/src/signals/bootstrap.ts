@@ -36,8 +36,6 @@ import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
-import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
-import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -49,6 +47,7 @@ import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-conn
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
+import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
@@ -164,6 +163,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
   },
   {
+    path: ROUTES.connectorRedirecting,
+    setup: setupConnectorRedirectingPage$,
+  },
+  {
     path: ROUTES.directedAuthorize,
     setup: setupAuthPageWrapper(setupDirectedAuthorizePage$),
   },
@@ -270,14 +273,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settings,
     setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
-  },
-  {
-    path: ROUTES.settingsApiKeys,
-    setup: setupAuthSidebarPageWrapper(setupApiKeysPage$),
-  },
-  {
-    path: ROUTES.deviceBb0,
-    setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
   },
   {
     path: ROUTES.lab,

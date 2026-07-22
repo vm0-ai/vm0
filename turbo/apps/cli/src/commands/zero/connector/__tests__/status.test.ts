@@ -125,11 +125,9 @@ describe("zero connector status command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("VM0_TOKEN", "test-token");
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", "");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
   });
 
   afterEach(() => {
@@ -263,7 +261,6 @@ describe("zero connector status command", () => {
     it("prints a callback URL example in the current web chat", async () => {
       vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
       vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
-      vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
@@ -507,7 +504,10 @@ describe("zero connector status command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
+        expect.stringContaining("Authentication failed"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("ZERO_TOKEN is invalid or expired"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -13,7 +13,6 @@ import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -23,7 +22,6 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -860,38 +858,6 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(stt.body);
     expect(stt.body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
 
-    const audioV1 = await api.requestAudioTranscriptionV1(admin, [403]);
-    expectApiError(audioV1.body);
-    expect(audioV1.body.error.message).toBe(
-      "This endpoint does not accept the provided credential type",
-    );
-
-    const authApi = createAuthOrgAgentsBddApi(context);
-    const apiKey = await authApi.createApiKey(admin, {
-      name: "BDD audio v1",
-      expiresInDays: 1,
-    });
-
-    const unsupportedAudio = await api.requestAudioTranscriptionV1WithBearer(
-      apiKey.token,
-      new Blob([new Uint8Array([0, 0])], { type: "text/plain" }),
-      [400],
-    );
-    expectApiError(unsupportedAudio.body);
-    expect(unsupportedAudio.body.error.message).toBe(
-      "Unsupported audio format. Send raw 16 kHz mono signed 16-bit PCM as application/octet-stream.",
-    );
-
-    const blockedAudio = await api.requestAudioTranscriptionV1WithBearer(
-      apiKey.token,
-      new Blob([new Uint8Array([0, 0])], {
-        type: "application/octet-stream",
-      }),
-      [402],
-    );
-    expectApiError(blockedAudio.body);
-    expect(blockedAudio.body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
-
     const speech = await api.requestVoiceSpeech(
       admin,
       { text: "hello", voice: "marin" },
@@ -1409,43 +1375,6 @@ describe("BILL-02: maps and banking visible boundaries", () => {
   });
 });
 
-function decodeAscii(
-  bytes: Uint8Array,
-  offset: number,
-  length: number,
-): string {
-  return String.fromCharCode(...bytes.slice(offset, offset + length));
-}
-
-function requireObservedWav(value: Uint8Array | null): Uint8Array {
-  if (value === null) {
-    throw new Error("Expected an upstream WAV payload");
-  }
-  return value;
-}
-
-function octetStreamBlob(bytes: Uint8Array<ArrayBuffer>): Blob {
-  return new Blob([bytes], { type: "application/octet-stream" });
-}
-
-// The contract client JSON-stringifies non-FormData bodies, so PCM-bearing
-// requests go through a raw app request to keep the exact bytes.
-async function requestAudioTranscriptionRaw(
-  token: string,
-  pcm: Uint8Array<ArrayBuffer>,
-): Promise<{ readonly status: number; readonly body: unknown }> {
-  const app = createApp({ signal: context.signal });
-  const response = await app.request("/api/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/octet-stream",
-    },
-    body: pcm,
-  });
-  return { status: response.status, body: await response.json() };
-}
-
 const WEBM_EBML_HEADER: readonly number[] = [0x1a, 0x45, 0xdf, 0xa3];
 const WEBM_SEGMENT_ID: readonly number[] = [0x18, 0x53, 0x80, 0x67];
 const WEBM_INFO_ID: readonly number[] = [0x15, 0x49, 0xa9, 0x66];
@@ -1558,129 +1487,7 @@ function sttFormData(
   return formData;
 }
 
-describe("FILE-02: audio transcription v1 provider contract", () => {
-  it("enforces the lifetime audio quota for limited-free-1 API transcription", async () => {
-    const { api, admin } = testActors();
-    if (!admin.orgId) {
-      throw new Error("Expected limited-free audio test user to have an org");
-    }
-    const runsApi = createRunsApi(context);
-    await runsApi.grantProEntitlement(admin);
-    await seedOrgMetadata({
-      orgId: admin.orgId,
-      tier: "limited-free-1",
-      credits: 0,
-    });
-
-    const authApi = createAuthOrgAgentsBddApi(context);
-    const apiKey = await authApi.createApiKey(admin, {
-      name: "BDD limited-free audio quota",
-      expiresInDays: 1,
-    });
-    server.use(
-      http.post("https://api.openai.com/v1/audio/transcriptions", () => {
-        return HttpResponse.json({ text: "limited-free transcript" });
-      }),
-    );
-
-    const pcm = Uint8Array.from([0x00, 0x00]);
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const transcribed = await requestAudioTranscriptionRaw(apiKey.token, pcm);
-      expect(transcribed.status).toBe(200);
-    }
-    const quota = await api.readVoiceQuota(admin);
-    expect(quota.body).toStrictEqual({ allowed: false, count: 10, limit: 10 });
-
-    const blocked = await requestAudioTranscriptionRaw(apiKey.token, pcm);
-    expect(blocked.status).toBe(402);
-    expect(blocked.body).toStrictEqual({
-      error: {
-        message:
-          "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
-        code: "AUDIO_INPUT_QUOTA_EXCEEDED",
-      },
-    });
-  });
-
-  it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
-    const { api, admin } = testActors();
-    const runsApi = createRunsApi(context);
-    await runsApi.grantProEntitlement(admin);
-    const authApi = createAuthOrgAgentsBddApi(context);
-    const apiKey = await authApi.createApiKey(admin, {
-      name: "BDD audio media v1",
-      expiresInDays: 1,
-    });
-
-    let observedAuthorization: string | null = null;
-    let observedFileName: string | undefined;
-    let observedFileType: string | undefined;
-    let observedModel: FormDataEntryValue | null = null;
-    let observedResponseFormat: FormDataEntryValue | null = null;
-    let observedWav: Uint8Array | null = null;
-    server.use(
-      http.post(
-        "https://api.openai.com/v1/audio/transcriptions",
-        async ({ request }) => {
-          observedAuthorization = request.headers.get("authorization");
-          const form = await request.formData();
-          const file = form.get("file");
-          if (!(file instanceof File)) {
-            return HttpResponse.json(
-              { error: { message: "missing file", code: "BAD_REQUEST" } },
-              { status: 400 },
-            );
-          }
-          observedFileName = file.name;
-          observedFileType = file.type;
-          observedModel = form.get("model");
-          observedResponseFormat = form.get("response_format");
-          observedWav = new Uint8Array(await file.arrayBuffer());
-          return HttpResponse.json({ text: "hello from bdd" });
-        },
-      ),
-    );
-
-    const pcm = Uint8Array.from([0x00, 0x00, 0xff, 0x7f]);
-
-    const invalidBearer = await api.requestAudioTranscriptionV1WithBearer(
-      "vm0_pat_not_a_real_token",
-      octetStreamBlob(pcm),
-      [401],
-    );
-    expectApiError(invalidBearer.body);
-
-    const transcribed = await requestAudioTranscriptionRaw(apiKey.token, pcm);
-    expect(transcribed.status).toBe(200);
-    expect(transcribed.body).toStrictEqual({ text: "hello from bdd" });
-    expect(observedAuthorization).toBe("Bearer test-openai-key");
-    expect(observedFileName).toBe("audio.wav");
-    expect(observedFileType).toBe("audio/wav");
-    expect(observedModel).toBe("gpt-4o-mini-transcribe");
-    expect(observedResponseFormat).toBe("json");
-    const wav = requireObservedWav(observedWav);
-    expect(decodeAscii(wav, 0, 4)).toBe("RIFF");
-    expect(decodeAscii(wav, 8, 4)).toBe("WAVE");
-    expect(decodeAscii(wav, 36, 4)).toBe("data");
-    expect(new DataView(wav.buffer).getUint32(24, true)).toBe(16_000);
-    expect(new DataView(wav.buffer).getUint16(22, true)).toBe(1);
-    expect(new DataView(wav.buffer).getUint16(34, true)).toBe(16);
-    expect(wav.slice(44)).toStrictEqual(pcm);
-
-    const emptyBody = await requestAudioTranscriptionRaw(
-      apiKey.token,
-      new Uint8Array(),
-    );
-    expect(emptyBody.status).toBe(400);
-    expect(emptyBody.body).toStrictEqual({
-      error: { message: "Audio body is required", code: "BAD_REQUEST" },
-    });
-
-    const repeated = await requestAudioTranscriptionRaw(apiKey.token, pcm);
-    expect(repeated.status).toBe(200);
-    expect(repeated.body).toStrictEqual({ text: "hello from bdd" });
-  });
-
+describe("FILE-02: audio transcription and speech billing", () => {
   it("estimates WAV and WebM durations from byte variants through STT and bills generated speech", async () => {
     const { api, admin } = testActors();
     if (!admin.orgId) {

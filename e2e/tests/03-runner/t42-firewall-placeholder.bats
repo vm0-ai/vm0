@@ -26,12 +26,13 @@ setup_file() {
 
     # discord-webhook uses api-token auth, so set it up through the same
     # connector-aware path as the frontend's "Add Connection" dialog.
-    $ZERO_CLI connector connect discord-webhook \
-        --value DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1234567890/fake-token-for-e2e
+    connect_e2e_connector \
+        "discord-webhook" \
+        '{"DISCORD_WEBHOOK_URL":"https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"}'
 }
 
 teardown_file() {
-    zero_curl "/api/zero/connectors/discord-webhook" -X DELETE >/dev/null 2>&1 || true
+    e2e_api_curl "/api/zero/connectors/discord-webhook" -X DELETE >/dev/null 2>&1 || true
 }
 
 setup() {
@@ -48,8 +49,8 @@ setup() {
 }
 
 teardown() {
-    [ -n "$THREAD_ID" ] && zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
-    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+    [ -n "$THREAD_ID" ] && e2e_api_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    [ -n "$AGENT_ID" ] && delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -105,7 +106,7 @@ setup_test_connector() {
 
 authorize_slack_for_agent() {
     local agent_id="$1"
-    zero_curl "/api/zero/agents/${agent_id}/user-connectors" \
+    e2e_api_curl "/api/zero/agents/${agent_id}/user-connectors" \
         -X PUT \
         -d '{"enabledTypes":["slack"]}' \
         >/dev/null
@@ -133,7 +134,7 @@ apply_slack_chat_write_permission() {
             ;;
     esac
 
-    zero_curl "/api/zero/user-permission-grants/apply" \
+    e2e_api_curl "/api/zero/user-permission-grants/apply" \
         -X PUT \
         -d "$payload" \
         >/dev/null
@@ -153,7 +154,7 @@ slack_mock_state() {
     local -a headers
     slack_test_endpoint_headers headers
     curl -fsS "${headers[@]}" \
-        "$(zero_api_url)/api/test/slack-state?team_id=$team_id"
+        "$(e2e_api_url)/api/test/slack-state?team_id=$team_id"
 }
 
 wait_for_slack_mock_marker() {
@@ -220,18 +221,17 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-multi"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify env vars from both firewall configs are set to placeholder values.
-    run $VM0_CLI run "${AGENT_NAME}-multi" \
-        --artifact "$ARTIFACT_NAME-multi:/home/user/workspace" \
-        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
+    run run_compose_fixture "${AGENT_NAME}-multi" \
+        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-multi" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     assert_output --partial "GITHUB_TOKEN=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"
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
 }
@@ -282,7 +282,7 @@ EOF
     local marker_team_id="T_FIREWALL_REFRESH_${UNIQUE_ID//-/_}"
     local marker_text="first-deny-${UNIQUE_ID}"
     local slack_mock_url
-    slack_mock_url="$(zero_api_url)/api/test/slack-mock/chat.postMessage"
+    slack_mock_url="$(e2e_api_url)/api/test/slack-mock/chat.postMessage"
 
     local prompt
     prompt=$(cat <<'EOF'
@@ -378,7 +378,7 @@ EOF
     THREAD_ID="$LAST_THREAD_ID"
 
     wait_for_slack_mock_marker "$marker_team_id" "$marker_text" "$LAST_RUN_ID" 60 || {
-        zero_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
+        e2e_api_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
         return 1
     }
 
@@ -416,19 +416,18 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-auto"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
     # and a GitHub API call succeeds through the proxy (token replacement works).
-    run $VM0_CLI run "${AGENT_NAME}-auto" \
-        --artifact "$ARTIFACT_NAME-auto:/home/user/workspace" \
-        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\""
+    run run_compose_fixture "${AGENT_NAME}-auto" \
+        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-auto" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Token should be the placeholder (proxy will replace it with real token)
     assert_output --partial "PLACEHOLDER=gho_Cof"
     # API call should succeed (proxy replaced placeholder with real token)
@@ -436,7 +435,7 @@ EOF
 
     # Verify token replacement details appear in network logs.
     # The CLI renders: ↔ GITHUB_TOKEN with optional (cached)/(refreshed) suffix.
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -462,21 +461,20 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-webhook"
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify:
     # 1. DISCORD_WEBHOOK_URL is set to the placeholder URL
     # 2. curl to the placeholder URL triggers mitmproxy URL rewrite
     # 3. Discord returns 404 (fake webhook ID) proving the request reached Discord
-    run $VM0_CLI run "${AGENT_NAME}-webhook" \
-        --artifact "$ARTIFACT_NAME-webhook:/home/user/workspace" \
-        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'"
+    run run_compose_fixture "${AGENT_NAME}-webhook" \
+        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME-webhook" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
     echo "$output"
     assert_success
-    assert_output --partial "Run completed successfully"
-
     # Placeholder is the firewall-placeholder.vm3.ai URL
     assert_output --partial "DISCORD_WEBHOOK_URL=https://firewall-placeholder.vm3.ai/discord-webhook/hook"
 
@@ -485,7 +483,7 @@ EOF
     assert_output --regexp "API_STATUS=(404|429)"
 
     # Extract run ID
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

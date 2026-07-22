@@ -1,9 +1,6 @@
-import type { z } from "zod";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
-import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
-import { createApp } from "../../../../app-factory";
 import {
   accept,
   setupApp,
@@ -15,7 +12,6 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type LogsSearchQuery = z.input<(typeof logsSearchContract.searchLogs)["query"]>;
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
@@ -65,37 +61,6 @@ function authenticate(
 
 export function createOpsLogsApi(context: TestContext) {
   return {
-    async requestSearchLogs<TStatus extends 200 | 400 | 401>(
-      actor: ApiTestUser | null,
-      query: LogsSearchQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(logsSearchContract).searchLogs({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    // The logs-search contract requires `keyword`, so the contract client
-    // cannot send the missing-keyword 400 case — read the route through a
-    // raw app request instead.
-    async rawSearchLogs(
-      actor: ApiTestUser,
-      queryString: string,
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(`/api/logs/search${queryString}`, {
-        method: "GET",
-        headers: authorization === undefined ? {} : { authorization },
-      });
-      const body: unknown = await response.json();
-      return { status: response.status, body };
-    },
-
     async requestAggregateModelStats<TStatus extends 200 | 401>(
       auth: "valid" | "invalid",
       hours: number | undefined,

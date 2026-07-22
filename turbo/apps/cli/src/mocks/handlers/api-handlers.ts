@@ -3,8 +3,8 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
-  connectorAuthMethodIdSchema,
-  type ConnectorAuthMethodId,
+  connectorRegistryAuthMethodIdSchema,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type {
@@ -26,8 +26,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isConnectorAuthMethodId(
   value: unknown,
-): value is ConnectorAuthMethodId {
-  return connectorAuthMethodIdSchema.safeParse(value).success;
+): value is ConnectorRegistryAuthMethodId {
+  return connectorRegistryAuthMethodIdSchema.safeParse(value).success;
 }
 
 function defaultPermissionSummary() {
@@ -158,7 +158,9 @@ function defaultPublicCatalogStatus() {
   });
 }
 
-function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
+function manualGrantAuthMethodFromBody(
+  body: unknown,
+): ConnectorRegistryAuthMethodId {
   if (isRecord(body) && isConnectorAuthMethodId(body.authMethod)) {
     return body.authMethod;
   }
@@ -167,7 +169,7 @@ function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
 
 function connectorManualGrantResponse(
   type: string,
-  authMethod: ConnectorAuthMethodId,
+  authMethod: ConnectorRegistryAuthMethodId,
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
@@ -184,47 +186,6 @@ function connectorManualGrantResponse(
 }
 
 export const apiHandlers = [
-  // GET /api/agent/composes - getComposeByName
-  http.get("http://localhost:3000/api/agent/composes", () => {
-    return HttpResponse.json(
-      { error: "Not found", message: "Compose not found" },
-      { status: 404 },
-    );
-  }),
-
-  // POST /api/agent/composes - createOrUpdateCompose
-  http.post("http://localhost:3000/api/agent/composes", () => {
-    return HttpResponse.json(
-      { composeId: "default", name: "default", action: "created" },
-      { status: 201 },
-    );
-  }),
-
-  // POST /api/agent/runs - createRun
-  http.post("http://localhost:3000/api/agent/runs", () => {
-    return HttpResponse.json(
-      {
-        runId: "default",
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      },
-      { status: 201 },
-    );
-  }),
-
-  // GET /api/agent/runs/:id/events - getEvents
-  http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
-    return HttpResponse.json(
-      { events: [], hasMore: false, nextSequence: 0 },
-      { status: 200 },
-    );
-  }),
-
-  // GET /api/agent/composes/versions - getComposeVersion
-  http.get("http://localhost:3000/api/agent/composes/versions", () => {
-    return HttpResponse.json({ versionId: "default" }, { status: 200 });
-  }),
-
   // GET /api/zero/secrets - listZeroSecrets
   http.get("http://localhost:3000/api/zero/secrets", () => {
     return HttpResponse.json({ secrets: [] }, { status: 200 });

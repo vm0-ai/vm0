@@ -1,0 +1,1 @@
+ALTER TYPE "public"."chat_message_queue_item_type" ADD VALUE 'slack_user_message' BEFORE 'workflow_event';

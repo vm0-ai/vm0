@@ -31,7 +31,7 @@ agents:
     framework: claude-code
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
@@ -47,16 +47,17 @@ EOF
     # 1. github.com:22 — SSH on standard port, non-HTTP protocol
     # 2. ssh.github.com:443 — SSH on port 443 (previously intercepted as HTTPS)
     # Both must pass through mitmproxy as raw TCP without corruption.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo PORT22=\$(timeout 5 bash -c 'head -1 < /dev/tcp/github.com/22') && echo PORT443=\$(timeout 5 bash -c 'head -1 < /dev/tcp/ssh.github.com/443')"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo PORT22=\$(timeout 5 bash -c 'head -1 < /dev/tcp/github.com/22') && echo PORT443=\$(timeout 5 bash -c 'head -1 < /dev/tcp/ssh.github.com/443')" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "PORT22=SSH-2.0"
     assert_output --partial "PORT443=SSH-2.0"
 
     # Verify TCP connections appear in network logs
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -74,13 +75,14 @@ EOF
     # the packet was transparently redirected to dnsmasq rather than passed
     # through as generic TCP.
     local tcp_dns_script="import socket,struct; q=bytes.fromhex('123401000001000000000000077463702d646e7307696e76616c69640000010001'); s=socket.create_connection(('192.0.2.1',53),5); s.sendall(struct.pack('!H',len(q))+q); f=s.makefile('rb'); h=f.read(2); assert len(h)==2; n=struct.unpack('!H',h)[0]; r=f.read(n); assert len(r)==n and r[:2]==q[:2] and r[2]&128; print('TCP_DNS_OK=true')"
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "getent hosts example.com >/dev/null && python3 -c \"$tcp_dns_script\""
+    run run_compose_fixture "$AGENT_NAME" \
+        "getent hosts example.com >/dev/null && python3 -c \"$tcp_dns_script\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
     assert_output --partial "TCP_DNS_OK=true"
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -101,13 +103,14 @@ EOF
     # Send a UDP packet to a non-DNS port (port 9999) to verify that
     # non-DNS UDP traffic is still logged via iptables LOG + /dev/kmsg.
     # DNS (UDP 53) is redirected to dnsmasq, but other UDP goes through FORWARD.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'hello',('8.8.8.8',9999)); s.close(); print('UDP_SENT=true')\""
+    run run_compose_fixture "$AGENT_NAME" \
+        "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'hello',('8.8.8.8',9999)); s.close(); print('UDP_SENT=true')\"" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
     assert_output --partial "UDP_SENT=true"
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -122,13 +125,16 @@ EOF
 
     # Run with --capture-network-bodies enabled. The CLI network log renderer
     # displays request_headers and response_body when present.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        --capture-network-bodies \
-        "curl -s -o /dev/null -w '%{http_code}' https://www.vm0.ai"
+    run run_compose_fixture "$AGENT_NAME" \
+        "curl -s -o /dev/null -w '%{http_code}' https://www.vm0.ai" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{
+                captureNetworkBodies: true,
+                artifacts: [{name: $name, mountPath: "/home/user/workspace"}]
+            }')"
     assert_success
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
@@ -144,14 +150,15 @@ EOF
     # Since this run does not configure the replicate connector, mitmproxy
     # returns a local failed-dependency diagnostic without calling upstream and
     # persists the diagnostic metadata to network logs.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "STATUS=\$(curl -sS -o /tmp/replicate-diagnostic.json -w '%{http_code}' https://api.replicate.com/v1/models); cat /tmp/replicate-diagnostic.json; echo; echo REPLICATE_STATUS=\$STATUS"
+    run run_compose_fixture "$AGENT_NAME" \
+        "STATUS=\$(curl -sS -o /tmp/replicate-diagnostic.json -w '%{http_code}' https://api.replicate.com/v1/models); cat /tmp/replicate-diagnostic.json; echo; echo REPLICATE_STATUS=\$STATUS" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
     assert_output --partial "connector_not_configured_for_run"
     assert_output --partial "REPLICATE_STATUS=424"
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

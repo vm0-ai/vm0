@@ -28,7 +28,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -55,13 +55,13 @@ teardown_file() {
 EOF
 )
 
-    run $VM0_CLI run "$AGENT_NAME" --verbose "$prompt"
+    run run_compose_fixture "$AGENT_NAME" "$prompt"
 
     assert_success
-    assert_output --partial "▷ Claude Code Started"
+    assert_output --partial '"subtype":"init"'
     assert_output --partial "echo-jsonl fixture response"
     refute_output --partial "partial echo that should stay out of webhooks"
-    assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "Checkpoint:"
-    assert_output --partial "Session:"
+    assert_output --partial '"subtype":"success"'
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 }

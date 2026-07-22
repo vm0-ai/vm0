@@ -32,9 +32,11 @@ def test_x_stream_mixed_rows_bills_valid_counts_and_logs_risk(x_usage, tmp_path,
     }
     payloads = x_usage.call_and_get_billing(flow)
     by_cat = {p["category"]: p["quantity"] for p in payloads}
-    # tweet.read primary 50 + 12 from includes.tweets = 62
-    assert by_cat["posts.read"] == 62
-    assert by_cat["user.read"] == 47
+    assert len(payloads) == len(by_cat)
+    assert by_cat == {
+        "posts.read": 62,  # 50 primary + 12 from includes.tweets
+        "user.read": 47,
+    }
 
     [entry] = [
         entry
@@ -127,6 +129,7 @@ def test_legacy_x_json_fallback_extracts_selective_field_counts(x_usage, tmp_pat
     payloads = x_usage.call_and_get_billing(flow)
 
     by_cat = {p["category"]: p["quantity"] for p in payloads}
+    assert len(payloads) == len(by_cat)
     assert by_cat == {"posts.read": 2, "user.read": 1}
 
 

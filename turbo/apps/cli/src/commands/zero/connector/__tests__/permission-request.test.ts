@@ -48,10 +48,8 @@ describe("zero connector permission-request command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.stubEnv("VM0_TOKEN", "test-token");
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
     server.use(
       stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
       stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
@@ -65,12 +63,6 @@ describe("zero connector permission-request command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-  });
-
-  it("hides callback guidance when the feature is disabled", () => {
-    expect(permissionRequestCommand.helpInformation()).not.toContain(
-      "--callback-prompt",
-    );
   });
 
   it("outputs an allow grant link without choosing the user's duration", async () => {
@@ -130,7 +122,6 @@ describe("zero connector permission-request command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -156,7 +147,6 @@ describe("zero connector permission-request command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
 
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
@@ -180,7 +170,6 @@ describe("zero connector permission-request command", () => {
   it("rejects callback prompts for a different agent", async () => {
     vi.stubEnv("ZERO_AGENT_ID", "agent-current");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
 
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
@@ -199,29 +188,6 @@ describe("zero connector permission-request command", () => {
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
         "--callback-prompt can only target the current Zero web chat thread and agent",
-      ),
-    );
-  });
-
-  it("rejects callback prompts when the feature is disabled", async () => {
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
-
-    await expect(async () => {
-      await permissionRequestCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--permission",
-        SLACK_READ_PERMISSION,
-        "--callback-prompt",
-        "Continue",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "--callback-prompt is not available in the current workspace",
       ),
     );
   });
@@ -406,7 +372,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("exits with authentication guidance when no token is available", async () => {
-    vi.stubEnv("VM0_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
     await expect(async () => {

@@ -6,6 +6,7 @@ import {
   networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
+import { connectorRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
 
@@ -578,7 +579,7 @@ export const runnersNetworkPolicyRefreshContract = c.router({
     }),
     body: z.object({
       connectorRefs: z
-        .array(z.string().min(1).max(64))
+        .array(connectorRefSchema)
         .min(1)
         .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     }),
@@ -586,7 +587,7 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       200: z.object({
         refreshes: z.array(
           z.object({
-            connectorRef: z.string(),
+            connectorRef: connectorRefSchema,
             networkPolicy: networkPolicySchema,
             nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
           }),

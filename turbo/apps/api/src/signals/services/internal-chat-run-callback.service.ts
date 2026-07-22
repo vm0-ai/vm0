@@ -14,7 +14,6 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -25,8 +24,9 @@ import {
   eq,
   inArray,
   isNotNull,
-  isNull,
   lte,
+  max,
+  ne,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -71,6 +71,7 @@ import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
   appendClaimedUserMessage,
+  decryptQueuedUserMessageRunParams,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -88,6 +89,7 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
+import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -418,6 +420,11 @@ interface CreateQueuedChatRunInput {
     readonly hostId: string;
     readonly displayName: string;
   } | null;
+  readonly triggerSource: "web" | "slack";
+  readonly userInfoExtras?: {
+    readonly slackDisplayName?: string;
+    readonly slackUserId?: string;
+  };
   readonly beforeDispatch?: (args: {
     readonly runId: string;
     readonly status: "queued" | "pending";
@@ -494,9 +501,10 @@ function buildQueuedCreateZeroRunArgs(
         },
       },
     ],
-    triggerSource: "web" as const,
+    triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
+    userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     beforeDispatch: input.beforeDispatch,
     body: {
@@ -777,7 +785,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+      lastEventAt: max(chatMessages.createdAt).mapWith(
         nullableDriverValueDecoder(chatMessages.createdAt),
       ),
     })
@@ -1242,13 +1250,14 @@ function buildWebAttachFilesPrompt(
 }
 
 function buildAppendSystemPrompt(
+  integrationPrompt: string,
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
   computerUseHostDisplayName: string | null,
 ): string {
   return [
-    buildWebChatPrompt(),
+    integrationPrompt,
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
@@ -1298,7 +1307,10 @@ function formatPriorRunMessage(message: PriorRunMessage): string {
   return attach ? `${body}\n${attach}` : body;
 }
 
-function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
+function buildChatPriorRunsContext(
+  runs: readonly PriorRun[],
+  triggerSource: "web" | "slack",
+): string {
   if (runs.length === 0) {
     return "";
   }
@@ -1321,7 +1333,7 @@ function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
     ].join("\n");
   });
   return [
-    "# Web Chat Run Context",
+    `# ${triggerSource === "slack" ? "Slack" : "Web Chat"} Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "Use these messages as context for the user's current request.",
     "- Treat the newest run below as the most recent prior round.",
@@ -1334,6 +1346,7 @@ function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
+  triggerSource: "web" | "slack",
   limit: number,
 ): Promise<PriorRun[]> {
   const runRows = await db
@@ -1347,6 +1360,7 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, triggerSource),
         sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
       ),
     )
@@ -1493,6 +1507,7 @@ function hasAgentSessionId(
 async function latestSessionForThreadFromDb(
   db: Db,
   threadId: string,
+  triggerSource: "web" | "slack",
 ): Promise<LatestThreadSession | null> {
   const rows = await db
     .select({
@@ -1501,13 +1516,12 @@ async function latestSessionForThreadFromDb(
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    // D7 session-continuity exclusion (see latestSessionForThread in
-    // zero-chat-messages.ts): only web-source runs join the chain, so an
-    // autoSend follow-up resumes the latest web session, not an automation one.
+    // D7 session-continuity exclusion: Web and canonical Slack messages share
+    // the thread queue but keep independent source-specific session chains.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, "web"),
+        eq(zeroRuns.triggerSource, triggerSource),
       ),
     )
     .orderBy(desc(agentRuns.createdAt))
@@ -1546,38 +1560,6 @@ async function loadAgentForAutoSend(
   return agent ?? null;
 }
 
-async function loadComputerUseHostGrantForAutoSend(args: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<{
-  readonly hostId: string;
-  readonly displayName: string;
-} | null> {
-  const [host] = await args.db
-    .select({
-      hostId: computerUseHosts.id,
-      displayName: computerUseHosts.displayName,
-    })
-    .from(chatThreads)
-    .innerJoin(
-      computerUseHosts,
-      eq(chatThreads.computerUseHostId, computerUseHosts.id),
-    )
-    .where(
-      and(
-        eq(chatThreads.id, args.threadId),
-        eq(chatThreads.userId, args.userId),
-        eq(computerUseHosts.orgId, args.orgId),
-        eq(computerUseHosts.userId, args.userId),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
-  return host ?? null;
-}
-
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
@@ -1587,21 +1569,21 @@ async function activeChatRunExistsForThread(
     sql`
       SELECT ${zeroRuns.id} AS "id"
       FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+      WHERE ${eq(zeroRuns.chatThreadId, threadId)}
         AND ${agentRuns.status} IN ('queued', 'pending', 'running')
         AND (
           NOT EXISTS (
             SELECT 1
             FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
               AND ${agentRunCallbacks.internalKind} = 'chat'
               AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
           )
           OR EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            WHERE ${eq(chatMessages.runId, zeroRuns.id)}
               AND ${chatMessages.role} = 'user'
           )
         )
@@ -1640,16 +1622,19 @@ async function buildQueuedPriorContext(args: {
   readonly threadId: string;
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
+  readonly triggerSource: "web" | "slack";
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
     return "";
   }
-  return buildWebChatPriorRunsContext(
+  return buildChatPriorRunsContext(
     await getLatestRunsByThreadId(
       args.db,
       args.threadId,
+      args.triggerSource,
       RECENT_CHAT_RUN_LIMIT,
     ),
+    args.triggerSource,
   );
 }
 
@@ -1712,6 +1697,13 @@ async function buildCreateQueuedChatRunInput(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }): Promise<CreateQueuedChatRunInput> {
+  const sourceParams = await decryptQueuedUserMessageRunParams(
+    args.queuedMessage.encryptedParams,
+    { orgId: args.agent.orgId, userId: args.userId },
+  );
+  if (args.queuedMessage.triggerSource === "slack" && !sourceParams) {
+    throw new Error("Canonical Slack queue item is missing run params");
+  }
   const resolvedQueuedMessage = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
@@ -1732,8 +1724,14 @@ async function buildCreateQueuedChatRunInput(args: {
       "nested",
       () => {
         return Promise.all([
-          latestSessionForThreadFromDb(args.db, args.threadId),
-          loadWebChatIncompleteContext(args.db, args.threadId),
+          latestSessionForThreadFromDb(
+            args.db,
+            args.threadId,
+            args.queuedMessage.triggerSource,
+          ),
+          args.queuedMessage.triggerSource === "web"
+            ? loadWebChatIncompleteContext(args.db, args.threadId)
+            : Promise.resolve(""),
           loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
         ]);
       },
@@ -1753,6 +1751,7 @@ async function buildCreateQueuedChatRunInput(args: {
         threadId: args.threadId,
         startNewSession,
         incompleteContext,
+        triggerSource: args.queuedMessage.triggerSource,
       });
     },
   );
@@ -1783,7 +1782,7 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
-  const prompt = await measureChatCallbackPreCreateTiming(
+  const canonicalPrompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
     "nested",
@@ -1796,6 +1795,7 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
+  const prompt = sourceParams?.prompt ?? canonicalPrompt;
 
   return {
     orgId: args.agent.orgId,
@@ -1804,6 +1804,7 @@ async function buildCreateQueuedChatRunInput(args: {
     prompt,
     sessionId: startNewSession ? null : (latestSession?.sessionId ?? null),
     appendSystemPrompt: buildAppendSystemPrompt(
+      sourceParams?.appendSystemPrompt ?? buildWebChatPrompt(),
       incompleteContext,
       priorContext,
       generationTemplatePrompt,
@@ -1812,6 +1813,8 @@ async function buildCreateQueuedChatRunInput(args: {
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
     computerUseHostGrant,
+    triggerSource: args.queuedMessage.triggerSource,
+    userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
 
@@ -1860,22 +1863,22 @@ async function claimQueuedUserMessageForDispatch(args: {
       sql`
         SELECT ${zeroRuns.id} AS "id"
         FROM ${zeroRuns}
-        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-        WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
-          AND ${zeroRuns.id} <> ${args.runId}
+        INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+        WHERE ${eq(zeroRuns.chatThreadId, args.threadId)}
+          AND ${ne(zeroRuns.id, args.runId)}
           AND ${agentRuns.status} IN ('queued', 'pending', 'running')
           AND (
             NOT EXISTS (
               SELECT 1
               FROM ${agentRunCallbacks}
-              WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
                 AND ${agentRunCallbacks.internalKind} = 'chat'
                 AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
             )
             OR EXISTS (
               SELECT 1
               FROM ${chatMessages}
-              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
                 AND ${chatMessages.role} = 'user'
             )
           )

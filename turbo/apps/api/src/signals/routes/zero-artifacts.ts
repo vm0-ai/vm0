@@ -15,6 +15,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
+  artifactFavoriteUrls$,
   favoriteArtifact$,
   unfavoriteArtifact$,
   zeroArtifacts$,
@@ -56,9 +57,9 @@ function uploadedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
   return sql`EXISTS (
     SELECT 1
     FROM ${runUploadedFiles}
-    WHERE ${runUploadedFiles.userId} = ${args.userId}
-      AND ${runUploadedFiles.orgId} = ${args.orgId}
-      AND ${runUploadedFiles.url} = ${args.artifactUrl}
+    WHERE ${eq(runUploadedFiles.userId, args.userId)}
+      AND ${eq(runUploadedFiles.orgId, args.orgId)}
+      AND ${eq(runUploadedFiles.url, args.artifactUrl)}
     LIMIT 1
   )`;
 }
@@ -73,11 +74,11 @@ function attachedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
     SELECT 1
     FROM ${chatMessages}
     INNER JOIN ${chatThreads}
-      ON ${chatThreads.id} = ${chatMessages.chatThreadId}
+      ON ${eq(chatThreads.id, chatMessages.chatThreadId)}
     INNER JOIN ${agentComposes}
-      ON ${agentComposes.id} = ${chatThreads.agentComposeId}
-    WHERE ${chatThreads.userId} = ${args.userId}
-      AND ${agentComposes.orgId} = ${args.orgId}
+      ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
+    WHERE ${eq(chatThreads.userId, args.userId)}
+      AND ${eq(agentComposes.orgId, args.orgId)}
       AND EXISTS (
         SELECT 1
         FROM jsonb_array_elements(COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)) AS attached_file
@@ -146,6 +147,22 @@ const listArtifactsInner$ = command(
         nextCursor: result.nextCursor,
         syncUntil: result.syncUntil,
       },
+    };
+  },
+);
+
+const listArtifactFavoritesInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const artifactUrls = await set(
+      artifactFavoriteUrls$,
+      { userId: auth.userId, orgId: auth.orgId },
+      signal,
+    );
+
+    return {
+      status: 200 as const,
+      body: { artifactUrls },
     };
   },
 );
@@ -347,6 +364,17 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
         requiredCapability: "chat-message:read",
       },
       listArtifactsInner$,
+    ),
+  },
+  {
+    route: artifactsContract.listFavorites,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      listArtifactFavoritesInner$,
     ),
   },
   {

@@ -8,8 +8,8 @@
 # and persists a JSONL session file, mirroring the real codex CLI's protocol.
 #
 # Verifies:
-#   - Codex framework markers render (▷ Codex Started / ◆ Codex Completed)
-#   - agent_message text is echoed via the bullet-prefix renderer
+#   - Codex lifecycle events are exposed as structured API payloads
+#   - agent_message text is retained
 #   - --vars expansion reaches the codex subprocess environment
 
 load '../../helpers/setup'
@@ -44,7 +44,7 @@ volumes:
     version: latest
 EOF
 
-    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
+    seed_compose_fixture "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -53,17 +53,15 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-smoke-1: basic codex run renders codex markers" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        "echo from codex"
+@test "t-codex-smoke-1: basic codex run returns structured events" {
+    run run_compose_fixture "$AGENT_NAME" "echo from codex"
 
     assert_success
     # init event from thread.started
-    assert_output --partial "▷ Codex Started"
+    assert_output --partial '"type":"thread.started"'
     # mock-codex synthetic mode echoes the prompt back as agent_message text
-    assert_output --partial "● echo from codex"
+    assert_output --partial "echo from codex"
     # result event from turn.completed
-    assert_output --partial "◆ Codex Completed"
-    # run lifecycle marker
-    assert_output --partial "Session:"
+    assert_output --partial '"type":"turn.completed"'
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 }

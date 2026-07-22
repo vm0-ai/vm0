@@ -1,17 +1,21 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
 import {
-  connectorCatalogDisplayMetadataByRef$,
-  connectorCatalogStatusByRef$,
-  connectors$,
-  type ConnectorCatalogDisplayMetadata,
-} from "../external/connectors.ts";
-import { setSelectedConnectorType$ } from "../zero-page/settings/connectors.ts";
-import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
+  allConnectorCatalogItems$,
+  connectConnectorNoAuth$,
+  connectConnectorOAuthAuthCode$,
+  getConnectorStatusConnectLaunchMode,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
+  getOnlyAvailableStatusNoAuthMethod,
+  setSelectedConnectorRef$,
+} from "../zero-page/settings/connectors.ts";
+import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-ref.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
 import {
@@ -25,7 +29,7 @@ import {
 } from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorRef: ConnectorCatalogRef;
+  connectorRef: ConnectorRef;
   agentId: string;
   originalUrl: string;
   callbackPrompt: ChatActionCallback["callbackPrompt"];
@@ -33,7 +37,7 @@ export interface ConnectorActionDescriptor {
 }
 
 export interface ConnectorSignals extends ConnectorActionDescriptor {
-  displayMetadata$: Computed<Promise<ConnectorCatalogDisplayMetadata | null>>;
+  catalogItem$: Computed<Promise<PublicConnectorCatalogStatusItem | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
   authorized$: Computed<Promise<boolean>>;
@@ -69,7 +73,7 @@ export const activeChatConnectorAction$ = computed((get) => {
 
 export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(activeChatConnectorActionState$, null);
-  set(setSelectedConnectorType$, null);
+  set(setSelectedConnectorRef$, null);
 });
 
 const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
@@ -90,7 +94,7 @@ export function parseConnectorAuthorizeUrl(
   );
   const connectorRef = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  const parsedConnectorRef = connectorCatalogRefSchema.safeParse(connectorRef);
+  const parsedConnectorRef = connectorRefSchema.safeParse(connectorRef);
   if (!parsedConnectorRef.success || !agentId) {
     return null;
   }
@@ -138,17 +142,30 @@ export function createCustomConnectorSignals(
   return descriptor;
 }
 
+function getDirectConnectMethod(connector: PublicConnectorCatalogStatusItem) {
+  const launchMode = getConnectorStatusConnectLaunchMode(connector);
+  if (launchMode === "browser-auth") {
+    const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
+    return authMethod ? { kind: "browser-auth" as const, authMethod } : null;
+  }
+  if (launchMode === "no-auth") {
+    const authMethod = getOnlyAvailableStatusNoAuthMethod(connector);
+    return authMethod ? { kind: "no-auth" as const, authMethod } : null;
+  }
+  return null;
+}
+
 export function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
 ): ConnectorSignals {
-  const displayMetadata$ = computed(async (get) => {
-    const metadataByRef = await get(connectorCatalogDisplayMetadataByRef$);
-    return metadataByRef.get(descriptor.connectorRef) ?? null;
+  const catalogItem$ = computed(async (get) => {
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef) ?? null;
   });
 
   const available$ = computed(async (get): Promise<boolean> => {
-    const displayMetadata = await get(displayMetadata$);
-    return displayMetadata !== null;
+    const catalogItem = await get(catalogItem$);
+    return catalogItem !== null;
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
@@ -160,7 +177,7 @@ export function createConnectorSignals(
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
-        connectorType: descriptor.connectorRef,
+        connectorRef: descriptor.connectorRef,
       }),
     );
   });
@@ -208,15 +225,64 @@ export function createConnectorSignals(
       return;
     }
 
-    await get(connectors$);
+    const connectorCatalogItems = await get(allConnectorCatalogItems$);
     signal.throwIfAborted();
-    set(activeChatConnectorActionState$, descriptor);
-    set(setSelectedConnectorType$, descriptor.connectorRef);
+    const connector = connectorCatalogItems.find((item) => {
+      return item.connectorRef === descriptor.connectorRef;
+    });
+    if (!connector) {
+      return;
+    }
+
+    const directConnectMethod = getDirectConnectMethod(connector);
+    if (!directConnectMethod) {
+      set(activeChatConnectorActionState$, descriptor);
+      set(setSelectedConnectorRef$, descriptor.connectorRef);
+      return;
+    }
+
+    const connectOptions = {
+      connectorLabel: connector.label,
+      agentId: descriptor.agentId,
+    };
+    const connectionCompleted =
+      directConnectMethod.kind === "browser-auth"
+        ? await set(
+            connectConnectorOAuthAuthCode$,
+            descriptor.connectorRef,
+            directConnectMethod.authMethod,
+            connectOptions,
+            signal,
+          )
+        : await set(
+            connectConnectorNoAuth$,
+            {
+              connectorRef: descriptor.connectorRef,
+              authMethod: directConnectMethod.authMethod,
+              options: connectOptions,
+            },
+            signal,
+          );
+    if (
+      connectionCompleted &&
+      descriptor.callbackPrompt &&
+      descriptor.threadId
+    ) {
+      await set(
+        runChatActionCallback$,
+        {
+          threadId: descriptor.threadId,
+          agentId: descriptor.agentId,
+          callbackPrompt: descriptor.callbackPrompt,
+        },
+        signal,
+      );
+    }
   });
 
   return {
     ...descriptor,
-    displayMetadata$,
+    catalogItem$,
     available$,
     connected$,
     authorized$,

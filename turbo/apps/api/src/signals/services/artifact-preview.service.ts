@@ -1,35 +1,23 @@
 import { command } from "ccstate";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { eq } from "drizzle-orm";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
-import {
-  nullableDriverValueDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$, type ReadonlyDb } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
-import {
-  loadUserFeatureSwitchContext,
-  userFeatureSwitchContext,
-} from "./feature-switches.service";
-import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
+import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const log = logger("artifacts:preview");
 
-// Browser rendering is slow (seconds per page), so keep each cron sweep small
-// enough to finish within the function's time budget. The sweep is only a
-// backfill / retry safety net behind the deploy-time trigger, so steady-state
-// batches are tiny.
-const PREVIEW_BATCH_SIZE = 10;
-const PREVIEW_SCAN_PAGE_SIZE = 50;
 // Render at a full 1280-wide desktop layout for fidelity, but rasterize at half
 // resolution (deviceScaleFactor 0.5 -> 640x400) since the grid only shows the
 // image a few hundred px wide. WebP keeps the file small (~tens of KB).
@@ -42,7 +30,6 @@ const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
 const PREVIEW_IMAGE_BASENAME = "preview-v2";
 const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
-const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 const browserSnapshotSchema = z.object({
   meta: z.object({
@@ -61,29 +48,23 @@ const browserSnapshotSchema = z.object({
 const VIDEO_POSTER_FILENAME = "poster.jpg";
 const VIDEO_POSTER_CONTENT_TYPE = "image/jpeg";
 
-interface PreviewCandidateCursor {
-  readonly createdAt: Date;
-  readonly id: string;
-}
-
 export interface RenderArtifactPreviewArgs {
   // The run_uploaded_files row id; also namespaces the R2 object key.
   readonly id: string;
   readonly runId: string;
   readonly userId: string;
-  readonly orgId: string | null;
   readonly url: string;
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
   readonly contentType: string | null;
   // Versions the preview key so each deployment gets a fresh, CDN-cache-busting
   // URL instead of overwriting a stale object at a fixed key.
-  readonly deploymentId: string | null;
+  readonly deploymentId?: string;
 }
 
 // Version the preview object by renderer and deployment so both renderer
 // upgrades and site redeploys produce a fresh CDN URL.
-function previewImageFilename(deploymentId: string | null): string {
+function previewImageFilename(deploymentId?: string): string {
   const base = deploymentId
     ? `${PREVIEW_IMAGE_BASENAME}-${deploymentId}`
     : PREVIEW_IMAGE_BASENAME;
@@ -110,59 +91,6 @@ async function extractVideoPoster(
     );
   }
   return Buffer.from(await response.arrayBuffer());
-}
-
-async function isHtmlArtifactPreviewEnabledForOwner(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string | null;
-    readonly userId: string;
-  },
-): Promise<boolean> {
-  const featureCtx = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId ?? "",
-    args.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx);
-}
-
-function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
-  const conditions = [
-    sql`${runUploadedFiles.url} IS NOT NULL`,
-    // Re-render HTML previews created by the previous renderer so the new key
-    // also bypasses cached challenge images. Video posters remain null-only.
-    sql`((
-      ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-      AND (
-        ${runUploadedFiles.previewImageUrl} IS NULL
-        OR ${runUploadedFiles.previewImageUrl} NOT LIKE ${`%/${PREVIEW_IMAGE_BASENAME}%`}
-      )
-    ) OR (
-      jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
-      AND ${runUploadedFiles.contentType} LIKE 'video/%'
-      AND ${runUploadedFiles.previewImageUrl} IS NULL
-    ))`,
-    // Grace window: skip rows touched in the last 2 minutes so the deploy-time
-    // fast path can finish first. The cron only picks up missing or superseded
-    // previews, avoiding a duplicate render racing the deploy trigger.
-    sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
-  ];
-
-  if (cursor) {
-    const cursorCondition = or(
-      lt(runUploadedFiles.createdAt, cursor.createdAt),
-      and(
-        eq(runUploadedFiles.createdAt, cursor.createdAt),
-        lt(runUploadedFiles.id, cursor.id),
-      ),
-    );
-    if (cursorCondition) {
-      conditions.push(cursorCondition);
-    }
-  }
-
-  return and(...conditions);
 }
 
 function isCloudflareChallenge(content: string, title?: string): boolean {
@@ -259,9 +187,8 @@ async function renderArtifactSnapshot(
  * Render a static preview image for a single hosted-site/HTML artifact row,
  * upload it to the user-artifacts R2 bucket next to the artifact, and persist
  * the CDN URL on the row. Returns false (no-op) when the browser-rendering
- * token is unset. Used by both the deploy-time trigger (fast path) and the cron
- * sweep (backfill / retry), keyed by the row id so it always targets the exact
- * artifact of that run.
+ * token is unset. Keyed by the row id so it always targets the exact artifact
+ * of that run.
  */
 const renderAndStoreArtifactPreview$ = command(
   async (
@@ -270,20 +197,6 @@ const renderAndStoreArtifactPreview$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const isVideo = isVideoContentType(args.contentType);
-    if (!isVideo) {
-      // Resolve the HTML preview switch against the artifact owner's context,
-      // including per-user Lab overrides. Video posters are fully rolled out.
-      const featureCtx = await get(
-        userFeatureSwitchContext(args.orgId ?? "", args.userId),
-      );
-      signal.throwIfAborted();
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx)
-      ) {
-        return false;
-      }
-    }
-
     let image: Buffer;
     let filename: string;
     let contentType: string;
@@ -335,9 +248,9 @@ const renderAndStoreArtifactPreview$ = command(
 );
 
 /**
- * Fire-and-forget the deploy-time preview render on a detached signal via
- * waitUntil, so it runs to completion after the deploy response returns rather
- * than being cancelled with the request. No-op when there is nothing to render.
+ * Fire-and-forget the creation-time preview render on a detached signal via
+ * waitUntil, so it runs to completion after the response returns rather than
+ * being cancelled with the request. No-op when there is nothing to render.
  */
 export const scheduleArtifactPreviewRender$ = command(
   ({ set }, args: RenderArtifactPreviewArgs | null): void => {
@@ -359,98 +272,58 @@ export const scheduleArtifactPreviewRender$ = command(
   },
 );
 
-/**
- * Backfill / retry sweep: render previews that are missing, failed during the
- * deploy-time trigger, or were produced by an older HTML renderer. Best-effort
- * per artifact — a failure leaves the row eligible for the next sweep. Returns
- * the count generated.
- */
-export const generateArtifactPreviews$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
-    const db = set(writeDb$);
-    let generated = 0;
-    let cursor: PreviewCandidateCursor | undefined;
-    const htmlPreviewEnabledByOwner = new Map<string, boolean>();
+export interface VideoArtifactPreviewRenderArgs extends RenderArtifactPreviewArgs {
+  readonly orgId: string;
+}
 
-    while (generated < PREVIEW_BATCH_SIZE) {
-      const rows = await db
-        .select({
-          id: runUploadedFiles.id,
-          runId: runUploadedFiles.runId,
-          userId: runUploadedFiles.userId,
-          orgId: runUploadedFiles.orgId,
-          url: runUploadedFiles.url,
-          contentType: runUploadedFiles.contentType,
-          createdAt: runUploadedFiles.createdAt,
-          deploymentId:
-            sql`${runUploadedFiles.metadata}->>'deploymentId'`.mapWith(
-              nullableTextDecoder,
-            ),
-        })
-        .from(runUploadedFiles)
-        .where(previewCandidateWhere(cursor))
-        .orderBy(desc(runUploadedFiles.createdAt), desc(runUploadedFiles.id))
-        .limit(PREVIEW_SCAN_PAGE_SIZE);
-      signal.throwIfAborted();
-      if (rows.length === 0) {
-        break;
-      }
-
-      for (const row of rows) {
-        cursor = { createdAt: row.createdAt, id: row.id };
-        if (!row.url) {
-          continue;
-        }
-
-        if (!isVideoContentType(row.contentType)) {
-          // HTML preview generation remains gated and is cached per owner.
-          const ownerKey = `${row.orgId ?? ""}:${row.userId}`;
-          let enabled = htmlPreviewEnabledByOwner.get(ownerKey);
-          if (enabled === undefined) {
-            enabled = await isHtmlArtifactPreviewEnabledForOwner(db, {
-              orgId: row.orgId,
-              userId: row.userId,
-            });
-            htmlPreviewEnabledByOwner.set(ownerKey, enabled);
-            signal.throwIfAborted();
-          }
-          if (!enabled) {
-            continue;
-          }
-        }
-
-        const succeeded = await tapError(
-          set(
-            renderAndStoreArtifactPreview$,
-            {
-              id: row.id,
-              runId: row.runId,
-              userId: row.userId,
-              orgId: row.orgId,
-              url: row.url,
-              contentType: row.contentType,
-              deploymentId: row.deploymentId,
-            },
-            signal,
-          ),
-          (error) => {
-            log.warn("Failed to render artifact preview", {
-              artifactId: row.id,
-              url: row.url,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          },
-        );
-        signal.throwIfAborted();
-        if (succeeded) {
-          generated++;
-        }
-        if (generated >= PREVIEW_BATCH_SIZE) {
-          break;
-        }
-      }
+const renderVideoArtifactPreviewIfEnabled$ = command(
+  async (
+    { get, set },
+    args: VideoArtifactPreviewRenderArgs,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {
+        orgId: args.orgId,
+        userId: args.userId,
+        overrides,
+      })
+    ) {
+      return false;
     }
+    return await set(renderAndStoreArtifactPreview$, args, signal);
+  },
+);
 
-    return generated;
+/**
+ * Fire-and-forget a video poster render when the owner's feature switch is
+ * enabled. The switch lookup stays in the detached task so Artifact creation
+ * never waits on poster eligibility or rendering.
+ */
+export const scheduleVideoArtifactPreviewRender$ = command(
+  ({ set }, args: VideoArtifactPreviewRenderArgs | null): void => {
+    if (!args) {
+      return;
+    }
+    waitUntil(
+      tapError(
+        set(
+          renderVideoArtifactPreviewIfEnabled$,
+          args,
+          new AbortController().signal,
+        ),
+        (error) => {
+          log.warn("Failed to render video artifact preview", {
+            artifactId: args.id,
+            url: args.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      ),
+    );
   },
 );

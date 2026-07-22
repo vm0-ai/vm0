@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
-  connectorCatalogAuthMethodIdSchema,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorGrantScopes,
@@ -87,7 +87,7 @@ type CompleteOpenIdCallbackInput = {
 type ResolveCallbackStateInput = {
   readonly origin: string;
   readonly type: string;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly storedState: StoredOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
@@ -95,7 +95,7 @@ type ResolveCallbackStateInput = {
 type ResolveOpenIdCallbackStateInput = {
   readonly origin: string;
   readonly type: string;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly storedState: StoredOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
@@ -237,7 +237,7 @@ async function verifyOpenIdForConnector(args: {
 
 function resolveConnectorWithGrant(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly grantKind: "auth-code" | "openid-auth";
   readonly origin: string;
   readonly type: string;
@@ -279,7 +279,7 @@ function resolveConnectorWithGrant(args: {
 async function claimStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
@@ -311,7 +311,7 @@ async function claimStoredOAuthStateForCallback(args: {
 async function rejectInvalidStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
@@ -342,7 +342,7 @@ function invalidStoredAuthMethodResponse(
 
 async function resolveStoredCallbackMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: string;
   readonly expectedGrantKind: "auth-code" | "openid-auth";
   readonly origin: string;
@@ -354,7 +354,7 @@ async function resolveStoredCallbackMethod(args: {
     }
   | { readonly ok: false; readonly response: Response }
 > {
-  const authMethodResult = connectorCatalogAuthMethodIdSchema.safeParse(
+  const authMethodResult = connectorAuthMethodIdSchema.safeParse(
     args.authMethod,
   );
   if (!authMethodResult.success) {
@@ -384,7 +384,7 @@ async function resolveStoredCallbackMethod(args: {
 
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
-  readonly connectorRef: ConnectorCatalogRef;
+  readonly connectorRef: ConnectorRef;
   readonly identity: CallbackIdentity;
   readonly token: ConnectorAuthProviderGrantResult;
   readonly signal: AbortSignal;
@@ -683,7 +683,7 @@ const handleOpenIdConnectorCallback$ = command(
   async (
     { get, set },
     args: {
-      readonly type: ConnectorCatalogRef;
+      readonly type: ConnectorRef;
       readonly query: ConnectorCallbackQuery;
       readonly origin: string;
       readonly snapshot: ConnectorRuntimeSnapshot;
@@ -769,7 +769,7 @@ const handleOpenIdConnectorCallback$ = command(
 );
 
 function authCodeCallbackPreflight(args: {
-  readonly type: ConnectorCatalogRef;
+  readonly type: ConnectorRef;
   readonly request: Request;
   readonly origin: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -803,7 +803,7 @@ const handleAuthCodeConnectorCallback$ = command(
   async (
     { get, set },
     args: {
-      readonly type: ConnectorCatalogRef;
+      readonly type: ConnectorRef;
       readonly query: ConnectorCallbackQuery;
       readonly request: Request;
       readonly origin: string;
