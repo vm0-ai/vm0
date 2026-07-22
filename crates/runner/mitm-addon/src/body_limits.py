@@ -25,9 +25,18 @@ DEFAULT_BODY_DECODE_LIMIT = _SMALL_BODY_LIMIT_BYTES
 REQUEST_BODY_BILLING_INSPECTION_LIMIT = STREAM_BUFFER_LIMIT
 
 # Maximum decoded chunk size fed to incremental usage parsers. This bounds
-# transient decompressor output without truncating the total response scanned by
-# bounded-state parsers.
+# transient decompressor output independently of the response-level expansion
+# budget below.
 STREAM_DECODE_CHUNK_LIMIT = 64 * 1024  # 64 KB
+
+# Initial decoded-output allowance for streaming gzip/deflate usage inspection.
+# This permits small or initially bursty compressed bodies without imposing a
+# fixed total cap on long, low-ratio streams.
+STREAM_DECODE_EXPANSION_GRACE = 5 * 1024 * 1024  # 5 MB
+
+# Maximum cumulative decoded bytes allowed per compressed byte seen by a
+# streaming gzip/deflate response session, after the grace allowance is spent.
+STREAM_DECODE_MAX_EXPANSION_RATIO = 100
 
 # Decompression cap for production model-provider and connector JSON usage
 # fallback paths. Keep this larger than STREAM_BUFFER_LIMIT so diagnostic

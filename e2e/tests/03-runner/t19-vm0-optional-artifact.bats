@@ -2,7 +2,7 @@
 
 # Test VM0 optional artifact functionality
 # This test verifies that:
-# 1. Agent runs work without --artifact flag
+# 1. Agent runs work without an artifact override
 # 2. Each run without artifact creates its own session (multi-session)
 # 3. Checkpoints are created even without artifact
 # 4. Continue works from session without artifact
@@ -46,36 +46,33 @@ teardown_file() {
     fi
 }
 
-@test "VM0 run without artifact: basic run succeeds" {
-    # This test verifies that vm0 run works without --artifact
+@test "direct run without artifact succeeds" {
+    # This test verifies that direct runs work without artifact overrides.
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
-    run $VM0_CLI run "$AGENT_NAME" --verbose "echo 'hello world' && pwd"
+    run run_compose_fixture "$AGENT_NAME" "echo 'hello world' && pwd"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "hello world"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 
-    # Should still report session and checkpoint
-    assert_output --partial "Session:"
-    assert_output --partial "Checkpoint:"
+    [ -n "$(run_fixture_field "$output" '.sessionId')" ]
+    [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
 }
 
-@test "VM0 run without artifact: each run creates its own session" {
+@test "direct runs without artifacts create separate sessions" {
     # This test verifies that each independent run without artifact
     # creates a new session (supporting multiple chat sessions per agent).
-    # To reuse a session, use "vm0 run continue <sessionId>".
+    # Session continuation is covered separately below.
 
     # Step 1: First run without artifact - creates new session
     echo "# Step 1: First run without artifact..."
-    run $VM0_CLI run "$AGENT_NAME" "echo 'first run'"
+    run run_compose_fixture "$AGENT_NAME" "echo 'first run'"
 
     assert_success
-    assert_output --partial "Session:"
-
-    SESSION_ID_1=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    SESSION_ID_1=$(run_fixture_field "$output" '.sessionId')
     echo "# First session ID: $SESSION_ID_1"
     [ -n "$SESSION_ID_1" ] || {
         echo "# Failed to extract session ID from first run"
@@ -86,12 +83,10 @@ teardown_file() {
     # Step 2: Second run without artifact with same config
     # Each run creates its own session (multi-session support)
     echo "# Step 2: Second run without artifact..."
-    run $VM0_CLI run "$AGENT_NAME" "echo 'second run'"
+    run run_compose_fixture "$AGENT_NAME" "echo 'second run'"
 
     assert_success
-    assert_output --partial "Session:"
-
-    SESSION_ID_2=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    SESSION_ID_2=$(run_fixture_field "$output" '.sessionId')
     echo "# Second session ID: $SESSION_ID_2"
     [ -n "$SESSION_ID_2" ] || {
         echo "# Failed to extract session ID from second run"
@@ -110,18 +105,16 @@ teardown_file() {
     echo "# Verified: Each run without artifact creates its own session"
 }
 
-@test "VM0 run without artifact: continue from session works" {
+@test "direct run without artifact can continue a session" {
     # This test verifies that continue works from a session
     # created without artifact
 
     # Step 1: Initial run without artifact
     echo "# Step 1: Initial run without artifact..."
-    run $VM0_CLI run "$AGENT_NAME" "echo 'initial context'"
+    run run_compose_fixture "$AGENT_NAME" "echo 'initial context'"
 
     assert_success
-    assert_output --partial "Session:"
-
-    SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
+    SESSION_ID=$(run_fixture_field "$output" '.sessionId')
     echo "# Session ID: $SESSION_ID"
     [ -n "$SESSION_ID" ] || {
         echo "# Failed to extract session ID"
@@ -131,10 +124,10 @@ teardown_file() {
 
     # Step 2: Continue from session
     echo "# Step 2: Continuing from session..."
-    run $VM0_CLI run continue "$SESSION_ID" --verbose "echo 'continued from session'"
+    run continue_run_fixture "$SESSION_ID" "echo 'continued from session'"
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "continued from session"
 
     echo "# Verified: Continue works from session without artifact"

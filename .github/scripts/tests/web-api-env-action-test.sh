@@ -174,7 +174,7 @@ assert_env_value "$success_env_file" VM0_API_BACKEND_URL "https://pr-123-api-bac
 assert_env_value "$success_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
 assert_env_value "$success_env_file" VM0_MODEL_PROXY_HOST "https://www.vm0.ai"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
-assert_env_value "$success_env_file" ONBOARDING_URL "https://staging-www.vm6.ai"
+assert_env_value "$success_env_file" ONBOARDING_URL "https://pr-123-www.vm0.test"
 assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
 assert_env_value "$success_env_file" ATOM_GRANT_PRICE "price_test_atom_grant"

@@ -1,16 +1,24 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorCatalogRefSchema,
-  type ConnectorCatalogRef,
+  connectorRefSchema,
+  type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorCatalogDisplayMetadataByRef$,
   connectorCatalogStatusByRef$,
-  connectors$,
   type ConnectorCatalogDisplayMetadata,
 } from "../external/connectors.ts";
-import { setSelectedConnectorType$ } from "../zero-page/settings/connectors.ts";
+import {
+  allConnectorTypes$,
+  connectConnectorNoAuth$,
+  connectConnectorOAuthAuthCode$,
+  getConnectorStatusConnectLaunchMode,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
+  getOnlyAvailableStatusNoAuthMethod,
+  setSelectedConnectorType$,
+  type ConnectorTypeWithStatus,
+} from "../zero-page/settings/connectors.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
@@ -25,7 +33,7 @@ import {
 } from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorRef: ConnectorCatalogRef;
+  connectorRef: ConnectorRef;
   agentId: string;
   originalUrl: string;
   callbackPrompt: ChatActionCallback["callbackPrompt"];
@@ -90,7 +98,7 @@ export function parseConnectorAuthorizeUrl(
   );
   const connectorRef = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  const parsedConnectorRef = connectorCatalogRefSchema.safeParse(connectorRef);
+  const parsedConnectorRef = connectorRefSchema.safeParse(connectorRef);
   if (!parsedConnectorRef.success || !agentId) {
     return null;
   }
@@ -136,6 +144,19 @@ export function createCustomConnectorSignals(
   descriptor: CustomConnectorActionDescriptor,
 ): CustomConnectorSignals {
   return descriptor;
+}
+
+function getDirectConnectMethod(connector: ConnectorTypeWithStatus) {
+  const launchMode = getConnectorStatusConnectLaunchMode(connector);
+  if (launchMode === "browser-auth") {
+    const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
+    return authMethod ? { kind: "browser-auth" as const, authMethod } : null;
+  }
+  if (launchMode === "no-auth") {
+    const authMethod = getOnlyAvailableStatusNoAuthMethod(connector);
+    return authMethod ? { kind: "no-auth" as const, authMethod } : null;
+  }
+  return null;
 }
 
 export function createConnectorSignals(
@@ -208,10 +229,59 @@ export function createConnectorSignals(
       return;
     }
 
-    await get(connectors$);
+    const connectorTypes = await get(allConnectorTypes$);
     signal.throwIfAborted();
-    set(activeChatConnectorActionState$, descriptor);
-    set(setSelectedConnectorType$, descriptor.connectorRef);
+    const connector = connectorTypes.find((item) => {
+      return item.type === descriptor.connectorRef;
+    });
+    if (!connector) {
+      return;
+    }
+
+    const directConnectMethod = getDirectConnectMethod(connector);
+    if (!directConnectMethod) {
+      set(activeChatConnectorActionState$, descriptor);
+      set(setSelectedConnectorType$, descriptor.connectorRef);
+      return;
+    }
+
+    const connectOptions = {
+      connectorLabel: connector.label,
+      agentId: descriptor.agentId,
+    };
+    const connectionCompleted =
+      directConnectMethod.kind === "browser-auth"
+        ? await set(
+            connectConnectorOAuthAuthCode$,
+            descriptor.connectorRef,
+            directConnectMethod.authMethod,
+            connectOptions,
+            signal,
+          )
+        : await set(
+            connectConnectorNoAuth$,
+            {
+              type: descriptor.connectorRef,
+              authMethod: directConnectMethod.authMethod,
+              options: connectOptions,
+            },
+            signal,
+          );
+    if (
+      connectionCompleted &&
+      descriptor.callbackPrompt &&
+      descriptor.threadId
+    ) {
+      await set(
+        runChatActionCallback$,
+        {
+          threadId: descriptor.threadId,
+          agentId: descriptor.agentId,
+          callbackPrompt: descriptor.callbackPrompt,
+        },
+        signal,
+      );
+    }
   });
 
   return {

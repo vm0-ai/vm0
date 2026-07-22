@@ -65,15 +65,15 @@ cleanup_tracked_test_oauth_agents() {
 
     local agent_id
     while IFS= read -r agent_id; do
-        [ -n "$agent_id" ] && $ZERO_CLI agent delete "$agent_id" -y >/dev/null 2>&1 || true
+        [ -n "$agent_id" ] && delete_e2e_agent "$agent_id" >/dev/null 2>&1 || true
     done < "$ids_file"
 }
 
 teardown_file() {
     cleanup_tracked_test_oauth_agents
 
-    $ZERO_CLI secret delete -y TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
-    $ZERO_CLI secret delete -y TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
+    delete_e2e_secret TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
+    delete_e2e_secret TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -89,7 +89,7 @@ encode_test_email() {
 }
 
 enable_test_oauth_feature_switch() {
-    zero_curl "/api/zero/feature-switches" \
+    e2e_api_curl "/api/zero/feature-switches" \
         -X POST \
         -d '{"switches":{"testOauthConnector":true}}' \
         >/dev/null
@@ -140,7 +140,7 @@ run_zero_agent_via_api() {
         --arg prompt "$prompt" \
         '{agentId: $agentId, prompt: $prompt}')
 
-    body=$(zero_curl "/api/zero/runs" -X POST -d "$payload") || {
+    body=$(e2e_api_curl "/api/zero/runs" -X POST -d "$payload") || {
         echo "# Failed to create zero run"
         return 1
     }
@@ -233,7 +233,7 @@ connect_test_oauth_via_authorization_code() {
     enable_test_oauth_feature_switch || return 1
 
     local start_body
-    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
+    start_body=$(e2e_api_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
     local authorization_url
     authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
     [ -n "$authorization_url" ] || {

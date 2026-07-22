@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 import {
   cronAggregateInsightsContract,
   cronAggregateModelStatsContract,
-  cronArtifactPreviewContract,
   cronAggregateUsageContract,
   cronCompactChatThreadSnapshotsContract,
   cronCleanupSandboxesContract,
   cronConnectorCatalogContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
+  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatMessageQueueContract,
   cronProcessUsageEventsContract,
@@ -54,6 +54,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronExecuteWorkflowAutomationsContract.execute.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronExecuteMorningBriefsContract.execute.path,
     schedule: "* * * * *",
   },
   {
@@ -115,10 +119,6 @@ const expectedVercelCrons = [
   {
     path: cronComputerUseScreenshotCleanupContract.cleanup.path,
     schedule: "30 2 * * *",
-  },
-  {
-    path: cronArtifactPreviewContract.generate.path,
-    schedule: "*/15 * * * *",
   },
   {
     path: cronAggregateModelStatsContract.aggregate.path,

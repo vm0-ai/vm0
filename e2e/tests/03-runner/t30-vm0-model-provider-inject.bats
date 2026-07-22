@@ -2,7 +2,7 @@
 
 # Test model-provider credential injection into container environment
 #
-# Verifies that an explicit runner provider type is honored by vm0 run and
+# Verifies that an explicit runner provider type is honored by direct runs and
 # injected into the container as CLAUDE_CODE_OAUTH_TOKEN.
 
 load '../../helpers/setup'
@@ -34,9 +34,9 @@ teardown() {
 
     # GitHub Actions masks sk-ant-like values in logs, so emit a non-secret marker
     # only after verifying the injected token is present inside the container.
-    run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider-type "claude-code-oauth-token" \
-        "case \"\$CLAUDE_CODE_OAUTH_TOKEN\" in \"\"|\"***\") marker=MISMATCH ;; *) marker=OK ;; esac; printf 'INJECTED_%s\n' \"\$marker\""
+    run run_compose_fixture "$AGENT_NAME" \
+        "case \"\$CLAUDE_CODE_OAUTH_TOKEN\" in \"\"|\"***\") marker=MISMATCH ;; *) marker=OK ;; esac; printf 'INJECTED_%s\n' \"\$marker\"" \
+        '{"modelProviderType":"claude-code-oauth-token"}'
 
     echo "$output"
     assert_success

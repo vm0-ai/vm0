@@ -13,11 +13,11 @@ import {
 import {
   CONNECTOR_TYPES,
   CONNECTOR_TYPE_KEYS,
-  connectorAuthMethodIdSchema,
+  connectorRegistryAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodRuntimeConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorAuthMethodIds,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorAuthCodeGrantConfig,
@@ -498,10 +498,10 @@ describe("connector auth method config", () => {
     type MultiFixtureConfig =
       (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
-    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
+    expectTypeOf<ConnectorRegistryAuthMethodId>().toEqualTypeOf<
       "oauth" | "openid" | "api-token" | "cli" | "api"
     >();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorRegistryAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
     >();
@@ -947,7 +947,8 @@ describe("connector selected auth method capability checks", () => {
     for (const [rawType, methods] of Object.entries(capabilities)) {
       const type = connectorTypeSchema.parse(rawType);
       for (const [rawAuthMethod, capability] of Object.entries(methods)) {
-        const authMethod = connectorAuthMethodIdSchema.parse(rawAuthMethod);
+        const authMethod =
+          connectorRegistryAuthMethodIdSchema.parse(rawAuthMethod);
         expect(getConnectorAuthMethod(type, authMethod)).toBeDefined();
         actualCapabilities.set(`${type}:${authMethod}`, capability);
       }

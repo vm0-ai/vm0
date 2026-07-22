@@ -33,7 +33,7 @@ setup_file() {
 
     # 2. Org-level openai-api-key provider. Chat writes only carry the selected
     # model; provider resolution comes from org model policy.
-    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+    configure_e2e_model_provider "openai-api-key" "$OPENAI_API_KEY"
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
     configure_codex_zero_model_policy \
@@ -81,7 +81,7 @@ teardown() {
 
 teardown_file() {
     if [[ -n "${AGENT_ID:-}" ]]; then
-        $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+        delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
     disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then

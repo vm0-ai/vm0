@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
-import { connectorCatalogRefSchema } from "./connector-identity";
+import { connectorRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -13,7 +13,7 @@ const connectorCheckUrlRequestSchema = z
     mode: z.literal("url"),
     method: z.string().min(1).max(16),
     url: z.string().min(1).max(8192),
-    connectorRef: connectorCatalogRefSchema.optional(),
+    connectorRef: connectorRefSchema.optional(),
     environmentName: boundedNameSchema.optional(),
   })
   .strict();
@@ -35,7 +35,7 @@ export type ConnectorCheckRequest = z.infer<typeof connectorCheckRequestSchema>;
 
 const connectorCheckIdentitySchema = z
   .object({
-    connectorRef: connectorCatalogRefSchema,
+    connectorRef: connectorRefSchema,
     label: z.string().min(1),
     visibility: z.enum(["available", "unavailable"]),
     credentialResolution: z.enum(["network-boundary", "none"]),
@@ -44,7 +44,7 @@ const connectorCheckIdentitySchema = z
 
 const connectorCheckCandidateSchema = z
   .object({
-    connectorRef: connectorCatalogRefSchema,
+    connectorRef: connectorRefSchema,
     label: z.string().min(1),
   })
   .strict();

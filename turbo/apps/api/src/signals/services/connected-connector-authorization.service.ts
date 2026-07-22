@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, or } from "drizzle-orm";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -133,7 +133,7 @@ export const authorizeConnectedConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly agentId: string | null;
-      readonly connectorType: ConnectorCatalogRef;
+      readonly connectorType: ConnectorRef;
     },
     signal: AbortSignal,
   ): Promise<AuthorizeConnectedConnectorResult> => {

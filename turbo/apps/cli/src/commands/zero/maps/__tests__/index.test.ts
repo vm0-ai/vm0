@@ -407,7 +407,6 @@ describe("zero maps command", () => {
 
   it("shows auth guidance when no token is available", async () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
-    vi.stubEnv("VM0_TOKEN", undefined);
 
     await expect(
       zeroMapsCommand.parseAsync([
@@ -421,6 +420,6 @@ describe("zero maps command", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("✗ Not authenticated");
-    expect(errors).toContain("Run: vm0 auth login");
+    expect(errors).toContain("Set ZERO_TOKEN to a valid run token");
   });
 });

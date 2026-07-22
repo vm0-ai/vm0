@@ -150,6 +150,23 @@ describe("hosted site worker", () => {
     expect(response.headers.get("Vary")).toBe("Origin");
   });
 
+  it.each([
+    "https://okou.ai",
+    "https://app.okou.ai",
+    "https://staging-app.omby.ai",
+  ])("allows product origin %s on hosted file responses", async (origin) => {
+    const response = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/", {
+        headers: { Origin: origin },
+      }),
+      env(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
   it("omits allow-origin for disallowed origins", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/", {

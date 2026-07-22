@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 # Smoke tests for the zero CLI binary entry point
-# Verifies the zero binary works independently from vm0
+# Verifies the package exposes only the supported zero binary surface.
 
 load '../../helpers/setup'
 
-@test "zero --help shows workflow, agent, org commands" {
+@test "zero --help shows supported commands" {
     run $ZERO_CLI --help
     assert_success
     assert_output --partial "workflow"
@@ -29,11 +29,6 @@ load '../../helpers/setup'
     assert_output --regexp '^[0-9]+\.[0-9]+\.[0-9]+'
 }
 
-@test "zero agent list returns successfully" {
-    run $ZERO_CLI agent list
-    assert_success
-}
-
 @test "zero automation is an unknown command" {
     run $ZERO_CLI automation list
     assert_failure
@@ -44,9 +39,4 @@ load '../../helpers/setup'
     run $ZERO_CLI schedule list
     assert_failure
     assert_output --partial "unknown command 'schedule'"
-}
-
-@test "zero workflow list returns successfully" {
-    run $ZERO_CLI workflow list
-    assert_success
 }

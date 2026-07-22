@@ -509,7 +509,7 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Follow up when the queued run starts"),
       ).toBeInTheDocument();
-      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 

@@ -174,7 +174,7 @@ class TestDoneHook:
             "auth-base:shutdown:False",
             "jsonl:shutdown",
         ]
-        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested
 
     def test_signal_after_done_does_not_start_worker(self):
         mock_executor = MagicMock()
@@ -191,7 +191,7 @@ class TestDoneHook:
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
 
         start_worker.assert_not_called()
-        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested
 
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
@@ -231,7 +231,7 @@ class TestDoneHook:
         mock_executor.shutdown.assert_called_once_with(wait=True)
         shutdown_forward_request_workers.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()
-        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested
 
         with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker") as start_worker:
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)

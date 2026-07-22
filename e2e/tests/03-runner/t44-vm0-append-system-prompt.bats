@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# Test VM0 --append-system-prompt flag (E2E happy path only)
+# Test direct-run appended system prompts (E2E happy path only)
 # This test verifies that:
-# 1. vm0 run with --append-system-prompt flag succeeds
-# 2. The agent run completes successfully (full CLI → API → runner → sandbox pipeline)
+# 1. appendSystemPrompt reaches the runner
+# 2. The agent run completes successfully (API → runner → sandbox pipeline)
 #
 # Note: mock-claude does not use the append-system-prompt value, so we cannot
 # verify the text reached Claude. The value is validated to reach the sandbox
@@ -54,13 +54,13 @@ teardown_file() {
     fi
 }
 
-@test "t44-1: run with --append-system-prompt succeeds" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --append-system-prompt "Your name is Aria." \
-        "echo hello"
+@test "t44-1: run with appended system prompt succeeds" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo hello" \
+        '{"appendSystemPrompt":"Your name is Aria."}'
 
     assert_success
-    assert_output --partial "● Bash("
+    assert_output --partial '"name":"Bash"'
     assert_output --partial "echo hello"
-    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial '"subtype":"success"'
 }

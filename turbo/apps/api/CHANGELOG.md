@@ -1,5 +1,89 @@
 # Changelog
 
+## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** expose artifact update timestamps ([#22402](https://github.com/vm0-ai/vm0/issues/22402)) ([14cb524](https://github.com/vm0-ai/vm0/commit/14cb524e721340826b70c1c4c86633febab1e386))
+* **artifacts:** generate video posters on creation ([#22387](https://github.com/vm0-ai/vm0/issues/22387)) ([309920f](https://github.com/vm0-ai/vm0/commit/309920f74b9e17780f4d479b45ed70f1d3458986))
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+    * @vm0/db bumped to 1.125.1
+
+## [1.296.1](https://github.com/vm0-ai/vm0/compare/api-v1.296.0...api-v1.296.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* preserve github connection during morning brief ([#22457](https://github.com/vm0-ai/vm0/issues/22457)) ([735e24e](https://github.com/vm0-ai/vm0/commit/735e24e0f0a92f6ba95def54183d88255930d096))
+
+## [1.296.0](https://github.com/vm0-ai/vm0/compare/api-v1.295.0...api-v1.296.0) (2026-07-21)
+
+
+### Features
+
+* **api:** compose external connector runner firewalls ([#22415](https://github.com/vm0-ai/vm0/issues/22415)) ([4f6ee12](https://github.com/vm0-ai/vm0/commit/4f6ee12d71e0df1e49ea86c1fc9d6f285712955e))
+* route canonical slack turns through chat message queue ([#22429](https://github.com/vm0-ai/vm0/issues/22429)) ([eddb41b](https://github.com/vm0-ai/vm0/commit/eddb41b47ef26e02468f6fac1926346624e75492))
+
+
+### Refactoring
+
+* reduce fallback slop in api runtime state ([#22454](https://github.com/vm0-ai/vm0/issues/22454)) ([35cc4c3](https://github.com/vm0-ai/vm0/commit/35cc4c3bd167528427cebe638f30bbd9f0588f52))
+
+
+### Performance Improvements
+
+* **api:** collapse chat read cursor updates ([#22447](https://github.com/vm0-ai/vm0/issues/22447)) ([879b3b9](https://github.com/vm0-ai/vm0/commit/879b3b910c497be52b9d6349712d4e4b13600737))
+* **api:** collapse stored connector snapshot reads ([#22432](https://github.com/vm0-ai/vm0/issues/22432)) ([ce94864](https://github.com/vm0-ai/vm0/commit/ce948647d94086c453cc38d530fb1d5bfc405a57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+    * @vm0/db bumped to 1.125.0
+
+## [1.295.0](https://github.com/vm0-ai/vm0/compare/api-v1.294.0...api-v1.295.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Refactoring
+
+* **artifacts:** remove favorites from artifact synchronization ([#22381](https://github.com/vm0-ai/vm0/issues/22381)) ([7d5f43a](https://github.com/vm0-ai/vm0/commit/7d5f43a87c7493ce1037765da86c12d925d24d7a))
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+* stop provisioning channel artifact storages ([#22393](https://github.com/vm0-ai/vm0/issues/22393)) ([fd2a259](https://github.com/vm0-ai/vm0/commit/fd2a259acbad18a82933876482f330171dac8d62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+    * @vm0/db bumped to 1.124.0
+
 ## [1.294.0](https://github.com/vm0-ai/vm0/compare/api-v1.293.0...api-v1.294.0) (2026-07-21)
 
 

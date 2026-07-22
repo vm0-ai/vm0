@@ -11,19 +11,17 @@ import { agentRunsReadRoutes } from "./routes/agent-runs-read";
 import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
-import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
-import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
-import { cronArtifactPreviewRoutes } from "./routes/cron-artifact-preview";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
+import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronMonitorChatMessageQueueRoutes } from "./routes/cron-monitor-chat-message-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -36,9 +34,10 @@ import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-u
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
-import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
+import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
+import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
@@ -69,7 +68,6 @@ import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
-import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
 import { zeroArtifactsRoutes } from "./routes/zero-artifacts";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
@@ -247,6 +245,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
   ...cronDrainEmailOutboxRoutes,
+  ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronMonitorChatMessageQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -256,16 +255,15 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
-  ...cronArtifactPreviewRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
-  ...deviceTokenRoutes,
+  ...emailMorningBriefUnsubscribeRoutes,
+  ...zeroMorningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...zeroAgentDraftRoutes,
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
-  ...zeroApiKeysRoutes,
   ...zeroArtifactsRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
@@ -394,8 +392,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,
   ...zeroUsageRunsRoutes,
-  ...chatThreadsV1Routes,
-  ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,

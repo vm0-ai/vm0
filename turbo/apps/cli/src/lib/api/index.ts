@@ -6,25 +6,6 @@ export { ApiRequestError } from "./core/client-factory";
 
 // HTTP utilities (only export what's actually used)
 
-// Domain modules - Composes
-export {
-  getComposeByName,
-  getComposeById,
-  getComposeVersion,
-} from "./domains/composes";
-
-// Domain modules - Runs
-export {
-  createRun,
-  getEvents,
-  listRuns,
-  cancelRun,
-  getRunQueue,
-} from "./domains/runs";
-
-// Domain modules - Sessions
-export { getSession, getCheckpoint } from "./domains/sessions";
-
 // Domain modules - Registry Resources
 export { getRegistryResourceDownload } from "./domains/registry-resources";
 
@@ -44,7 +25,6 @@ export {
   removeZeroOrgMember,
   leaveZeroOrg,
   deleteZeroOrg,
-  switchZeroOrg,
 } from "./domains/zero-orgs";
 
 // Domain modules - Zero Billing

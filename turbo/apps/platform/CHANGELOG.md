@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.613.4](https://github.com/vm0-ai/vm0/compare/app-v0.613.3...app-v0.613.4) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
+## [0.613.3](https://github.com/vm0-ai/vm0/compare/app-v0.613.2...app-v0.613.3) (2026-07-22)
+
+
+### Refactoring
+
+* **platform:** remove redundant post-connect agent authorization dialog ([#22467](https://github.com/vm0-ai/vm0/issues/22467)) ([c067465](https://github.com/vm0-ai/vm0/commit/c067465aab7a2643851c3a97f9fc24a36df9eeec))
+
+## [0.613.2](https://github.com/vm0-ai/vm0/compare/app-v0.613.1...app-v0.613.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **platform:** show connector page before oauth redirect ([#22464](https://github.com/vm0-ai/vm0/issues/22464)) ([55710d7](https://github.com/vm0-ai/vm0/commit/55710d7d9153b8fbc9fe15c7419699c1d6eb6881))
+
+## [0.613.1](https://github.com/vm0-ai/vm0/compare/app-v0.613.0...app-v0.613.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **platform:** close mobile sidebar after agent selection ([#22430](https://github.com/vm0-ai/vm0/issues/22430)) ([70a9ecd](https://github.com/vm0-ai/vm0/commit/70a9ecd630a5c4754b984fb6c63bba3808ac37bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+
+## [0.613.0](https://github.com/vm0-ai/vm0/compare/app-v0.612.0...app-v0.613.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+* **platform:** render structured user messages ([#22400](https://github.com/vm0-ai/vm0/issues/22400)) ([3beae6e](https://github.com/vm0-ai/vm0/commit/3beae6e088745cdfdd63da13b0303d7820d67406))
+* unify pending chat items below the composer ([#22398](https://github.com/vm0-ai/vm0/issues/22398)) ([49d86fd](https://github.com/vm0-ai/vm0/commit/49d86fdaa73a2f59206f06ed5f7beec5381b1dae))
+
+
+### Bug Fixes
+
+* **chat:** expand composer for attached template chips ([#22226](https://github.com/vm0-ai/vm0/issues/22226)) ([c71f0ec](https://github.com/vm0-ai/vm0/commit/c71f0eceb2ce29cb1b72c054d496aac709b5a5b9))
+* connect chat connector cards directly ([#22403](https://github.com/vm0-ai/vm0/issues/22403)) ([3fcec0b](https://github.com/vm0-ai/vm0/commit/3fcec0b7723f2c667537a3667a4caf82c8ab8c9f))
+
+
+### Refactoring
+
+* **artifacts:** remove favorites from artifact synchronization ([#22381](https://github.com/vm0-ai/vm0/issues/22381)) ([7d5f43a](https://github.com/vm0-ai/vm0/commit/7d5f43a87c7493ce1037765da86c12d925d24d7a))
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+
 ## [0.612.0](https://github.com/vm0-ai/vm0/compare/app-v0.611.0...app-v0.612.0) (2026-07-21)
 
 

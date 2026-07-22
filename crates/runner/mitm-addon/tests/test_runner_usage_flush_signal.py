@@ -1,6 +1,9 @@
 """Tests for runner-triggered usage flush hooks."""
 
 import json
+import multiprocessing
+import os
+import signal
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -23,6 +26,7 @@ _RUNNER_USAGE_STATE_ID = "runner-state"
 _DEFAULT_USAGE_FLUSH_REQUEST_ID = "request-1"
 _DEFAULT_JSONL_FLUSH_REQUEST_ID = "jsonl-request-1"
 _REQUESTED_AT_MS = 1_770_000_000_000
+_PROCESS_EXIT_TIMEOUT_SECONDS = 5
 
 
 def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
@@ -32,6 +36,50 @@ def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
 def record_stranded_runner_usage_flush_signal() -> None:
     with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker"):
         runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+
+
+def _run_signal_while_legacy_request_flag_lock_is_held(tmp_path: str) -> None:
+    class _LockBackedLegacyRequestFlag:
+        def __init__(self) -> None:
+            self.lock = threading.Lock()
+
+        def set(self) -> None:
+            with self.lock:
+                pass
+
+    output_dir = Path(tmp_path)
+    pending_path = output_dir / "usage-pending"
+    request_path = output_dir / "usage-flush-request"
+    usage.set_pending_path(str(pending_path), usage_state_id=_RUNNER_USAGE_STATE_ID)
+    request_path.write_text(
+        json.dumps(
+            {
+                "usageStateId": _RUNNER_USAGE_STATE_ID,
+                "flushRequestId": _DEFAULT_USAGE_FLUSH_REQUEST_ID,
+                "requestedAtMs": _REQUESTED_AT_MS,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    legacy_request_flag = _LockBackedLegacyRequestFlag()
+    with (
+        patch.object(
+            runner_flush_lifecycle,
+            "_usage_flush_requested",
+            legacy_request_flag,
+        ),
+        patch.object(runner_flush_lifecycle, "_usage_flush_phase", "draining"),
+    ):
+        signal.signal(
+            runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
+            runner_flush_lifecycle.handle_runner_usage_flush_signal,
+        )
+
+        with legacy_request_flag.lock:
+            os.kill(os.getpid(), runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL)
+
+        runner_flush_lifecycle.drain_and_close()
 
 
 @dataclass(frozen=True)
@@ -115,6 +163,39 @@ class _InstrumentedFlushOwnerLock:
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
+    def test_real_signal_during_request_consumption_drains_acknowledgement(
+        self, tmp_path: Path
+    ) -> None:
+        process = multiprocessing.get_context("spawn").Process(
+            target=_run_signal_while_legacy_request_flag_lock_is_held,
+            args=(str(tmp_path),),
+            name="runner-flush-signal-reentry-regression",
+        )
+        process.start()
+        completed = False
+        try:
+            process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+            completed = not process.is_alive()
+        finally:
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+
+        assert completed, "runner flush signal handler deadlocked"
+        assert process.exitcode == 0
+        assert process.pid is not None
+        state = json.loads((tmp_path / "usage-pending").read_text(encoding="utf-8"))
+        assert state == {
+            "pid": process.pid,
+            "usageStateId": _RUNNER_USAGE_STATE_ID,
+            "updatedAtMs": state["updatedAtMs"],
+            "flows": 0,
+            "buffered": 0,
+            "reports": 0,
+            "flushRequestId": _DEFAULT_USAGE_FLUSH_REQUEST_ID,
+        }
+        assert isinstance(state["updatedAtMs"], int)
+
     def test_signal_handler_flushes_usage_in_background(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
@@ -185,7 +266,7 @@ class TestRunnerUsageFlushSignal:
             assert state["flushRequestId"] == "jsonl-request-1"
             assert state["path"] == str(log_path)
             assert state["pending"] == 0
-            assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+            assert not runner_flush_lifecycle._usage_flush_requested
 
         mock_executor = MagicMock()
         mock_executor.shutdown.side_effect = shutdown_usage_executor
@@ -232,7 +313,7 @@ class TestRunnerUsageFlushSignal:
             "auth-base:shutdown:False",
             "jsonl:shutdown",
         ]
-        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested
 
     def test_signal_handler_writes_snapshot_when_flush_fails(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
@@ -757,7 +838,7 @@ class TestRunnerUsageFlushSignal:
 
         runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
 
-        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested
 
     def test_failed_signal_flush_releases_worker_for_later_signal(self, mitm_ctx):
         second_flush_completed = threading.Event()

@@ -26,7 +26,7 @@ describe("withErrorHandler", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should show vm0 auth guidance for UNAUTHORIZED without ZERO_TOKEN", async () => {
+  it("should show ZERO_TOKEN setup guidance when it is missing", async () => {
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
     });
@@ -39,8 +39,7 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Not authenticated");
-    expect(output).toContain("vm0 auth login");
-    expect(output).not.toContain("ZERO_TOKEN");
+    expect(output).toContain("Set ZERO_TOKEN to a valid run token");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -60,7 +59,6 @@ describe("withErrorHandler", () => {
       .join("\n");
     expect(output).toContain("Authentication failed");
     expect(output).toContain("ZERO_TOKEN is invalid or expired");
-    expect(output).not.toContain("vm0 auth login");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

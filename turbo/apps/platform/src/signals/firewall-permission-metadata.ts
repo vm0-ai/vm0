@@ -1,9 +1,9 @@
 import { computed, type Computed } from "ccstate";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { CONNECTOR_REF_MAX_LENGTH } from "@vm0/api-contracts/contracts/connector-ref";
 import { accept } from "../lib/accept.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { connectorsReloadVersion$ } from "./external/connectors.ts";
@@ -18,7 +18,7 @@ export function firewallPermissionMetadataByConnector(
 ): Computed<Promise<PublicConnectorCatalogPermissionDetail | null>> {
   const key = params.connectorRef;
   return computed(async (get) => {
-    if (key.length === 0 || key.length > CONNECTOR_REF_MAX_LENGTH) {
+    if (!connectorRefSchema.safeParse(key).success) {
       return null;
     }
     get(connectorsReloadVersion$);

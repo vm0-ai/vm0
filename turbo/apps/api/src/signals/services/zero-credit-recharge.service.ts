@@ -2,7 +2,7 @@ import type StripeSDK from "stripe";
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { eq, sql } from "drizzle-orm";
+import { eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -124,7 +124,7 @@ export const triggerAutoRecharge$ = command(
       ? sql`EXISTS (
           SELECT 1
           FROM ${orgPlanEntitlements}
-          WHERE ${orgPlanEntitlements.orgId} = ${orgId}
+          WHERE ${eq(orgPlanEntitlements.orgId, orgId)}
             AND ${orgPlanEntitlements.autoRechargeAllowed} = true
         )`
       : sql`${orgMetadata.tier} IN ('pro', 'team', 'custom')`;
@@ -140,14 +140,14 @@ export const triggerAutoRecharge$ = command(
       .update(orgMetadata)
       .set({ autoRechargePendingAt: nowDate(), updatedAt: nowDate() })
       .where(
-        sql`${orgMetadata.orgId} = ${orgId}
+        sql`${eq(orgMetadata.orgId, orgId)}
             AND ${orgMetadata.autoRechargeEnabled} = true
             AND ${planEligibility}
-            AND ${orgMetadata.stripeCustomerId} IS NOT NULL
-            AND ${orgMetadata.autoRechargeThreshold} IS NOT NULL
-            AND ${orgMetadata.autoRechargeAmount} IS NOT NULL
-            AND ${orgMetadata.credits} <= ${orgMetadata.autoRechargeThreshold}
-            AND (${orgMetadata.autoRechargePendingAt} IS NULL
+            AND ${isNotNull(orgMetadata.stripeCustomerId)}
+            AND ${isNotNull(orgMetadata.autoRechargeThreshold)}
+            AND ${isNotNull(orgMetadata.autoRechargeAmount)}
+            AND ${lte(orgMetadata.credits, orgMetadata.autoRechargeThreshold)}
+            AND (${isNull(orgMetadata.autoRechargePendingAt)}
                  OR ${orgMetadata.autoRechargePendingAt} < now() - make_interval(mins => ${STALE_THRESHOLD_MINUTES}))`,
       )
       .returning({

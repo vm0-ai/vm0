@@ -397,6 +397,7 @@ export function TiptapWorkflowComposer({
   const setWorkflowNames = useSet(composer.setWorkflowNames$);
   const setEventHandlers = useSet(composer.setEventHandlers$);
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
+  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
   const containerRefSignal = singleLineOnMobile
     ? composer.setCompactContainerRef$
     : autoFocus
@@ -458,11 +459,22 @@ export function TiptapWorkflowComposer({
           }
         }}
       />
-      <div
-        className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}
-      >
+      <div className="relative">
         <WorkflowComposerPlaceholder composer={composer} sending={sending} />
-        <div ref={setContainerRef} />
+        <div
+          // The template chip is 32px tall with 6px bottom spacing. Reserve
+          // those 38px above the input instead of letting the chip consume it.
+          className={
+            hasTemplateAttachment
+              ? singleLineOnMobile
+                ? "min-h-[82px] md:min-h-[134px] [&_.ProseMirror]:min-h-[82px] md:[&_.ProseMirror]:min-h-[134px]"
+                : "min-h-[134px] [&_.ProseMirror]:min-h-[134px]"
+              : singleLineOnMobile
+                ? "min-h-[44px] md:min-h-[96px]"
+                : "min-h-[96px]"
+          }
+          ref={setContainerRef}
+        />
       </div>
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu

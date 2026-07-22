@@ -760,7 +760,7 @@ async function latestSessionForThread(
     // never resumes an automated one. The 'web' filter (before .limit) is
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
-    // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
+    // (zero-goal-continuation.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
     .where(
       and(
@@ -882,21 +882,21 @@ async function activeRunExistsForThread(
     sql`
       SELECT ${zeroRuns.id} AS "id"
       FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
+      WHERE ${eq(zeroRuns.chatThreadId, threadId)}
         AND ${agentRuns.status} IN ('queued', 'pending', 'running')
         AND (
           NOT EXISTS (
             SELECT 1
             FROM ${agentRunCallbacks}
-            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
               AND ${agentRunCallbacks.internalKind} = 'chat'
               AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
           )
           OR EXISTS (
             SELECT 1
             FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            WHERE ${eq(chatMessages.runId, zeroRuns.id)}
               AND ${chatMessages.role} = 'user'
           )
         )
@@ -3297,7 +3297,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-export const sendNormalMessage$ = command(
+const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,

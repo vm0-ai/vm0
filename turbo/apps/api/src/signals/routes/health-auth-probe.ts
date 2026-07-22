@@ -67,32 +67,11 @@ const probe$ = command(
 
     const result = await set(requiredAuthContext$, options, signal);
     if ("status" in result) {
-      // PAT-only routes: rewrite 401 message to match requireApiKeyAuth phrasing
-      if (
-        options.accept?.length === 1 &&
-        options.accept[0] === "pat" &&
-        result.status === 401
-      ) {
-        return {
-          status: 401 as const,
-          body: {
-            error: { message: "API key required", code: "UNAUTHORIZED" },
-          },
-        };
-      }
       return result;
     }
 
     // Post-filter: reject token types not in the accept list
     if (options.accept && !options.accept.includes(result.tokenType)) {
-      if (options.accept.length === 1 && options.accept[0] === "pat") {
-        return {
-          status: 401 as const,
-          body: {
-            error: { message: "API key required", code: "UNAUTHORIZED" },
-          },
-        };
-      }
       return {
         status: 403 as const,
         body: {

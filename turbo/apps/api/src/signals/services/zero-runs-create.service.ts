@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
@@ -58,7 +58,6 @@ type ZeroRunOrigin =
   | "zero_integration";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
-  | "chat_thread_v1_send"
   | "workflow_slash_command";
 
 const DISALLOWED_TOOLS = [
@@ -807,7 +806,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
+  readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
@@ -880,7 +879,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
+  readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
@@ -935,7 +934,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
+  readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }

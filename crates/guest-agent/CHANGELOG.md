@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.53.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.20...guest-agent-v0.53.21) (2026-07-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** set Luna reasoning effort to max ([#22394](https://github.com/vm0-ai/vm0/issues/22394)) ([badea1e](https://github.com/vm0-ai/vm0/commit/badea1ee91f45ddcf83c1d51e18a0df3e1f20b33))
+
+
+### Performance Improvements
+
+* align session-history sidecar capacity with resume limit ([#22392](https://github.com/vm0-ai/vm0/issues/22392)) ([6eee854](https://github.com/vm0-ai/vm0/commit/6eee8548718c69c4d46afe9b1ddcd8c7babcca59))
+
 ## [0.53.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.19...guest-agent-v0.53.20) (2026-07-21)
 
 

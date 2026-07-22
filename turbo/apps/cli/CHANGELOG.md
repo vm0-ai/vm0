@@ -1,5 +1,53 @@
 # Changelog
 
+## [9.245.2](https://github.com/vm0-ai/vm0/compare/cli-v9.245.1...cli-v9.245.2) (2026-07-22)
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+
+## [9.245.1](https://github.com/vm0-ai/vm0/compare/cli-v9.245.0...cli-v9.245.1) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+
+## [9.245.0](https://github.com/vm0-ai/vm0/compare/cli-v9.244.8...cli-v9.245.0) (2026-07-21)
+
+
+### Features
+
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Refactoring
+
+* **cli:** remove vm0 run command ([#22384](https://github.com/vm0-ai/vm0/issues/22384)) ([dcbb8fa](https://github.com/vm0-ai/vm0/commit/dcbb8fa01cafecf559efdcd71a0e445a6278c78d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+
 ## [9.244.8](https://github.com/vm0-ai/vm0/compare/cli-v9.244.7...cli-v9.244.8) (2026-07-21)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/cli",
-  "version": "9.244.8",
+  "version": "9.245.2",
   "private": true,
   "description": "Zero command-line interface for vm0",
   "repository": {
@@ -10,7 +10,6 @@
   },
   "type": "module",
   "bin": {
-    "vm0": "./dist/index.js",
     "zero": "./dist/zero.js"
   },
   "engines": {
@@ -21,7 +20,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; this.bin[\"vm0\"]=\"index.js\"; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
     "dev": "tsup --watch",
     "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/zero-startup.bench.test.ts",
     "test": "vitest run",
@@ -46,7 +45,6 @@
     "@vm0/typescript-config": "workspace:*",
     "chalk": "^5.6.2",
     "commander": "^14.0.0",
-    "dotenv": "^17.2.1",
     "eslint": "^9.34.0",
     "json": "^11.0.0",
     "msw": "^2.13.2",

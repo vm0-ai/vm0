@@ -284,6 +284,14 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
+  zeroMorningBriefContract,
+  type ZeroMorningBriefContract,
+} from "./zero-morning-brief";
+export {
+  emailMorningBriefUnsubscribeContract,
+  type EmailMorningBriefUnsubscribeContract,
+} from "./email-morning-brief-unsubscribe";
+export {
   connectorsTypeCallbackContract,
   type ConnectorsTypeCallbackContract,
 } from "./connectors-type-callback";
@@ -454,6 +462,7 @@ export {
   cronCleanupSandboxesContract,
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
+  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
@@ -690,51 +699,6 @@ export {
   type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
-  chatThreadV1GetContract,
-  chatThreadV1MessagesContract,
-  chatThreadV1SendContract,
-  chatThreadV1Schema,
-  chatMessageV1Schema,
-  type ChatThreadV1GetContract,
-  type ChatThreadV1MessagesContract,
-  type ChatThreadV1SendContract,
-  type ChatThreadV1,
-  type ChatMessageV1,
-} from "./chat-threads-v1";
-export {
-  deviceTokenContract,
-  bb0DeviceConfirmContract,
-  bb0DeviceCodeSchema,
-  bleSessionNonceSchema,
-  pollTokenSchema,
-  createDeviceTokenRequestSchema,
-  createDeviceTokenResponseSchema,
-  pollDeviceTokenRequestSchema,
-  pollDeviceTokenPendingResponseSchema,
-  pollDeviceTokenApprovedResponseSchema,
-  pollDeviceTokenExpiredResponseSchema,
-  pollDeviceTokenInvalidResponseSchema,
-  confirmBb0DeviceRequestSchema,
-  confirmBb0DeviceResponseSchema,
-  type DeviceTokenContract,
-  type Bb0DeviceConfirmContract,
-  type CreateDeviceTokenRequest,
-  type CreateDeviceTokenResponse,
-  type PollDeviceTokenRequest,
-  type PollDeviceTokenPendingResponse,
-  type PollDeviceTokenApprovedResponse,
-  type PollDeviceTokenExpiredResponse,
-  type PollDeviceTokenInvalidResponse,
-  type ConfirmBb0DeviceRequest,
-  type ConfirmBb0DeviceResponse,
-} from "./device-token";
-export {
-  audioTranscriptionsV1Contract,
-  audioTranscriptionV1Schema,
-  type AudioTranscriptionsV1Contract,
-  type AudioTranscriptionV1,
-} from "./audio-transcriptions-v1";
-export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
@@ -822,7 +786,7 @@ export {
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
+  type ConnectorRegistryAuthMethodId,
   type ConnectorEnvBindings,
   type ConnectorEnvBindingValue,
 } from "@vm0/connectors/connectors";
@@ -1073,7 +1037,6 @@ export {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
-  type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
@@ -1113,14 +1076,11 @@ export {
   type ConnectorCheckRequest,
   type ZeroConnectorCheckContract,
 } from "./zero-connector-check";
-export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
-  CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
-  CONNECTOR_CATALOG_REF_MAX_LENGTH,
-  connectorCatalogAuthMethodIdSchema,
-  connectorCatalogRefSchema,
-  type ConnectorCatalogAuthMethodId,
-  type ConnectorCatalogRef,
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorRef,
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
@@ -1219,20 +1179,6 @@ export {
   type ZeroVariablesContract,
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
-export {
-  apiKeysContract,
-  apiKeysByIdContract,
-  apiKeyItemSchema,
-  apiKeyListResponseSchema,
-  createApiKeyRequestSchema,
-  createApiKeyResponseSchema,
-  type ApiKeysContract,
-  type ApiKeysByIdContract,
-  type ApiKeyItem,
-  type ApiKeyListResponse,
-  type CreateApiKeyRequest,
-  type CreateApiKeyResponse,
-} from "./api-keys";
 export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,

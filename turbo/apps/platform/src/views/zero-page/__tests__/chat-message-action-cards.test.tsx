@@ -1,5 +1,9 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroConnectorManualGrantContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
+  zeroConnectorOauthStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -373,6 +377,210 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(2);
   });
 
+  it("connects a single OAuth connector directly and resumes the chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-direct-oauth`;
+    const callbackPrompt = "Re-check GitHub access, then continue";
+    const connectorUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const sentPrompts: string[] = [];
+    let connected = false;
+    let authorized = false;
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.data.connectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "github",
+            label: "GitHub",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            connection: connected
+              ? {
+                  authMethod: "oauth",
+                  externalUsername: "octocat",
+                  externalEmail: null,
+                  reconnectReason: null,
+                }
+              : null,
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["github"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          authMethod: "oauth",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        connected = true;
+        authorized = true;
+        context.mocks.data.connectors([
+          connectedConnector({
+            type: "github",
+            authMethod: "oauth",
+            externalUsername: "octocat",
+            updatedAt: "2026-01-01T00:00:01Z",
+          }),
+        ]);
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/github/authorize",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Direct OAuth connector",
+      chatMessages: [
+        {
+          id: "msg-user-direct-oauth",
+          role: "user",
+          content: "Use GitHub",
+          runId: "run-direct-oauth",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-direct-oauth",
+          role: "assistant",
+          content: connectorUrl,
+          runId: "run-direct-oauth",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", connectorCard));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "GitHub" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+    });
+  });
+
+  it("enables a single no-auth connector directly", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-direct-no-auth`;
+    const connectorUrl = `https://app.vm0.ai/connectors/stripe/authorize?agentId=${AGENT_ID}`;
+    let connected = false;
+    let authorized = false;
+    let connectCalls = 0;
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "stripe",
+            label: "Public Stripe",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            authMethods: [
+              {
+                id: "api",
+                label: "Public catalog",
+                description: null,
+                grantKind: "none",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+          }),
+        ],
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["stripe"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCalls += 1;
+        expect(params.type).toBe("stripe");
+        expect(body).toStrictEqual({
+          authMethod: "api",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        connected = true;
+        authorized = true;
+        return respond(
+          200,
+          connectedConnector({ type: "stripe", authMethod: "api" }),
+        );
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Direct no-auth connector",
+      chatMessages: [
+        {
+          id: "msg-user-direct-no-auth",
+          role: "user",
+          content: "Use public Stripe data",
+          runId: "run-direct-no-auth",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-direct-no-auth",
+          role: "assistant",
+          content: connectorUrl,
+          runId: "run-direct-no-auth",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", connectorCard));
+
+    await waitFor(() => {
+      expect(connectCalls).toBe(1);
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("reloads the shared mail draft after deleting it", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000018";
@@ -645,7 +853,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       for (const card of connectorCards) {
-        expect(within(card).getByText("Connected")).toBeInTheDocument();
+        expect(within(card).getByText("Authorize")).toBeInTheDocument();
       }
     });
 
@@ -971,7 +1179,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 
@@ -1141,7 +1349,7 @@ describe("chat message action cards", () => {
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 

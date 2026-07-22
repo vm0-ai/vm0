@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import {
   zeroWorkflowQueueContract,
   type WorkflowQueueResponse,
@@ -38,7 +38,7 @@ function queueResponse(
         id: EVENT_ID_1,
         automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: "Webhook event second",
+        triggerBrief: null,
         createdAt: "2026-07-10T01:01:00Z",
       },
       {
@@ -65,17 +65,50 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function openAutomationsPanel(): Promise<void> {
+async function setupWorkflowQueuePage({
+  openSidebar = false,
+}: {
+  openSidebar?: boolean;
+} = {}): Promise<void> {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Workflow queue thread",
-    historyMessages: [
+    chatMessages: [
       {
+        id: "msg-workflow-running-user",
         role: "user",
         content: "Automation run",
+        runId: "run-workflow-1",
         createdAt: "2026-07-10T00:59:00Z",
       },
+      {
+        id: "msg-workflow-running-assistant",
+        role: "assistant",
+        content: null,
+        runId: "run-workflow-1",
+        createdAt: "2026-07-10T00:59:01Z",
+      },
+      {
+        id: "msg-queued-user",
+        role: "user",
+        content: "Review the queued customer reply",
+        runId: undefined,
+        createdAt: "2026-07-10T01:00:00Z",
+      },
+      {
+        id: "msg-active-goal",
+        role: "assistant",
+        content: null,
+        runId: undefined,
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: "Keep customer follow-ups under four hours",
+        },
+        createdAt: "2026-07-10T01:00:01Z",
+      },
     ],
+    activeRunIds: ["run-workflow-1"],
   });
   setMockWorkflowAutomations([
     createMockWorkflowAutomation({
@@ -90,6 +123,9 @@ async function openAutomationsPanel(): Promise<void> {
     path: `/chats/${THREAD_ID}`,
   });
 
+  if (!openSidebar) {
+    return;
+  }
   await waitFor(() => {
     expect(buttonByLabel("Automations")).toBeInTheDocument();
   });
@@ -100,23 +136,47 @@ async function openAutomationsPanel(): Promise<void> {
 }
 
 describe("workflow queue panel", () => {
-  it("shows the pending badge, running event, and FIFO pending list", async () => {
+  it("shows messages, automation events, and the active goal in one bottom queue", async () => {
     context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
       return respond(200, queueResponse());
     });
 
-    await openAutomationsPanel();
+    await setupWorkflowQueuePage();
 
     await waitFor(() => {
-      const badges = screen.getAllByTestId("workflow-queue-badge");
-      expect(badges.length).toBeGreaterThan(0);
-      expect(badges[0]).toHaveTextContent("2");
-      expect(screen.getByTestId("workflow-queue-section")).toBeInTheDocument();
-      expect(screen.getByText("2 waiting")).toBeInTheDocument();
-      expect(screen.getByText("Webhook event busy")).toBeInTheDocument();
-      expect(screen.getByText("Webhook event second")).toBeInTheDocument();
+      expect(
+        screen.getByText("1 message and 2 events waiting"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
+
+    const goalRow = screen.getByLabelText("Active goal");
+    const list = goalRow.closest('[role="list"]');
+    expect(list).not.toBeNull();
+    const rows = within(list as HTMLElement).getAllByRole("listitem");
+    expect(
+      rows.map((row) => {
+        return row.getAttribute("aria-label");
+      }),
+    ).toStrictEqual([
+      "Queued message",
+      "Pending automation event",
+      "Pending automation event",
+      "Active goal",
+    ]);
+    expect(
+      screen.queryByTestId("workflow-queue-badge"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByLabel("Automations"));
+    const sidebar = await screen.findByTestId("automation-sidebar");
+    expect(
+      within(sidebar).queryByTestId("workflow-queue-section"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText("Webhook event busy"),
+    ).not.toBeInTheDocument();
   });
 
   it("skips a single pending event", async () => {
@@ -136,22 +196,20 @@ describe("workflow queue panel", () => {
       },
     );
 
-    await openAutomationsPanel();
+    await setupWorkflowQueuePage();
     await waitFor(() => {
-      expect(screen.getByText("Webhook event second")).toBeInTheDocument();
+      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
     });
 
     const skipButtons = queryAllByRoleFast("button").filter((candidate) => {
-      return candidate.getAttribute("aria-label") === "Skip queued event";
+      return candidate.getAttribute("aria-label") === "Skip automation event";
     });
     expect(skipButtons).toHaveLength(2);
     click(skipButtons[0]!);
 
     await waitFor(() => {
       expect(skippedEventId).toBe(EVENT_ID_1);
-      expect(
-        screen.queryByText("Webhook event second"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Nightly sync")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
   });
@@ -174,15 +232,15 @@ describe("workflow queue panel", () => {
       );
     });
 
-    await openAutomationsPanel();
+    await setupWorkflowQueuePage();
     await waitFor(() => {
-      expect(buttonByLabel("Pause queue")).toBeInTheDocument();
+      expect(buttonByLabel("Pause automation events")).toBeInTheDocument();
     });
-    click(buttonByLabel("Pause queue"));
+    click(buttonByLabel("Pause automation events"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Queue paused/)).toBeInTheDocument();
-      expect(buttonByLabel("Resume queue")).toBeInTheDocument();
+      expect(screen.getByText(/Automation events paused/)).toBeInTheDocument();
+      expect(buttonByLabel("Resume automation events")).toBeInTheDocument();
     });
   });
 });

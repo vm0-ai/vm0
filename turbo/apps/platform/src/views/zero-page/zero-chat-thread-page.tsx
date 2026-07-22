@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
+  useLoadableState,
   useLastLoadable,
   useLastResolved,
   useLoadable,
@@ -34,7 +35,6 @@ import {
   IconPhoto,
   IconChartLine,
   IconPlayerPlay,
-  IconPlayerPause,
   IconVideo,
   IconCopy,
   IconDeviceDesktop,
@@ -88,6 +88,9 @@ import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   GenerationTemplateRequest,
+  ResolvedAttachFile,
+  UserMessageDocument,
+  UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ChatThreadWorkflowAutomation,
@@ -108,8 +111,10 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -273,6 +278,7 @@ import {
   useZeroChatComposer,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
+  type WorkflowEventComposerItem,
 } from "./zero-chat-composer.tsx";
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
@@ -374,8 +380,6 @@ export function AutomationMenuButton({
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const queue = useLastResolved(thread.workflowQueue.queue$);
-  const pendingCount = queue?.pending.length ?? 0;
   const open = openThreadId === thread.threadId;
 
   // Show the opener when the thread has a workflow automation.
@@ -391,7 +395,7 @@ export function AutomationMenuButton({
           <button
             type="button"
             className={cn(
-              "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
@@ -404,14 +408,6 @@ export function AutomationMenuButton({
             }}
           >
             <IconClock size={18} />
-            {pendingCount > 0 ? (
-              <span
-                className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium leading-none text-primary-foreground"
-                data-testid="workflow-queue-badge"
-              >
-                {pendingCount > 99 ? "99+" : pendingCount}
-              </span>
-            ) : null}
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open automations</TooltipContent>
@@ -2293,123 +2289,6 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderWorkflowQueueSection({ thread }: { thread: ChatThreadSignals }) {
-  const queue = useLastResolved(thread.workflowQueue.queue$);
-  const pageSignal = useGet(pageSignal$);
-  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
-  const clearQueue = useSet(thread.workflowQueue.clear$);
-  const setPaused = useSet(thread.workflowQueue.setPaused$);
-
-  if (!queue) {
-    return null;
-  }
-  const paused = queue.pausedAt !== null;
-  if (!queue.running && queue.pending.length === 0 && !paused) {
-    return null;
-  }
-
-  return (
-    <section
-      className="rounded-lg border border-border/60 bg-muted/20 p-3"
-      aria-label="Workflow queue"
-      data-testid="workflow-queue-section"
-    >
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1 text-xs font-medium text-foreground">
-          Queue
-          {queue.pending.length > 0 ? (
-            <span className="ml-1 text-muted-foreground">
-              {queue.pending.length} waiting
-            </span>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-          aria-label={paused ? "Resume queue" : "Pause queue"}
-          onClick={() => {
-            detach(setPaused(!paused, pageSignal), Reason.DomCallback);
-          }}
-        >
-          {paused ? (
-            <IconPlayerPlay size={13} />
-          ) : (
-            <IconPlayerPause size={13} />
-          )}
-          {paused ? "Resume" : "Pause"}
-        </button>
-        {queue.pending.length > 0 ? (
-          <button
-            type="button"
-            className="inline-flex h-6 items-center rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-destructive"
-            onClick={() => {
-              detach(clearQueue(pageSignal), Reason.DomCallback);
-            }}
-          >
-            Clear queue ({queue.pending.length})
-          </button>
-        ) : null}
-      </div>
-
-      {paused ? (
-        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-          Queue paused{queue.pauseReason ? `: ${queue.pauseReason}` : ""}. New
-          events keep queueing and run after you resume.
-        </div>
-      ) : null}
-
-      {queue.running ? (
-        <div className="mt-2 flex items-start gap-2 text-xs">
-          <span className="mt-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-foreground">
-              {queue.running.triggerBrief ?? "Running automation"}
-            </div>
-            <div className="text-muted-foreground">
-              {queue.running.status === "running" ? "Running" : "Starting"}
-              {" · "}
-              {formatHeaderWorkflowAutomationRun(queue.running.createdAt)}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {queue.pending.length > 0 ? (
-        <ul className="mt-2 grid gap-1">
-          {queue.pending.map((event, index) => {
-            return (
-              <li
-                key={event.id}
-                className="flex items-center gap-2 rounded-md px-1 py-0.5 text-xs hover:bg-muted/40"
-              >
-                <span className="w-4 shrink-0 text-right text-muted-foreground">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-foreground">
-                  {event.triggerBrief ?? event.triggerSource}
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {formatHeaderWorkflowAutomationRun(event.createdAt)}
-                </span>
-                <button
-                  type="button"
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-destructive"
-                  aria-label="Skip queued event"
-                  onClick={() => {
-                    detach(skipEvent(event.id, pageSignal), Reason.DomCallback);
-                  }}
-                >
-                  <IconX size={12} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
 function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
@@ -2455,21 +2334,16 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
             No automations yet.
           </div>
         ) : (
-          <div className="grid gap-6">
-            <HeaderWorkflowQueueSection thread={thread} />
-            {workflowAutomations.length > 0 ? (
-              <div className="grid gap-3">
-                {workflowAutomations.map((automation) => {
-                  return (
-                    <HeaderWorkflowAutomationCard
-                      key={automation.id}
-                      automation={automation}
-                      headerAutomations={thread.headerAutomations}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
+          <div className="grid gap-3">
+            {workflowAutomations.map((automation) => {
+              return (
+                <HeaderWorkflowAutomationCard
+                  key={automation.id}
+                  automation={automation}
+                  headerAutomations={thread.headerAutomations}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -2864,7 +2738,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const threadSettledInServer =
     useLastResolved(thread.threadSettledInServer$) ?? false;
   const hasMessages = useLastResolved(thread.hasMessages$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasMessages !== false) {
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  if (
+    !renderedGroupsReady ||
+    !threadSettledInServer ||
+    hasMessages !== false ||
+    hasNewMessagesState === "loading"
+  ) {
     return null;
   }
   return (
@@ -3627,7 +3507,10 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
     threadSettledInServerLoadable,
     renderedGroupsReadyLoadable,
   );
-  const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
+  const hasMessages = useLastResolved(thread.hasMessages$);
+  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  const skeletonVisible =
+    hasMessages === false && hasNewMessagesState === "loading";
   if (!skeletonVisible || sessionError) {
     return null;
   }
@@ -3974,6 +3857,59 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
+function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
+  const queue = useLastResolved(thread.workflowQueue.queue$);
+  const workflowAutomations =
+    useLastResolved(thread.headerAutomations.automations$) ?? [];
+  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
+  const clearEvents = useSet(thread.workflowQueue.clear$);
+  const setEventsPaused = useSet(thread.workflowQueue.setPaused$);
+  const pageSignal = useGet(pageSignal$);
+  const pendingEventIds = new Set(
+    queue?.pending.map((event) => {
+      return event.id;
+    }) ?? [],
+  );
+  const workflowLabelsByAutomationId = new Map(
+    workflowAutomations.map((automation) => {
+      return [
+        automation.id,
+        automation.workflowDisplayName?.trim() || automation.workflowName,
+      ] as const;
+    }),
+  );
+  const workflowEventItems: WorkflowEventComposerItem[] =
+    queue?.pending.map((event) => {
+      return {
+        id: event.id,
+        text:
+          event.triggerBrief?.trim() ||
+          workflowLabelsByAutomationId.get(event.automationId) ||
+          "Automation event",
+      };
+    }) ?? [];
+
+  const onRemoveWorkflowEvent = (id: string) => {
+    if (!pendingEventIds.has(id)) {
+      return;
+    }
+    detach(skipEvent(id, pageSignal), Reason.DomCallback);
+  };
+
+  return {
+    workflowEventItems,
+    onRemoveWorkflowEvent,
+    workflowEventsPaused: queue ? queue.pausedAt !== null : false,
+    workflowEventsPauseReason: queue?.pauseReason,
+    onSetWorkflowEventsPaused: (paused: boolean) => {
+      detach(setEventsPaused(paused, pageSignal), Reason.DomCallback);
+    },
+    onClearWorkflowEvents: () => {
+      detach(clearEvents(pageSignal), Reason.DomCallback);
+    },
+  };
+}
+
 // The thread's active goal (folded from goal-state markers, no separate
 // poll) plus its cancel handler. Cancelling pauses the goal through the goal API;
 // the backend then emits a goal_event marker, so the row folds away.
@@ -4262,6 +4198,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     thread,
     queuedMessageItems,
   );
+  const workflowEvents = useChatComposerWorkflowEvents(thread);
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
@@ -4320,6 +4257,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     submitBlocker: submitBlockerProps,
     queuedItems,
     onRemoveQueuedItem,
+    ...workflowEvents,
     activeGoal,
     onCancelActiveGoal,
   };
@@ -4879,7 +4817,7 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Connected" : "Connect"}
+        {complete ? "Authorize" : "Connect"}
       </button>
     </div>
   );
@@ -6370,6 +6308,148 @@ function UserMessageGenerationTemplate({
   );
 }
 
+const STRUCTURED_REFERENCE_CHIP_CLASS =
+  "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
+  "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
+  "text-xs font-medium";
+
+function StructuredTemplateIcon({
+  type,
+}: {
+  type: GenerationTemplateRequest["type"];
+}) {
+  if (type === "video") {
+    return <IconVideo size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "illustration") {
+    return <IconPhoto size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "workflow") {
+    return <IconRoute size={14} stroke={1.8} className="shrink-0" />;
+  }
+  if (type === "website") {
+    return <IconWorld size={14} stroke={1.8} className="shrink-0" />;
+  }
+  return <IconPresentation size={14} stroke={1.8} className="shrink-0" />;
+}
+
+function StructuredTemplateReference({
+  part,
+}: {
+  part: Extract<UserMessagePart, { type: "template" }>;
+}) {
+  const typeLabel = generationTemplateTypeLabel(part.template);
+  return (
+    <span
+      aria-label={`Message template ${part.titleSnapshot}`}
+      className={STRUCTURED_REFERENCE_CHIP_CLASS}
+      title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
+    >
+      <StructuredTemplateIcon type={part.template.type} />
+      <span className="shrink-0 text-muted-foreground">
+        {typeLabel ?? part.template.type}
+      </span>
+      <span className="text-muted-foreground">·</span>
+      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+    </span>
+  );
+}
+
+function StructuredFileReference({
+  part,
+  attachment,
+}: {
+  part: Extract<UserMessagePart, { type: "file" }>;
+  attachment: ResolvedAttachFile | undefined;
+}) {
+  if (attachment) {
+    return (
+      <span className="inline-flex align-middle">
+        <FileAttachmentChip
+          contentType={part.contentType}
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-label={`File ${part.filenameSnapshot}`}
+      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
+      title={part.filenameSnapshot}
+    >
+      <FilePreviewIcon
+        filename={part.filenameSnapshot}
+        contentType={part.contentType}
+        size="sm"
+        className="shrink-0"
+        testId="structured-message-file-icon"
+      />
+      <span className="min-w-0 truncate">{part.filenameSnapshot}</span>
+    </span>
+  );
+}
+
+function StructuredUserMessagePart({
+  part,
+  attachments,
+}: {
+  part: UserMessagePart;
+  attachments: readonly ResolvedAttachFile[];
+}): ReactNode {
+  if (part.type === "text") {
+    return <span>{part.text}</span>;
+  }
+  if (part.type === "chat_thread") {
+    return (
+      <Link
+        pathname={ROUTES.chat}
+        options={{ pathParams: { threadId: part.threadId } }}
+        aria-label={`Open chat ${part.titleSnapshot}`}
+        className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+        title={part.titleSnapshot}
+      >
+        <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </Link>
+    );
+  }
+  if (part.type === "template") {
+    return <StructuredTemplateReference part={part} />;
+  }
+  const attachment = attachments.find((candidate) => {
+    return candidate.id === part.fileId;
+  });
+  return <StructuredFileReference part={part} attachment={attachment} />;
+}
+
+function StructuredUserMessage({
+  document,
+  attachments,
+}: {
+  document: UserMessageDocument;
+  attachments: readonly ResolvedAttachFile[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  return (
+    <div data-structured-user-message="" className="whitespace-pre-wrap">
+      {document.parts.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        return (
+          <StructuredUserMessagePart
+            key={`${identity}:${String(occurrence)}`}
+            part={part}
+            attachments={attachments}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function WorkflowUserMessage({
   message,
 }: {
@@ -6482,6 +6562,13 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
+  const featureSwitches = useGet(featureSwitch$);
+  const structuredPromptEnabled =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  const structuredPrompt =
+    structuredPromptEnabled && message.role === "user"
+      ? message.structuredPrompt
+      : undefined;
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
@@ -6540,25 +6627,38 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <UserMessageGenerationTemplate
-            generationTemplate={message.generationTemplate}
-          />
-          <UserMessageAttachments
-            attachments={allAttachments}
-            onImageClick={openLightbox}
-          />
-          {bodyBlocks.length > 0 && (
+          {structuredPrompt ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
               <div className="px-4 py-3">
-                <BodyContentBlocks
-                  blocks={bodyBlocks}
-                  openLightbox={openLightbox}
-                  hardBreaks
-                  escapeMarkdownHtml
-                  markdownMediaPreview={false}
+                <StructuredUserMessage
+                  document={structuredPrompt}
+                  attachments={message.attachFiles ?? []}
                 />
               </div>
             </div>
+          ) : (
+            <>
+              <UserMessageGenerationTemplate
+                generationTemplate={message.generationTemplate}
+              />
+              <UserMessageAttachments
+                attachments={allAttachments}
+                onImageClick={openLightbox}
+              />
+              {bodyBlocks.length > 0 && (
+                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+                  <div className="px-4 py-3">
+                    <BodyContentBlocks
+                      blocks={bodyBlocks}
+                      openLightbox={openLightbox}
+                      hardBreaks
+                      escapeMarkdownHtml
+                      markdownMediaPreview={false}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <UserMessageActions
             canCopy={canCopy}

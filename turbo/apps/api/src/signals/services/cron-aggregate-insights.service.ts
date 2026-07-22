@@ -1,4 +1,4 @@
-import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -9,7 +9,18 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  countDistinct,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+  sql,
+} from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
@@ -47,7 +58,7 @@ type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
 
 interface NetworkInsightRow {
   readonly runId: string;
-  readonly firewallName: ConnectorCatalogRef;
+  readonly firewallName: ConnectorRef;
   readonly firewallPermission: string;
   readonly action: NetworkInsightAction;
 }
@@ -250,7 +261,7 @@ interface CurrentOrgMemberScope {
 }
 
 type PermissionLabelResolver = (
-  firewallName: ConnectorCatalogRef,
+  firewallName: ConnectorRef,
   permissionName: string,
 ) => Promise<string>;
 
@@ -778,7 +789,7 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql`MAX(${agentRuns.completedAt})`
+        lastActivity: max(agentRuns.completedAt)
           .mapWith(agentRuns.completedAt)
           .as("last_activity"),
       })
@@ -794,7 +805,7 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql`MAX(${usageEvent.processedAt})`
+        lastActivity: max(usageEvent.processedAt)
           .mapWith(usageEvent.processedAt)
           .as("last_activity"),
       })
@@ -883,7 +894,7 @@ async function queryCompletedRunCounts(
       agentName: sql`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`
         .mapWith(pgTextDecoder)
         .as("agent_name"),
-      runs: sql`COUNT(DISTINCT ${agentRuns.id})::int`
+      runs: sql`${countDistinct(agentRuns.id)}::int`
         .mapWith(pgIntegerDecoder)
         .as("runs"),
     })
@@ -918,7 +929,7 @@ async function queryUsageEventCreditRows(
   dayEnd: Date,
   signal: AbortSignal,
 ): Promise<LedgerCreditRow[]> {
-  const isRunless = sql`${usageEvent.runId} IS NULL`;
+  const isRunless = isNull(usageEvent.runId);
   const rows = await db
     .select({
       orgId: usageEvent.orgId,
@@ -1299,7 +1310,7 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql`MAX(${insightsDaily.updatedAt})`
+        lastUpdated: max(insightsDaily.updatedAt)
           .mapWith(insightsDaily.updatedAt)
           .as("last_updated"),
       })

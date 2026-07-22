@@ -1987,6 +1987,36 @@ function createMessageSemanticSignals(
   };
 }
 
+function createMessageSyncSignals(hasMessages$: Computed<Promise<boolean>>) {
+  const initialSync = Promise.withResolvers<void>();
+  const internalMessageSyncPromise$ = state(initialSync.promise);
+  const hasNewMessages$ = computed(async (get): Promise<boolean> => {
+    await get(internalMessageSyncPromise$);
+    return await get(hasMessages$);
+  });
+  const trackMessageSync$ = command(({ set }, promise: Promise<void>): void => {
+    set(internalMessageSyncPromise$, promise);
+    initialSync.resolve(undefined);
+  });
+  const settleMessageSync$ = command(({ set }): Promise<void> => {
+    const promise = Promise.resolve();
+    set(trackMessageSync$, promise);
+    return promise;
+  });
+  return { hasNewMessages$, trackMessageSync$, settleMessageSync$ };
+}
+
+function createTrackedMessageSyncCommand(
+  runSyncRemoteMessages$: Command<Promise<void>, [AbortSignal]>,
+  trackMessageSync$: Command<void, [Promise<void>]>,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(({ set }, signal: AbortSignal): Promise<void> => {
+    const promise = set(runSyncRemoteMessages$, signal);
+    set(trackMessageSync$, promise);
+    return promise;
+  });
+}
+
 function isServerProjectionEntry(entry: ChatMessageProjectionEntry): boolean {
   return entry.source === "server";
 }
@@ -2054,6 +2084,33 @@ function latestAssistantTextCreatedAtFromRaw(
     }
   }
   return undefined;
+}
+
+function createLatestMessageSignals(
+  rawMessages$: Computed<ChatMessageProjectionEntry[]>,
+) {
+  const latestChatMessageId$ = computed((get): Promise<string | undefined> => {
+    return Promise.resolve(latestServerMessageId(get(rawMessages$)));
+  });
+  const latestRunFinishCreatedAt$ = computed(
+    (get): Promise<string | undefined> => {
+      return Promise.resolve(
+        latestRunFinishCreatedAtFromRaw(get(rawMessages$)),
+      );
+    },
+  );
+  const latestAssistantTextCreatedAt$ = computed(
+    (get): Promise<string | undefined> => {
+      return Promise.resolve(
+        latestAssistantTextCreatedAtFromRaw(get(rawMessages$)),
+      );
+    },
+  );
+  return {
+    latestChatMessageId$,
+    latestRunFinishCreatedAt$,
+    latestAssistantTextCreatedAt$,
+  };
 }
 
 function createSyncRemoteMessagesCommand({
@@ -2377,6 +2434,7 @@ function createPagedMessages(
     semanticMessages$,
     messageRunIndicatorState$,
   );
+  const messageSync = createMessageSyncSignals(semanticSignals.hasMessages$);
 
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling a separate resource. Reads rawMessages$
@@ -2419,32 +2477,19 @@ function createPagedMessages(
     },
   );
 
-  const latestChatMessageId$ = computed((get): Promise<string | undefined> => {
-    const raw = get(rawMessages$);
-    return Promise.resolve(latestServerMessageId(raw));
-  });
+  const latestMessageSignals = createLatestMessageSignals(rawMessages$);
 
-  const latestRunFinishCreatedAt$ = computed(
-    (get): Promise<string | undefined> => {
-      const raw = get(rawMessages$);
-      return Promise.resolve(latestRunFinishCreatedAtFromRaw(raw));
-    },
-  );
-
-  const latestAssistantTextCreatedAt$ = computed(
-    (get): Promise<string | undefined> => {
-      const raw = get(rawMessages$);
-      return Promise.resolve(latestAssistantTextCreatedAtFromRaw(raw));
-    },
-  );
-
-  const syncRemoteMessages$ = createSyncRemoteMessagesCommand({
+  const runSyncRemoteMessages$ = createSyncRemoteMessagesCommand({
     threadId,
     persistentMessages$: persistentChatMessages$,
     hasReachedOldestMessage$,
     writePersistentMessages$,
     dataSource,
   });
+  const syncRemoteMessages$ = createTrackedMessageSyncCommand(
+    runSyncRemoteMessages$,
+    messageSync.trackMessageSync$,
+  );
   const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
     threadId,
     dataSource,
@@ -2454,11 +2499,10 @@ function createPagedMessages(
   return {
     initializeIndexedDbMessages$,
     writePersistentMessages$,
-    latestChatMessageId$,
-    latestRunFinishCreatedAt$,
-    latestAssistantTextCreatedAt$,
+    ...latestMessageSignals,
     appendOptimisticMessage$,
     ...semanticSignals,
+    ...messageSync,
     ...renderedMessages,
     rawMessages$,
     messageRunIndicatorState$,
@@ -2611,6 +2655,7 @@ interface RunTrackingDeps {
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
+  settleMessageSync$: Command<Promise<void>, []>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
@@ -2801,6 +2846,58 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
+function createOnSubscribedCommand({
+  threadId,
+  reloadThread$,
+  remoteThreadDetail$,
+  latestChatMessageId$,
+  syncRemoteMessages$,
+  settleMessageSync$,
+  fetchUpdatedMessage$,
+  reloadArtifacts$,
+  markThreadReadIfNeeded$,
+}: Pick<
+  RunTrackingDeps,
+  | "threadId"
+  | "reloadThread$"
+  | "remoteThreadDetail$"
+  | "latestChatMessageId$"
+  | "syncRemoteMessages$"
+  | "settleMessageSync$"
+  | "fetchUpdatedMessage$"
+  | "reloadArtifacts$"
+> & {
+  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
+}): Command<Promise<void>, [AbortSignal]> {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    L.debug("subscribeChatThread$ catchup start", { threadId });
+    set(reloadThread$);
+    set(reloadArtifacts$);
+    set(reloadWorkflowData$);
+    await Promise.all([
+      get(remoteThreadDetail$),
+      get(optimisticCreateUnsettled$)
+        ? set(settleMessageSync$)
+        : set(syncRemoteMessages$, signal),
+    ]);
+    signal.throwIfAborted();
+    const latestMessageId = await get(latestChatMessageId$);
+    signal.throwIfAborted();
+    if (latestMessageId) {
+      // In-place message updates, such as completed marker followups, are not
+      // returned by a sinceId fetch. Refresh the latest loaded row after the
+      // realtime callbacks are registered so update events racing with this
+      // fetch are queued instead of missed.
+      await set(fetchUpdatedMessage$, { messageId: latestMessageId }, signal);
+    }
+    await set(markThreadReadIfNeeded$, signal);
+    signal.throwIfAborted();
+    L.debug("subscribeChatThread$ catchup done", { threadId });
+  });
+}
+
 function createRunTracking({
   threadId,
   reloadThread$,
@@ -2809,6 +2906,7 @@ function createRunTracking({
   latestRunFinishCreatedAt$,
   initializeIndexedDbMessages$,
   syncRemoteMessages$,
+  settleMessageSync$,
   fetchUpdatedMessage$,
   reloadArtifacts$,
   autoScroll$,
@@ -2817,8 +2915,6 @@ function createRunTracking({
 }: RunTrackingDeps) {
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const resetChatSubscriptionSignal$ = resetSignalScope();
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -2828,30 +2924,16 @@ function createRunTracking({
     dataSource,
   });
 
-  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
-    L.debug("subscribeChatThread$ catchup start", { threadId });
-    set(reloadThread$);
-    set(reloadArtifacts$);
-    set(reloadWorkflowData$);
-    await Promise.all([
-      get(remoteThreadDetail$),
-      get(optimisticCreateUnsettled$)
-        ? Promise.resolve()
-        : set(syncRemoteMessages$, sig),
-    ]);
-    sig.throwIfAborted();
-    const latestMessageId = await get(latestChatMessageId$);
-    sig.throwIfAborted();
-    if (latestMessageId) {
-      // In-place message updates, such as completed marker followups, are not
-      // returned by a sinceId fetch. Refresh the latest loaded row after the
-      // realtime callbacks are registered so update events racing with this
-      // fetch are queued instead of missed.
-      await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
-    }
-    await set(markThreadReadIfNeeded$, sig);
-    sig.throwIfAborted();
-    L.debug("subscribeChatThread$ catchup done", { threadId });
+  const onSubscribed$ = createOnSubscribedCommand({
+    threadId,
+    reloadThread$,
+    remoteThreadDetail$,
+    latestChatMessageId$,
+    syncRemoteMessages$,
+    settleMessageSync$,
+    fetchUpdatedMessage$,
+    reloadArtifacts$,
+    markThreadReadIfNeeded$,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
@@ -4075,6 +4157,7 @@ function publicChatThreadMessageSignals(
     messageImageGroups$: messages.messageImageGroups$,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
     hasMessages$: messages.hasMessages$,
+    hasNewMessages$: messages.hasNewMessages$,
     hasQueuedMessages$: messages.hasQueuedMessages$,
     queuedMessageItems$: messages.queuedMessageItems$,
     emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
@@ -4159,6 +4242,7 @@ export function createChatThreadSignals(
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
+    settleMessageSync$: messages.settleMessageSync$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,

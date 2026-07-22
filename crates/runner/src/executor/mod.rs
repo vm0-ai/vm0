@@ -166,6 +166,7 @@ pub struct ExecutorConfig {
     pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
     pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,
+    pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }

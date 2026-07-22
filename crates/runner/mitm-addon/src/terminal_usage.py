@@ -2,14 +2,12 @@
 
 from mitmproxy import http
 
-import deferred_callbacks
 import flow_metadata_keys as metadata_keys
 import response_streaming
 import usage
 
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
-_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 
 
 def track_flow_if_needed(
@@ -45,34 +43,7 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
-def schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
-    if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
-        return
-    flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
-    deferred_callbacks.call_soon(_trim_model_websocket_messages, flow)
-
-
 def release_model_websocket_terminal_state(flow: http.HTTPFlow) -> None:
-    _clear_model_websocket_messages(flow)
     if response_streaming.is_model_websocket_usage_enabled(flow):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         response_streaming.release_model_websocket_usage_state(flow)
-
-
-def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
-    return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
-
-
-def _trim_model_websocket_messages(flow: http.HTTPFlow) -> None:
-    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
-    if not _is_model_websocket_usage_flow(flow):
-        return
-    if not flow.websocket or not flow.websocket.messages:
-        return
-    flow.websocket.messages[:] = flow.websocket.messages[-1:]
-
-
-def _clear_model_websocket_messages(flow: http.HTTPFlow) -> None:
-    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
-    if _is_model_websocket_usage_flow(flow) and flow.websocket:
-        flow.websocket.messages.clear()

@@ -7,7 +7,7 @@ import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
@@ -405,10 +405,11 @@ export async function restoreWorkflowQueueEventAndPause(
 }
 
 /**
- * Chat threads that have pending queue events and an unpaused queue — the
- * safety-net sweep re-drains these in case a terminal-run drain was missed.
+ * Chat threads with pending work — the safety-net sweep re-drains these in
+ * case admission or a terminal-run callback missed its immediate drain.
+ * User messages remain drainable while workflow automation intake is paused.
  */
-export async function pendingWorkflowQueueThreadIds(
+export async function pendingChatThreadQueueThreadIds(
   db: Db,
   limit: number,
 ): Promise<readonly string[]> {
@@ -418,8 +419,16 @@ export async function pendingWorkflowQueueThreadIds(
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessageQueue.chatThreadId))
     .where(
       and(
-        eq(chatMessageQueue.itemType, "workflow_event"),
-        isNull(chatThreads.queuePausedAt),
+        or(
+          inArray(chatMessageQueue.itemType, [
+            "user_message",
+            "slack_user_message",
+          ]),
+          and(
+            eq(chatMessageQueue.itemType, "workflow_event"),
+            isNull(chatThreads.queuePausedAt),
+          ),
+        ),
       ),
     )
     .limit(limit);

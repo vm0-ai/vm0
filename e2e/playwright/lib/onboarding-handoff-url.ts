@@ -21,11 +21,15 @@ function withExpectedPreviewAppOrigin(
   appOrigin: string,
   onboardingOrigin: string,
 ): URL | null {
+  const appUrl = new URL(appOrigin);
+  if (url.origin === appUrl.origin) {
+    return null;
+  }
+
   if (url.origin !== previewAppFallbackOrigin(onboardingOrigin)) {
     return null;
   }
 
-  const appUrl = new URL(appOrigin);
   const rewrittenUrl = new URL(url.toString());
   rewrittenUrl.protocol = appUrl.protocol;
   rewrittenUrl.host = appUrl.host;
@@ -34,14 +38,18 @@ function withExpectedPreviewAppOrigin(
 
 function previewAppFallbackOrigin(onboardingOrigin: string): string | null {
   const onboardingUrl = new URL(onboardingOrigin);
-  const previewDomainMatch = /^(?:pr-\d+|staging)-www\.(.+)$/.exec(
+  const previewDomainMatch = /^(pr-\d+|staging)-www\.(.+)$/.exec(
     onboardingUrl.hostname,
   );
   if (!previewDomainMatch) {
     return null;
   }
 
-  onboardingUrl.hostname = `staging-app.${previewDomainMatch[1]}`;
+  const [, previewRef, previewDomain] = previewDomainMatch;
+  onboardingUrl.hostname =
+    previewRef?.startsWith("pr-") && previewDomain === "omby.ai"
+      ? "staging-app.vm6.ai"
+      : `staging-app.${previewDomain}`;
   return onboardingUrl.origin;
 }
 

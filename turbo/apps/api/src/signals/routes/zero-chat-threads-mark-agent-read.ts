@@ -1,18 +1,18 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { chatThreadMarkAgentReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { type Db, writeDb$ } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { latestRunFinishMessageSubquery } from "../services/zero-chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(
@@ -24,35 +24,6 @@ function forbidden(message: string) {
     status: 403 as const,
     body: { error: { message, code: "FORBIDDEN" } },
   };
-}
-
-function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        isNotNull(chatMessages.runLifecycleEvent),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-}
-
-function latestRunFinishCreatedAtSql() {
-  return sql`(
-    SELECT ${chatMessages.createdAt}
-    FROM ${chatMessages}
-    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
-      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
-    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
-    LIMIT 1
-  )`;
 }
 
 const markAgentReadInner$ = command(
@@ -81,45 +52,50 @@ const markAgentReadInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const updatedThreadIds = await writeDb.transaction(async (tx) => {
-      const lastRunFinish = lastRunFinishMessageSubquery(tx);
-      const unreadRows = await tx
-        .select({
-          threadId: chatThreads.id,
-        })
-        .from(chatThreads)
-        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-        .leftJoinLateral(lastRunFinish, sql`true`)
-        .where(
-          and(
-            eq(chatThreads.userId, auth.userId),
-            eq(zeroAgents.orgId, auth.orgId),
-            eq(chatThreads.agentComposeId, bodyResult.data.agentId),
-            isNotNull(lastRunFinish.id),
-            or(
-              isNull(chatThreads.lastReadAt),
-              sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
-            )!,
+    const latestRunFinish = latestRunFinishMessageSubquery(
+      writeDb,
+      chatThreads.id,
+    );
+    const unreadThreads = writeDb
+      .select({
+        threadId: chatThreads.id,
+        latestRunFinishAt: latestRunFinish.createdAt,
+      })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .crossJoinLateral(latestRunFinish)
+      .where(
+        and(
+          eq(chatThreads.userId, auth.userId),
+          eq(zeroAgents.orgId, auth.orgId),
+          eq(chatThreads.agentComposeId, bodyResult.data.agentId),
+          or(
+            isNull(chatThreads.lastReadAt),
+            gt(latestRunFinish.createdAt, chatThreads.lastReadAt),
           ),
-        );
-
-      for (const row of unreadRows) {
-        await tx
-          .update(chatThreads)
-          .set({ lastReadAt: latestRunFinishCreatedAtSql() })
-          .where(
-            and(
-              eq(chatThreads.id, row.threadId),
-              eq(chatThreads.userId, auth.userId),
-            ),
-          );
-      }
-
-      return unreadRows.map((row) => {
-        return row.threadId;
-      });
-    });
+        ),
+      )
+      .as("unread_threads");
+    const updatedRows = await writeDb
+      .update(chatThreads)
+      .set({ lastReadAt: unreadThreads.latestRunFinishAt })
+      .from(unreadThreads)
+      .where(
+        and(
+          eq(chatThreads.id, unreadThreads.threadId),
+          eq(chatThreads.userId, auth.userId),
+          eq(chatThreads.agentComposeId, bodyResult.data.agentId),
+          or(
+            isNull(chatThreads.lastReadAt),
+            gt(unreadThreads.latestRunFinishAt, chatThreads.lastReadAt),
+          ),
+        ),
+      )
+      .returning({ threadId: chatThreads.id });
     signal.throwIfAborted();
+    const updatedThreadIds = updatedRows.map((row) => {
+      return row.threadId;
+    });
 
     if (updatedThreadIds.length > 0) {
       await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {

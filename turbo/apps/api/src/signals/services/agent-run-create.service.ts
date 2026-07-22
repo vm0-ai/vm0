@@ -10,8 +10,8 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
-  ConnectorCatalogAuthMethodId,
-  ConnectorCatalogRef,
+  ConnectorAuthMethodId,
+  ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   getDefaultModel,
@@ -110,6 +110,7 @@ import { env, optionalEnv } from "../../lib/env";
 import {
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
+  zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import {
@@ -174,7 +175,6 @@ import {
 } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialSecretReadCondition,
-  connectorCredentialVariableReadCondition,
   resolveConnectorCredentialAccess,
   type ConnectorCredentialAccess,
   type ConnectorCredentialReadGroup,
@@ -375,13 +375,13 @@ interface ResolvedCompose {
 type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
   readonly source: ConnectorScopeSource;
 }
 
 interface ExplicitConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
+  readonly allowedConnectorTypes: readonly ConnectorRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
@@ -624,7 +624,7 @@ interface ConnectorRuntimeContext {
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
     | undefined;
-  readonly connectorTypes: readonly ConnectorCatalogRef[];
+  readonly connectorTypes: readonly ConnectorRef[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -787,7 +787,7 @@ function buildLegacySystemSkillVolumes(
 }
 
 function buildExternalConnectorSkillVolumes(
-  connectorTypes: readonly ConnectorCatalogRef[],
+  connectorTypes: readonly ConnectorRef[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
@@ -835,7 +835,7 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   framework: SupportedFramework,
@@ -1511,8 +1511,12 @@ function modelProviderEnvironment(args: {
 }): ResolvedModelProviderEnvironment {
   const firewall = getModelProviderFirewall(args.type);
   const hasFirewallAuth = firewall !== undefined;
-  if (!hasFirewallAuth && args.secretValue === undefined) {
-    throw new Error(`Missing eager secret for model provider ${args.type}`);
+  let secrets: Record<string, string> = {};
+  if (!hasFirewallAuth) {
+    if (args.secretValue === undefined) {
+      throw new Error(`Missing eager secret for model provider ${args.type}`);
+    }
+    secrets = { [args.config.secretName]: args.secretValue };
   }
   const envBindings =
     getModelProviderEnvBindings(args.type) ?? args.config.envBindings;
@@ -1539,9 +1543,7 @@ function modelProviderEnvironment(args: {
     id: args.id,
     type: args.type,
     environment,
-    secrets: hasFirewallAuth
-      ? {}
-      : { [args.config.secretName]: args.secretValue ?? "" },
+    secrets,
     selectedModel: model,
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
       args.config.secretName,
@@ -2204,9 +2206,9 @@ function filterSecretConnectorMetadataMap(args: {
 
 interface StoredConnectorRuntimeRow {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly connectorStateRevision: bigint;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly needsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
@@ -2224,11 +2226,23 @@ interface StoredConnectorRuntimeRowCandidate {
   readonly userId: string;
 }
 
+interface StoredConnectorMaterializationSnapshotRow extends StoredConnectorRuntimeRowCandidate {
+  readonly secretNames: readonly string[];
+  readonly variableValues: Readonly<Record<string, string>>;
+}
+
+const storedConnectorSecretNamesDecoder = zodDriverValueDecoder(
+  z.array(z.string()),
+);
+const storedConnectorVariableValuesDecoder = zodDriverValueDecoder(
+  z.record(z.string(), z.string()),
+);
+
 interface ConnectorEnvBindingSet {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorCatalogRef;
+  readonly connectorType: ConnectorRef;
   readonly connectorStateRevision: bigint;
-  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
 
@@ -2240,7 +2254,6 @@ interface StoredConnectorRequirements {
 interface StoredConnectorMaterializationPlan {
   readonly allowedConnectorRows: readonly StoredConnectorRuntimeRow[];
   readonly bindingSets: readonly ConnectorEnvBindingSet[];
-  readonly requirements: StoredConnectorRequirements;
 }
 
 interface StoredConnectorSecretRow {
@@ -2251,15 +2264,9 @@ interface StoredConnectorEncryptedSecretRow extends StoredConnectorSecretRow {
   readonly encryptedValue: string;
 }
 
-interface StoredConnectorVariableRow {
-  readonly name: string;
-  readonly value: string;
-}
-
 interface StoredConnectorMaterializationSnapshot {
   readonly allowedConnectorRows: readonly StoredConnectorRuntimeRow[];
   readonly bindingSets: readonly ConnectorEnvBindingSet[];
-  readonly requirements: StoredConnectorRequirements;
   readonly secretRows: readonly StoredConnectorSecretRow[];
   readonly variableValues: Record<string, string>;
 }
@@ -2285,7 +2292,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined,
+  allowedConnectorTypes: readonly ConnectorRef[] | undefined,
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2355,31 +2362,51 @@ function connectorEnvBindingSets(
   });
 }
 
-function collectStoredConnectorRequirements(
+function storedConnectorCredentialNames(args: {
+  readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
+  readonly kind: "secret" | "variable";
+  readonly names?: ReadonlySet<string>;
+}): readonly string[] {
+  return [
+    ...new Set(
+      args.runtimeBindings.flatMap(({ source }) => {
+        if (
+          (args.kind === "secret" && source.kind !== "connector-secret") ||
+          (args.kind === "variable" && source.kind !== "connector-variable") ||
+          (args.names !== undefined && !args.names.has(source.name))
+        ) {
+          return [];
+        }
+        return [source.name];
+      }),
+    ),
+  ];
+}
+
+function storedConnectorRequirementsByConnector(
   bindingSets: readonly ConnectorEnvBindingSet[],
-): StoredConnectorRequirements {
-  const secretNames = new Set<string>();
-  const variableNames = new Set<string>();
-
-  for (const { runtimeBindings } of bindingSets) {
-    for (const { source } of runtimeBindings) {
-      switch (source.kind) {
-        case "connector-secret": {
-          secretNames.add(source.name);
-          break;
-        }
-        case "connector-variable": {
-          variableNames.add(source.name);
-          break;
-        }
-        case "platform-secret": {
-          break;
-        }
-      }
-    }
-  }
-
-  return { secretNames, variableNames };
+): ReadonlyMap<string, StoredConnectorRequirements> {
+  return new Map(
+    bindingSets.map((bindingSet) => {
+      return [
+        bindingSet.access.connectorId,
+        {
+          secretNames: new Set(
+            storedConnectorCredentialNames({
+              runtimeBindings: bindingSet.runtimeBindings,
+              kind: "secret",
+            }),
+          ),
+          variableNames: new Set(
+            storedConnectorCredentialNames({
+              runtimeBindings: bindingSet.runtimeBindings,
+              kind: "variable",
+            }),
+          ),
+        },
+      ] as const;
+    }),
+  );
 }
 
 function storedConnectorCredentialReadGroups(args: {
@@ -2388,21 +2415,11 @@ function storedConnectorCredentialReadGroups(args: {
   readonly names?: ReadonlySet<string>;
 }): readonly ConnectorCredentialReadGroup[] {
   return args.bindingSets.flatMap((bindingSet) => {
-    const names = [
-      ...new Set(
-        bindingSet.runtimeBindings.flatMap(({ source }) => {
-          if (
-            (args.kind === "secret" && source.kind !== "connector-secret") ||
-            (args.kind === "variable" &&
-              source.kind !== "connector-variable") ||
-            (args.names !== undefined && !args.names.has(source.name))
-          ) {
-            return [];
-          }
-          return [source.name];
-        }),
-      ),
-    ];
+    const names = storedConnectorCredentialNames({
+      runtimeBindings: bindingSet.runtimeBindings,
+      kind: args.kind,
+      ...(args.names === undefined ? {} : { names: args.names }),
+    });
     return names.length === 0
       ? []
       : [
@@ -2507,58 +2524,6 @@ async function mapWithBoundedConcurrency<TInput, TOutput>(
   });
 }
 
-async function loadStoredConnectorSecretRows(
-  db: Db,
-  args: {
-    readonly bindingSets: readonly ConnectorEnvBindingSet[];
-    readonly timingDimensions: ApiDispatchTimingDimensions;
-  },
-  timing?: ApiDispatchTimingCollector,
-): Promise<readonly StoredConnectorSecretRow[]> {
-  const groups = storedConnectorCredentialReadGroups({
-    bindingSets: args.bindingSets,
-    kind: "secret",
-  });
-  if (groups.length === 0) {
-    return [];
-  }
-
-  const startedAt = now();
-  const rows = await onRejection(
-    db
-      .select({
-        name: secretsTable.name,
-      })
-      .from(secretsTable)
-      .where(
-        connectorCredentialSecretReadCondition({
-          db,
-          groups,
-        }),
-      ),
-    () => {
-      timing?.recordElapsed(
-        "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-        "nested",
-        startedAt,
-        now(),
-        args.timingDimensions,
-      );
-    },
-  );
-  timing?.recordElapsed(
-    "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-    "nested",
-    startedAt,
-    now(),
-    {
-      ...args.timingDimensions,
-      stored_connector_secret_count_bucket: countBucket(rows.length),
-    },
-  );
-  return rows;
-}
-
 async function loadStoredConnectorEncryptedSecretRows(
   db: Db,
   args: {
@@ -2629,54 +2594,6 @@ async function decryptStoredConnectorSecretRows(
       ...args.timingDimensions,
       stored_connector_secret_count_bucket: countBucket(rows.length),
     },
-  );
-}
-
-async function loadStoredConnectorVariableRows(
-  db: Db,
-  args: {
-    readonly bindingSets: readonly ConnectorEnvBindingSet[];
-    readonly timingDimensions: ApiDispatchTimingDimensions;
-  },
-  timing?: ApiDispatchTimingCollector,
-): Promise<readonly StoredConnectorVariableRow[]> {
-  const groups = storedConnectorCredentialReadGroups({
-    bindingSets: args.bindingSets,
-    kind: "variable",
-  });
-  if (groups.length === 0) {
-    return [];
-  }
-
-  return await measureApiDispatchTiming(
-    timing,
-    "api_dispatch_prepare_context_load_stored_connector_variable_rows",
-    "nested",
-    async () => {
-      return await db
-        .select({
-          name: variables.name,
-          value: variables.value,
-        })
-        .from(variables)
-        .where(
-          connectorCredentialVariableReadCondition({
-            db,
-            groups,
-          }),
-        );
-    },
-    args.timingDimensions,
-  );
-}
-
-function storedConnectorVariablesFromRows(
-  rows: readonly StoredConnectorVariableRow[],
-): Record<string, string> {
-  return Object.fromEntries(
-    rows.map((row) => {
-      return [row.name, row.value];
-    }),
   );
 }
 
@@ -2996,7 +2913,7 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -3024,66 +2941,141 @@ async function loadStoredConnectorMaterializationPlan(
   return snapshot;
 }
 
-async function loadStoredConnectorRows(
-  tx: DbTransaction,
+function storedConnectorSnapshotQuery(
+  db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+  },
+) {
+  const selectedConnectors = db.$with("stored_connector_candidates").as(
+    db
+      .select({
+        connectorId: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        connectorStateRevision: sql`(
+            EXTRACT(EPOCH FROM ${connectors.updatedAt})
+            * 1000000
+          )::bigint`
+          .mapWith(pgInt8ToBigIntDecoder)
+          .as("connector_state_revision"),
+        needsReconnect: connectors.needsReconnect,
+        orgId: connectors.orgId,
+        storageVersion: connectors.storageVersion,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+        userId: connectors.userId,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          args.allowedConnectorTypes
+            ? inArray(connectors.type, args.allowedConnectorTypes)
+            : undefined,
+        ),
+      ),
+  );
+  const secretGroups = db
+    .select({
+      connectorId: secretsTable.connectorId,
+      secretNames: sql`jsonb_agg(${secretsTable.name})`
+        .mapWith(storedConnectorSecretNamesDecoder)
+        .as("secret_names"),
+    })
+    .from(secretsTable)
+    .innerJoin(
+      selectedConnectors,
+      and(
+        eq(selectedConnectors.connectorId, secretsTable.connectorId),
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+      ),
+    )
+    .where(eq(secretsTable.type, "connector"))
+    .groupBy(secretsTable.connectorId)
+    .as("stored_connector_secret_groups");
+  const variableGroups = db
+    .select({
+      connectorId: variables.connectorId,
+      variableValues:
+        sql`jsonb_object_agg(${variables.name}, ${variables.value})`
+          .mapWith(storedConnectorVariableValuesDecoder)
+          .as("variable_values"),
+    })
+    .from(variables)
+    .innerJoin(
+      selectedConnectors,
+      and(
+        eq(selectedConnectors.connectorId, variables.connectorId),
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+      ),
+    )
+    .where(eq(variables.type, "connector"))
+    .groupBy(variables.connectorId)
+    .as("stored_connector_variable_groups");
+  return db
+    .with(selectedConnectors)
+    .select({
+      connectorId: selectedConnectors.connectorId,
+      type: selectedConnectors.type,
+      authMethod: selectedConnectors.authMethod,
+      connectorStateRevision: selectedConnectors.connectorStateRevision,
+      needsReconnect: selectedConnectors.needsReconnect,
+      orgId: selectedConnectors.orgId,
+      storageVersion: selectedConnectors.storageVersion,
+      tokenExpiresAt: selectedConnectors.tokenExpiresAt,
+      userId: selectedConnectors.userId,
+      secretNames: sql`COALESCE(${secretGroups.secretNames}, '[]'::jsonb)`
+        .mapWith(storedConnectorSecretNamesDecoder)
+        .as("secret_names"),
+      variableValues:
+        sql`COALESCE(${variableGroups.variableValues}, '{}'::jsonb)`
+          .mapWith(storedConnectorVariableValuesDecoder)
+          .as("variable_values"),
+    })
+    .from(selectedConnectors)
+    .leftJoin(
+      secretGroups,
+      eq(secretGroups.connectorId, selectedConnectors.connectorId),
+    )
+    .leftJoin(
+      variableGroups,
+      eq(variableGroups.connectorId, selectedConnectors.connectorId),
+    );
+}
+
+async function loadStoredConnectorSnapshotRows(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
-): Promise<readonly StoredConnectorRuntimeRowCandidate[]> {
+): Promise<readonly StoredConnectorMaterializationSnapshotRow[]> {
   const startedAt = now();
-  const rows = await onRejection(
-    (async () => {
-      await tx.execute(
-        sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-      );
-      return await tx
-        .select({
-          connectorId: connectors.id,
-          type: connectors.type,
-          authMethod: connectors.authMethod,
-          connectorStateRevision: sql`(
-              EXTRACT(EPOCH FROM ${connectors.updatedAt})
-              * 1000000
-            )::bigint`.mapWith(pgInt8ToBigIntDecoder),
-          needsReconnect: connectors.needsReconnect,
-          orgId: connectors.orgId,
-          storageVersion: connectors.storageVersion,
-          tokenExpiresAt: connectors.tokenExpiresAt,
-          userId: connectors.userId,
-        })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-            args.allowedConnectorTypes
-              ? inArray(connectors.type, args.allowedConnectorTypes)
-              : undefined,
-          ),
-        );
-    })(),
-    () => {
-      timing?.recordElapsed(
-        "api_dispatch_prepare_context_load_stored_connector_rows",
-        "nested",
-        startedAt,
-        now(),
-        args.timingDimensions,
-      );
-    },
-  );
+  const rows = await onRejection(storedConnectorSnapshotQuery(db, args), () => {
+    timing?.recordElapsed(
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+      "nested",
+      startedAt,
+      now(),
+      args.timingDimensions,
+    );
+  });
   timing?.recordElapsed(
-    "api_dispatch_prepare_context_load_stored_connector_rows",
+    "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
     "nested",
     startedAt,
     now(),
     {
       ...args.timingDimensions,
-      stored_connector_count_bucket: countBucket(rows.length),
+      stored_connector_candidate_count_bucket: countBucket(rows.length),
     },
   );
   return rows;
@@ -3091,7 +3083,7 @@ async function loadStoredConnectorRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
@@ -3108,53 +3100,89 @@ function buildStoredConnectorMaterializationPlan(args: {
   return {
     allowedConnectorRows,
     bindingSets,
-    requirements: collectStoredConnectorRequirements(bindingSets),
   };
 }
 
-function filterStoredConnectorRows(
+function materializeStoredConnectorSnapshotRows(
   args: {
-    readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
-): StoredConnectorMaterializationPlan | null {
+): StoredConnectorMaterializationSnapshot | null {
   const startedAt = now();
   const result = safeSync(() => {
-    return buildStoredConnectorMaterializationPlan(args);
+    const plan = buildStoredConnectorMaterializationPlan({
+      connectorRows: args.rows,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+    });
+    if (!plan) {
+      return null;
+    }
+
+    const requirementsByConnector = storedConnectorRequirementsByConnector(
+      plan.bindingSets,
+    );
+    const secretRows: StoredConnectorSecretRow[] = [];
+    const variableValues: Record<string, string> = {};
+    for (const row of args.rows) {
+      const requirements = requirementsByConnector.get(row.connectorId);
+      if (!requirements) {
+        continue;
+      }
+      for (const name of row.secretNames) {
+        if (requirements.secretNames.has(name)) {
+          secretRows.push({ name });
+        }
+      }
+      for (const [name, value] of Object.entries(row.variableValues)) {
+        if (requirements.variableNames.has(name)) {
+          variableValues[name] = value;
+        }
+      }
+    }
+
+    return {
+      allowedConnectorRows: plan.allowedConnectorRows,
+      bindingSets: plan.bindingSets,
+      secretRows,
+      variableValues,
+    } satisfies StoredConnectorMaterializationSnapshot;
   });
   if ("error" in result) {
     timing?.recordElapsed(
-      "api_dispatch_prepare_context_filter_stored_connector_rows",
+      "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
       "nested",
       startedAt,
       now(),
       {
         ...args.timingDimensions,
-        stored_connector_count_bucket: countBucket(args.connectorRows.length),
+        stored_connector_candidate_count_bucket: countBucket(args.rows.length),
       },
     );
     throw result.error;
   }
-  const plan = result.ok;
+  const snapshot = result.ok;
   timing?.recordElapsed(
-    "api_dispatch_prepare_context_filter_stored_connector_rows",
+    "api_dispatch_prepare_context_materialize_stored_connector_snapshot",
     "nested",
     startedAt,
     now(),
     {
       ...args.timingDimensions,
+      stored_connector_candidate_count_bucket: countBucket(args.rows.length),
       stored_connector_count_bucket: countBucket(
-        plan?.allowedConnectorRows.length ?? 0,
+        snapshot?.allowedConnectorRows.length ?? 0,
       ),
       stored_connector_secret_count_bucket: countBucket(
-        plan?.requirements.secretNames.size ?? 0,
+        snapshot?.secretRows.length ?? 0,
       ),
     },
   );
-  return plan;
+  return snapshot;
 }
 
 async function loadStoredConnectorMaterializationSnapshot(
@@ -3162,71 +3190,38 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[] | undefined;
+    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
-  return await db.transaction(async (tx) => {
-    const baseTimingDimensions = storedConnectorTimingDimensions({
-      scopeSource: args.scopeSource,
-    });
-    const connectorRows = await loadStoredConnectorRows(
-      tx,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        allowedConnectorTypes: args.allowedConnectorTypes,
-        timingDimensions: baseTimingDimensions,
-      },
-      timing,
-    );
-    if (connectorRows.length === 0) {
-      return null;
-    }
-
-    const storedConnectorPlan = await filterStoredConnectorRows(
-      {
-        connectorRows,
-        allowedConnectorTypes: args.allowedConnectorTypes,
-        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
-        timingDimensions: baseTimingDimensions,
-      },
-      timing,
-    );
-    if (!storedConnectorPlan) {
-      return null;
-    }
-    const connectorTimingDimensions = storedConnectorTimingDimensions({
-      scopeSource: args.scopeSource,
-      connectorCount: storedConnectorPlan.allowedConnectorRows.length,
-    });
-
-    const secretRows = await loadStoredConnectorSecretRows(
-      tx,
-      {
-        bindingSets: storedConnectorPlan.bindingSets,
-        timingDimensions: connectorTimingDimensions,
-      },
-      timing,
-    );
-    const variableRows = await loadStoredConnectorVariableRows(
-      tx,
-      {
-        bindingSets: storedConnectorPlan.bindingSets,
-        timingDimensions: connectorTimingDimensions,
-      },
-      timing,
-    );
-    const connectorVariables = storedConnectorVariablesFromRows(variableRows);
-
-    return {
-      ...storedConnectorPlan,
-      secretRows,
-      variableValues: connectorVariables,
-    } satisfies StoredConnectorMaterializationSnapshot;
+  const baseTimingDimensions = storedConnectorTimingDimensions({
+    scopeSource: args.scopeSource,
   });
+  const rows = await loadStoredConnectorSnapshotRows(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      timingDimensions: baseTimingDimensions,
+    },
+    timing,
+  );
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return materializeStoredConnectorSnapshotRows(
+    {
+      rows,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+      timingDimensions: baseTimingDimensions,
+    },
+    timing,
+  );
 }
 
 type CustomConnectorRuntimeDataRows = Awaited<
@@ -3827,7 +3822,7 @@ async function buildPermissionManifest(args: {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
-  readonly connectorTypes?: readonly ConnectorCatalogRef[];
+  readonly connectorTypes?: readonly ConnectorRef[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {

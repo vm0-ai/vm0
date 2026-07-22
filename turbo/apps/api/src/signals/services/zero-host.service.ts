@@ -2183,9 +2183,9 @@ export const completeHostedSiteDeployment$ = command(
     );
     signal.throwIfAborted();
 
-    // Fast path: render the artifact preview as soon as the deploy is recorded.
-    // Detached via waitUntil so it survives the response; on failure the row's
-    // previewImageUrl stays NULL and the cron sweep regenerates it.
+    // Render the artifact preview as soon as the deploy is recorded. Detached
+    // via waitUntil so it survives the response; failures leave the preview
+    // empty without blocking the deployment.
     set(
       scheduleArtifactPreviewRender$,
       artifactPreviewArgs(deployment, artifactRowId),

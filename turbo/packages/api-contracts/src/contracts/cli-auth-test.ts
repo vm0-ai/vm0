@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import { connectorCatalogAuthMethodIdSchema } from "./connector-identity";
+import {
+  connectorAuthMethodIdSchema,
+  connectorRefSchema,
+} from "./connector-identity";
 
 const c = initContract();
 
@@ -40,7 +43,7 @@ export const cliAuthTestConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       connectorName: z.string(),
-      authMethod: connectorCatalogAuthMethodIdSchema,
+      authMethod: connectorAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
       expiresIn: z.number().int().optional(),
@@ -48,7 +51,7 @@ export const cliAuthTestConnectorContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
-        connectorType: z.string(),
+        connectorType: connectorRefSchema,
         orgId: z.string(),
       }),
       400: stringErrorResponseSchema,

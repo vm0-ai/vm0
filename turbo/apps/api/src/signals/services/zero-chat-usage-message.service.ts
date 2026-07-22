@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, max, sql, sum } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -70,22 +70,22 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
       runGroupId: zeroRuns.runGroupId,
       userId: chatThreads.userId,
       pendingCount:
-        sql`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`.mapWith(
+        sql`${count(usageEvent.id)} FILTER (WHERE ${usageEvent.status} = 'pending')::int`.mapWith(
           pgIntegerDecoder,
         ),
       processedCount:
-        sql`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`.mapWith(
+        sql`${count(usageEvent.id)} FILTER (WHERE ${usageEvent.status} = 'processed')::int`.mapWith(
           pgIntegerDecoder,
         ),
       totalCredits:
-        sql`COALESCE(SUM(${usageCreditsExpression()}) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`.mapWith(
+        sql`COALESCE(${sum(usageCreditsExpression())} FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`.mapWith(
           pgInt8ToSafeIntegerDecoder,
         ),
       settledAt: sql`COALESCE(
-        MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-        MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-        MAX(${agentRuns.completedAt}),
-        MAX(${agentRuns.createdAt})
+        ${max(usageEvent.processedAt)} FILTER (WHERE ${usageEvent.status} = 'processed'),
+        ${max(usageEvent.createdAt)} FILTER (WHERE ${usageEvent.status} = 'processed'),
+        ${max(agentRuns.completedAt)},
+        ${max(agentRuns.createdAt)}
       )`.mapWith(agentRuns.createdAt),
     })
     .from(agentRuns)
@@ -110,7 +110,7 @@ async function loadUsageBreakdownRows(tx: WriteTx, runId: string) {
           pgTextDecoder,
         ),
       credits:
-        sql`COALESCE(SUM(${usageCreditsExpression()}), 0)::bigint`.mapWith(
+        sql`COALESCE(${sum(usageCreditsExpression())}, 0)::bigint`.mapWith(
           pgInt8ToSafeIntegerDecoder,
         ),
     })
@@ -160,7 +160,7 @@ export const maybeEmitRunUsageMessage$ = command(
         .where(
           and(
             eq(chatMessages.runId, runId),
-            sql`${chatMessages.usagePayload} IS NOT NULL`,
+            isNotNull(chatMessages.usagePayload),
           ),
         )
         .limit(1);

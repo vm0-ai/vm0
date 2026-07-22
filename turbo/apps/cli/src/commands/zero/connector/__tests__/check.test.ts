@@ -238,7 +238,6 @@ describe("zero connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_TOKEN", buildZeroToken());
     vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
@@ -613,7 +612,7 @@ describe("zero connector check command", () => {
       },
       {
         name: "staging web",
-        baseUrl: "https://staging-www.vm6.ai",
+        baseUrl: "https://staging-www.omby.ai",
         platformOrigin: "https://staging-app.omby.ai",
       },
       {
@@ -633,7 +632,7 @@ describe("zero connector check command", () => {
       },
       {
         name: "preview web",
-        baseUrl: "https://pr-123-www.vm6.ai",
+        baseUrl: "https://pr-123-www.omby.ai",
         platformOrigin: "https://pr-123-app.omby.ai",
       },
       {

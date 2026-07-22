@@ -57,54 +57,51 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-event-mapping-1: rich fixture renders all item types" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=event-mapping-rich" \
-        "drive the rich fixture"
+@test "t-codex-event-mapping-1: rich fixture exposes all item types" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the rich fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"event-mapping-rich"}}'
 
     assert_success
     # thread.started -> init
-    assert_output --partial "▷ Codex Started"
-    # command_execution renders as Bash tool
-    assert_output --partial "● Bash(echo hello)"
-    # file_edit renders as Edit tool
-    assert_output --partial "● Edit"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial '"type":"command_execution"'
+    assert_output --partial '"command":"echo hello"'
+    assert_output --partial '"type":"file_edit"'
     assert_output --partial "/tmp/edit-target.txt"
-    # file_read renders as Read tool
-    assert_output --partial "● Read"
+    assert_output --partial '"type":"file_read"'
     assert_output --partial "/tmp/read-target.txt"
-    # file_change renders as a [files] text block with kind labels
-    assert_output --partial "[files]"
-    assert_output --partial "Created: /tmp/created.txt"
-    assert_output --partial "Modified: /tmp/modified.txt"
-    assert_output --partial "Deleted: /tmp/removed.txt"
-    # reasoning renders as a [thinking] text block
-    assert_output --partial "[thinking] Considering the request before acting"
-    # agent_message renders as plain text
-    assert_output --partial "● Fixture event walkthrough complete"
+    assert_output --partial '"kind":"add"'
+    assert_output --partial "/tmp/created.txt"
+    assert_output --partial '"kind":"modify"'
+    assert_output --partial "/tmp/modified.txt"
+    assert_output --partial '"kind":"delete"'
+    assert_output --partial "/tmp/removed.txt"
+    assert_output --partial "Considering the request before acting"
+    assert_output --partial "Fixture event walkthrough complete"
     # turn.completed -> result
-    assert_output --partial "◆ Codex Completed"
+    assert_output --partial '"type":"turn.completed"'
 }
 
-@test "t-codex-event-mapping-2: turn-failed fixture renders Codex Failed" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=turn-failed" \
-        "drive the turn-failed fixture"
+@test "t-codex-event-mapping-2: turn-failed fixture exposes failure" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the turn-failed fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"turn-failed"}}'
 
     # The mock binary always exits 0; turn.failed is data-only, so the
     # run lifecycle status stays completed and the CLI exits success.
     # Failure is surfaced inside the rendered event stream.
-    assert_output --partial "▷ Codex Started"
-    assert_output --partial "● Attempting the turn"
-    assert_output --partial "◆ Codex Failed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "Attempting the turn"
+    assert_output --partial '"type":"turn.failed"'
 }
 
-@test "t-codex-event-mapping-3: error-event fixture renders Codex Failed" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=error-event" \
-        "drive the error-event fixture"
+@test "t-codex-event-mapping-3: error-event fixture exposes failure" {
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the error-event fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"error-event"}}'
 
-    assert_output --partial "▷ Codex Started"
-    # error events parse to a failed result
-    assert_output --partial "◆ Codex Failed"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial '"type":"error"'
+    assert_output --partial "Mock error event for fixture testing"
 }
