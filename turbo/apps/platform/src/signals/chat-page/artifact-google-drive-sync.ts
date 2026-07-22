@@ -195,7 +195,7 @@ export const waitForGoogleDriveAuthorization$ = command(
           get(
             isAgentConnectorAuthorized({
               agentId: params.agentId,
-              connectorType: "google-drive",
+              connectorRef: "google-drive",
             }),
           ),
         ]);

@@ -7,13 +7,13 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
 /**
- * Connector type extracted from `/connectors/:type/connect` route params.
+ * Connector ref extracted from `/connectors/:type/connect` route params.
  */
-export const directedConnectType$ = computed((get): string | null => {
+export const directedConnectRef$ = computed((get): ConnectorRef | null => {
   const params = get(pathParams$);
-  const type = params?.type;
+  const routeType = params?.type;
   const parsed = connectorRefSchema.safeParse(
-    typeof type === "string" ? type.toLowerCase() : null,
+    typeof routeType === "string" ? routeType.toLowerCase() : null,
   );
   return parsed.success ? parsed.data : null;
 });
@@ -40,13 +40,13 @@ export const directedConnectAgentName$ = computed(async (get) => {
 });
 
 export type DirectedConnectManualGrantDialogKey = {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
 
 export type DirectedConnectModalKey = {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
