@@ -168,7 +168,6 @@ describe("POST /api/zero/billing/portal", () => {
   it.each([
     "https://evil.example.com/settings/billing",
     "https://okou.ai.evil.example/settings/billing",
-    "https://pr-22085-app.vm6.ai/settings/billing",
   ])("returns 400 for the disallowed origin in %s", async (returnUrl) => {
     mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(

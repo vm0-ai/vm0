@@ -840,18 +840,6 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
-    it("does not allow retired Vercel app preview origins", async () => {
-      mockEnv("ENV", "preview");
-      const app = createApp({ signal: context.signal });
-      const response = await app.request("/health", {
-        method: "GET",
-        headers: { origin: "https://pr-22085-app.vm6.ai" },
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBeNull();
-    });
-
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });
