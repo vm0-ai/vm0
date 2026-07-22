@@ -1621,7 +1621,6 @@ jobs:
       cancel-in-progress: true
     needs:
       - prepare
-      - provision-onboarding-www
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
@@ -1636,7 +1635,6 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
-      (github.event_name == 'push' || needs.provision-onboarding-www.result == 'success') &&
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
@@ -1706,7 +1704,6 @@ jobs:
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VM0_ONBOARDING_URL: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.omby.ai' }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
