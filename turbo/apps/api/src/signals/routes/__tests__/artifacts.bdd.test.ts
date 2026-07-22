@@ -1,17 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { HttpResponse, http } from "msw";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { markHostedArtifactEligibleForPreviewCron } from "./helpers/artifact-preview-state";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
   createChatFilesBddApi,
@@ -21,6 +20,7 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -33,7 +33,6 @@ const CLOUDFLARE_SNAPSHOT_URL =
   "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/snapshot";
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
-const CRON_SECRET = "test-cron-secret";
 const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";
 
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
@@ -63,14 +62,6 @@ interface SnapshotFixture {
 
 interface MediaFrameRequest {
   readonly url: string;
-}
-
-function cronClient() {
-  return setupApp({ context })(cronArtifactPreviewContract);
-}
-
-function cronHeaders(secret = CRON_SECRET) {
-  return { authorization: `Bearer ${secret}` };
 }
 
 function mockCloudflareSnapshot(
@@ -142,6 +133,20 @@ async function artifactActor(
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, objectStore };
+}
+
+async function setVideoArtifactPosters(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected video preview test actor to have an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    { [FeatureSwitchKey.VideoArtifactPosters]: enabled },
+  );
 }
 
 async function sendChatRun(
@@ -305,120 +310,49 @@ async function createRunUploadedFile(args: {
   };
 }
 
-describe("GET /api/cron/artifact-preview", () => {
-  it("rejects invalid cron secrets and returns zero without candidates", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
-
-    const rejected = await accept(
-      cronClient().generate({ headers: cronHeaders("wrong-secret") }),
-      [401],
+describe("video Artifact previews", () => {
+  it("leaves video preview empty when immediate posters are disabled", async () => {
+    const owner = await artifactActor(
+      "Artifacts API disabled video preview agent",
     );
-    expect(rejected.body.error.message).toBe("Invalid cron secret");
-
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body).toStrictEqual({ generated: 0 });
-  });
-
-  it.each([
-    ["hosted-site", "missing"],
-    ["presentation-html", "legacy"],
-  ] as const)(
-    "does not retry %s previews when the image is %s",
-    async (artifactKind, previewState) => {
-      const owner = await artifactActor(
-        `Artifacts API ${artifactKind} cron preview agent`,
-      );
-      if (!owner.actor.orgId) {
-        throw new Error("Expected cron preview test actor to have an org");
-      }
-      mockEnv("CRON_SECRET", CRON_SECRET);
-      mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
-      const snapshotRequests = mockCloudflareSnapshot();
-
-      const artifact = await createHostedArtifact({
-        actor: owner.actor,
-        agentId: owner.agentId,
-        runnerGroup: owner.runnerGroup,
-        site: `cron-preview-${randomUUID().slice(0, 8)}`,
-        artifactKind,
-      });
-      await flushWaitUntilForTest();
-      expect(snapshotRequests).toHaveLength(0);
-
-      const legacyPreviewImageUrl =
-        previewState === "legacy"
-          ? `https://cdn.vm0.io/legacy/preview-${artifact.deploymentId}.webp`
-          : undefined;
-      await markHostedArtifactEligibleForPreviewCron(
-        context,
-        artifact,
-        legacyPreviewImageUrl ? { previewImageUrl: legacyPreviewImageUrl } : {},
-      );
-      mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-      mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-
-      const generated = await accept(
-        cronClient().generate({ headers: cronHeaders() }),
-        [200],
-      );
-      expect(generated.body).toStrictEqual({ generated: 0 });
-
-      const response = await chat.listArtifacts(owner.actor);
-      const previewedArtifact = response.artifacts.find((item) => {
-        return item.fileId === artifact.fileId;
-      });
-      expect(previewedArtifact).toBeDefined();
-      if (legacyPreviewImageUrl) {
-        expect(previewedArtifact?.previewImageUrl).toBe(legacyPreviewImageUrl);
-      } else {
-        expect(previewedArtifact).not.toHaveProperty("previewImageUrl");
-      }
-      expect(snapshotRequests).toHaveLength(0);
-    },
-    120_000,
-  );
-
-  it("generates poster frames for generated video artifacts without previewing ordinary video uploads", async () => {
-    const owner = await artifactActor("Artifacts API video preview agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected video preview test actor to have an org");
-    }
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
+    await setVideoArtifactPosters(owner.actor, false);
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
       owner,
-      prompt: "create generated video artifact",
-      filename: "launch-video.mp4",
+      prompt: "upload video without poster generation",
+      filename: "poster-disabled.mp4",
       contentType: "video/mp4",
     });
-    const ordinaryVideoUpload = await createRunUploadedFile({
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toHaveLength(0);
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return put.key.endsWith("/poster.jpg");
+      }),
+    ).toBeFalsy();
+    const response = await chat.listArtifacts(owner.actor);
+    const artifact = response.artifacts.find((item) => {
+      return item.fileId === videoArtifact.fileId;
+    });
+    expect(artifact).toBeDefined();
+    expect(artifact).not.toHaveProperty("previewImageUrl");
+  }, 180_000);
+
+  it("generates a poster immediately for an ordinary video upload", async () => {
+    const owner = await artifactActor("Artifacts API video preview agent");
+    await setVideoArtifactPosters(owner.actor, true);
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+
+    const videoArtifact = await createRunUploadedFile({
       owner,
       prompt: "upload reference footage",
       filename: "reference-footage.mp4",
       contentType: "video/mp4",
     });
-    const videoArtifactRowId = await markHostedArtifactEligibleForPreviewCron(
-      context,
-      videoArtifact,
-      {
-        generatedBy: "zero-official-video",
-      },
-    );
-    const ordinaryVideoUploadRowId =
-      await markHostedArtifactEligibleForPreviewCron(
-        context,
-        ordinaryVideoUpload,
-      );
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body).toStrictEqual({ generated: 1 });
+    await flushWaitUntilForTest();
+
     expect(frameRequests).toHaveLength(1);
     expect(frameRequests[0]?.url).toBe(
       `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoArtifact.url}`,
@@ -431,31 +365,17 @@ describe("GET /api/cron/artifact-preview", () => {
       bucket: "test-user-artifacts",
       contentType: "image/jpeg",
     });
-    expect(posterPuts[0]?.key).toContain(`/${videoArtifactRowId}/poster.jpg`);
-    expect(posterPuts[0]?.key).not.toContain(`/${ordinaryVideoUploadRowId}/`);
 
     const response = await chat.listArtifacts(owner.actor);
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
-    expect(previewedArtifact?.previewImageUrl).toContain(
-      `/${videoArtifactRowId}/poster.jpg`,
-    );
-    const ordinaryArtifact = response.artifacts.find((item) => {
-      return item.fileId === ordinaryVideoUpload.fileId;
-    });
-    expect(ordinaryArtifact).toBeDefined();
-    expect(ordinaryArtifact).not.toHaveProperty("previewImageUrl");
+    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster\.jpg$/);
   }, 180_000);
 
   it("leaves video preview empty when media frame extraction fails", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
-    if (!owner.actor.orgId) {
-      throw new Error(
-        "Expected video preview failure test actor to have an org",
-      );
-    }
-    mockEnv("CRON_SECRET", CRON_SECRET);
+    await setVideoArtifactPosters(owner.actor, true);
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId, 415);
 
     const videoArtifact = await createRunUploadedFile({
@@ -464,14 +384,8 @@ describe("GET /api/cron/artifact-preview", () => {
       filename: "unsupported-video.webm",
       contentType: "video/webm",
     });
-    await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
-      generatedBy: "zero-official-video",
-    });
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body).toStrictEqual({ generated: 0 });
+    await flushWaitUntilForTest();
+
     expect(frameRequests).toHaveLength(1);
     expect(
       owner.objectStore.puts.some((put) => {

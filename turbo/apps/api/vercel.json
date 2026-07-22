@@ -81,10 +81,6 @@
       "schedule": "30 2 * * *"
     },
     {
-      "path": "/api/cron/artifact-preview",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/cron/aggregate-model-stats",
       "schedule": "12 * * * *"
     }
