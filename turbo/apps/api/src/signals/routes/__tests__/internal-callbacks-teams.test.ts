@@ -244,6 +244,12 @@ function teamsApiMocks(args: {
         });
       },
     ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/users/:userId/teamwork/installedApps",
+      () => {
+        return HttpResponse.json({ value: [] });
+      },
+    ),
   );
 
   return { tokenRequests, postedActivities, reactionRequests };
@@ -417,6 +423,47 @@ async function dispatchTeamsRun(args: {
   return await runIdForPrompt(actor, args.text);
 }
 
+async function dispatchTeamsPersonalRun(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly activityId: string;
+  readonly threadId?: string;
+  readonly text: string;
+}): Promise<string> {
+  const response = await postTeamsActivityForTest({
+    signal: context.signal,
+    activity: teamsMessageActivityForTest(args.fixture, {
+      id: args.activityId,
+      conversation: {
+        id: `a:personal-${args.fixture.teamsUserId}`,
+        conversationType: "personal",
+      },
+      channelData: {
+        tenant: {
+          id: args.fixture.teamsTenantId,
+          name: args.fixture.teamsTenantName,
+        },
+        teamsAppId: BOT_APP_ID,
+      },
+      text: args.text,
+      entities: [],
+      replyToId: args.threadId ?? null,
+    }),
+  });
+  expect(response.status).toBe(200);
+  const body = recordFromUnknown(
+    await response.json(),
+    "Expected Teams bot response object",
+  );
+  expect(body).not.toHaveProperty("dispatch");
+  await flushWaitUntilForTest();
+  const actor = authOrgApi.user({
+    userId: args.fixture.userId,
+    orgId: args.fixture.orgId,
+    orgRole: "org:admin",
+  });
+  return await runIdForPrompt(actor, args.text);
+}
+
 async function claimTeamsRun(args: {
   readonly runnerGroup: string;
   readonly runId: string;
@@ -517,6 +564,72 @@ afterEach(async () => {
 });
 
 describe("Teams org internal callbacks", () => {
+  it("starts a new agent session for each top-level personal message", async () => {
+    const teams = await setupConnectedTeamsActor();
+    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const firstRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-first",
+      text: "remember this DM context",
+    });
+    const firstClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: firstRunId,
+    });
+    clearTeamsApiCalls(teamsApi);
+    await completeSandboxRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      exitCode: 0,
+    });
+
+    const secondRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-second",
+      text: "use the previous DM context",
+    });
+    const secondClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: secondRunId,
+    });
+
+    expect(secondClaim.resumeSession).toBeNull();
+  });
+
+  it("resumes the same agent session within a personal message thread", async () => {
+    const teams = await setupConnectedTeamsActor();
+    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const rootActivityId = "activity-personal-thread-root";
+    const firstRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: rootActivityId,
+      text: "remember this personal thread context",
+    });
+    const firstClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: firstRunId,
+    });
+    clearTeamsApiCalls(teamsApi);
+    const cliAgentSessionId = await completeSandboxRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      exitCode: 0,
+    });
+
+    const secondRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-thread-reply",
+      threadId: rootActivityId,
+      text: "use the personal thread context",
+    });
+    const secondClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: secondRunId,
+    });
+
+    expect(secondClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+  });
+
   it("posts completed run replies and persists Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({ zeroDebug: true });
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });

@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.300.1](https://github.com/vm0-ai/vm0/compare/api-v1.300.0...api-v1.300.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
+
+### Performance Improvements
+
+* **api:** skip kms for internal run callbacks ([#22500](https://github.com/vm0-ai/vm0/issues/22500)) ([17e30fe](https://github.com/vm0-ai/vm0/commit/17e30fecd4462a3a05988924881d57b618e3b826))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.448.5
+    * @vm0/db bumped to 1.125.6
+
 ## [1.300.0](https://github.com/vm0-ai/vm0/compare/api-v1.299.0...api-v1.300.0) (2026-07-22)
 
 
