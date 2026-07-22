@@ -8,6 +8,7 @@ import {
   generateTestEmail,
 } from "../lib/clerk-api";
 import {
+  isPromptOrChatUrl,
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "../lib/onboarding";
@@ -40,10 +41,7 @@ test("paid onboarding completes through the video workflow", async ({
       appUrl,
     });
 
-    expect(
-      completionUrl.pathname === "/prompt" ||
-        /\/agents\/[^/]+\/chat/.test(completionUrl.pathname),
-    ).toBe(true);
+    expect(isPromptOrChatUrl(completionUrl)).toBe(true);
   } finally {
     await deleteUserByEmail(email);
   }

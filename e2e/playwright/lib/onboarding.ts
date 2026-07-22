@@ -124,9 +124,9 @@ async function waitForChatPage(page: Page, appUrl: string): Promise<void> {
 }
 
 function isChatUrl(url: URL): boolean {
-  return /\/agents\/[^/]+\/chat/.test(url.pathname);
+  return /^\/(?:agents\/[^/]+\/chat|chats\/[^/]+)$/.test(url.pathname);
 }
 
-function isPromptOrChatUrl(url: URL): boolean {
+export function isPromptOrChatUrl(url: URL): boolean {
   return url.pathname === "/prompt" || isChatUrl(url);
 }

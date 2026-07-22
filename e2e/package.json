@@ -9,7 +9,7 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "test": "tsx --test playwright/lib/clerk-api.test.ts"
+    "test": "tsx --test playwright/lib/clerk-api.test.ts playwright/lib/onboarding.test.ts"
   },
   "keywords": [],
   "author": "",
