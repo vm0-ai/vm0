@@ -7769,7 +7769,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
-      "Managed public-web discovery",
+      "Public-web search, current public facts, and source discovery",
       "zero web-search <query>",
       "external public-web provider",
       "bounded, ranked results",
@@ -7808,9 +7808,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
-    expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-    );
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroWebSearch]: true,
+    });
+    expect(claim.disallowedTools).toStrictEqual([
+      ...EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      "WebSearch",
+    ]);
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
     const zeroToken = claim.environment?.ZERO_TOKEN;
@@ -7942,6 +7947,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
+    expect(claim.disallowedTools).not.toContain("WebSearch");
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
     expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
