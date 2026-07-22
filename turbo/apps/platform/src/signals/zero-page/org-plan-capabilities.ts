@@ -39,8 +39,10 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: false,
     canBuyCredits: false,
     autoRechargeAllowed: false,
-    supportByok: false,
-    restrictedVm0Models: true,
+    // Preserve the model picker behavior of browsers talking to an older API.
+    // New APIs always return these two capabilities explicitly.
+    supportByok: true,
+    restrictedVm0Models: false,
     workflowWebhookAutomationAllowed: false,
   },
   pro: {

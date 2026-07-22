@@ -59,6 +59,14 @@ function runtimeStatusForEntitlement(
   }
 }
 
+function capabilitiesForTier(tierValue: string): OrgPlanCapabilities {
+  const tier = orgTierSchema.parse(tierValue);
+  return {
+    status: tier === "pro-suspend" ? "suspended" : "active",
+    ...ORG_PLAN_ENTITLEMENT_TIER_VALUES[tier],
+  };
+}
+
 export function orgPlanEntitlementReadsEnabled(orgId: string): boolean {
   return isFeatureEnabled(FeatureSwitchKey.OrgPlanEntitlementReads, { orgId });
 }
@@ -79,7 +87,7 @@ export async function loadOrgPlanCapabilities(
       : await query;
     if (!capabilities) {
       const orgQuery = db
-        .select({ orgId: orgMetadata.orgId })
+        .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
         .where(eq(orgMetadata.orgId, orgId))
         .limit(1);
@@ -89,7 +97,7 @@ export async function loadOrgPlanCapabilities(
       if (!org) {
         return null;
       }
-      throw new Error(`Missing org plan entitlement for ${orgId}`);
+      return capabilitiesForTier(org.tier);
     }
     return {
       ...capabilities,
@@ -107,9 +115,5 @@ export async function loadOrgPlanCapabilities(
     return null;
   }
 
-  const tier = orgTierSchema.parse(org.tier);
-  return {
-    status: tier === "pro-suspend" ? "suspended" : "active",
-    ...ORG_PLAN_ENTITLEMENT_TIER_VALUES[tier],
-  };
+  return capabilitiesForTier(org.tier);
 }
