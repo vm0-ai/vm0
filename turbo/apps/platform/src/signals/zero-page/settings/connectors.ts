@@ -33,9 +33,7 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogConnection,
-  PublicConnectorCatalogIcon,
-  PublicConnectorCatalogPermissionSummary,
+  PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -67,57 +65,15 @@ import { connectorRedirectingPath } from "../../connectors-page/connector-redire
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 
-const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
+const { get$: hiddenConnectorRefsRaw$, set$: setHiddenConnectorRefs$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 type PostConnectOptions = {
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
-export type ConnectorConnectionStatus =
-  | "not-connected"
-  | "connected"
-  | "scope-mismatch"
-  | "reconnect-required";
-
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
-
-/**
- * All connector types with their connection status.
- * Uses server-authored public catalog/status data.
- */
-export interface ConnectorTypeWithStatus {
-  type: ConnectorRef;
-  label: string;
-  helpText: string;
-  icon: PublicConnectorCatalogIcon;
-  category: string;
-  /** Lowercase aliases/keywords used by connector search. */
-  tags: readonly string[];
-  connected: boolean;
-  connector: PublicConnectorCatalogConnection | null;
-  /** Public auth method metadata available after server-side filtering. */
-  authMethods: readonly PublicConnectorCatalogAuthMethodDetail[];
-  /** Auth methods available for this connector after availability filtering. */
-  availableAuthMethods: ConnectorAuthMethodId[];
-  /** Single available auth-code method if direct OAuth can be considered. */
-  singleAuthCodeAuthMethodId: ConnectorAuthMethodId | null;
-  /** Public notice shown before direct connect flows. */
-  connectNotice: "google-security-warning" | null;
-  /** True if at least one agent references this connector (env mapping). */
-  usedByAgent?: boolean;
-  /** True if stored grant scopes don't cover all currently required scopes. */
-  scopeMismatch: boolean;
-  /** User-facing connection state derived from API state and scope coverage. */
-  connectionStatus: ConnectorConnectionStatus;
-  /** Stored credential expiry returned by the API. */
-  tokenExpiresAt: string | null;
-  /** True when the selected auth method can refresh runtime access. */
-  authMethodSupportsRefresh: boolean;
-  /** Public permission summary returned by the catalog status API. */
-  permissionSummary: PublicConnectorCatalogPermissionSummary;
-}
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -130,15 +86,8 @@ export type ConnectorCatalogBrowserAuthMethodDetail =
     readonly grantKind: BrowserAuthGrantKind;
   };
 
-export type ConnectorStatusAuthMethodDetail = Omit<
-  PublicConnectorCatalogAuthMethodDetail,
-  "id"
-> & {
-  readonly id: ConnectorAuthMethodId;
-};
-
 export function manualGrantInputValuesForMethod(
-  method: Pick<ConnectorStatusAuthMethodDetail, "manualFields">,
+  method: Pick<PublicConnectorCatalogAuthMethodDetail, "manualFields">,
   values: Readonly<Record<string, string>>,
 ): Record<string, string> {
   return Object.fromEntries(
@@ -189,69 +138,49 @@ function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
   return grantKind === "none";
 }
 
-function parseConnectorStatusAuthMethodDetail(
-  connector: ConnectorTypeWithStatus,
-  method: PublicConnectorCatalogAuthMethodDetail,
-): ConnectorStatusAuthMethodDetail | null {
-  if (!connector.availableAuthMethods.includes(method.id)) {
-    return null;
-  }
-  return method;
-}
-
 export function getConnectorStatusAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   authMethod: ConnectorAuthMethodId,
-): ConnectorStatusAuthMethodDetail | null {
-  for (const method of connector.authMethods) {
-    if (method.id !== authMethod) {
-      continue;
-    }
-    return parseConnectorStatusAuthMethodDetail(connector, method);
-  }
-  return null;
+): PublicConnectorCatalogAuthMethodDetail | null {
+  return (
+    connector.authMethods.find((method) => {
+      return method.id === authMethod;
+    }) ?? null
+  );
 }
 
 export function getConnectorStatusAuthMethodsByGrantKind(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   grantKind: ConnectorStatusGrantKind,
-): ConnectorStatusAuthMethodDetail[] {
-  return connector.authMethods.flatMap((method) => {
-    if (method.grantKind !== grantKind) {
-      return [];
-    }
-    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
-    return parsed ? [parsed] : [];
+): PublicConnectorCatalogAuthMethodDetail[] {
+  return connector.authMethods.filter((method) => {
+    return method.grantKind === grantKind;
   });
 }
 
 export function getOnlyManualConnectorStatusAuthMethod(
-  connector: ConnectorTypeWithStatus,
-): ConnectorStatusAuthMethodDetail | null {
+  connector: PublicConnectorCatalogStatusItem,
+): PublicConnectorCatalogAuthMethodDetail | null {
   const methods = getConnectorStatusAuthMethodsByGrantKind(connector, "manual");
   return methods.length === 1 ? (methods[0] ?? null) : null;
 }
 
 export function hasConnectorStatusProviderDrivenConnectMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): boolean {
   return connector.authMethods.some((method) => {
-    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
-    if (!parsed) {
-      return false;
-    }
     return (
-      parsed.grantKind === "auth-code" ||
-      parsed.grantKind === "openid-auth" ||
-      parsed.grantKind === "device-auth" ||
-      parsed.grantKind === "external-code" ||
-      parsed.grantKind === "managed"
+      method.grantKind === "auth-code" ||
+      method.grantKind === "openid-auth" ||
+      method.grantKind === "device-auth" ||
+      method.grantKind === "external-code" ||
+      method.grantKind === "managed"
     );
   });
 }
 
 export function hasConnectorStatusAuthCodeGrant(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): boolean {
   return getConnectorStatusAuthMethodsByGrantKind(connector, "auth-code").some(
     () => {
@@ -261,16 +190,15 @@ export function hasConnectorStatusAuthCodeGrant(
 }
 
 export function hasConnectorStatusBrowserAuthGrant(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): boolean {
   return connector.authMethods.some((method) => {
-    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
-    return parsed ? isBrowserAuthGrantKind(parsed.grantKind) : false;
+    return isBrowserAuthGrantKind(method.grantKind);
   });
 }
 
 export function getConnectorStatusConnectLaunchMode(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
   if (getOnlyAvailableStatusBrowserAuthMethod(connector)) {
     return "browser-auth";
@@ -282,7 +210,7 @@ export function getConnectorStatusConnectLaunchMode(
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
   const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
@@ -297,13 +225,14 @@ export function getAvailableStatusAuthCodeAuthMethod(
 }
 
 export function getOnlyAvailableStatusAuthCodeAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const authMethod = connector.singleAuthCodeAuthMethodId;
+  const [method] = connector.authMethods;
   if (
-    connector.availableAuthMethods.length !== 1 ||
+    connector.authMethods.length !== 1 ||
     !authMethod ||
-    connector.availableAuthMethods[0] !== authMethod
+    method?.id !== authMethod
   ) {
     return null;
   }
@@ -311,7 +240,7 @@ export function getOnlyAvailableStatusAuthCodeAuthMethod(
 }
 
 export function getAvailableStatusBrowserAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
   const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
@@ -326,22 +255,21 @@ export function getAvailableStatusBrowserAuthMethod(
 }
 
 export function getOnlyAvailableStatusBrowserAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
-  const [authMethod] = connector.availableAuthMethods;
-  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+  const [method] = connector.authMethods;
+  if (connector.authMethods.length !== 1 || !method) {
     return null;
   }
-  const method = getConnectorStatusAuthMethod(connector, authMethod);
   if (method?.grantKind === "auth-code") {
     return getOnlyAvailableStatusAuthCodeAuthMethod(connector);
   }
-  return method?.grantKind === "openid-auth" ? authMethod : null;
+  return method.grantKind === "openid-auth" ? method.id : null;
 }
 
 export function getOnlyAvailableStatusBrowserAuthMethodDetail(
-  connector: ConnectorTypeWithStatus,
-): ConnectorStatusAuthMethodDetail | null {
+  connector: PublicConnectorCatalogStatusItem,
+): PublicConnectorCatalogAuthMethodDetail | null {
   const authMethod = getOnlyAvailableStatusBrowserAuthMethod(connector);
   return authMethod
     ? getConnectorStatusAuthMethod(connector, authMethod)
@@ -349,7 +277,7 @@ export function getOnlyAvailableStatusBrowserAuthMethodDetail(
 }
 
 export function getAvailableStatusNoAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
   const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
@@ -364,17 +292,17 @@ export function getAvailableStatusNoAuthMethod(
 }
 
 export function getOnlyAvailableStatusNoAuthMethod(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
-  const [authMethod] = connector.availableAuthMethods;
-  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+  const [method] = connector.authMethods;
+  if (connector.authMethods.length !== 1 || !method) {
     return null;
   }
-  return getAvailableStatusNoAuthMethod(connector, authMethod);
+  return getAvailableStatusNoAuthMethod(connector, method.id);
 }
 
 function connectorTokenExpiresAtMs(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): number | null {
   if (!connector.tokenExpiresAt) {
     return null;
@@ -384,9 +312,9 @@ function connectorTokenExpiresAtMs(
 }
 
 export function connectorCurrentConnectionStatus(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   nowMs = now(),
-): ConnectorConnectionStatus {
+): PublicConnectorCatalogConnectionStatus {
   if (connector.connectionStatus === "not-connected") {
     return "not-connected";
   }
@@ -404,7 +332,7 @@ function formatExpiryCountdown(value: number, unit: "day" | "hour"): string {
 }
 
 export function connectorExpiryCountdownText(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
   nowMs = now(),
 ): string | null {
   if (
@@ -436,50 +364,22 @@ const reconnectReasonTooltipText = {
 } satisfies Record<ConnectorReconnectReason, string>;
 
 export function connectorReconnectReasonTooltipText(
-  connector: ConnectorTypeWithStatus,
+  connector: PublicConnectorCatalogStatusItem,
 ): string | null {
-  const reason = connector.connector?.reconnectReason;
+  const reason = connector.connection?.reconnectReason;
   return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
-function connectorCatalogStatusItemToConnectorType(
-  item: PublicConnectorCatalogStatusItem,
-): ConnectorTypeWithStatus {
-  return {
-    type: item.connectorRef,
-    label: item.label,
-    helpText: item.description,
-    icon: item.icon,
-    category: item.category,
-    tags: item.tags,
-    connected: item.connected,
-    connector: item.connection,
-    authMethods: item.authMethods,
-    availableAuthMethods: item.authMethods.map((authMethod) => {
-      return authMethod.id;
-    }),
-    singleAuthCodeAuthMethodId: item.singleAuthCodeAuthMethodId,
-    connectNotice: item.connectNotice,
-    scopeMismatch: item.scopeMismatch,
-    connectionStatus: item.connectionStatus,
-    tokenExpiresAt: item.tokenExpiresAt,
-    authMethodSupportsRefresh: item.authMethodSupportsRefresh,
-    permissionSummary: item.permissionSummary,
-  };
-}
-
 /**
- * Case-insensitive substring match across label, type, helpText, and tags.
+ * Case-insensitive substring match across label, ref, description, and tags.
  * Returns true when `search` is empty, so callers can use it directly as a filter.
  */
 export function matchesConnectorSearch(
   search: string,
-  connector: {
-    label: string;
-    type: string;
-    helpText?: string;
-    tags?: readonly string[];
-  },
+  connector: Pick<
+    PublicConnectorCatalogStatusItem,
+    "connectorRef" | "description" | "label" | "tags"
+  >,
 ): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) {
@@ -488,10 +388,10 @@ export function matchesConnectorSearch(
   if (connector.label.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.type.toLowerCase().includes(needle)) {
+  if (connector.connectorRef.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.helpText?.toLowerCase().includes(needle)) {
+  if (connector.description.toLowerCase().includes(needle)) {
     return true;
   }
   if (
@@ -504,9 +404,9 @@ export function matchesConnectorSearch(
   return false;
 }
 
-export const allConnectorTypes$ = computed(async (get) => {
+export const allConnectorCatalogItems$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogStatus$);
-  const items = connectors.map(connectorCatalogStatusItemToConnectorType);
+  const items = [...connectors];
 
   // Sort connected connectors to the top of the list
   items.sort((a, b) => {
@@ -520,11 +420,11 @@ export const allConnectorTypes$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Hidden connector types (removed from list by user; persisted in localStorage)
+// Hidden connector refs (removed from list by user; persisted in localStorage)
 // ---------------------------------------------------------------------------
 
-const hiddenConnectorTypes$ = computed((get): Set<ConnectorRef> => {
-  const raw = get(hiddenConnectorTypesRaw$);
+const hiddenConnectorRefs$ = computed((get): Set<ConnectorRef> => {
+  const raw = get(hiddenConnectorRefsRaw$);
   if (!raw) {
     return new Set();
   }
@@ -570,11 +470,11 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
-export const filteredConnectorTypes$ = computed(async (get) => {
+export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
 
-  const agentEnabledTypes =
+  const agentEnabledRefs =
     effectiveFilter.kind === "agent"
       ? new Set(
           (await get(connectorAgentAuthorizations$)).find((row) => {
@@ -583,8 +483,8 @@ export const filteredConnectorTypes$ = computed(async (get) => {
         )
       : null;
 
-  const allConnectorTypes = await get(allConnectorTypes$);
-  return allConnectorTypes.filter((connector) => {
+  const allConnectorCatalogItems = await get(allConnectorCatalogItems$);
+  return allConnectorCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
@@ -595,7 +495,7 @@ export const filteredConnectorTypes$ = computed(async (get) => {
       return !connector.connected;
     }
     if (effectiveFilter.kind === "agent") {
-      return agentEnabledTypes?.has(connector.type) ?? false;
+      return agentEnabledRefs?.has(connector.connectorRef) ?? false;
     }
     return true;
   });
@@ -632,10 +532,10 @@ export const setConnectorsConnectionFilter$ = command(
 // Selected connector for connect modal
 // ---------------------------------------------------------------------------
 
-const internalSelectedConnectorType$ = state<ConnectorRef | null>(null);
+const internalSelectedConnectorRef$ = state<ConnectorRef | null>(null);
 
 type ActiveConnectorOAuthDeviceAuthState = {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly sessionId: string;
@@ -650,7 +550,7 @@ type ActiveConnectorOAuthDeviceAuthState = {
 };
 
 type ActiveConnectorExternalCodeState = {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly sessionId: string;
@@ -664,11 +564,11 @@ type ActiveConnectorExternalCodeState = {
 export type ConnectorOAuthDeviceAuthState =
   | {
       readonly status: "idle";
-      readonly connectorType: ConnectorRef | null;
+      readonly connectorRef: ConnectorRef | null;
     }
   | {
       readonly status: "starting";
-      readonly connectorType: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly requestId: string;
     }
@@ -677,7 +577,7 @@ export type ConnectorOAuthDeviceAuthState =
     })
   | {
       readonly status: "denied" | "expired" | "error";
-      readonly connectorType: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly message: string;
     };
@@ -685,11 +585,11 @@ export type ConnectorOAuthDeviceAuthState =
 export type ConnectorExternalCodeState =
   | {
       readonly status: "idle";
-      readonly connectorType: ConnectorRef | null;
+      readonly connectorRef: ConnectorRef | null;
     }
   | {
       readonly status: "starting";
-      readonly connectorType: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly requestId: string;
     }
@@ -698,20 +598,20 @@ export type ConnectorExternalCodeState =
     })
   | {
       readonly status: "expired" | "error";
-      readonly connectorType: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly message: string;
     };
 
 type ConnectorConnectFlowState = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly id: string;
 };
 
 function createIdleConnectorOAuthDeviceAuthState(
-  connectorType: ConnectorRef | null = null,
+  connectorRef: ConnectorRef | null = null,
 ): ConnectorOAuthDeviceAuthState {
-  return { status: "idle", connectorType };
+  return { status: "idle", connectorRef };
 }
 
 const internalConnectorOAuthDeviceAuthState$ =
@@ -720,9 +620,9 @@ const internalConnectorOAuthDeviceAuthState$ =
   );
 
 function createIdleConnectorExternalCodeState(
-  connectorType: ConnectorRef | null = null,
+  connectorRef: ConnectorRef | null = null,
 ): ConnectorExternalCodeState {
-  return { status: "idle", connectorType };
+  return { status: "idle", connectorRef };
 }
 
 const internalConnectorExternalCodeState$ = state<ConnectorExternalCodeState>(
@@ -734,26 +634,26 @@ const connectorOAuthDeviceAuthStartOptionValues$ = state<
   Record<string, Record<string, string>>
 >({});
 
-export const selectedConnectorType$ = computed((get) => {
-  return get(internalSelectedConnectorType$);
+export const selectedConnectorRef$ = computed((get) => {
+  return get(internalSelectedConnectorRef$);
 });
-export const setSelectedConnectorType$ = command(
-  ({ get, set }, type: ConnectorRef | null) => {
-    set(internalSelectedConnectorType$, type);
+export const setSelectedConnectorRef$ = command(
+  ({ get, set }, connectorRef: ConnectorRef | null) => {
+    set(internalSelectedConnectorRef$, connectorRef);
     const deviceAuthCurrent = get(internalConnectorOAuthDeviceAuthState$);
-    if (type !== deviceAuthCurrent.connectorType) {
+    if (connectorRef !== deviceAuthCurrent.connectorRef) {
       set(resetConnectorOAuthDeviceAuthFlowSignal$);
       set(
         internalConnectorOAuthDeviceAuthState$,
-        createIdleConnectorOAuthDeviceAuthState(type),
+        createIdleConnectorOAuthDeviceAuthState(connectorRef),
       );
     }
     const externalCodeCurrent = get(internalConnectorExternalCodeState$);
-    if (type !== externalCodeCurrent.connectorType) {
+    if (connectorRef !== externalCodeCurrent.connectorRef) {
       set(resetConnectorExternalCodeFlowSignal$);
       set(
         internalConnectorExternalCodeState$,
-        createIdleConnectorExternalCodeState(type),
+        createIdleConnectorExternalCodeState(connectorRef),
       );
     }
   },
@@ -784,18 +684,18 @@ function connectorExternalCodeStateIsActive(
 }
 
 function connectorConnectOperationIsActive({
-  authCodeConnectorType,
+  authCodeConnectorRef,
   connectFlow,
   deviceAuthState,
   externalCodeState,
 }: {
-  readonly authCodeConnectorType: ConnectorRef | null;
+  readonly authCodeConnectorRef: ConnectorRef | null;
   readonly connectFlow: ConnectorConnectFlowState | null;
   readonly deviceAuthState: ConnectorOAuthDeviceAuthState;
   readonly externalCodeState: ConnectorExternalCodeState;
 }): boolean {
   return (
-    authCodeConnectorType !== null ||
+    authCodeConnectorRef !== null ||
     connectFlow !== null ||
     connectorOAuthDeviceAuthStateIsActive(deviceAuthState) ||
     connectorExternalCodeStateIsActive(externalCodeState)
@@ -803,17 +703,19 @@ function connectorConnectOperationIsActive({
 }
 
 function connectorOAuthDeviceAuthStartOptionsKey(
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): string {
-  return `${type}:${authMethod}`;
+  return `${connectorRef}:${authMethod}`;
 }
 
 export const connectorOAuthDeviceAuthStartOptionValuesFor$ = computed((get) => {
   const values = get(connectorOAuthDeviceAuthStartOptionValues$);
-  return (type: ConnectorRef, authMethod: ConnectorAuthMethodId) => {
+  return (connectorRef: ConnectorRef, authMethod: ConnectorAuthMethodId) => {
     return (
-      values[connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)] ?? {}
+      values[
+        connectorOAuthDeviceAuthStartOptionsKey(connectorRef, authMethod)
+      ] ?? {}
     );
   };
 });
@@ -822,14 +724,14 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
   (
     { get, set },
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly name: string;
       readonly value: string;
     },
   ) => {
     const key = connectorOAuthDeviceAuthStartOptionsKey(
-      args.type,
+      args.connectorRef,
       args.authMethod,
     );
     const current = get(connectorOAuthDeviceAuthStartOptionValues$);
@@ -847,25 +749,28 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-const internalScopeReviewType$ = state<ConnectorRef | null>(null);
-export const scopeReviewType$ = computed((get) => {
-  return get(internalScopeReviewType$);
+const internalScopeReviewConnectorRef$ = state<ConnectorRef | null>(null);
+export const scopeReviewConnectorRef$ = computed((get) => {
+  return get(internalScopeReviewConnectorRef$);
 });
 
 export const scopeDiff$ = computed(async (get) => {
-  const type = get(internalScopeReviewType$);
-  if (!type) {
+  const connectorRef = get(internalScopeReviewConnectorRef$);
+  if (!connectorRef) {
     return null;
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);
-  const result = await accept(client.getScopeDiff({ params: { type } }), [200]);
+  const result = await accept(
+    client.getScopeDiff({ params: { type: connectorRef } }),
+    [200],
+  );
   return result.body;
 });
 
-export const setScopeReviewType$ = command(
-  ({ set }, type: ConnectorRef | null) => {
-    set(internalScopeReviewType$, type);
+export const setScopeReviewConnectorRef$ = command(
+  ({ set }, connectorRef: ConnectorRef | null) => {
+    set(internalScopeReviewConnectorRef$, connectorRef);
   },
 );
 
@@ -882,26 +787,28 @@ export const manualGrantFormSubmitting$ = computed((get) => {
 const internalManualGrantFormSubmitting$ = state<string | null>(null);
 
 export const setManualGrantFormValue$ = command(
-  ({ get, set }, type: string, name: string, value: string) => {
+  ({ get, set }, connectorRef: ConnectorRef, name: string, value: string) => {
     const current = get(manualGrantFormValues$);
     set(manualGrantFormValues$, {
       ...current,
-      [type]: { ...current[type], [name]: value },
+      [connectorRef]: { ...current[connectorRef], [name]: value },
     });
   },
 );
 
-export const clearManualGrantForm$ = command(({ get, set }, type: string) => {
-  const current = get(manualGrantFormValues$);
-  const updated = { ...current };
-  delete updated[type];
-  set(manualGrantFormValues$, updated);
-});
+export const clearManualGrantForm$ = command(
+  ({ get, set }, connectorRef: ConnectorRef) => {
+    const current = get(manualGrantFormValues$);
+    const updated = { ...current };
+    delete updated[connectorRef];
+    set(manualGrantFormValues$, updated);
+  },
+);
 
 export const manualGrantFormValuesFor$ = computed((get) => {
   const values = get(manualGrantFormValues$);
-  return (type: string) => {
-    return values[type] ?? {};
+  return (connectorRef: ConnectorRef) => {
+    return values[connectorRef] ?? {};
   };
 });
 
@@ -920,11 +827,11 @@ type FinishConnectorConnectionOptions = PostConnectOptions & {
 const finishConnectorConnection$ = command(
   (
     { get, set },
-    type: ConnectorRef,
+    connectorRef: ConnectorRef,
     options: FinishConnectorConnectionOptions = {},
   ): boolean => {
-    set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, type]);
+    set(internalJustConnectedRefs$, (prev) => {
+      return new Set([...prev, connectorRef]);
     });
     if (options.reloadConnectors !== false) {
       set(reloadConnectors$);
@@ -933,20 +840,21 @@ const finishConnectorConnection$ = command(
       set(reloadAgentConnectorAuthorizations$);
     }
 
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(type);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    const hidden = new Set(get(hiddenConnectorRefs$));
+    hidden.delete(connectorRef);
+    set(setHiddenConnectorRefs$, JSON.stringify([...hidden]));
 
     if (options.toastMessage !== null) {
       toast.success(
-        options.toastMessage ?? `${options.connectorLabel ?? type} connected`,
+        options.toastMessage ??
+          `${options.connectorLabel ?? connectorRef} connected`,
         {
-          id: `connector-connected-${type}`,
+          id: `connector-connected-${connectorRef}`,
         },
       );
     }
     if (options.clearSelectedConnector) {
-      set(internalSelectedConnectorType$, null);
+      set(internalSelectedConnectorRef$, null);
     }
     return true;
   },
@@ -957,7 +865,7 @@ const finishConnectorConnection$ = command(
 // ---------------------------------------------------------------------------
 
 type SubmitManualGrantParams = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly inputValues: Record<string, string>;
   readonly options: PostConnectOptions;
@@ -966,12 +874,12 @@ type SubmitManualGrantParams = {
 export const submitManualGrant$ = command(
   async (
     { get, set },
-    { type, authMethod, inputValues, options }: SubmitManualGrantParams,
+    { connectorRef, authMethod, inputValues, options }: SubmitManualGrantParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
     if (
       connectorConnectOperationIsActive({
-        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        authCodeConnectorRef: get(internalPollingOAuthAuthCodeConnectorRef$),
         connectFlow: get(internalConnectFlowState$),
         deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
         externalCodeState: get(internalConnectorExternalCodeState$),
@@ -980,7 +888,7 @@ export const submitManualGrant$ = command(
       return false;
     }
 
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
     let connectorStateChanged = false;
     return await withCleanup(
@@ -989,7 +897,7 @@ export const submitManualGrant$ = command(
         const connectorClient = createClient(zeroConnectorManualGrantContract);
         await accept(
           connectorClient.connect({
-            params: { type },
+            params: { type: connectorRef },
             body: {
               authMethod,
               authorizeAgent: true,
@@ -1002,10 +910,10 @@ export const submitManualGrant$ = command(
         );
         connectorStateChanged = true;
         signal.throwIfAborted();
-        set(finishConnectorConnection$, type, {
+        set(finishConnectorConnection$, connectorRef, {
           ...options,
           reloadConnectors: false,
-          toastMessage: `${options.connectorLabel ?? type} connected successfully`,
+          toastMessage: `${options.connectorLabel ?? connectorRef} connected successfully`,
         });
         return true;
       })(),
@@ -1026,7 +934,7 @@ export const submitManualGrant$ = command(
 // ---------------------------------------------------------------------------
 
 type ConnectNoAuthParams = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
 };
@@ -1034,12 +942,12 @@ type ConnectNoAuthParams = {
 export const connectConnectorNoAuth$ = command(
   async (
     { get, set },
-    { type, authMethod, options }: ConnectNoAuthParams,
+    { connectorRef, authMethod, options }: ConnectNoAuthParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
     if (
       connectorConnectOperationIsActive({
-        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        authCodeConnectorRef: get(internalPollingOAuthAuthCodeConnectorRef$),
         connectFlow: get(internalConnectFlowState$),
         deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
         externalCodeState: get(internalConnectorExternalCodeState$),
@@ -1048,7 +956,7 @@ export const connectConnectorNoAuth$ = command(
       return false;
     }
 
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
     let connectorStateChanged = false;
     return await withCleanup(
@@ -1057,7 +965,7 @@ export const connectConnectorNoAuth$ = command(
         const connectorClient = createClient(zeroConnectorNoAuthGrantContract);
         await accept(
           connectorClient.connect({
-            params: { type },
+            params: { type: connectorRef },
             body: {
               authMethod,
               authorizeAgent: true,
@@ -1069,10 +977,10 @@ export const connectConnectorNoAuth$ = command(
         );
         connectorStateChanged = true;
         signal.throwIfAborted();
-        set(finishConnectorConnection$, type, {
+        set(finishConnectorConnection$, connectorRef, {
           ...options,
           reloadConnectors: false,
-          toastMessage: `${options.connectorLabel ?? type} enabled successfully`,
+          toastMessage: `${options.connectorLabel ?? connectorRef} enabled successfully`,
         });
         return true;
       })(),
@@ -1108,34 +1016,34 @@ export const connectConnectorNoAuthAndSettle$ = command(
 // Polling state (for connect flow)
 // ---------------------------------------------------------------------------
 
-const internalPollingOAuthAuthCodeConnectorType$ = state<ConnectorRef | null>(
+const internalPollingOAuthAuthCodeConnectorRef$ = state<ConnectorRef | null>(
   null,
 );
 const internalConnectFlowState$ = state<ConnectorConnectFlowState | null>(null);
 
-export const pollingOAuthAuthCodeConnectorType$ = computed((get) => {
-  return get(internalPollingOAuthAuthCodeConnectorType$);
+export const pollingOAuthAuthCodeConnectorRef$ = computed((get) => {
+  return get(internalPollingOAuthAuthCodeConnectorRef$);
 });
 
-export const pollingOAuthDeviceAuthConnectorType$ = computed((get) => {
+export const pollingOAuthDeviceAuthConnectorRef$ = computed((get) => {
   const current = get(internalConnectorOAuthDeviceAuthState$);
   return current.status === "pending" || current.status === "polling"
-    ? current.connectorType
+    ? current.connectorRef
     : null;
 });
 
-export const connectFlowType$ = computed((get) => {
-  return get(internalConnectFlowState$)?.type ?? null;
+export const connectFlowConnectorRef$ = computed((get) => {
+  return get(internalConnectFlowState$)?.connectorRef ?? null;
 });
 
 export const runConnectorConnectSuccess$ = command(
   async (
     { set },
-    type: ConnectorRef,
+    connectorRef: ConnectorRef,
     onSuccess: () => void | Promise<void>,
     signal: AbortSignal,
   ): Promise<void> => {
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
     return await withCleanup(
       (async () => {
@@ -1154,14 +1062,14 @@ export const runConnectorConnectSuccess$ = command(
 
 // ---------------------------------------------------------------------------
 // Optimistic connected state — bridges the gap between connect success and
-// allConnectorTypes$ recomputation so the UI doesn't flash.
+// allConnectorCatalogItems$ recomputation so the UI doesn't flash.
 // ---------------------------------------------------------------------------
 
-const internalJustConnectedTypes$ = state<Set<string>>(new Set());
+const internalJustConnectedRefs$ = state<Set<ConnectorRef>>(new Set());
 
-/** Types that were just connected but may not yet be reflected in allConnectorTypes$. */
-export const justConnectedTypes$ = computed((get) => {
-  return get(internalJustConnectedTypes$);
+/** Refs that were just connected but may not yet be reflected in allConnectorCatalogItems$. */
+export const justConnectedRefs$ = computed((get) => {
+  return get(internalJustConnectedRefs$);
 });
 
 /**
@@ -1169,38 +1077,38 @@ export const justConnectedTypes$ = computed((get) => {
  *
  * Without this cleanup, a connector that was connected earlier in the session
  * stays in the Connected section of /connectors after disconnect because the
- * optimistic override in allConnectorTypes$ wins over the fresh
+ * optimistic override in allConnectorCatalogItems$ wins over the fresh
  * `connected = false` from the API (regression #10272).
  */
 export const disconnectConnector$ = command(
   async (
     { set },
-    type: ConnectorRef,
+    connectorRef: ConnectorRef,
     connectorLabel: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    await set(deleteConnector$, type, signal);
+    await set(deleteConnector$, connectorRef, signal);
     signal.throwIfAborted();
-    set(internalJustConnectedTypes$, (prev) => {
-      if (!prev.has(type)) {
+    set(internalJustConnectedRefs$, (prev) => {
+      if (!prev.has(connectorRef)) {
         return prev;
       }
       const next = new Set(prev);
-      next.delete(type);
+      next.delete(connectorRef);
       return next;
     });
     toast.success(`${connectorLabel} disconnected`, {
-      id: `connector-disconnected-${type}`,
+      id: `connector-disconnected-${connectorRef}`,
     });
   },
 );
 
 function createConnectorConnectFlowState(
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
 ): ConnectorConnectFlowState {
   return {
-    type,
-    id: `${type}-connect-${now()}-${Math.random().toString(36).slice(2)}`,
+    connectorRef,
+    id: `${connectorRef}-connect-${now()}-${Math.random().toString(36).slice(2)}`,
   };
 }
 
@@ -1215,7 +1123,7 @@ function secondsToMilliseconds(value: number): number {
 const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
 
 type PollConnectorOAuthDeviceAuthArgs = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly createClient: ZeroClientFactory;
@@ -1223,7 +1131,7 @@ type PollConnectorOAuthDeviceAuthArgs = {
 };
 
 type ConnectConnectorOAuthDeviceAuthParams = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
   readonly startOptions?: ConnectorDeviceAuthStartOptions;
@@ -1261,8 +1169,10 @@ type PollConnectorOAuthDeviceAuthIterationOutcome = {
   readonly expired?: true;
 };
 
-function createConnectorOAuthDeviceAuthRequestId(type: ConnectorRef): string {
-  return `${type}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
+function createConnectorOAuthDeviceAuthRequestId(
+  connectorRef: ConnectorRef,
+): string {
+  return `${connectorRef}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function getOAuthDeviceAuthTerminalMessage(
@@ -1289,7 +1199,7 @@ function getOAuthDeviceAuthTerminalMessage(
 
 function isCurrentConnectorOAuthDeviceAuthRequest(
   state: ConnectorOAuthDeviceAuthState,
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorOAuthDeviceAuthState & {
@@ -1297,7 +1207,7 @@ function isCurrentConnectorOAuthDeviceAuthRequest(
 } {
   return (
     (state.status === "pending" || state.status === "polling") &&
-    state.connectorType === type &&
+    state.connectorRef === connectorRef &&
     state.authMethod === authMethod &&
     state.requestId === requestId
   );
@@ -1314,13 +1224,13 @@ export const clearConnectorOAuthDeviceAuth$ = command(({ set }) => {
 export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
   (
     { get, set },
-    type: ConnectorRef,
+    connectorRef: ConnectorRef,
     authMethod: ConnectorAuthMethodId,
   ): boolean => {
     const current = get(internalConnectorOAuthDeviceAuthState$);
     if (
       (current.status !== "pending" && current.status !== "polling") ||
-      current.connectorType !== type ||
+      current.connectorRef !== connectorRef ||
       current.authMethod !== authMethod
     ) {
       return false;
@@ -1353,7 +1263,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
     { get, set },
     {
       client,
-      type,
+      connectorRef,
       authMethod,
       requestId,
       options,
@@ -1367,7 +1277,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
         if (
           !isCurrentConnectorOAuthDeviceAuthRequest(
             current,
-            type,
+            connectorRef,
             authMethod,
             requestId,
           )
@@ -1396,7 +1306,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
 
         const pollResponse = await accept(
           client.poll({
-            params: { type, sessionId: current.sessionId },
+            params: { type: connectorRef, sessionId: current.sessionId },
             body: { sessionToken: current.sessionToken },
             fetchOptions: { signal },
           }),
@@ -1411,7 +1321,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
         if (
           !isCurrentConnectorOAuthDeviceAuthRequest(
             latest,
-            type,
+            connectorRef,
             authMethod,
             requestId,
           )
@@ -1421,7 +1331,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
 
         if (pollResult.status === "complete") {
           signal.throwIfAborted();
-          set(finishConnectorConnection$, type, {
+          set(finishConnectorConnection$, connectorRef, {
             ...options,
             clearSelectedConnector: true,
             reloadConnectors: false,
@@ -1438,7 +1348,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
         if (pollResult.status !== "pending") {
           set(internalConnectorOAuthDeviceAuthState$, {
             status: pollResult.status,
-            connectorType: type,
+            connectorRef,
             authMethod,
             message: getOAuthDeviceAuthTerminalMessage(pollResult),
           });
@@ -1477,7 +1387,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
     {
-      type,
+      connectorRef,
       authMethod,
       requestId,
       createClient,
@@ -1491,7 +1401,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
       return isCurrentConnectorOAuthDeviceAuthRequest(
         state,
-        type,
+        connectorRef,
         authMethod,
         requestId,
       );
@@ -1503,7 +1413,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
       async (sig) => {
         const outcome = await set(
           pollConnectorOAuthDeviceAuthOnce$,
-          { client, type, authMethod, requestId, options },
+          { client, connectorRef, authMethod, requestId, options },
           sig,
         );
         sig.throwIfAborted();
@@ -1525,7 +1435,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     if (expired && isCurrentRequest(latest)) {
       set(internalConnectorOAuthDeviceAuthState$, {
         status: "expired",
-        connectorType: type,
+        connectorRef,
         authMethod,
         message: "Connection session expired. Start again to retry.",
       });
@@ -1540,10 +1450,10 @@ const connectConnectorOAuthDeviceAuth$ = command(
     args: ConnectConnectorOAuthDeviceAuthParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const { type, authMethod, options } = args;
+    const { connectorRef, authMethod, options } = args;
     if (
       connectorConnectOperationIsActive({
-        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        authCodeConnectorRef: get(internalPollingOAuthAuthCodeConnectorRef$),
         connectFlow: get(internalConnectFlowState$),
         deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
         externalCodeState: get(internalConnectorExternalCodeState$),
@@ -1552,19 +1462,19 @@ const connectConnectorOAuthDeviceAuth$ = command(
       return false;
     }
 
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
     let requestId: string | null = null;
     return await withCleanup(
       (async () => {
-        requestId = createConnectorOAuthDeviceAuthRequestId(type);
+        requestId = createConnectorOAuthDeviceAuthRequestId(connectorRef);
         const flowSignal = set(
           resetConnectorOAuthDeviceAuthFlowSignal$,
           signal,
         );
         set(internalConnectorOAuthDeviceAuthState$, {
           status: "starting",
-          connectorType: type,
+          connectorRef,
           authMethod,
           requestId,
         });
@@ -1577,7 +1487,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const startResponse = await tapError(
           accept(
             client.create({
-              params: { type },
+              params: { type: connectorRef },
               body: connectorOAuthDeviceAuthStartBody(args),
               fetchOptions: { signal: flowSignal },
             }),
@@ -1592,7 +1502,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
           }
           set(internalConnectorOAuthDeviceAuthState$, {
             status: "error",
-            connectorType: type,
+            connectorRef,
             authMethod,
             message: "Connection failed. Start again to retry.",
           });
@@ -1604,7 +1514,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
 
         set(internalConnectorOAuthDeviceAuthState$, {
           status: "pending",
-          connectorType: type,
+          connectorRef,
           authMethod,
           requestId,
           sessionId: startResult.sessionId,
@@ -1624,7 +1534,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         return await set(
           pollConnectorOAuthDeviceAuth$,
           {
-            type,
+            connectorRef,
             authMethod,
             requestId,
             createClient,
@@ -1640,7 +1550,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         set(internalConnectorOAuthDeviceAuthState$, (current) => {
           if (
             requestId === null ||
-            current.connectorType !== type ||
+            current.connectorRef !== connectorRef ||
             (current.status !== "starting" &&
               current.status !== "pending" &&
               current.status !== "polling") ||
@@ -1649,7 +1559,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
           ) {
             return current;
           }
-          return createIdleConnectorOAuthDeviceAuthState(type);
+          return createIdleConnectorOAuthDeviceAuthState(connectorRef);
         });
       },
     );
@@ -1660,7 +1570,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
   async (
     { set },
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;
@@ -1671,7 +1581,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
     const connected = await set(
       connectConnectorOAuthDeviceAuth$,
       {
-        type: args.type,
+        connectorRef: args.connectorRef,
         authMethod: args.authMethod,
         options: args.options,
         startOptions: args.startOptions,
@@ -1690,24 +1600,26 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
 // ---------------------------------------------------------------------------
 
 type ConnectConnectorExternalCodeParams = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly agentId?: string;
 };
 
 type CompleteConnectorExternalCodeParams = {
-  readonly type: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly authMethod: ConnectorAuthMethodId;
   readonly options: PostConnectOptions;
 };
 
-function createConnectorExternalCodeRequestId(type: ConnectorRef): string {
-  return `${type}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
+function createConnectorExternalCodeRequestId(
+  connectorRef: ConnectorRef,
+): string {
+  return `${connectorRef}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function isCurrentConnectorExternalCodeRequest(
   state: ConnectorExternalCodeState,
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorExternalCodeState & {
@@ -1715,7 +1627,7 @@ function isCurrentConnectorExternalCodeRequest(
 } {
   return (
     state.status === "pending" &&
-    state.connectorType === type &&
+    state.connectorRef === connectorRef &&
     state.authMethod === authMethod &&
     state.requestId === requestId
   );
@@ -1733,7 +1645,7 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
   (
     { get, set },
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorRef: ConnectorRef;
       readonly authMethod: ConnectorAuthMethodId;
       readonly code: string;
     },
@@ -1741,7 +1653,7 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
     const current = get(internalConnectorExternalCodeState$);
     if (
       current.status !== "pending" ||
-      current.connectorType !== args.type ||
+      current.connectorRef !== args.connectorRef ||
       current.authMethod !== args.authMethod
     ) {
       return false;
@@ -1758,13 +1670,13 @@ export const setConnectorExternalCodeAuthorizationCode$ = command(
 export const openConnectorExternalCodeAuthorizationPage$ = command(
   (
     { get, set },
-    type: ConnectorRef,
+    connectorRef: ConnectorRef,
     authMethod: ConnectorAuthMethodId,
   ): boolean => {
     const current = get(internalConnectorExternalCodeState$);
     if (
       current.status !== "pending" ||
-      current.connectorType !== type ||
+      current.connectorRef !== connectorRef ||
       current.authMethod !== authMethod
     ) {
       return false;
@@ -1793,10 +1705,10 @@ export const connectConnectorExternalCode$ = command(
     args: ConnectConnectorExternalCodeParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const { type, authMethod } = args;
+    const { connectorRef, authMethod } = args;
     if (
       connectorConnectOperationIsActive({
-        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        authCodeConnectorRef: get(internalPollingOAuthAuthCodeConnectorRef$),
         connectFlow: get(internalConnectFlowState$),
         deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
         externalCodeState: get(internalConnectorExternalCodeState$),
@@ -1805,16 +1717,16 @@ export const connectConnectorExternalCode$ = command(
       return false;
     }
 
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
     let requestId: string | null = null;
     return await withCleanup(
       (async () => {
-        requestId = createConnectorExternalCodeRequestId(type);
+        requestId = createConnectorExternalCodeRequestId(connectorRef);
         const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
         set(internalConnectorExternalCodeState$, {
           status: "starting",
-          connectorType: type,
+          connectorRef,
           authMethod,
           requestId,
         });
@@ -1826,7 +1738,7 @@ export const connectConnectorExternalCode$ = command(
         const startResponse = await tapError(
           accept(
             client.create({
-              params: { type },
+              params: { type: connectorRef },
               body: {
                 authMethod,
                 authorizeAgent: true,
@@ -1845,7 +1757,7 @@ export const connectConnectorExternalCode$ = command(
           }
           set(internalConnectorExternalCodeState$, {
             status: "error",
-            connectorType: type,
+            connectorRef,
             authMethod,
             message: "Connection failed. Start again to retry.",
           });
@@ -1857,7 +1769,7 @@ export const connectConnectorExternalCode$ = command(
 
         set(internalConnectorExternalCodeState$, {
           status: "pending",
-          connectorType: type,
+          connectorRef,
           authMethod,
           requestId,
           sessionId: startResult.sessionId,
@@ -1877,14 +1789,14 @@ export const connectConnectorExternalCode$ = command(
           if (
             !signal.aborted ||
             requestId === null ||
-            current.connectorType !== type ||
+            current.connectorRef !== connectorRef ||
             (current.status !== "starting" && current.status !== "pending") ||
             current.authMethod !== authMethod ||
             current.requestId !== requestId
           ) {
             return current;
           }
-          return createIdleConnectorExternalCodeState(type);
+          return createIdleConnectorExternalCodeState(connectorRef);
         });
       },
     );
@@ -1897,11 +1809,11 @@ const completeConnectorExternalCode$ = command(
     args: CompleteConnectorExternalCodeParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const { type, authMethod, options } = args;
+    const { connectorRef, authMethod, options } = args;
     const current = get(internalConnectorExternalCodeState$);
     if (
       current.status !== "pending" ||
-      current.connectorType !== type ||
+      current.connectorRef !== connectorRef ||
       current.authMethod !== authMethod
     ) {
       return false;
@@ -1909,7 +1821,7 @@ const completeConnectorExternalCode$ = command(
     if (now() > current.expiresAtMs) {
       set(internalConnectorExternalCodeState$, {
         status: "expired",
-        connectorType: type,
+        connectorRef,
         authMethod,
         message: "Connection session expired. Start again to retry.",
       });
@@ -1920,7 +1832,7 @@ const completeConnectorExternalCode$ = command(
     if (!code) {
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage: `Enter the code from ${options.connectorLabel ?? type}.`,
+        errorMessage: `Enter the code from ${options.connectorLabel ?? connectorRef}.`,
       });
       return false;
     }
@@ -1941,7 +1853,7 @@ const completeConnectorExternalCode$ = command(
         });
         const completeResult = await accept(
           client.complete({
-            params: { type, sessionId: current.sessionId },
+            params: { type: connectorRef, sessionId: current.sessionId },
             body: {
               sessionToken: current.sessionToken,
               code,
@@ -1959,7 +1871,7 @@ const completeConnectorExternalCode$ = command(
         if (
           !isCurrentConnectorExternalCodeRequest(
             latest,
-            type,
+            connectorRef,
             authMethod,
             current.requestId,
           )
@@ -1975,7 +1887,7 @@ const completeConnectorExternalCode$ = command(
           return false;
         }
 
-        set(finishConnectorConnection$, type, {
+        set(finishConnectorConnection$, connectorRef, {
           ...options,
           clearSelectedConnector: true,
           reloadConnectors: false,
@@ -2006,7 +1918,7 @@ export const completeConnectorExternalCodeAndSettle$ = command(
     const connected = await set(
       completeConnectorExternalCode$,
       {
-        type: args.type,
+        connectorRef: args.connectorRef,
         authMethod: args.authMethod,
         options: args.options,
       },
@@ -2068,14 +1980,14 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 
 function connectorMatchesAuthMethod(
   connector: ConnectorResponse,
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
 ): boolean {
-  return connector.type === type && connector.authMethod === authMethod;
+  return connector.type === connectorRef && connector.authMethod === authMethod;
 }
 
 function createConnectorOAuthAuthCodeChangedCommand(
-  type: ConnectorRef,
+  connectorRef: ConnectorRef,
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
 ) {
@@ -2093,7 +2005,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
     );
     const polled = (result.body as ConnectorListResponse).connectors;
     const current = polled.find((c) => {
-      return connectorMatchesAuthMethod(c, type, authMethod);
+      return connectorMatchesAuthMethod(c, connectorRef, authMethod);
     });
 
     if (initialUpdatedAt === undefined) {
@@ -2117,7 +2029,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       );
       return (
         authorization.status === 200 &&
-        authorization.body.enabledTypes.includes(type)
+        authorization.body.enabledTypes.includes(connectorRef)
       );
     }
     return false;
@@ -2128,8 +2040,8 @@ const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
     args: {
-      readonly type: ConnectorRef;
-      readonly method: ConnectorStatusAuthMethodDetail;
+      readonly connectorRef: ConnectorRef;
+      readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly connectorLabel: string;
       readonly agentId: string | undefined;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
@@ -2142,7 +2054,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     // URL in the external browser instead of blocking it as a popup.
     const popupFeatures = standalone ? undefined : "width=600,height=700";
     const redirectingPath = connectorRedirectingPath({
-      type: args.type,
+      type: args.connectorRef,
       label: args.connectorLabel,
     });
     const authWindow = window.open(redirectingPath, "_blank", popupFeatures);
@@ -2159,7 +2071,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       (async () => {
         if (!isBrowserAuthGrantKind(args.method.grantKind)) {
           throw new Error(
-            `${args.type}/${args.method.id} does not support browser authorization`,
+            `${args.connectorRef}/${args.method.id} does not support browser authorization`,
           );
         }
 
@@ -2172,7 +2084,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 get(zeroClient$)(zeroConnectorOpenIdStartContract, {
                   apiBase: "api",
                 }).start({
-                  params: { type: args.type },
+                  params: { type: args.connectorRef },
                   body: {
                     authMethod: args.method.id,
                     authorizeAgent: true,
@@ -2186,7 +2098,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 get(zeroClient$)(zeroConnectorOauthStartContract, {
                   apiBase: OAUTH_WEB_API_BASE,
                 }).start({
-                  params: { type: args.type },
+                  params: { type: args.connectorRef },
                   body: {
                     authMethod: args.method.id,
                     authorizeAgent: true,
@@ -2211,7 +2123,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
             authWindow.close();
           } else {
             authWindow.location.href = connectorRedirectingPath({
-              type: args.type,
+              type: args.connectorRef,
               label: args.connectorLabel,
               status: "error",
             });
@@ -2228,15 +2140,15 @@ const openConnectorOAuthAuthCodeWindow$ = command(
 export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
-    type: ConnectorRef,
-    method: ConnectorStatusAuthMethodDetail,
+    connectorRef: ConnectorRef,
+    method: PublicConnectorCatalogAuthMethodDetail,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
     if (
       connectorConnectOperationIsActive({
-        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        authCodeConnectorRef: get(internalPollingOAuthAuthCodeConnectorRef$),
         connectFlow: get(internalConnectFlowState$),
         deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
         externalCodeState: get(internalConnectorExternalCodeState$),
@@ -2245,9 +2157,9 @@ export const connectConnectorOAuthAuthCode$ = command(
       return false;
     }
 
-    const flow = createConnectorConnectFlowState(type);
+    const flow = createConnectorConnectFlowState(connectorRef);
     set(internalConnectFlowState$, flow);
-    set(internalPollingOAuthAuthCodeConnectorType$, type);
+    set(internalPollingOAuthAuthCodeConnectorRef$, connectorRef);
 
     return await withCleanup(
       (async () => {
@@ -2256,16 +2168,16 @@ export const connectConnectorOAuthAuthCode$ = command(
         // while avoiding a race where a very fast callback completes before the
         // first poll baseline is captured.
         const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
-          type,
+          connectorRef,
           method.id,
           options.agentId,
         );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
           {
-            type,
+            connectorRef,
             method,
-            connectorLabel: options.connectorLabel ?? type,
+            connectorLabel: options.connectorLabel ?? connectorRef,
             agentId: options.agentId,
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
@@ -2338,10 +2250,10 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Mark as optimistically connected before clearing polling so the UI
         // transitions directly from "Connecting…" to "Connected" without flash.
         const isConnected = connectors.some((c) => {
-          return connectorMatchesAuthMethod(c, type, method.id);
+          return connectorMatchesAuthMethod(c, connectorRef, method.id);
         });
         if (isConnected) {
-          set(finishConnectorConnection$, type, {
+          set(finishConnectorConnection$, connectorRef, {
             ...options,
             clearSelectedConnector: true,
             reloadConnectors: false,
@@ -2351,8 +2263,8 @@ export const connectConnectorOAuthAuthCode$ = command(
         return isConnected;
       })(),
       () => {
-        set(internalPollingOAuthAuthCodeConnectorType$, (current) => {
-          return current === type ? null : current;
+        set(internalPollingOAuthAuthCodeConnectorRef$, (current) => {
+          return current === connectorRef ? null : current;
         });
         set(internalConnectFlowState$, (current) => {
           return current?.id === flow.id ? null : current;
@@ -2370,8 +2282,8 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   async (
     { set },
     args: {
-      readonly type: ConnectorRef;
-      readonly method: ConnectorStatusAuthMethodDetail;
+      readonly connectorRef: ConnectorRef;
+      readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;
     },
@@ -2379,7 +2291,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   ): Promise<void> => {
     const connected = await set(
       connectConnectorOAuthAuthCode$,
-      args.type,
+      args.connectorRef,
       args.method,
       args.options,
       signal,

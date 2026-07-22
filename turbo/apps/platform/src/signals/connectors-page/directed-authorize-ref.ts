@@ -15,13 +15,13 @@ import {
 } from "../zero-page/agent-connector-authorizations.ts";
 
 /**
- * Connector type extracted from `/connectors/:type/authorize` route params.
+ * Connector ref extracted from `/connectors/:type/authorize` route params.
  */
-export const directedAuthorizeType$ = computed((get): string | null => {
+export const directedAuthorizeRef$ = computed((get): ConnectorRef | null => {
   const params = get(pathParams$);
-  const type = params?.type;
+  const routeType = params?.type;
   const parsed = connectorRefSchema.safeParse(
-    typeof type === "string" ? type.toLowerCase() : null,
+    typeof routeType === "string" ? routeType.toLowerCase() : null,
   );
   return parsed.success ? parsed.data : null;
 });
@@ -57,7 +57,7 @@ export const agentEnabledTypes$ = computed(async (get) => {
 });
 
 export type DirectedAuthorizeConnectModalKey = {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly agentId: string;
   readonly signal: AbortSignal;
 };
@@ -74,10 +74,10 @@ export const setDirectedAuthorizeConnectModalKey$ = command(
 );
 
 function connectorAgentAuthorizationKey(args: {
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
   readonly agentId: string;
 }): string {
-  return `${args.agentId}:${args.connectorType}`;
+  return `${args.agentId}:${args.connectorRef}`;
 }
 
 const internalAuthorized$ = state<Set<string>>(new Set());
@@ -91,7 +91,7 @@ export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
 export const authorizeConnector$ = command(
   async (
     { get, set },
-    connectorType: ConnectorRef,
+    connectorRef: ConnectorRef,
     agentId: string,
     signal: AbortSignal,
   ) => {
@@ -102,7 +102,7 @@ export const authorizeConnector$ = command(
       accept(
         client.update({
           params: { id: agentId },
-          body: { enabledTypes: [connectorType], operation: "add" },
+          body: { enabledTypes: [connectorRef], operation: "add" },
           fetchOptions: { signal },
         }),
         [200],
@@ -117,7 +117,7 @@ export const authorizeConnector$ = command(
     set(internalAuthorized$, (prev) => {
       return new Set([
         ...prev,
-        connectorAgentAuthorizationKey({ connectorType, agentId }),
+        connectorAgentAuthorizationKey({ connectorRef, agentId }),
       ]);
     });
   },
@@ -126,7 +126,7 @@ export const authorizeConnector$ = command(
 export function isJustAuthorizedConnectorAgent(
   justAuthorizedKeys: ReadonlySet<string>,
   args: {
-    readonly connectorType: ConnectorRef;
+    readonly connectorRef: ConnectorRef;
     readonly agentId: string;
   },
 ): boolean {

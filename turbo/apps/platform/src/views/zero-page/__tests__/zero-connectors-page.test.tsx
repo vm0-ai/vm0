@@ -2267,7 +2267,7 @@ describe("connectors page", () => {
       context.store.set(
         submitManualGrant$,
         {
-          type: "axiom",
+          connectorRef: "axiom",
           authMethod: "api-token",
           inputValues: { apiToken: "xaat-test" },
           options: { connectorLabel: "Public Axiom" },

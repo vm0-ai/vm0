@@ -68,12 +68,12 @@ export function agentConnectorAuthorizations(params: {
 
 export function isAgentConnectorAuthorized(params: {
   readonly agentId: string;
-  readonly connectorType: ConnectorRef;
+  readonly connectorRef: ConnectorRef;
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const authorizations = await get(
       agentConnectorAuthorizations({ agentId: params.agentId }),
     );
-    return authorizations.enabledTypes.includes(params.connectorType);
+    return authorizations.enabledTypes.includes(params.connectorRef);
   });
 }
