@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.146.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.28...runner-rs-v0.146.29) (2026-07-22)
+
+
+### Bug Fixes
+
+* **firewall:** enforce ports for parameterized bases ([#22489](https://github.com/vm0-ai/vm0/issues/22489)) ([d520ba9](https://github.com/vm0-ai/vm0/commit/d520ba90e6eeb842eaf8182594147be3c6e91317))
+* **runner:** bound streaming zlib expansion ([#22449](https://github.com/vm0-ai/vm0/issues/22449)) ([3c01b04](https://github.com/vm0-ai/vm0/commit/3c01b044dad77fc9ba3610743a8331be629545fd))
+
 ## [0.146.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.27...runner-rs-v0.146.28) (2026-07-22)
 
 
