@@ -346,6 +346,24 @@ jobs:
       - name: Ensure generated connector firewall files are untracked
         run: ./scripts/ensure-generated-connector-firewalls-untracked.sh
 
+  block-connector-source-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Block connector source additions and modifications
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKOUT_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          BASE_SHA=$(.github/scripts/changed-base-ref.sh)
+          .github/scripts/check-connector-source-freeze.sh "$BASE_SHA"
+
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
@@ -2613,6 +2631,7 @@ jobs:
       - prepare
       - file-size-check
       - block-generated-firewalls
+      - block-connector-source-changes
       - lint-eslint
       - lint-types
       - lint-types-apps
@@ -2646,6 +2665,10 @@ jobs:
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
+            if [[ "${{ needs.block-connector-source-changes.result }}" != "success" ]]; then
+              echo "::error::block-connector-source-changes: expected success, got ${{ needs.block-connector-source-changes.result }}"
+              exit 1
+            fi
             echo "✅ Release-please — skipping CI gate"
             exit 0
           fi
@@ -2697,6 +2720,7 @@ jobs:
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
           check_result "block-generated-firewalls" "${{ needs.block-generated-firewalls.result }}" ""
+          check_result "block-connector-source-changes" "${{ needs.block-connector-source-changes.result }}" ""
 
           # Turbo TypeScript checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
