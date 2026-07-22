@@ -141,6 +141,42 @@ const SANDBOX_START_STAGE_FAILED: &str = "sandbox_start_stage_failed";
 const DNS_READINESS_RETRY_PREPARE_FAILED: &str = "replacement_prepare_failed";
 const SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN: &str = "cleanup_uncertain";
 
+struct DnsReadinessReplacement {
+    started: Instant,
+    workspace_fallback: bool,
+}
+
+impl DnsReadinessReplacement {
+    fn new(workspace_fallback: bool) -> Self {
+        Self {
+            started: Instant::now(),
+            workspace_fallback,
+        }
+    }
+
+    fn complete(
+        self,
+        context: &ExecutionContext,
+        sandbox_id: SandboxId,
+        telemetry: &mut JobTelemetry,
+        success: bool,
+    ) {
+        telemetry.record(
+            RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY,
+            self.started.elapsed(),
+            success,
+            (!success).then_some(DNS_READINESS_RETRY_PREPARE_FAILED),
+        );
+        warn!(
+            run_id = %context.run_id,
+            sandbox_id = %sandbox_id,
+            success,
+            workspace_fallback = self.workspace_fallback,
+            "guest DNS readiness replacement completed"
+        );
+    }
+}
+
 struct FreshSandboxFactoryCreateObserver<'a> {
     telemetry: &'a mut JobTelemetry,
 }
@@ -448,7 +484,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     let mut used_retry = false;
-    let mut dns_retry: Option<(Instant, bool)> = None;
+    let mut dns_replacement: Option<DnsReadinessReplacement> = None;
     let prepared = loop {
         let result = create_started_sandbox(
             factory,
@@ -464,21 +500,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         )
         .await;
 
-        if let Some((started, workspace_fallback)) = dns_retry.take() {
+        if let Some(replacement) = dns_replacement.take() {
             let success = result.is_ok();
-            telemetry.record(
-                RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY,
-                started.elapsed(),
-                success,
-                (!success).then_some(DNS_READINESS_RETRY_PREPARE_FAILED),
-            );
-            warn!(
-                run_id = %context.run_id,
-                sandbox_id = %sandbox_id,
-                success,
-                workspace_fallback,
-                "guest DNS readiness replacement completed"
-            );
+            replacement.complete(context, sandbox_id, telemetry, success);
         }
 
         let failure = match result {
@@ -558,7 +582,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 error = %failure.error,
                 "guest DNS readiness failed; retrying with a fresh sandbox attachment"
             );
-            dns_retry = Some((Instant::now(), cache_hit));
+            dns_replacement = Some(DnsReadinessReplacement::new(cache_hit));
         }
 
         if cache_hit {
@@ -585,6 +609,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             match prepare_fresh_storage(context, None, config, &controls.cancel, telemetry).await {
                 Ok(prepared_storage) => controls.prepared_storage = prepared_storage,
                 Err(error) => {
+                    if let Some(replacement) = dns_replacement.take() {
+                        replacement.complete(context, sandbox_id, telemetry, false);
+                    }
                     telemetry.record(
                         "runner_fresh_sandbox_prepare",
                         prepare_started.elapsed(),
