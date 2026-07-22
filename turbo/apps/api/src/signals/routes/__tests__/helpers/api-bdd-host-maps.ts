@@ -3,6 +3,7 @@ import {
   type CreateHtmlEditDraftRequest,
   type GeneratePresentationSpeakerNotesRequest,
   type HostedSiteCompleteResponse,
+  type HostedSiteDeploymentsResponse,
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
@@ -36,6 +37,7 @@ type HostActor = ApiTestUser | BearerActor;
 type HostPrepareStatus = 200 | 400 | 401 | 402 | 403 | 409 | 500;
 type HostCompleteStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostFilesStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type HostDeploymentsStatus = 200 | 400 | 401 | 403 | 404 | 500;
 type HostRedeployStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostSpeakerNotesStatus = 200 | 400 | 401 | 402 | 403 | 500;
 type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500 | 503;
@@ -230,11 +232,13 @@ export function createHostMapsBddApi(context: TestContext) {
     async readHostedSiteFiles(
       actor: ApiTestUser,
       publicSlug: string,
+      version?: number,
     ): Promise<HostedSiteFilesResponse> {
       const response = await accept(
         hostClient().files({
           headers: authenticate(context, actor),
           params: { publicSlug },
+          query: version === undefined ? {} : { version },
         }),
         [200],
       );
@@ -245,11 +249,41 @@ export function createHostMapsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       publicSlug: string,
       statuses: readonly HostFilesStatus[],
+      version?: number,
     ) {
       return await accept(
         hostClient().files({
           headers: authenticate(context, actor),
           params: { publicSlug },
+          query: version === undefined ? {} : { version },
+        }),
+        statuses,
+      );
+    },
+
+    async readHostedSiteDeployments(
+      actor: ApiTestUser,
+      site: string,
+    ): Promise<HostedSiteDeploymentsResponse> {
+      const response = await accept(
+        hostClient().deployments({
+          headers: authenticate(context, actor),
+          params: { site },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestHostedSiteDeployments(
+      actor: ApiTestUser | null,
+      site: string,
+      statuses: readonly HostDeploymentsStatus[],
+    ) {
+      return await accept(
+        hostClient().deployments({
+          headers: authenticate(context, actor),
+          params: { site },
         }),
         statuses,
       );

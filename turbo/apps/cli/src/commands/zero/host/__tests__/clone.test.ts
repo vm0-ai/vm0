@@ -19,6 +19,8 @@ import { zeroHostCommand } from "../index";
 const FILES_URL = "http://localhost:3000/api/zero/host/sites/:publicSlug/files";
 const HOSTED_SITE_URL =
   "https://demo-site-a1b2c3d4-release-01.sites.example.com";
+const ARTIFACT_URL =
+  "https://dpl-00000000-0000-4000-8000-000000000002.sites.example.com";
 const R2_DOWNLOAD_URL = "https://r2.example.com/demo-site";
 
 function sha256(bytes: Buffer): string {
@@ -59,13 +61,19 @@ describe("zero host clone command", () => {
 
     server.use(
       http.get(FILES_URL, ({ params, request }) => {
-        expect(params.publicSlug).toBe("demo-site-a1b2c3d4-release-01");
+        expect(params.publicSlug).toBe(
+          "dpl-00000000-0000-4000-8000-000000000002",
+        );
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        expect(new URL(request.url).searchParams.get("version")).toBe("1");
         return HttpResponse.json({
           siteId: "00000000-0000-4000-8000-000000000001",
           deploymentId: "00000000-0000-4000-8000-000000000002",
           publicSlug: "demo-site-a1b2c3d4-release-01",
           url: HOSTED_SITE_URL,
+          deploymentVersion: 1,
+          artifactUrl: ARTIFACT_URL,
+          aliasUrl: HOSTED_SITE_URL,
           fileCount: 2,
           size: index.byteLength + script.byteLength,
           files: [
@@ -99,8 +107,10 @@ describe("zero host clone command", () => {
       "node",
       "cli",
       "clone",
-      HOSTED_SITE_URL,
+      ARTIFACT_URL,
       destination,
+      "--version",
+      "1",
       "--json",
     ]);
 
@@ -115,6 +125,8 @@ describe("zero host clone command", () => {
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
       publicSlug: "demo-site-a1b2c3d4-release-01",
+      deploymentVersion: 1,
+      artifactUrl: ARTIFACT_URL,
       destination,
       fileCount: 2,
     });

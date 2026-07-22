@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
 import { withErrorHandler } from "../../../lib/command";
@@ -10,6 +10,15 @@ import { formatBytes } from "../../../lib/utils/file-utils";
 
 interface CloneOptions {
   readonly json?: boolean;
+  readonly version?: number;
+}
+
+function parseVersion(value: string): number {
+  const version = Number(value);
+  if (!Number.isSafeInteger(version) || version <= 0) {
+    throw new InvalidArgumentError("version must be a positive integer");
+  }
+  return version;
 }
 
 function jsonOption(options: CloneOptions, command: Command): boolean {
@@ -19,17 +28,24 @@ function jsonOption(options: CloneOptions, command: Command): boolean {
 
 export const cloneHostedSiteCommand = new Command()
   .name("clone")
-  .description("Clone an owned hosted site's active files to a local directory")
+  .description("Clone an owned hosted-site version to a local directory")
   .argument("<site>", "Hosted site public slug or URL")
   .argument("[destination]", "Destination directory (default: public slug)")
+  .option(
+    "--version <number>",
+    "Clone a specific artifact version",
+    parseVersion,
+  )
   .option("--json", "Output only the final result as JSON")
   .addHelpText(
     "after",
     `
 Examples:
-  Clone by public slug:  zero host clone my-site-a1b2c3d4-release-01
-  Clone by hosted URL:   zero host clone https://my-site-a1b2c3d4-release-01.sites.example.com ./site
-  Machine readable:      zero host clone my-site-a1b2c3d4-release-01 --json
+  Clone by public slug:  zero host clone my-site
+  Clone by hosted URL:   zero host clone https://my-site.sites.example.com ./site
+  Clone an artifact URL: zero host clone https://dpl-<deployment-id>.sites.example.com ./site
+  Clone version 2:       zero host clone my-site --version 2
+  Machine readable:      zero host clone my-site --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires host:read capability)
@@ -50,6 +66,9 @@ Notes:
         const result = await cloneHostedSite({
           site,
           destination: targetDir,
+          ...(options.version === undefined
+            ? {}
+            : { version: options.version }),
           onProgress: json
             ? undefined
             : (progress) => {
@@ -76,11 +95,14 @@ Notes:
 
         console.log(chalk.green("✓ Hosted site cloned"));
         console.log(chalk.dim(`  Site: ${result.publicSlug}`));
+        if (result.deploymentVersion !== undefined) {
+          console.log(chalk.dim(`  Version: v${result.deploymentVersion}`));
+        }
         console.log(chalk.dim(`  Deployment: ${result.deploymentId}`));
         console.log(chalk.dim(`  Files: ${result.fileCount.toLocaleString()}`));
         console.log(chalk.dim(`  Size: ${formatBytes(result.size)}`));
         console.log(chalk.dim(`  Location: ${result.destination}/`));
-        console.log(`  URL: ${result.url}`);
+        console.log(`  URL: ${result.artifactUrl ?? result.url}`);
       },
     ),
   );

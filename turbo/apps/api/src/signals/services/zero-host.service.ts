@@ -8,6 +8,7 @@ import {
   type HostedArtifactKind,
   type HtmlEditDraftResponse,
   type HostedSiteFilesResponse,
+  type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSiteRedeployHtmlRequest,
   type HostedSiteRedeployPresentationHtmlRequest,
@@ -15,13 +16,15 @@ import {
   htmlEditDraftResponseSchema,
   presentationSpeakerNotesPatchSchema,
 } from "@vm0/api-contracts/contracts/zero-host";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   hostedDeployments,
   hostedSites,
   type HostedSiteManifest,
   type HostedSiteManifestFile,
 } from "@vm0/db/schema/hosted-site";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
@@ -47,6 +50,11 @@ const GET_URL_TTL_SECONDS = 3600;
 const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
+const MAX_DNS_LABEL_LENGTH = 63;
+const PUBLIC_SLUG_HASH_LENGTH = 4;
+const PUBLIC_SLUG_HASH_SPACE = 36 ** PUBLIC_SLUG_HASH_LENGTH;
+const IMMUTABLE_DEPLOYMENT_HOST_PATTERN =
+  /^dpl-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/u;
 const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
 export const HTML_DOM_EDIT_MODEL = "openai/gpt-4.1-mini";
 const HTML_DOM_NODE_ID_ATTR = "data-vm0-node-id";
@@ -227,6 +235,12 @@ interface HtmlEditDraftDocument {
 interface GetHostedSiteFilesArgs {
   readonly orgId: string;
   readonly publicSlug: string;
+  readonly version?: number;
+}
+
+interface GetHostedSiteDeploymentsArgs {
+  readonly orgId: string;
+  readonly site: string;
 }
 
 type PrepareDeploymentResult =
@@ -237,6 +251,9 @@ type PrepareDeploymentResult =
         readonly deploymentId: string;
         readonly publicSlug: string;
         readonly url: string;
+        readonly deploymentVersion?: number;
+        readonly artifactUrl?: string;
+        readonly aliasUrl?: string;
         readonly uploads: readonly {
           readonly path: string;
           readonly uploadUrl: string;
@@ -255,6 +272,11 @@ type CompleteDeploymentResult =
         readonly deploymentId: string;
         readonly publicSlug: string;
         readonly url: string;
+        readonly deploymentVersion?: number;
+        readonly artifactUrl?: string;
+        readonly aliasUrl?: string;
+        readonly isActive?: boolean;
+        readonly activeDeploymentVersion?: number;
         readonly status: "ready";
       };
     }
@@ -285,10 +307,17 @@ type GetHostedSiteFilesResult =
   | { readonly status: "conflict"; readonly message: string }
   | { readonly status: "config_error"; readonly message: string };
 
+type GetHostedSiteDeploymentsResult =
+  | {
+      readonly status: "ok";
+      readonly body: HostedSiteDeploymentsResponse;
+    }
+  | { readonly status: "not_found"; readonly message: string };
+
 type RedeployHostedSiteTargetResult =
   | {
       readonly status: "ok";
-      readonly activeDeployment: HostedDeploymentRow;
+      readonly sourceDeployment: HostedDeploymentRow;
       readonly site: HostedSiteRow;
     }
   | { readonly status: "not_found"; readonly message: string }
@@ -299,6 +328,8 @@ interface ActiveSitePointer {
   readonly publicSlug: string;
   readonly siteId: string;
   readonly deploymentId: string;
+  readonly deploymentVersion?: number;
+  readonly artifactUrl?: string;
   readonly prefix: string;
   readonly manifestKey: string;
   readonly spaFallback: boolean;
@@ -321,12 +352,18 @@ type CreatedSiteDeployment = Extract<
   { readonly kind: "ok" }
 >;
 
-interface CreateHostedSiteDeploymentContext {
-  readonly now: Date;
-  readonly publicSlug: string;
-  readonly url: string;
-  readonly allowExistingPublicSlug: boolean;
-}
+type CreateHostedSiteDeploymentContext =
+  | {
+      readonly kind: "legacy";
+      readonly now: Date;
+      readonly publicSlug: string;
+      readonly url: string;
+      readonly allowExistingPublicSlug: boolean;
+    }
+  | {
+      readonly kind: "versioned";
+      readonly now: Date;
+    };
 
 interface HostedR2Config {
   readonly bucket: string;
@@ -1630,7 +1667,15 @@ function publicUrl(publicSlug: string): string {
   return `${env("ZERO_HOST_SCHEME")}://${publicSlug}.${env("ZERO_HOST_DOMAIN")}`;
 }
 
-function publicSlugFromHostedSiteUrl(value: string): string | null {
+function deploymentUrl(deploymentId: string): string {
+  return publicUrl(`dpl-${deploymentId}`);
+}
+
+type HostedSiteReference =
+  | { readonly kind: "alias"; readonly publicSlug: string }
+  | { readonly kind: "deployment"; readonly deploymentId: string };
+
+function hostedSiteReferenceFromUrl(value: string): HostedSiteReference | null {
   if (!URL.canParse(value)) {
     return null;
   }
@@ -1639,16 +1684,35 @@ function publicSlugFromHostedSiteUrl(value: string): string | null {
   if (url.hostname === hostDomain || !url.hostname.endsWith(`.${hostDomain}`)) {
     return null;
   }
-  const publicSlug = url.hostname.slice(0, -(hostDomain.length + ".".length));
-  return publicSlug || null;
+  const hostLabel = url.hostname.slice(0, -(hostDomain.length + ".".length));
+  const deploymentMatch = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(hostLabel);
+  if (deploymentMatch?.[1]) {
+    return { kind: "deployment", deploymentId: deploymentMatch[1] };
+  }
+  return hostLabel ? { kind: "alias", publicSlug: hostLabel } : null;
 }
 
 function activePointerKey(publicSlug: string): string {
   return `sites/${publicSlug}/active.json`;
 }
 
-function deploymentPrefix(publicSlug: string, deploymentId: string): string {
+function immutableDeploymentPointerKey(deploymentId: string): string {
+  return `sites/deployments/${deploymentId}.json`;
+}
+
+function legacyDeploymentPrefix(
+  publicSlug: string,
+  deploymentId: string,
+): string {
   return `sites/${publicSlug}/deployments/${deploymentId}`;
+}
+
+function versionedDeploymentPrefix(
+  orgId: string,
+  site: string,
+  deploymentVersion: number,
+): string {
+  return `sites/orgs/${encodeURIComponent(orgId)}/${site}/versions/${deploymentVersion}`;
 }
 
 function orgSlugHash(orgId: string): string {
@@ -1665,6 +1729,67 @@ function publicSlugForSite(
   slugSuffix: string,
 ): string {
   return `${site}-${orgSlugHash(orgId)}-${slugSuffix}`;
+}
+
+function shortPublicSlugHash(
+  orgId: string,
+  site: string,
+  attempt: number,
+): string {
+  const value = createHash("sha256")
+    .update(`${orgId}\0${site}\0${attempt}`)
+    .digest()
+    .readUInt32BE(0);
+  return (value % PUBLIC_SLUG_HASH_SPACE)
+    .toString(36)
+    .padStart(PUBLIC_SLUG_HASH_LENGTH, "0");
+}
+
+function isImmutableDeploymentHostLabel(value: string): boolean {
+  return IMMUTABLE_DEPLOYMENT_HOST_PATTERN.test(value);
+}
+
+function versionedPublicSlugCandidate(
+  site: string,
+  orgId: string,
+  attempt: number,
+): string {
+  if (attempt === 0 && !isImmutableDeploymentHostLabel(site)) {
+    return site;
+  }
+  const hashAttempt = isImmutableDeploymentHostLabel(site)
+    ? attempt
+    : attempt - 1;
+  const base = site.slice(
+    0,
+    MAX_DNS_LABEL_LENGTH - PUBLIC_SLUG_HASH_LENGTH - 1,
+  );
+  return `${base}-${shortPublicSlugHash(orgId, site, hashAttempt)}`;
+}
+
+function hostedArtifactVersionsEnabled(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): boolean {
+  return isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, args);
+}
+
+function deploymentVersionResponseFields(deployment: HostedDeploymentRow): {
+  readonly deploymentVersion?: number;
+  readonly artifactUrl?: string;
+  readonly aliasUrl?: string;
+} {
+  if (
+    deployment.deploymentVersion === null ||
+    deployment.artifactUrl === null
+  ) {
+    return {};
+  }
+  return {
+    deploymentVersion: deployment.deploymentVersion,
+    artifactUrl: deployment.artifactUrl,
+    aliasUrl: deployment.url,
+  };
 }
 
 function fileKey(prefix: string, path: string): string {
@@ -1724,52 +1849,86 @@ async function findHostedSiteRedeployTarget(
   args: {
     readonly artifactKind: HostedArtifactKind;
     readonly orgId: string;
-    readonly publicSlug: string;
+    readonly reference: HostedSiteReference;
   },
   signal: AbortSignal,
 ): Promise<RedeployHostedSiteTargetResult> {
-  const [site] = await writeDb
-    .select()
-    .from(hostedSites)
-    .where(
-      and(
-        eq(hostedSites.publicSlug, args.publicSlug),
-        eq(hostedSites.orgId, args.orgId),
-        isNull(hostedSites.deletedAt),
-      ),
-    )
-    .limit(1);
+  let site: HostedSiteRow | undefined;
+  let sourceDeployment: HostedDeploymentRow | undefined;
+
+  if (args.reference.kind === "alias") {
+    [site] = await writeDb
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.publicSlug, args.reference.publicSlug),
+          eq(hostedSites.orgId, args.orgId),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!site) {
+      return { status: "not_found", message: "Hosted site not found" };
+    }
+    if (!site.activeDeploymentId) {
+      return {
+        status: "bad_request",
+        message: "Hosted site has no active deployment",
+      };
+    }
+    [sourceDeployment] = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, site.activeDeploymentId),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+  } else {
+    [sourceDeployment] = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, args.reference.deploymentId),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (sourceDeployment) {
+      [site] = await writeDb
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.id, sourceDeployment.siteId),
+            eq(hostedSites.orgId, args.orgId),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .limit(1);
+    }
+  }
   signal.throwIfAborted();
 
-  if (!site) {
-    return { status: "not_found", message: "Hosted site not found" };
-  }
-  if (!site.activeDeploymentId) {
-    return {
-      status: "bad_request",
-      message: "Hosted site has no active deployment",
-    };
-  }
-
-  const [activeDeployment] = await writeDb
-    .select()
-    .from(hostedDeployments)
-    .where(
-      and(
-        eq(hostedDeployments.id, site.activeDeploymentId),
-        eq(hostedDeployments.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!activeDeployment) {
+  if (!site || !sourceDeployment) {
     return {
       status: "not_found",
-      message: "Active hosted deployment not found",
+      message: "Hosted deployment not found",
     };
   }
-  if (activeDeployment.manifest.artifactKind !== args.artifactKind) {
+  if (sourceDeployment.status !== "ready") {
+    return {
+      status: "bad_request",
+      message: `Hosted deployment is ${sourceDeployment.status}`,
+    };
+  }
+  if (sourceDeployment.manifest.artifactKind !== args.artifactKind) {
     const label =
       args.artifactKind === "presentation-html"
         ? "presentation HTML artifact"
@@ -1779,7 +1938,7 @@ async function findHostedSiteRedeployTarget(
       message: `Hosted site is not a ${label}`,
     };
   }
-  return { status: "ok", activeDeployment, site };
+  return { status: "ok", sourceDeployment, site };
 }
 
 function validateFiles(
@@ -1812,7 +1971,9 @@ function validateFiles(
 function buildManifest(args: {
   readonly deploymentId: string;
   readonly siteId: string;
+  readonly site: string;
   readonly publicSlug: string;
+  readonly deploymentVersion: number | null;
   readonly artifactKind: HostedArtifactKind;
   readonly spaFallback: boolean;
   readonly files: readonly HostedSiteFile[];
@@ -1832,7 +1993,11 @@ function buildManifest(args: {
     version: 1,
     deploymentId: args.deploymentId,
     siteId: args.siteId,
+    site: args.site,
     publicSlug: args.publicSlug,
+    ...(args.deploymentVersion === null
+      ? {}
+      : { deploymentVersion: args.deploymentVersion }),
     createdAt: args.createdAt.toISOString(),
     artifactKind: args.artifactKind,
     spaFallback: args.spaFallback,
@@ -1851,7 +2016,7 @@ function artifactPreviewArgs(
     id: artifactRowId,
     runId: deployment.runId,
     userId: deployment.userId,
-    url: deployment.url,
+    url: deployment.artifactUrl ?? deployment.url,
     contentType: "text/html",
     deploymentId: deployment.id,
   };
@@ -1866,8 +2031,11 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
     artifactKind,
     siteId: deployment.siteId,
     deploymentId: deployment.id,
+    deploymentVersion: deployment.deploymentVersion,
+    site: deployment.manifest.site ?? deployment.manifest.publicSlug,
     publicSlug: deployment.manifest.publicSlug,
-    url: deployment.url,
+    aliasUrl: deployment.url,
+    url: deployment.artifactUrl ?? deployment.url,
     fileCount: deployment.fileCount,
     sizeBytes: deployment.sizeBytes,
     entrypoint: deployment.entrypoint,
@@ -1881,51 +2049,147 @@ function createHostedSiteDeployment(
   context: CreateHostedSiteDeploymentContext,
 ): Promise<SiteDeploymentCreationResult> {
   return writeDb.transaction(async (tx) => {
-    const [existingPublicSite] = await tx
-      .select()
-      .from(hostedSites)
-      .where(
-        and(
-          eq(hostedSites.publicSlug, context.publicSlug),
-          isNull(hostedSites.deletedAt),
-        ),
-      )
-      .limit(1);
+    let site: HostedSiteRow | undefined;
+    let deploymentVersion: number | null = null;
 
-    if (
-      existingPublicSite &&
-      (!context.allowExistingPublicSlug ||
-        existingPublicSite.orgId !== args.orgId ||
-        existingPublicSite.slug !== args.body.site)
-    ) {
-      return { kind: "slug_conflict" };
+    if (context.kind === "legacy") {
+      const [existingPublicSite] = await tx
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.publicSlug, context.publicSlug),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (
+        existingPublicSite &&
+        (!context.allowExistingPublicSlug ||
+          existingPublicSite.orgId !== args.orgId ||
+          existingPublicSite.slug !== args.body.site)
+      ) {
+        return { kind: "slug_conflict" };
+      }
+
+      [site] = await tx
+        .insert(hostedSites)
+        .values({
+          orgId: args.orgId,
+          userId: args.userId,
+          slug: args.body.site,
+          publicSlug: context.publicSlug,
+          createdFromRunId: args.runId,
+          updatedAt: context.now,
+        })
+        .onConflictDoUpdate({
+          target: [hostedSites.orgId, hostedSites.slug],
+          set: { publicSlug: context.publicSlug, updatedAt: context.now },
+        })
+        .returning();
+    } else {
+      [site] = await tx
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.orgId, args.orgId),
+            eq(hostedSites.slug, args.body.site),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+
+      if (!site) {
+        for (
+          let attempt = 0;
+          attempt < MAX_PUBLIC_SLUG_ATTEMPTS;
+          attempt += 1
+        ) {
+          const publicSlug = versionedPublicSlugCandidate(
+            args.body.site,
+            args.orgId,
+            attempt,
+          );
+          [site] = await tx
+            .insert(hostedSites)
+            .values({
+              orgId: args.orgId,
+              userId: args.userId,
+              slug: args.body.site,
+              publicSlug,
+              createdFromRunId: args.runId,
+              updatedAt: context.now,
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (site) {
+            break;
+          }
+
+          [site] = await tx
+            .select()
+            .from(hostedSites)
+            .where(
+              and(
+                eq(hostedSites.orgId, args.orgId),
+                eq(hostedSites.slug, args.body.site),
+                isNull(hostedSites.deletedAt),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          if (site) {
+            break;
+          }
+        }
+      }
+
+      if (!site) {
+        return { kind: "slug_conflict" };
+      }
+
+      deploymentVersion = site.nextDeploymentVersion;
+      const [updatedSite] = await tx
+        .update(hostedSites)
+        .set({
+          nextDeploymentVersion: deploymentVersion + 1,
+          updatedAt: context.now,
+        })
+        .where(eq(hostedSites.id, site.id))
+        .returning();
+      if (!updatedSite) {
+        throw new Error("Failed to allocate hosted deployment version");
+      }
+      site = updatedSite;
     }
 
-    const [site] = await tx
-      .insert(hostedSites)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        slug: args.body.site,
-        publicSlug: context.publicSlug,
-        createdFromRunId: args.runId,
-        updatedAt: context.now,
-      })
-      .onConflictDoUpdate({
-        target: [hostedSites.orgId, hostedSites.slug],
-        set: { publicSlug: context.publicSlug, updatedAt: context.now },
-      })
-      .returning();
     if (!site) {
       throw new Error("Failed to create hosted site");
     }
 
     const deploymentId = crypto.randomUUID();
-    const prefix = deploymentPrefix(context.publicSlug, deploymentId);
+    const publicSlug = site.publicSlug;
+    const aliasUrl =
+      context.kind === "legacy" ? context.url : publicUrl(publicSlug);
+    const artifactUrl =
+      deploymentVersion === null ? null : deploymentUrl(deploymentId);
+    const prefix =
+      deploymentVersion === null
+        ? legacyDeploymentPrefix(publicSlug, deploymentId)
+        : versionedDeploymentPrefix(
+            args.orgId,
+            args.body.site,
+            deploymentVersion,
+          );
     const manifest = buildManifest({
       deploymentId,
       siteId: site.id,
-      publicSlug: context.publicSlug,
+      site: args.body.site,
+      publicSlug,
+      deploymentVersion,
       artifactKind: args.body.artifactKind,
       spaFallback: args.body.spaFallback,
       files: args.body.files,
@@ -1941,6 +2205,8 @@ function createHostedSiteDeployment(
         userId: args.userId,
         runId: args.runId,
         status: "uploading",
+        deploymentVersion,
+        artifactUrl,
         r2Prefix: prefix,
         manifest,
         manifestHash: hashJson(manifest),
@@ -1951,7 +2217,7 @@ function createHostedSiteDeployment(
         sizeBytes: files.reduce((sum, file) => {
           return sum + file.size;
         }, 0),
-        url: context.url,
+        url: aliasUrl,
         updatedAt: context.now,
       })
       .returning();
@@ -1985,7 +2251,18 @@ export const prepareHostedSiteDeployment$ = command(
     let publicSlug = "";
     let url = "";
 
-    if (args.body.slugSuffix) {
+    if (hostedArtifactVersionsEnabled(args)) {
+      const result = await createHostedSiteDeployment(writeDb, args, {
+        kind: "versioned",
+        now,
+      });
+      signal.throwIfAborted();
+      if (result.kind === "ok") {
+        siteAndDeployment = result;
+        publicSlug = result.site.publicSlug;
+        url = result.deployment.url;
+      }
+    } else if (args.body.slugSuffix) {
       publicSlug = publicSlugForSite(
         args.body.site,
         args.orgId,
@@ -1993,6 +2270,7 @@ export const prepareHostedSiteDeployment$ = command(
       );
       url = publicUrl(publicSlug);
       const result = await createHostedSiteDeployment(writeDb, args, {
+        kind: "legacy",
         now,
         publicSlug,
         url,
@@ -2015,6 +2293,7 @@ export const prepareHostedSiteDeployment$ = command(
         );
         url = publicUrl(publicSlug);
         const result = await createHostedSiteDeployment(writeDb, args, {
+          kind: "legacy",
           now,
           publicSlug,
           url,
@@ -2060,6 +2339,7 @@ export const prepareHostedSiteDeployment$ = command(
         deploymentId: siteAndDeployment.deployment.id,
         publicSlug,
         url,
+        ...deploymentVersionResponseFields(siteAndDeployment.deployment),
         uploads,
       },
     };
@@ -2136,7 +2416,69 @@ export const completeHostedSiteDeployment$ = command(
     signal.throwIfAborted();
 
     const readyAt = nowDate();
-    await writeDb.transaction(async (tx) => {
+    const pointer: ActiveSitePointer = {
+      version: 1,
+      publicSlug: deployment.manifest.publicSlug,
+      siteId: deployment.siteId,
+      deploymentId: deployment.id,
+      ...(deployment.deploymentVersion === null
+        ? {}
+        : { deploymentVersion: deployment.deploymentVersion }),
+      ...(deployment.artifactUrl === null
+        ? {}
+        : { artifactUrl: deployment.artifactUrl }),
+      prefix: deployment.r2Prefix,
+      manifestKey,
+      spaFallback: deployment.spaFallback,
+      updatedAt: readyAt.toISOString(),
+    };
+
+    if (deployment.deploymentVersion !== null) {
+      await get(
+        putHostedSitesS3Object(
+          hostedR2.config.bucket,
+          immutableDeploymentPointerKey(deployment.id),
+          JSON.stringify(pointer, null, 2),
+          "application/json",
+        ),
+      );
+      signal.throwIfAborted();
+    }
+
+    const promotion = await writeDb.transaction(async (tx) => {
+      const [site] = await tx
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.id, deployment.siteId),
+            eq(hostedSites.orgId, args.orgId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!site) {
+        throw new Error("Hosted site not found for deployment");
+      }
+
+      const shouldPromote =
+        deployment.deploymentVersion === null
+          ? site.activeDeploymentVersion === null
+          : site.activeDeploymentVersion === null ||
+            deployment.deploymentVersion >= site.activeDeploymentVersion;
+
+      if (shouldPromote) {
+        await get(
+          putHostedSitesS3Object(
+            hostedR2.config.bucket,
+            activePointerKey(deployment.manifest.publicSlug),
+            JSON.stringify(pointer, null, 2),
+            "application/json",
+          ),
+        );
+        signal.throwIfAborted();
+      }
+
       await tx
         .update(hostedDeployments)
         .set({
@@ -2146,34 +2488,26 @@ export const completeHostedSiteDeployment$ = command(
           error: null,
         })
         .where(eq(hostedDeployments.id, deployment.id));
-      await tx
-        .update(hostedSites)
-        .set({
-          activeDeploymentId: deployment.id,
-          updatedAt: readyAt,
-        })
-        .where(eq(hostedSites.id, deployment.siteId));
-    });
-    signal.throwIfAborted();
+      if (shouldPromote) {
+        await tx
+          .update(hostedSites)
+          .set({
+            activeDeploymentId: deployment.id,
+            activeDeploymentVersion: deployment.deploymentVersion,
+            updatedAt: readyAt,
+          })
+          .where(eq(hostedSites.id, deployment.siteId));
+      }
 
-    const pointer: ActiveSitePointer = {
-      version: 1,
-      publicSlug: deployment.manifest.publicSlug,
-      siteId: deployment.siteId,
-      deploymentId: deployment.id,
-      prefix: deployment.r2Prefix,
-      manifestKey,
-      spaFallback: deployment.spaFallback,
-      updatedAt: readyAt.toISOString(),
-    };
-    await get(
-      putHostedSitesS3Object(
-        hostedR2.config.bucket,
-        activePointerKey(deployment.manifest.publicSlug),
-        JSON.stringify(pointer, null, 2),
-        "application/json",
-      ),
-    );
+      return {
+        activeDeploymentId: shouldPromote
+          ? deployment.id
+          : site.activeDeploymentId,
+        activeDeploymentVersion: shouldPromote
+          ? deployment.deploymentVersion
+          : site.activeDeploymentVersion,
+      };
+    });
     signal.throwIfAborted();
 
     const artifactRowId = await set(
@@ -2198,6 +2532,17 @@ export const completeHostedSiteDeployment$ = command(
         deploymentId: deployment.id,
         publicSlug: deployment.manifest.publicSlug,
         url: deployment.url,
+        ...deploymentVersionResponseFields(deployment),
+        ...(deployment.deploymentVersion === null
+          ? {}
+          : {
+              isActive: promotion.activeDeploymentId === deployment.id,
+              ...(promotion.activeDeploymentVersion === null
+                ? {}
+                : {
+                    activeDeploymentVersion: promotion.activeDeploymentVersion,
+                  }),
+            }),
         status: "ready",
       },
     };
@@ -2211,46 +2556,108 @@ export const getHostedSiteFiles$ = command(
     signal: AbortSignal,
   ): Promise<GetHostedSiteFilesResult> => {
     const writeDb = set(writeDb$);
-    const [site] = await writeDb
-      .select()
-      .from(hostedSites)
-      .where(
-        and(
-          eq(hostedSites.publicSlug, args.publicSlug),
-          eq(hostedSites.orgId, args.orgId),
-          isNull(hostedSites.deletedAt),
-        ),
-      )
-      .limit(1);
+    let site: HostedSiteRow | undefined;
+    let deployment: HostedDeploymentRow | undefined;
+
+    const immutableDeploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(
+      args.publicSlug,
+    )?.[1];
+    if (immutableDeploymentId) {
+      [deployment] = await writeDb
+        .select()
+        .from(hostedDeployments)
+        .where(
+          and(
+            eq(hostedDeployments.id, immutableDeploymentId),
+            eq(hostedDeployments.orgId, args.orgId),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (!deployment) {
+        return { status: "not_found", message: "Hosted deployment not found" };
+      }
+      if (
+        args.version !== undefined &&
+        deployment.deploymentVersion !== args.version
+      ) {
+        return {
+          status: "not_found",
+          message: `Hosted deployment version not found: ${args.version}`,
+        };
+      }
+      [site] = await writeDb
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.id, deployment.siteId),
+            eq(hostedSites.orgId, args.orgId),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .limit(1);
+    } else {
+      [site] = await writeDb
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.publicSlug, args.publicSlug),
+            eq(hostedSites.orgId, args.orgId),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!site) {
+        return { status: "not_found", message: "Hosted site not found" };
+      }
+      if (args.version === undefined) {
+        if (!site.activeDeploymentId) {
+          return {
+            status: "conflict",
+            message: "Hosted site has no active deployment",
+          };
+        }
+        [deployment] = await writeDb
+          .select()
+          .from(hostedDeployments)
+          .where(
+            and(
+              eq(hostedDeployments.id, site.activeDeploymentId),
+              eq(hostedDeployments.siteId, site.id),
+              eq(hostedDeployments.orgId, args.orgId),
+            ),
+          )
+          .limit(1);
+      } else {
+        [deployment] = await writeDb
+          .select()
+          .from(hostedDeployments)
+          .where(
+            and(
+              eq(hostedDeployments.deploymentVersion, args.version),
+              eq(hostedDeployments.siteId, site.id),
+              eq(hostedDeployments.orgId, args.orgId),
+            ),
+          )
+          .limit(1);
+      }
+    }
     signal.throwIfAborted();
 
     if (!site) {
       return { status: "not_found", message: "Hosted site not found" };
     }
-    if (!site.activeDeploymentId) {
-      return {
-        status: "conflict",
-        message: "Hosted site has no active deployment",
-      };
-    }
-
-    const [deployment] = await writeDb
-      .select()
-      .from(hostedDeployments)
-      .where(
-        and(
-          eq(hostedDeployments.id, site.activeDeploymentId),
-          eq(hostedDeployments.siteId, site.id),
-          eq(hostedDeployments.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
     if (!deployment) {
       return {
         status: "not_found",
-        message: "Active hosted deployment not found",
+        message:
+          args.version === undefined
+            ? "Active hosted deployment not found"
+            : `Hosted deployment version not found: ${args.version}`,
       };
     }
     if (deployment.status !== "ready") {
@@ -2294,9 +2701,71 @@ export const getHostedSiteFiles$ = command(
         deploymentId: deployment.id,
         publicSlug: site.publicSlug,
         url: deployment.url,
+        ...deploymentVersionResponseFields(deployment),
         fileCount: deployment.fileCount,
         size: deployment.sizeBytes,
         files,
+      },
+    };
+  },
+);
+
+export const getHostedSiteDeployments$ = command(
+  async (
+    { set },
+    args: GetHostedSiteDeploymentsArgs,
+    signal: AbortSignal,
+  ): Promise<GetHostedSiteDeploymentsResult> => {
+    const writeDb = set(writeDb$);
+    const [site] = await writeDb
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.orgId, args.orgId),
+          eq(hostedSites.slug, args.site),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!site) {
+      return { status: "not_found", message: "Hosted site not found" };
+    }
+
+    const deployments = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.siteId, site.id),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .orderBy(desc(hostedDeployments.createdAt));
+    signal.throwIfAborted();
+
+    return {
+      status: "ok",
+      body: {
+        siteId: site.id,
+        site: site.slug,
+        publicSlug: site.publicSlug,
+        aliasUrl: publicUrl(site.publicSlug),
+        activeDeploymentId: site.activeDeploymentId,
+        activeDeploymentVersion: site.activeDeploymentVersion,
+        deployments: deployments.map((deployment) => {
+          return {
+            deploymentId: deployment.id,
+            deploymentVersion: deployment.deploymentVersion,
+            artifactUrl: deployment.artifactUrl,
+            status: deployment.status,
+            isActive: deployment.id === site.activeDeploymentId,
+            createdAt: deployment.createdAt.toISOString(),
+            readyAt: deployment.readyAt?.toISOString() ?? null,
+          };
+        }),
       },
     };
   },
@@ -2313,8 +2782,8 @@ const redeployHostedSiteIndexHtml$ = command(
       return hostedR2;
     }
 
-    const publicSlug = publicSlugFromHostedSiteUrl(args.body.url);
-    if (!publicSlug) {
+    const reference = hostedSiteReferenceFromUrl(args.body.url);
+    if (!reference) {
       return {
         status: "bad_request",
         message: "URL is not a hosted site URL",
@@ -2327,14 +2796,14 @@ const redeployHostedSiteIndexHtml$ = command(
       {
         artifactKind: args.artifactKind,
         orgId: args.orgId,
-        publicSlug,
+        reference,
       },
       signal,
     );
     if (target.status !== "ok") {
       return target;
     }
-    const { activeDeployment, site } = target;
+    const { site, sourceDeployment } = target;
 
     const indexFile = hostedSiteFileForContent(
       "/index.html",
@@ -2343,7 +2812,7 @@ const redeployHostedSiteIndexHtml$ = command(
     );
     const files = [
       indexFile,
-      ...Object.values(activeDeployment.manifest.files).filter((file) => {
+      ...Object.values(sourceDeployment.manifest.files).filter((file) => {
         return file.path !== indexFile.path;
       }),
     ];
@@ -2353,32 +2822,37 @@ const redeployHostedSiteIndexHtml$ = command(
     }
 
     const now = nowDate();
+    const creationContext: CreateHostedSiteDeploymentContext =
+      hostedArtifactVersionsEnabled(args)
+        ? { kind: "versioned", now }
+        : {
+            kind: "legacy",
+            now,
+            publicSlug: site.publicSlug,
+            url: publicUrl(site.publicSlug),
+            allowExistingPublicSlug: true,
+          };
     const result = await createHostedSiteDeployment(
       writeDb,
       {
         orgId: args.orgId,
         userId: args.userId,
-        runId: activeDeployment.runId ?? undefined,
+        runId: sourceDeployment.runId ?? undefined,
         body: {
           site: site.slug,
           artifactKind: args.artifactKind,
-          spaFallback: activeDeployment.spaFallback,
+          spaFallback: sourceDeployment.spaFallback,
           files,
         },
       },
-      {
-        now,
-        publicSlug,
-        url: publicUrl(publicSlug),
-        allowExistingPublicSlug: true,
-      },
+      creationContext,
     );
     signal.throwIfAborted();
 
     if (result.kind === "slug_conflict") {
       return {
         status: "conflict",
-        message: `Hosted site slug is already in use: ${publicSlug}`,
+        message: `Hosted site slug is already in use: ${site.publicSlug}`,
       };
     }
 
@@ -2391,7 +2865,7 @@ const redeployHostedSiteIndexHtml$ = command(
           return get(
             copyHostedSitesS3Object(
               hostedR2.config.bucket,
-              fileKey(activeDeployment.r2Prefix, file.path),
+              fileKey(sourceDeployment.r2Prefix, file.path),
               fileKey(result.deployment.r2Prefix, file.path),
             ),
           );

@@ -2,15 +2,18 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { isLlmConfigured } from "../external/openrouter";
 import {
   completeHostedSiteDeployment$,
   createHtmlEditDraft$,
   generatePresentationSpeakerNotes$,
+  getHostedSiteDeployments$,
   getHostedSiteFiles$,
   HTML_DOM_EDIT_MODEL,
   prepareHostedSiteDeployment$,
@@ -35,6 +38,13 @@ function internalError(message: string) {
     body: {
       error: { message, code: "INTERNAL_SERVER_ERROR" },
     },
+  };
+}
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" } },
   };
 }
 
@@ -80,6 +90,8 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const completeParams$ = pathParamsOf(zeroHostContract.complete);
 const filesParams$ = pathParamsOf(zeroHostContract.files);
+const filesQuery$ = queryOf(zeroHostContract.files);
+const deploymentsParams$ = pathParamsOf(zeroHostContract.deployments);
 const redeployPresentationHtmlBody$ = bodyResultOf(
   zeroHostContract.redeployPresentationHtml,
 );
@@ -128,12 +140,14 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(filesParams$);
+  const query = get(filesQuery$);
 
   const result = await set(
     getHostedSiteFiles$,
     {
       orgId: auth.orgId,
       publicSlug: params.publicSlug,
+      version: query.version,
     },
     signal,
   );
@@ -149,6 +163,31 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return internalError(result.message);
   }
 
+  return { status: 200 as const, body: result.body };
+});
+
+const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+    })
+  ) {
+    return forbidden("Hosted artifact versions are not enabled");
+  }
+
+  const params = get(deploymentsParams$);
+  const result = await set(
+    getHostedSiteDeployments$,
+    { orgId: auth.orgId, site: params.site },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (result.status === "not_found") {
+    return notFound(result.message);
+  }
   return { status: 200 as const, body: result.body };
 });
 
@@ -365,6 +404,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
       },
       filesInner$,
+    ),
+  },
+  {
+    route: zeroHostContract.deployments,
+    handler: authRoute(
+      {
+        requiredCapability: "host:read",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      deploymentsInner$,
     ),
   },
   {

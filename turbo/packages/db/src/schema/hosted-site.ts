@@ -11,6 +11,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { HostedSiteManifest } from "@vm0/db/jsonb-contracts/hosted-site";
 export type {
   HostedSiteManifest,
@@ -35,6 +36,10 @@ export const hostedSites = pgTable(
     slug: varchar("slug", { length: 64 }).notNull(),
     publicSlug: varchar("public_slug", { length: 96 }).notNull(),
     activeDeploymentId: uuid("active_deployment_id"),
+    activeDeploymentVersion: integer("active_deployment_version"),
+    nextDeploymentVersion: integer("next_deployment_version")
+      .notNull()
+      .default(1),
     createdFromRunId: text("created_from_run_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -68,6 +73,8 @@ export const hostedDeployments = pgTable(
       .$type<HostedDeploymentStatus>()
       .notNull()
       .default("uploading"),
+    deploymentVersion: integer("deployment_version"),
+    artifactUrl: text("artifact_url"),
     r2Prefix: text("r2_prefix").notNull(),
     manifest: jsonb("manifest").$type<HostedSiteManifest>().notNull(),
     manifestHash: varchar("manifest_hash", { length: 64 }).notNull(),
@@ -85,6 +92,9 @@ export const hostedDeployments = pgTable(
   (table) => {
     return [
       index("idx_hosted_deployments_site").on(table.siteId),
+      uniqueIndex("idx_hosted_deployments_site_version")
+        .on(table.siteId, table.deploymentVersion)
+        .where(sql`${table.deploymentVersion} IS NOT NULL`),
       index("idx_hosted_deployments_org").on(table.orgId),
       index("idx_hosted_deployments_status").on(table.status),
     ];

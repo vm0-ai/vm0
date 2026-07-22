@@ -34,6 +34,7 @@ const CLOUDFLARE_SNAPSHOT_URL =
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
 const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 type ChatObjectStorage = ReturnType<
@@ -529,6 +530,68 @@ describe("GET /api/zero/artifacts", () => {
       }),
     ).toBeFalsy();
     expect(response.truncated).toBeFalsy();
+  }, 120_000);
+
+  it("keeps every hosted-site version as a separate immutable artifact", async () => {
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const owner = await artifactActor(
+      "Artifacts API hosted versions agent",
+      actor,
+    );
+    const run = await sendChatRun(actor, {
+      agentId: owner.agentId,
+      prompt: "publish two hosted-site versions",
+    });
+    const { claim } = await claimChatRun(owner.runnerGroup, run.runId);
+    const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+    host.captureHostedSitesS3();
+
+    const site = `artifact-versions-${randomUUID().slice(0, 8)}`;
+    const body = {
+      site,
+      artifactKind: "hosted-site" as const,
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>versioned artifact</main>")],
+    };
+    const first = await chat.prepareHostedSiteWithBearer(bearer, body);
+    await chat.completeHostedSiteWithBearer(bearer, first.deploymentId);
+    const second = await chat.prepareHostedSiteWithBearer(bearer, body);
+    await chat.completeHostedSiteWithBearer(bearer, second.deploymentId);
+
+    expect(first).toMatchObject({
+      publicSlug: site,
+      deploymentVersion: 1,
+      aliasUrl: first.url,
+    });
+    expect(second).toMatchObject({
+      siteId: first.siteId,
+      publicSlug: site,
+      deploymentVersion: 2,
+      aliasUrl: first.url,
+    });
+    expect(second.artifactUrl).not.toBe(first.artifactUrl);
+
+    const response = await chat.listArtifacts(actor);
+    const versionArtifacts = response.artifacts.filter((artifact) => {
+      return artifact.runId === run.runId;
+    });
+    expect(versionArtifacts).toHaveLength(2);
+    expect(versionArtifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileId: first.deploymentId,
+          filename: `${site}-v1.html`,
+          url: first.artifactUrl,
+          artifactKind: "hosted-site",
+        }),
+        expect.objectContaining({
+          fileId: second.deploymentId,
+          filename: `${site}-v2.html`,
+          url: second.artifactUrl,
+          artifactKind: "hosted-site",
+        }),
+      ]),
+    );
   }, 120_000);
 
   it("generates deploy-time preview images and refreshes them after redeploy", async () => {

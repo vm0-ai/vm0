@@ -17,6 +17,9 @@ const COMPLETE_URL =
   "http://localhost:3000/api/zero/host/deployments/:deploymentId/complete";
 const INDEX_UPLOAD_URL = "https://uploads.example.com/index";
 const ROBOTS_UPLOAD_URL = "https://uploads.example.com/robots";
+const ALIAS_URL = "https://demo-site.sites.example.com";
+const ARTIFACT_URL =
+  "https://dpl-00000000-0000-4000-8000-000000000002.sites.example.com";
 
 function sha256(bytes: string): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -64,6 +67,7 @@ describe("zero host publish command", () => {
           artifactKind: "hosted-site",
           spaFallback: true,
         });
+        expect(body.slugSuffix).toBeUndefined();
 
         const filesByPath = new Map(
           body.files.map((file) => {
@@ -85,8 +89,11 @@ describe("zero host publish command", () => {
         return HttpResponse.json({
           siteId: "00000000-0000-4000-8000-000000000001",
           deploymentId: "00000000-0000-4000-8000-000000000002",
-          publicSlug: "demo-site-a1b2c3d4-release-01",
-          url: "https://demo-site-a1b2c3d4-release-01.sites.example.com",
+          publicSlug: "demo-site",
+          url: ALIAS_URL,
+          deploymentVersion: 1,
+          artifactUrl: ARTIFACT_URL,
+          aliasUrl: ALIAS_URL,
           uploads: [
             { path: "/index.html", uploadUrl: INDEX_UPLOAD_URL },
             { path: "/robots.txt", uploadUrl: ROBOTS_UPLOAD_URL },
@@ -109,8 +116,13 @@ describe("zero host publish command", () => {
         return HttpResponse.json({
           siteId: "00000000-0000-4000-8000-000000000001",
           deploymentId: "00000000-0000-4000-8000-000000000002",
-          publicSlug: "demo-site-a1b2c3d4-release-01",
-          url: "https://demo-site-a1b2c3d4-release-01.sites.example.com",
+          publicSlug: "demo-site",
+          url: ALIAS_URL,
+          deploymentVersion: 1,
+          artifactUrl: ARTIFACT_URL,
+          aliasUrl: ALIAS_URL,
+          isActive: true,
+          activeDeploymentVersion: 1,
           status: "ready",
         });
       }),
@@ -131,7 +143,11 @@ describe("zero host publish command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      publicSlug: "demo-site-a1b2c3d4-release-01",
+      publicSlug: "demo-site",
+      deploymentVersion: 1,
+      artifactUrl: ARTIFACT_URL,
+      aliasUrl: ALIAS_URL,
+      isActive: true,
       fileCount: 2,
       size:
         Buffer.byteLength(index) +

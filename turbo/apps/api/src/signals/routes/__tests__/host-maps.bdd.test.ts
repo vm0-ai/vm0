@@ -10,6 +10,7 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
   createBddApi,
   expectApiError,
@@ -52,6 +53,7 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_HTML_EDIT_STARTING_CREDITS = 1000;
 const OPENROUTER_HTML_EDIT_EXPECTED_CHARGE = 4;
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const OPENROUTER_EDIT_PRICING_ROWS = [
   {
@@ -145,6 +147,191 @@ function geocodeOkHandler(requests: URL[]) {
 }
 
 describe("FILE-01: hosted-site deployments through host APIs", () => {
+  it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const capture = api.captureHostedSitesS3();
+    await upsertOrgPlanEntitlementFixture({ orgId: STAFF_ORG_ID });
+
+    const site = `bdd-versioned-${randomUUID().slice(0, 8)}`;
+    const body = {
+      site,
+      artifactKind: "hosted-site" as const,
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>versioned</main>")],
+    };
+
+    const first = await api.prepareHostedSite(actor, body);
+    const second = await api.prepareHostedSite(actor, body);
+
+    expect(first.siteId).toBe(second.siteId);
+    expect(first.publicSlug).toBe(site);
+    expect(second.publicSlug).toBe(site);
+    expect(first.url).toBe(second.url);
+    expect(first.aliasUrl).toBe(first.url);
+    expect(second.aliasUrl).toBe(second.url);
+    expect(first.deploymentVersion).toBe(1);
+    expect(second.deploymentVersion).toBe(2);
+    expect(first.artifactUrl).not.toBe(second.artifactUrl);
+    expect(new URL(first.artifactUrl ?? "").hostname).toBe(
+      `dpl-${first.deploymentId}.${new URL(first.url).hostname.slice(site.length + 1)}`,
+    );
+
+    const completedSecond = await api.completeHostedSite(
+      actor,
+      second.deploymentId,
+    );
+    const completedFirst = await api.completeHostedSite(
+      actor,
+      first.deploymentId,
+    );
+    expect(completedSecond).toMatchObject({
+      deploymentVersion: 2,
+      artifactUrl: second.artifactUrl,
+      aliasUrl: second.url,
+      isActive: true,
+      activeDeploymentVersion: 2,
+    });
+    expect(completedFirst).toMatchObject({
+      deploymentVersion: 1,
+      artifactUrl: first.artifactUrl,
+      aliasUrl: first.url,
+      isActive: false,
+      activeDeploymentVersion: 2,
+    });
+
+    const versionPrefix = `sites/orgs/${STAFF_ORG_ID}/${site}/versions`;
+    expect(
+      capture.puts.map((put) => {
+        return put.key;
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        `${versionPrefix}/1/manifest.json`,
+        `${versionPrefix}/2/manifest.json`,
+        `sites/deployments/${first.deploymentId}.json`,
+        `sites/deployments/${second.deploymentId}.json`,
+      ]),
+    );
+    expect(
+      capture.puts.filter((put) => {
+        return put.key === `sites/${site}/active.json`;
+      }),
+    ).toHaveLength(1);
+
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/hosted-sites/download?sig=bdd",
+    );
+    const active = await api.readHostedSiteFiles(actor, site);
+    const versionOne = await api.readHostedSiteFiles(actor, site, 1);
+    const immutableVersionOne = await api.readHostedSiteFiles(
+      actor,
+      `dpl-${first.deploymentId}`,
+    );
+    expect(active.deploymentId).toBe(second.deploymentId);
+    expect(active.deploymentVersion).toBe(2);
+    expect(versionOne.deploymentId).toBe(first.deploymentId);
+    expect(versionOne.artifactUrl).toBe(first.artifactUrl);
+    expect(immutableVersionOne.deploymentId).toBe(first.deploymentId);
+    expect(immutableVersionOne.artifactUrl).toBe(first.artifactUrl);
+
+    const redeployed = await api.redeployHtml(actor, {
+      url: first.artifactUrl ?? "",
+      html: "<!doctype html><main>version three from version one</main>",
+    });
+    expect(redeployed).toMatchObject({
+      siteId: first.siteId,
+      publicSlug: site,
+      deploymentVersion: 3,
+      aliasUrl: first.url,
+      isActive: true,
+      activeDeploymentVersion: 3,
+    });
+    expect(redeployed.deploymentId).not.toBe(first.deploymentId);
+    expect(redeployed.artifactUrl).not.toBe(first.artifactUrl);
+    expect(redeployed.artifactUrl).not.toBe(second.artifactUrl);
+    expect(
+      capture.puts.map((put) => {
+        return put.key;
+      }),
+    ).toContain(`${versionPrefix}/3/index.html`);
+
+    const history = await api.readHostedSiteDeployments(actor, site);
+    expect(history).toMatchObject({
+      siteId: first.siteId,
+      site,
+      publicSlug: site,
+      aliasUrl: first.url,
+      activeDeploymentId: redeployed.deploymentId,
+      activeDeploymentVersion: 3,
+    });
+    expect(
+      history.deployments
+        .map((deployment) => {
+          return deployment.deploymentVersion;
+        })
+        .sort(),
+    ).toStrictEqual([1, 2, 3]);
+    expect(
+      history.deployments.filter((deployment) => {
+        return deployment.isActive;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        deploymentId: redeployed.deploymentId,
+        deploymentVersion: 3,
+      }),
+    ]);
+  });
+
+  it("adds a four-character hash only when the simple alias is already occupied [HOST-A]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    api.captureHostedSitesS3();
+
+    const legacyActor = bdd.user();
+    const occupied = await api.prepareHostedSite(legacyActor, {
+      site: `bdd-alias-owner-${randomUUID().slice(0, 8)}`,
+      slugSuffix: "fixed",
+      artifactKind: "hosted-site",
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>occupied</main>")],
+    });
+
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const capture = api.captureHostedSitesS3();
+    await upsertOrgPlanEntitlementFixture({ orgId: STAFF_ORG_ID });
+    const versioned = await api.prepareHostedSite(actor, {
+      site: occupied.publicSlug,
+      artifactKind: "hosted-site",
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>collision</main>")],
+    });
+    expect(versioned.publicSlug).toMatch(
+      new RegExp(`^${occupied.publicSlug}-[a-z0-9]{4}$`, "u"),
+    );
+    expect(versioned.deploymentVersion).toBe(1);
+    expect(versioned.artifactUrl).toContain(`dpl-${versioned.deploymentId}.`);
+
+    await api.completeHostedSite(actor, versioned.deploymentId);
+    expect(
+      capture.puts.map((put) => {
+        return put.key;
+      }),
+    ).toContain(
+      `sites/orgs/${STAFF_ORG_ID}/${occupied.publicSlug}/versions/1/manifest.json`,
+    );
+
+    const disabledHistory = await api.requestHostedSiteDeployments(
+      legacyActor,
+      occupied.publicSlug,
+      [403],
+    );
+    expectApiError(disabledHistory.body);
+    expect(disabledHistory.body.error.code).toBe("FORBIDDEN");
+  });
+
   it("allocates random public slugs, serves owner file metadata, and gates suspended orgs [HOST-A]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);

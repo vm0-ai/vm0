@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import {
   hostedArtifactKindSchema,
@@ -7,6 +7,7 @@ import {
 import { withErrorHandler } from "../../../lib/command";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
 import { cloneHostedSiteCommand } from "./clone";
+import { versionsHostedSiteCommand } from "./versions";
 
 interface HostOptions {
   readonly site?: string;
@@ -28,10 +29,15 @@ function formatBytes(bytes: number): string {
 
 export const zeroHostCommand = new Command()
   .name("host")
-  .description("Publish static sites and clone owned hosted site files")
+  .description("Publish and inspect owned static hosted sites")
   .argument("<dir>", "Static build directory, for example ./dist")
   .option("--site <slug>", "Public site slug, e.g. my-product-demo")
-  .option("--slug-suffix <suffix>", "Reuse a generated site URL suffix")
+  .addOption(
+    new Option(
+      "--slug-suffix <suffix>",
+      "Legacy generated site URL suffix",
+    ).hideHelp(),
+  )
   .option(
     "--artifact-kind <kind>",
     "Artifact kind to record for this hosted deployment",
@@ -40,18 +46,20 @@ export const zeroHostCommand = new Command()
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
   .option("--json", "Output only the final result as JSON")
   .addCommand(cloneHostedSiteCommand)
+  .addCommand(versionsHostedSiteCommand)
   .addHelpText(
     "after",
     `
 Examples:
   Publish a Vite build:  zero host ./dist --site my-product-demo --spa
-  Redeploy a URL:       zero host ./dist --site my-product-demo --slug-suffix a1b2c3d4 --spa
-  Clone a hosted site:   zero host clone my-product-demo-a1b2c3d4-release-01 ./site
+  Publish next version:  zero host ./dist --site my-product-demo --spa
+  List site versions:    zero host versions my-product-demo
+  Clone a hosted site:   zero host clone my-product-demo ./site
   Machine readable:     zero host ./dist --site my-product-demo --spa --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (publish requires host:write; clone requires host:read)
-  - Reusing both --site and --slug-suffix keeps the same URL
+  - Reusing --site creates a new immutable artifact behind the same alias
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,
   )
@@ -84,11 +92,27 @@ Notes:
         return;
       }
 
-      console.log(chalk.green("✓ Hosted site ready"));
+      console.log(chalk.green("✓ Hosted site deployed"));
       console.log(chalk.dim(`  Site: ${result.publicSlug}`));
+      if (result.deploymentVersion !== undefined) {
+        console.log(chalk.dim(`  Version: v${result.deploymentVersion}`));
+      }
+      if (result.artifactUrl) {
+        console.log(`  Artifact: ${result.artifactUrl}`);
+      }
+      if (result.aliasUrl) {
+        const target =
+          result.isActive === false &&
+          result.activeDeploymentVersion !== undefined
+            ? `remains on v${result.activeDeploymentVersion}`
+            : `v${result.deploymentVersion ?? "?"}`;
+        console.log(`  Alias: ${result.aliasUrl} → ${target}`);
+      }
       console.log(chalk.dim(`  Deployment: ${result.deploymentId}`));
       console.log(chalk.dim(`  Files: ${result.fileCount.toLocaleString()}`));
       console.log(chalk.dim(`  Size: ${formatBytes(result.size)}`));
-      console.log(`  URL: ${result.url}`);
+      if (!result.aliasUrl) {
+        console.log(`  URL: ${result.url}`);
+      }
     }),
   );
