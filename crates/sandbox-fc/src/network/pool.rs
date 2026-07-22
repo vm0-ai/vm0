@@ -39,6 +39,7 @@
 //!   power loss, aborted in-flight creation tasks) are reconciled at
 //!   startup via flock-based liveness probe.
 
+mod completion;
 mod host;
 mod naming;
 mod state;

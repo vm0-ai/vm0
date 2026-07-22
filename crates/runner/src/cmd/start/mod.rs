@@ -450,6 +450,8 @@ async fn run_start_with_home(
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
         builtin_firewall_catalog_cache_path: paths.builtin_firewall_catalog_cache(),
+        runtime_dir: paths.mitmdump_runtime_dir(),
+        runtime_lock_path: paths.mitmdump_runtime_lock(),
         api_url: Some(server.url.clone()),
         client_session_id: runner_client_session_id,
     })

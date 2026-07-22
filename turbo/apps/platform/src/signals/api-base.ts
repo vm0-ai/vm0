@@ -1,5 +1,6 @@
 import {
   derivePlatformServiceOrigin,
+  resolvePlatformEnvironment,
   rewritePlatformHostname,
   type PlatformService,
 } from "../lib/platform-host.ts";
@@ -46,6 +47,12 @@ export function resolveApiBaseForTarget(target: PlatformHostTarget): string {
 
 export function resolveApiBase(): string {
   return resolveApiBaseForTarget("api");
+}
+
+export function resolveOAuthApiBase(): string {
+  return resolveApiBaseForTarget(
+    resolvePlatformEnvironment() === "production" ? "www" : "api",
+  );
 }
 
 export function resolveApiBaseForNavigation(

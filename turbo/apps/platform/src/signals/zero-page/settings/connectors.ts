@@ -46,7 +46,7 @@ import {
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
-  OAUTH_WEB_API_BASE,
+  OAUTH_API_BASE,
   zeroClient$,
   type ZeroClientFactory,
 } from "../../api-client.ts";
@@ -1400,7 +1400,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const client = createClient(zeroConnectorOauthDeviceAuthSessionContract, {
-      apiBase: OAUTH_WEB_API_BASE,
+      apiBase: OAUTH_API_BASE,
     });
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
       return isCurrentConnectorOAuthDeviceAuthRequest(
@@ -1486,7 +1486,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const createClient = get(zeroClient$);
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
-          { apiBase: OAUTH_WEB_API_BASE },
+          { apiBase: OAUTH_API_BASE },
         );
         const startResponse = await tapError(
           accept(
@@ -1737,7 +1737,7 @@ export const connectConnectorExternalCode$ = command(
 
         const createClient = get(zeroClient$);
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
-          apiBase: OAUTH_WEB_API_BASE,
+          apiBase: OAUTH_API_BASE,
         });
         const startResponse = await tapError(
           accept(
@@ -1853,7 +1853,7 @@ const completeConnectorExternalCode$ = command(
         const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
         const createClient = get(zeroClient$);
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
-          apiBase: OAUTH_WEB_API_BASE,
+          apiBase: OAUTH_API_BASE,
         });
         const completeResult = await accept(
           client.complete({
@@ -2102,7 +2102,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
               )
             : await accept(
                 get(zeroClient$)(zeroConnectorOauthStartContract, {
-                  apiBase: OAUTH_WEB_API_BASE,
+                  apiBase: OAUTH_API_BASE,
                 }).start({
                   params: { type: args.connectorRef },
                   body: {

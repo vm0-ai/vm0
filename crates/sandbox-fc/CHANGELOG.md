@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.142](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.141...sandbox-fc-v0.37.142) (2026-07-22)
+
+
+### Performance Improvements
+
+* **runner:** attribute sandbox start phases ([#22523](https://github.com/vm0-ai/vm0/issues/22523)) ([cd8f6a4](https://github.com/vm0-ai/vm0/commit/cd8f6a40c109d7b04bd991067fdf2b5ad1c77ca8))
+* **sandbox-fc:** reconcile pool resources from one snapshot ([#22551](https://github.com/vm0-ai/vm0/issues/22551)) ([f2d29a5](https://github.com/vm0-ai/vm0/commit/f2d29a563c9f5dc225cd5ee822fb141a6c5ae215))
+
 ## [0.37.141](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.140...sandbox-fc-v0.37.141) (2026-07-22)
 
 

@@ -52,8 +52,13 @@ export const agentEnabledTypes$ = computed(async (get) => {
   if (!agentId) {
     return { agentId: null, enabledTypes: [] };
   }
-  const authorizations = await get(agentConnectorAuthorizations({ agentId }));
-  return { agentId, enabledTypes: [...authorizations.enabledTypes] };
+  const authorizations = await get(
+    agentConnectorAuthorizations({ agentId, missing: "null" }),
+  );
+  return {
+    agentId,
+    enabledTypes: [...(authorizations?.enabledTypes ?? [])],
+  };
 });
 
 export type DirectedAuthorizeConnectModalKey = {

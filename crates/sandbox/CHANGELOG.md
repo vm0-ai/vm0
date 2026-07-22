@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.28](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.27...sandbox-v0.19.28) (2026-07-22)
+
+
+### Performance Improvements
+
+* **runner:** attribute sandbox start phases ([#22523](https://github.com/vm0-ai/vm0/issues/22523)) ([cd8f6a4](https://github.com/vm0-ai/vm0/commit/cd8f6a40c109d7b04bd991067fdf2b5ad1c77ca8))
+
 ## [0.19.27](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.26...sandbox-v0.19.27) (2026-07-19)
 
 

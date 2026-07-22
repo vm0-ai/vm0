@@ -7,6 +7,7 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";
@@ -64,6 +65,7 @@ describe("prompt query parameter injection", () => {
 
   it("starts an optimistic chat from the prompt route", async () => {
     let runPrompt: string | undefined;
+    let structuredPrompt: unknown;
     let createdThreadModel: string | null | undefined;
     context.mocks.data.orgModelPolicies([
       modelPolicy("deepseek-v4-pro", "DeepSeek V4 Pro"),
@@ -71,6 +73,7 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        structuredPrompt = body.structuredPrompt;
       },
       onThreadCreate: (body) => {
         createdThreadModel = body.modelSelection.selectedModel;
@@ -80,11 +83,13 @@ describe("prompt query parameter injection", () => {
     detachedSetupPage({
       context,
       path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-pro",
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
+      expect(structuredPrompt).toBeUndefined();
       expect(createdThreadModel).toBe("deepseek-v4-pro");
     });
   });

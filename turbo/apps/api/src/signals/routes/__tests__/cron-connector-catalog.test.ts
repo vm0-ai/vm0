@@ -721,6 +721,10 @@ function setArtifactAuthMethods(
 function buildBundledSkill(
   connectorRef: string,
   versionId = "a".repeat(64),
+  digests: {
+    readonly manifest: string;
+    readonly archive: string;
+  } = { manifest: ZERO_DIGEST, archive: ZERO_DIGEST },
 ): JsonRecord {
   const storageName = `connector-skill@${connectorRef}`;
   const prefix = `__system__/volume/${storageName}/${versionId}`;
@@ -734,12 +738,75 @@ function buildBundledSkill(
     },
     manifest: {
       key: `${prefix}/manifest.json`,
-      digest: ZERO_DIGEST,
+      digest: digests.manifest,
     },
     archive: {
       key: `${prefix}/archive.tar.gz`,
-      digest: ZERO_DIGEST,
+      digest: digests.archive,
     },
+  };
+}
+
+interface BundledSkillFixture {
+  readonly descriptor: JsonRecord;
+  readonly objects: ReadonlyMap<string, Buffer>;
+  readonly storageName: string;
+  readonly s3Prefix: string;
+  readonly versionId: string;
+  readonly contentSize: number;
+  readonly archiveSize: number;
+  readonly manifestKey: string;
+  readonly archiveKey: string;
+}
+
+interface BundledSkillFixtureOptions {
+  readonly manifest?: unknown;
+  readonly archive?: Buffer;
+  readonly manifestDigest?: string;
+  readonly archiveDigest?: string;
+}
+
+function buildBundledSkillFixture(
+  connectorRef: string,
+  versionId = "a".repeat(64),
+  options: BundledSkillFixtureOptions = {},
+): BundledSkillFixture {
+  const content = Buffer.from(`# ${connectorRef}\n`);
+  const manifest = jsonBytes(
+    options.manifest ?? {
+      version: 1,
+      files: [
+        {
+          path: "SKILL.md",
+          hash: createHash("sha256").update(content).digest("hex"),
+          size: content.length,
+        },
+      ],
+      createdAt: "1970-01-01T00:00:00.000Z",
+    },
+  );
+  const archive = options.archive ?? Buffer.alloc(321, 1);
+  const storageName = `connector-skill@${connectorRef}`;
+  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+  const versionPrefix = `${s3Prefix}/${versionId}`;
+  const manifestKey = `${versionPrefix}/manifest.json`;
+  const archiveKey = `${versionPrefix}/archive.tar.gz`;
+  return {
+    descriptor: buildBundledSkill(connectorRef, versionId, {
+      manifest: options.manifestDigest ?? digest(manifest),
+      archive: options.archiveDigest ?? digest(archive),
+    }),
+    objects: new Map([
+      [manifestKey, manifest],
+      [archiveKey, archive],
+    ]),
+    storageName,
+    s3Prefix,
+    versionId,
+    contentSize: content.length,
+    archiveSize: archive.length,
+    manifestKey,
+    archiveKey,
   };
 }
 
@@ -2481,7 +2548,6 @@ describe("connector catalog valid lifecycle", () => {
 
   it("mounts an external connector skill from its exact system version", async () => {
     const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;
-    const storageName = `connector-skill@${connectorRef}`;
     const selectedVersionId = createHash("sha256")
       .update(`selected:${randomUUID()}`)
       .digest("hex");
@@ -2491,18 +2557,26 @@ describe("connector catalog valid lifecycle", () => {
     const newerVersionId = createHash("sha256")
       .update(`newer:${randomUUID()}`)
       .digest("hex");
-    const canonicalPrefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+    const skill = buildBundledSkillFixture(connectorRef, selectedVersionId);
+    const { storageName, s3Prefix: canonicalPrefix } = skill;
     configureSource();
+    const previousSystemState = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+    });
     const release = buildRelease({
       version: "2026-07-15.external-exact-skill",
       connectorRef,
       label: "External Exact Skill",
       mutatePrivate: (artifact) => {
-        firstRecord(artifact.connectors, "connectors").skill =
-          buildBundledSkill(connectorRef, selectedVersionId);
+        firstRecord(artifact.connectors, "connectors").skill = skill.descriptor;
       },
     });
-    serveObjects(catalogObjects([release], release));
+    const objects = new Map(catalogObjects([release], release));
+    for (const [key, bytes] of skill.objects) {
+      objects.set(key, bytes);
+    }
+    serveObjects(objects);
     await syncCatalog();
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
 
@@ -2512,10 +2586,6 @@ describe("connector catalog valid lifecycle", () => {
       throw new Error("Expected an organization-scoped test actor");
     }
     const runtimeOrgId = actor.orgId;
-    const previousSystemState = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-    });
     const previousRuntimeState = await readVolumeStorageState({
       orgId: runtimeOrgId,
       storageName,
@@ -2581,6 +2651,50 @@ describe("connector catalog valid lifecycle", () => {
     };
 
     await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: newerVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${newerVersionId}`,
+    });
+
+    const run = await createSkillRun();
+    successfulRunId = run.runId;
+    expect(run.status).not.toBe("failed");
+    await runs.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await runs.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await runs.claimRunnerJob(run.runId);
+    const mountedSkills =
+      claim.storageManifest?.storages.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
+        );
+      }) ?? [];
+    expect(mountedSkills).toHaveLength(1);
+    expect(mountedSkills[0]).toMatchObject({
+      name: storageName,
+      mountPath: `/home/user/.claude/skills/${connectorRef}`,
+      vasStorageName: storageName,
+      vasVersionId: selectedVersionId,
+      archiveSize: 321,
+      archiveUrl: expect.any(String),
+    });
+    await runs.requestCancelRun(actor, run.runId, [200]);
+    successfulRunId = undefined;
+
+    await restoreVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      previous: previousSystemState,
+    });
+    await seedVolumeStorageVersion({
       orgId: runtimeOrgId,
       storageName,
       versionId: selectedVersionId,
@@ -2621,52 +2735,6 @@ describe("connector catalog valid lifecycle", () => {
       s3Key: `${canonicalPrefix}/wrong-${selectedVersionId}`,
     });
     await expectRegistrationFailure();
-
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-      versionId: selectedVersionId,
-      s3Prefix: canonicalPrefix,
-      s3Key: `${canonicalPrefix}/${selectedVersionId}`,
-    });
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-      versionId: newerVersionId,
-      s3Prefix: canonicalPrefix,
-      s3Key: `${canonicalPrefix}/${newerVersionId}`,
-    });
-
-    const run = await createSkillRun();
-    successfulRunId = run.runId;
-    expect(run.status).not.toBe("failed");
-    await runs.heartbeatRunner(runnerGroup);
-    await expect
-      .poll(
-        async () => {
-          return (await runs.pollRunner(runnerGroup)).body.job?.runId;
-        },
-        { timeout: 10_000 },
-      )
-      .toBe(run.runId);
-    const claim = await runs.claimRunnerJob(run.runId);
-    const mountedSkills =
-      claim.storageManifest?.storages.filter((storage) => {
-        return (
-          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
-        );
-      }) ?? [];
-    expect(mountedSkills).toHaveLength(1);
-    expect(mountedSkills[0]).toMatchObject({
-      name: storageName,
-      mountPath: `/home/user/.claude/skills/${connectorRef}`,
-      vasStorageName: storageName,
-      vasVersionId: selectedVersionId,
-      archiveSize: 321,
-      archiveUrl: expect.any(String),
-    });
-    await runs.requestCancelRun(actor, run.runId, [200]);
-    successfulRunId = undefined;
   }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
@@ -3936,20 +4004,428 @@ describe("connector catalog valid lifecycle", () => {
 
   it("accepts a complete bundled skill descriptor", async () => {
     configureSource();
+    const skill = buildBundledSkillFixture("external-test");
+    const previous = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: skill.storageName,
+    });
+    onTestFinished(async () => {
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.storageName,
+        previous,
+      });
+    });
     const release = buildRelease({
       version: "2026-07-15.bundled-skill",
       mutatePrivate: (artifact) => {
         const connector = firstRecord(artifact.connectors, "connectors");
-        connector.skill = buildBundledSkill("external-test");
+        connector.skill = skill.descriptor;
       },
     });
-    serveObjects(catalogObjects([release], release));
+    const objects = new Map(catalogObjects([release], release));
+    for (const [key, bytes] of skill.objects) {
+      objects.set(key, bytes);
+    }
+    serveObjects(objects);
 
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       state: "current",
       active: { catalogVersion: release.version },
     });
+    await expect(
+      readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.storageName,
+      }),
+    ).resolves.toStrictEqual({
+      s3_prefix: skill.s3Prefix,
+      size: skill.contentSize,
+      file_count: 1,
+      head_version_id: skill.versionId,
+    });
+  });
+
+  it("rejects bundled skill objects that fail verification", async () => {
+    const cases = [
+      {
+        expected: "source-unavailable",
+        includeObjects: false,
+        label: "missing",
+        options: {},
+      },
+      {
+        expected: "digest-mismatch",
+        includeObjects: true,
+        label: "digest",
+        options: { manifestDigest: ZERO_DIGEST },
+      },
+      {
+        expected: "invalid-artifact",
+        includeObjects: true,
+        label: "manifest",
+        options: {
+          manifest: {
+            version: 1,
+            files: [],
+            createdAt: "1970-01-01T00:00:00.000Z",
+          },
+        },
+      },
+      {
+        expected: "object-too-large",
+        includeObjects: true,
+        label: "oversized",
+        options: { archive: Buffer.alloc(2 * 1024 * 1024 + 1, 1) },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      configureSource();
+      const connectorRef = `skill-${testCase.label}-${randomUUID().slice(0, 8)}`;
+      const skill = buildBundledSkillFixture(
+        connectorRef,
+        createHash("sha256")
+          .update(`${testCase.label}:${randomUUID()}`)
+          .digest("hex"),
+        testCase.options,
+      );
+      const previous = await readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.storageName,
+      });
+      onTestFinished(async () => {
+        await restoreVolumeStorageState({
+          orgId: SYSTEM_ORG_ID,
+          storageName: skill.storageName,
+          previous,
+        });
+      });
+      const release = buildRelease({
+        version: `2026-07-22.skill-${testCase.label}-${randomUUID().slice(0, 8)}`,
+        connectorRef,
+        mutatePrivate: (artifact) => {
+          firstRecord(artifact.connectors, "connectors").skill =
+            skill.descriptor;
+        },
+      });
+      const objects = new Map(catalogObjects([release], release));
+      if (testCase.includeObjects) {
+        for (const [key, bytes] of skill.objects) {
+          objects.set(key, bytes);
+        }
+      }
+      serveObjects(objects);
+
+      const response = await syncCatalog();
+      expect(response.body).toMatchObject({
+        outcome: "rejected",
+        state: "never-synced",
+        active: null,
+        lastAttempt: { failureCode: testCase.expected },
+      });
+      await expect(
+        readVolumeStorageState({
+          orgId: SYSTEM_ORG_ID,
+          storageName: skill.storageName,
+        }),
+      ).resolves.toBeNull();
+    }
+  });
+
+  it("reuses immutable skill versions without regressing HEAD", async () => {
+    configureSource();
+    const connectorRef = `skill-cache-${randomUUID().slice(0, 8)}`;
+    const firstSkill = buildBundledSkillFixture(
+      connectorRef,
+      createHash("sha256").update(`first:${randomUUID()}`).digest("hex"),
+    );
+    const secondSkill = buildBundledSkillFixture(
+      connectorRef,
+      createHash("sha256").update(`second:${randomUUID()}`).digest("hex"),
+    );
+    const previous = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: firstSkill.storageName,
+    });
+    onTestFinished(async () => {
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: firstSkill.storageName,
+        previous,
+      });
+    });
+    const firstRelease = buildRelease({
+      version: `2026-07-22.skill-cache-first-${randomUUID().slice(0, 8)}`,
+      connectorRef,
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill =
+          firstSkill.descriptor;
+      },
+    });
+    const secondRelease = buildRelease({
+      version: `2026-07-22.skill-cache-second-${randomUUID().slice(0, 8)}`,
+      connectorRef,
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill =
+          secondSkill.descriptor;
+      },
+    });
+    const oldRetryRelease = buildRelease({
+      version: `2026-07-22.skill-cache-old-${randomUUID().slice(0, 8)}`,
+      connectorRef,
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill =
+          firstSkill.descriptor;
+      },
+    });
+
+    const firstObjects = new Map(catalogObjects([firstRelease], firstRelease));
+    for (const [key, bytes] of firstSkill.objects) {
+      firstObjects.set(key, bytes);
+    }
+    serveObjects(firstObjects);
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+
+    const secondObjects = new Map(
+      catalogObjects([firstRelease, secondRelease], secondRelease),
+    );
+    for (const [key, bytes] of secondSkill.objects) {
+      secondObjects.set(key, bytes);
+    }
+    serveObjects(secondObjects);
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+
+    context.mocks.s3.send.mockClear();
+    serveObjects(
+      catalogObjects(
+        [firstRelease, secondRelease, oldRetryRelease],
+        oldRetryRelease,
+      ),
+    );
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    const requestedKeys = context.mocks.s3.send.mock.calls.map((call) => {
+      const input = commandInput(call[0]);
+      return typeof input.Key === "string" ? input.Key : null;
+    });
+    expect(requestedKeys).not.toContain(firstSkill.manifestKey);
+    expect(requestedKeys).not.toContain(firstSkill.archiveKey);
+    await expect(
+      readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: firstSkill.storageName,
+      }),
+    ).resolves.toMatchObject({
+      head_version_id: secondSkill.versionId,
+    });
+  });
+
+  it("rolls back all skill registrations and retries a repaired conflict", async () => {
+    configureSource();
+    const suffix = randomUUID().slice(0, 8);
+    const firstConnectorRef = `skill-atomic-a-${suffix}`;
+    const conflictingConnectorRef = `skill-atomic-b-${suffix}`;
+    const firstSkill = buildBundledSkillFixture(
+      firstConnectorRef,
+      createHash("sha256").update(`first:${randomUUID()}`).digest("hex"),
+    );
+    const conflictingSkill = buildBundledSkillFixture(
+      conflictingConnectorRef,
+      createHash("sha256").update(`conflict:${randomUUID()}`).digest("hex"),
+    );
+    const previousFirst = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: firstSkill.storageName,
+    });
+    const previousConflicting = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: conflictingSkill.storageName,
+    });
+    onTestFinished(async () => {
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: firstSkill.storageName,
+        previous: previousFirst,
+      });
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: conflictingSkill.storageName,
+        previous: previousConflicting,
+      });
+    });
+    const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${conflictingSkill.storageName}`;
+    const existingVersionId = createHash("sha256")
+      .update(`existing:${randomUUID()}`)
+      .digest("hex");
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName: conflictingSkill.storageName,
+      versionId: existingVersionId,
+      s3Prefix: wrongPrefix,
+      s3Key: `${wrongPrefix}/${existingVersionId}`,
+    });
+    const conflictingIconBytes = Buffer.from(
+      `<svg>${conflictingConnectorRef}</svg>`,
+    );
+    const conflictingIconDigest = digest(conflictingIconBytes);
+    const release = buildRelease({
+      version: `2026-07-22.skill-conflict-${randomUUID().slice(0, 8)}`,
+      connectorRef: firstConnectorRef,
+      mutatePublic: (artifact) => {
+        arrayValue(artifact.connectors, "connectors").push(
+          buildPublicConnector({
+            connectorRef: conflictingConnectorRef,
+            label: "Conflicting Skill",
+            iconKey:
+              "platform/views/zero-page/components/settings/icons/" +
+              `${conflictingConnectorRef}-${conflictingIconDigest.slice("sha256:".length, 19)}.svg`,
+            iconDigest: conflictingIconDigest,
+          }),
+        );
+      },
+      mutatePrivate: (artifact) => {
+        const connectors = arrayValue(artifact.connectors, "connectors");
+        firstRecord(connectors, "connectors").skill = firstSkill.descriptor;
+        const conflictingConnector = buildPrivateConnector(
+          conflictingConnectorRef,
+        );
+        const conflictingPrivateName = "ATOMIC_SKILL_B_TOKEN";
+        const conflictingMethod = firstRecord(
+          conflictingConnector.authMethods,
+          "authMethods",
+        );
+        recordValue(conflictingMethod.storage, "storage").secrets = [
+          conflictingPrivateName,
+        ];
+        firstRecord(
+          recordValue(conflictingMethod.grant, "grant").fields,
+          "grant.fields",
+        ).privateName = conflictingPrivateName;
+        recordValue(
+          recordValue(conflictingMethod.access, "access").envBindings,
+          "envBindings",
+        ).SERVICE_TOKEN = `$secrets.${conflictingPrivateName}`;
+        conflictingConnector.skill = conflictingSkill.descriptor;
+        connectors.push(conflictingConnector);
+      },
+    });
+    const objects = new Map(catalogObjects([release], release));
+    for (const skill of [firstSkill, conflictingSkill]) {
+      for (const [key, bytes] of skill.objects) {
+        objects.set(key, bytes);
+      }
+    }
+    serveObjects(objects);
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      active: null,
+      lastAttempt: { failureCode: "invalid-reference" },
+    });
+    await expect(
+      readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: firstSkill.storageName,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: conflictingSkill.storageName,
+      }),
+    ).resolves.toStrictEqual({
+      s3_prefix: wrongPrefix,
+      size: 1,
+      file_count: 1,
+      head_version_id: existingVersionId,
+    });
+
+    await restoreVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: conflictingSkill.storageName,
+      previous: previousConflicting,
+    });
+    serveObjects(objects);
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: release.version },
+    });
+    for (const skill of [firstSkill, conflictingSkill]) {
+      await expect(
+        readVolumeStorageState({
+          orgId: SYSTEM_ORG_ID,
+          storageName: skill.storageName,
+        }),
+      ).resolves.toMatchObject({
+        s3_prefix: skill.s3Prefix,
+        head_version_id: skill.versionId,
+      });
+    }
+  });
+
+  it("rejects a connector skill version owned by another storage", async () => {
+    configureSource();
+    const connectorRef = `skill-owner-${randomUUID().slice(0, 8)}`;
+    const skill = buildBundledSkillFixture(
+      connectorRef,
+      createHash("sha256").update(`shared:${randomUUID()}`).digest("hex"),
+    );
+    const ownerStorageName = `connector-skill@owner-${randomUUID().slice(0, 8)}`;
+    const ownerPrefix = `${SYSTEM_ORG_ID}/volume/${ownerStorageName}`;
+    const previousOwner = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: ownerStorageName,
+    });
+    const previousCandidate = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName: skill.storageName,
+    });
+    onTestFinished(async () => {
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: ownerStorageName,
+        previous: previousOwner,
+      });
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.storageName,
+        previous: previousCandidate,
+      });
+    });
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName: ownerStorageName,
+      versionId: skill.versionId,
+      s3Prefix: ownerPrefix,
+      s3Key: `${ownerPrefix}/${skill.versionId}`,
+    });
+    const release = buildRelease({
+      version: `2026-07-22.skill-owner-${randomUUID().slice(0, 8)}`,
+      connectorRef,
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill = skill.descriptor;
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      active: null,
+      lastAttempt: { failureCode: "invalid-reference" },
+    });
+    await expect(
+      readVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName: skill.storageName,
+      }),
+    ).resolves.toBeNull();
+    const requestedKeys = context.mocks.s3.send.mock.calls.map((call) => {
+      const input = commandInput(call[0]);
+      return typeof input.Key === "string" ? input.Key : null;
+    });
+    expect(requestedKeys).not.toContain(skill.manifestKey);
+    expect(requestedKeys).not.toContain(skill.archiveKey);
   });
 
   it("accepts source identities and platform requirements without local support", async () => {
