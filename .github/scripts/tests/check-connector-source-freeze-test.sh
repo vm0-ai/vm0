@@ -55,6 +55,7 @@ firewall_dir="${repo}/turbo/packages/firewalls-generator/src"
 git init -q -b main "$repo"
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name Test
+git -C "$repo" config maintenance.auto false
 mkdir -p "$connector_dir" "$firewall_dir"
 printf 'export const connector = "base";\n' > "${connector_dir}/example.ts"
 printf 'export const runtime = "base";\n' > "${connector_runtime_dir}/runtime.ts"
