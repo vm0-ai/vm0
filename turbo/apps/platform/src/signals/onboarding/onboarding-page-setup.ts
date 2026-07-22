@@ -1,0 +1,209 @@
+import { command, type Command } from "ccstate";
+import { createElement, type ComponentType } from "react";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "@vm0/core";
+import {
+  CUSTOM_WORKFLOW_ID,
+  findOnboardingWorkflow,
+} from "../../views/onboarding/onboarding-data.ts";
+import { OnboardingMakePage } from "../../views/onboarding/onboarding-make-page.tsx";
+import { OnboardingWorkflowPickerPage } from "../../views/onboarding/onboarding-workflow-picker-page.tsx";
+import { OnboardingWorkflowRunPage } from "../../views/onboarding/onboarding-workflow-run-page.tsx";
+import {
+  OnboardingImageTemplatePage,
+  OnboardingPresentationTemplatePage,
+  OnboardingVideoTemplatePage,
+} from "../../views/onboarding/onboarding-template-picker-pages.tsx";
+import {
+  OnboardingImageRunPage,
+  OnboardingPresentationRunPage,
+  OnboardingVideoRunPage,
+} from "../../views/onboarding/onboarding-template-run-pages.tsx";
+import { hideAppSkeleton$, showAppSkeleton$ } from "../app-skeleton.ts";
+import { updateDocumentTitle$ } from "../document-title.ts";
+import { updatePage$ } from "../react-router.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { ROUTES, type RoutePath } from "../route-paths.ts";
+import {
+  completeOnboarding$,
+  completeOnboardingCheckoutReturn$,
+} from "./onboarding-actions.ts";
+import {
+  hydrateOnboardingRoute$,
+  onboardingDraft$,
+  type OnboardingDraft,
+  type OnboardingRouteStep,
+} from "./onboarding-state.ts";
+import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+
+interface OnboardingPageConfig {
+  readonly step: OnboardingRouteStep;
+  readonly title: string;
+  readonly Page: ComponentType;
+  readonly fallbackPath?: RoutePath;
+}
+
+const ONBOARDING_TRANSIENT_PARAMS = [
+  "choice",
+  "category",
+  "workflow",
+  "onboarding_billing",
+  "onboarding_billing_session_id",
+  "onboarding_note",
+  "onboarding_template",
+  "redeemCode",
+] as const;
+
+function promptHandoffParams(searchParams: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams(searchParams);
+  for (const key of ONBOARDING_TRANSIENT_PARAMS) {
+    next.delete(key);
+  }
+  return next;
+}
+
+function hasRequiredSelection(
+  step: OnboardingRouteStep,
+  draft: OnboardingDraft,
+): boolean {
+  if (step === "workflow-run") {
+    return (
+      draft.workflowId === CUSTOM_WORKFLOW_ID ||
+      findOnboardingWorkflow(draft.workflowId) !== null
+    );
+  }
+  if (step === "presentation-run") {
+    return PRESENTATION_TEMPLATE_PICKER_ITEMS.some((item) => {
+      return item.slug === draft.presentationTemplateSlug;
+    });
+  }
+  if (step === "image-run") {
+    return ILLUSTRATION_TEMPLATE_ITEMS.some((item) => {
+      return item.slug === draft.imageTemplateSlug;
+    });
+  }
+  if (step === "video-run") {
+    return VIDEO_TEMPLATE_ITEMS.some((item) => {
+      return item.slug === draft.videoTemplateSlug;
+    });
+  }
+  return true;
+}
+
+function createOnboardingPageSetup(
+  config: OnboardingPageConfig,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+    const searchParams = get(searchParams$);
+
+    if (config.step === "video-run") {
+      const checkoutSessionId = searchParams.get(
+        "onboarding_billing_session_id",
+      );
+      const checkoutPrompt = searchParams.get("prompt")?.trim();
+      if (checkoutSessionId && checkoutPrompt) {
+        await set(completeOnboardingCheckoutReturn$, checkoutSessionId, signal);
+        await set(
+          completeOnboarding$,
+          searchParams.get("redeemCode")?.trim() || null,
+          signal,
+        );
+        set(detachedNavigateTo$, ROUTES.prompt, {
+          searchParams: promptHandoffParams(searchParams),
+          replace: true,
+        });
+        return;
+      }
+    }
+
+    const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
+    if (!status.needsOnboarding) {
+      const prompt = searchParams.get("prompt")?.trim();
+      set(detachedNavigateTo$, prompt ? ROUTES.prompt : ROUTES.home, {
+        searchParams: prompt
+          ? promptHandoffParams(searchParams)
+          : new URLSearchParams(),
+        replace: true,
+      });
+      return;
+    }
+
+    set(hydrateOnboardingRoute$, config.step, searchParams);
+    const draft = get(onboardingDraft$);
+    if (config.fallbackPath && !hasRequiredSelection(config.step, draft)) {
+      set(detachedNavigateTo$, config.fallbackPath, {
+        searchParams,
+        replace: true,
+      });
+      return;
+    }
+
+    set(updatePage$, createElement(config.Page), "none");
+    set(updateDocumentTitle$, config.title);
+    await set(hideAppSkeleton$, signal);
+  });
+}
+
+export const setupOnboardingMakePage$ = createOnboardingPageSetup({
+  step: "make",
+  title: "Welcome to VM0",
+  Page: OnboardingMakePage,
+});
+
+export const setupOnboardingWorkflowPickerPage$ = createOnboardingPageSetup({
+  step: "workflow-picker",
+  title: "Choose a workflow",
+  Page: OnboardingWorkflowPickerPage,
+});
+
+export const setupOnboardingWorkflowRunPage$ = createOnboardingPageSetup({
+  step: "workflow-run",
+  title: "Run your first workflow",
+  Page: OnboardingWorkflowRunPage,
+  fallbackPath: ROUTES.onboardingWorkflowPicker,
+});
+
+export const setupOnboardingPresentationTemplatePage$ =
+  createOnboardingPageSetup({
+    step: "presentation-template",
+    title: "Choose a presentation template",
+    Page: OnboardingPresentationTemplatePage,
+  });
+
+export const setupOnboardingPresentationRunPage$ = createOnboardingPageSetup({
+  step: "presentation-run",
+  title: "Create your first presentation",
+  Page: OnboardingPresentationRunPage,
+  fallbackPath: ROUTES.onboardingPresentationTemplate,
+});
+
+export const setupOnboardingImageTemplatePage$ = createOnboardingPageSetup({
+  step: "image-template",
+  title: "Choose an image style",
+  Page: OnboardingImageTemplatePage,
+});
+
+export const setupOnboardingImageRunPage$ = createOnboardingPageSetup({
+  step: "image-run",
+  title: "Create your first image",
+  Page: OnboardingImageRunPage,
+  fallbackPath: ROUTES.onboardingImageTemplate,
+});
+
+export const setupOnboardingVideoTemplatePage$ = createOnboardingPageSetup({
+  step: "video-template",
+  title: "Choose a video style",
+  Page: OnboardingVideoTemplatePage,
+});
+
+export const setupOnboardingVideoRunPage$ = createOnboardingPageSetup({
+  step: "video-run",
+  title: "Create your first video",
+  Page: OnboardingVideoRunPage,
+  fallbackPath: ROUTES.onboardingVideoTemplate,
+});

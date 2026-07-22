@@ -8,7 +8,6 @@ export interface HostedAuthSession {
 export interface HostedAuthOptions {
   readonly followRedirect?: boolean;
   readonly activeOrganizationId?: string;
-  readonly mirrorStorageToUrls?: readonly string[];
 }
 
 export async function refreshClerkSessionToken(
@@ -142,10 +141,6 @@ async function signInWithClerkTestingHelper(
     ...clerkState,
   });
 
-  for (const targetUrl of options.mirrorStorageToUrls ?? []) {
-    await mirrorBrowserStateToUrl(page, appUrl, targetUrl);
-  }
-
   if (redirectUrl && options.followRedirect !== false) {
     await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
   } else {
@@ -175,53 +170,6 @@ function isAboutBlankInterruptedByRedirect(error: unknown): boolean {
     error.message.includes(
       'Navigation to "about:blank" is interrupted by another navigation',
     )
-  );
-}
-
-async function mirrorBrowserStateToUrl(
-  page: Page,
-  sourceUrl: string,
-  targetUrl: string,
-): Promise<void> {
-  const targetOrigin = new URL(targetUrl).origin;
-  const storage = await page.evaluate(() => {
-    return {
-      localStorageEntries: Object.entries(window.localStorage),
-      sessionStorageEntries: Object.entries(window.sessionStorage),
-    };
-  });
-  await page.addInitScript(
-    (snapshot: {
-      readonly targetOrigin: string;
-      readonly localStorageEntries: readonly (readonly [string, string])[];
-      readonly sessionStorageEntries: readonly (readonly [string, string])[];
-    }) => {
-      if (window.location.origin !== snapshot.targetOrigin) {
-        return;
-      }
-      for (const [key, value] of snapshot.localStorageEntries) {
-        window.localStorage.setItem(key, value);
-      }
-      for (const [key, value] of snapshot.sessionStorageEntries) {
-        window.sessionStorage.setItem(key, value);
-      }
-    },
-    { targetOrigin, ...storage },
-  );
-
-  const cookies = await page.context().cookies(sourceUrl);
-  await page.context().addCookies(
-    cookies.map((cookie) => {
-      return {
-        name: cookie.name,
-        value: cookie.value,
-        url: targetOrigin,
-        expires: cookie.expires,
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite,
-      };
-    }),
   );
 }
 
