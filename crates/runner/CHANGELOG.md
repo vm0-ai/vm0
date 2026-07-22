@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.146.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.26...runner-rs-v0.146.27) (2026-07-21)
+
+
+### Bug Fixes
+
+* **runner:** avoid signal reentrant flush deadlock ([#22448](https://github.com/vm0-ai/vm0/issues/22448)) ([221989f](https://github.com/vm0-ai/vm0/commit/221989f453153f541ae2a7f362c8d1b001b09423))
+
+
+### Performance Improvements
+
+* **runner:** stop scanning r2 cache during gc ([#22440](https://github.com/vm0-ai/vm0/issues/22440)) ([51cb14f](https://github.com/vm0-ai/vm0/commit/51cb14faddadc9191fcc1ad61001e8cb404650b1))
+
+## [0.146.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.25...runner-rs-v0.146.26) (2026-07-21)
+
+
+### Performance Improvements
+
+* align session-history sidecar capacity with resume limit ([#22392](https://github.com/vm0-ai/vm0/issues/22392)) ([6eee854](https://github.com/vm0-ai/vm0/commit/6eee8548718c69c4d46afe9b1ddcd8c7babcca59))
+
+## [0.146.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.24...runner-rs-v0.146.25) (2026-07-21)
+
+## [0.146.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.23...runner-rs-v0.146.24) (2026-07-21)
+
+
+### Refactoring
+
+* **runner:** centralize session history telemetry fields ([#22373](https://github.com/vm0-ai/vm0/issues/22373)) ([c5ae2f7](https://github.com/vm0-ai/vm0/commit/c5ae2f71e02d6e02b4677bb9d168c4396c10c46f))
+
 ## [0.146.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.22...runner-rs-v0.146.23) (2026-07-21)
 
 

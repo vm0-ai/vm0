@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import type StripeSDK from "stripe";
 import type { z } from "zod";
 import {
-  apiKeysByIdContract,
-  apiKeysContract,
-} from "@vm0/api-contracts/contracts/api-keys";
+  cliAuthApproveContract,
+  cliAuthDeviceContract,
+  cliAuthTokenContract,
+} from "@vm0/api-contracts/contracts/cli-auth";
 import {
   composesMainContract,
   type ZeroCapability,
@@ -61,6 +62,7 @@ import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
 import { agentRunsCreateRoutes } from "../../agent-runs-create";
 import { agentRunsReadRoutes } from "../../agent-runs-read";
+import { cliAuthRoutes } from "../../cli-auth";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
@@ -70,8 +72,6 @@ import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
 import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
-import { zeroApiKeysRoutes } from "../../zero-api-keys";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
@@ -128,8 +128,7 @@ const OFFICIAL_RUNNER_AUTHORIZATION =
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
-  ...zeroApiKeysRoutes,
-  ...zeroApiKeysDeleteRoutes,
+  ...cliAuthRoutes,
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
   ...cronAggregateInsightsRoutes,
@@ -458,31 +457,27 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
-    async createApiKey(actor: ApiTestUser): Promise<{
-      readonly id: string;
+    async createCliToken(actor: ApiTestUser): Promise<{
       readonly token: string;
     }> {
-      const response = await accept(
-        runApp(context)(apiKeysContract).create({
-          headers: authenticate(context, actor),
-          body: {
-            name: `bdd-runner-key-${randomUUID().slice(0, 8)}`,
-            expiresInDays: 30,
-          },
-        }),
-        [201],
+      const device = await accept(
+        runApp(context)(cliAuthDeviceContract).create({ body: {} }),
+        [200],
       );
-      return { id: response.body.id, token: response.body.token };
-    },
-
-    async revokeApiKey(actor: ApiTestUser, id: string): Promise<void> {
       await accept(
-        runApp(context)(apiKeysByIdContract).delete({
+        runApp(context)(cliAuthApproveContract).approve({
           headers: authenticate(context, actor),
-          params: { id },
+          body: { device_code: device.body.device_code },
         }),
-        [204],
+        [200],
       );
+      const token = await accept(
+        runApp(context)(cliAuthTokenContract).exchange({
+          body: { device_code: device.body.device_code },
+        }),
+        [200],
+      );
+      return { token: token.body.access_token };
     },
 
     async requestPollRunnerAs(

@@ -23,7 +23,6 @@ import {
 } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
 import { db$, writeDb$, type Db } from "../external/db";
-import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
@@ -322,7 +321,7 @@ export function zeroSlackConnectStatus(args: {
 
 export const connectSlackWorkspace$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly userId: string;
       readonly orgId: string;
@@ -392,16 +391,6 @@ export const connectSlackWorkspace$ = command(
       });
       signal.throwIfAborted();
 
-      await get(
-        ensureUserArtifactStorage({
-          db: writeDb,
-          orgId: args.orgId,
-          userId: args.userId,
-          name: "artifact",
-        }),
-      );
-      signal.throwIfAborted();
-
       return {
         kind: "ok",
         connectionId,
@@ -422,16 +411,6 @@ export const connectSlackWorkspace$ = command(
       slackWorkspaceId: args.workspaceId,
       vm0UserId: args.userId,
     });
-    signal.throwIfAborted();
-
-    await get(
-      ensureUserArtifactStorage({
-        db: writeDb,
-        orgId: args.orgId,
-        userId: args.userId,
-        name: "artifact",
-      }),
-    );
     signal.throwIfAborted();
 
     return {

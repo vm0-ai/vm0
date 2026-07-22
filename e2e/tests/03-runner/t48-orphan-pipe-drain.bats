@@ -47,13 +47,13 @@ EOF
     # The mock-claude emits events, spawns a child holding stdout open, then
     # exits.  The drain deadline (5s) should allow guest-agent to break out
     # of the stdout loop and complete the run successfully.
-    run $VM0_CLI run "$AGENT_NAME" --no-auto-update "@orphan-pipe"
+    run run_compose_fixture "$AGENT_NAME" "@orphan-pipe"
 
     echo "# Step 3: Verify run succeeded..."
     assert_success
 
     # Extract Run ID
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID from output"
         echo "$output"

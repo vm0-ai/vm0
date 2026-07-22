@@ -3228,10 +3228,9 @@ async function handleConcurrencySubscriptionUpdated(
   });
 }
 
-interface UsageAllowanceSubscriptionUpdateTarget {
-  readonly orgIds: readonly string[];
-  readonly by: "subscription" | "org";
-}
+type UsageAllowanceSubscriptionUpdateTarget =
+  | { readonly by: "subscription"; readonly orgIds: readonly string[] }
+  | { readonly by: "org"; readonly orgId: string };
 
 interface UsageAllowanceSubscriptionCreditsUpdate {
   readonly shortWindowUnits: number;
@@ -3275,7 +3274,7 @@ async function usageAllowanceSubscriptionUpdateTarget(
     return null;
   }
 
-  return { by: "org", orgIds: [orgRow.orgId] };
+  return { by: "org", orgId: orgRow.orgId };
 }
 
 function usageAllowanceSubscriptionCreditsUpdate(
@@ -3416,7 +3415,7 @@ async function handleUsageAllowanceSubscriptionUpdated(
               orgUsageAllowanceEntitlements.stripeSubscriptionId,
               subscription.id,
             )
-          : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
+          : eq(orgUsageAllowanceEntitlements.orgId, target.orgId),
       )
       .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
 

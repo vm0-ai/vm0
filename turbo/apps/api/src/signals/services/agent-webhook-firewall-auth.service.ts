@@ -357,6 +357,17 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
   readonly forceRefreshStartedAtMicros: bigint | null;
 }
 
+function requiredModelProviderMetadataKey(
+  args: Pick<RefreshAccessTokenArgs, "connectorType" | "metadataKey">,
+): string {
+  if (!args.metadataKey) {
+    throw new Error(
+      `metadataKey required for model-provider source on ${args.connectorType}`,
+    );
+  }
+  return args.metadataKey;
+}
+
 type RefreshInputSource =
   | {
       readonly kind: "secret";
@@ -1756,7 +1767,7 @@ async function loadModelProviderRefreshStateRow(
       and(
         eq(modelProviders.orgId, args.orgId),
         eq(modelProviders.userId, context.secretUserId),
-        eq(modelProviders.type, args.metadataKey ?? ""),
+        eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
       ),
     );
   const rows = lockRow
@@ -1944,7 +1955,7 @@ async function markRefreshSuccess(
         and(
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, context.secretUserId),
-          eq(modelProviders.type, args.metadataKey ?? ""),
+          eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
         ),
       );
     return Object.fromEntries(returnedSecretValues);
@@ -1993,7 +2004,7 @@ async function markRefreshFailure(
         and(
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, context.secretUserId),
-          eq(modelProviders.type, args.metadataKey ?? ""),
+          eq(modelProviders.type, requiredModelProviderMetadataKey(args)),
         ),
       );
     return;

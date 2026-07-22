@@ -441,6 +441,8 @@ const STATIC_CONNECTOR_ICON_PATHS = {
   todoist: "views/zero-page/components/settings/icons/todoist-7ccd1dfa28e5.svg",
   together:
     "views/zero-page/components/settings/icons/together-c8adc591dd9e.svg",
+  topvisor:
+    "views/zero-page/components/settings/icons/topvisor-8a7e40669b4f.svg",
   totalis: "views/zero-page/components/settings/icons/totalis-d97d41cfb7f0.png",
   trellis: "views/zero-page/components/settings/icons/trellis-3273c8af062d.png",
   tripo: "views/zero-page/components/settings/icons/tripo-cee4ccd95d55.svg",
@@ -692,6 +694,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "tldv",
   "todoist",
   "together",
+  "topvisor",
   "trellis",
   "tripo",
   "twenty",

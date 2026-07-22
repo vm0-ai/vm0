@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/vm0-ai/vm0/compare/host-worker-v1.0.3...host-worker-v1.0.4) (2026-07-22)
+
+
+### Bug Fixes
+
+* allow okou.ai and omby.ai to fetch hosted sites ([#22460](https://github.com/vm0-ai/vm0/issues/22460)) ([11f5c1e](https://github.com/vm0-ai/vm0/commit/11f5c1e3480d95f8c1883b3e21957f8de00678ca))
+
 ## [1.0.3](https://github.com/vm0-ai/vm0/compare/host-worker-v1.0.2...host-worker-v1.0.3) (2026-07-16)
 
 

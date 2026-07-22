@@ -12,7 +12,7 @@ export function rewriteDesktopServiceHostname(
   target: "api" | "www",
 ): string {
   const rewrittenHostname = replaceHostPrefix(hostname, target);
-  if (!CLOUDFLARE_PREVIEW_APP_HOSTNAME.test(hostname)) {
+  if (target !== "api" || !CLOUDFLARE_PREVIEW_APP_HOSTNAME.test(hostname)) {
     return rewrittenHostname;
   }
   return rewrittenHostname.replace(/\.omby\.ai$/, ".vm6.ai");

@@ -50,6 +50,7 @@ import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
 import * as slackChatThreadRouteSchema from "./schema/slack-chat-thread-route";
+import * as slackChatIngressSchema from "./schema/slack-chat-ingress";
 import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-preference";
 import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
@@ -80,6 +81,7 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
 import * as chatMessageQueueSchema from "./schema/chat-message-queue";
+import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
@@ -134,6 +136,7 @@ export const schema = {
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,
   ...slackChatThreadRouteSchema,
+  ...slackChatIngressSchema,
   ...slackUserAgentPreferenceSchema,
   ...teamsOrgInstallationSchema,
   ...teamsOrgConnectionSchema,
@@ -190,6 +193,7 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
   ...chatMessageQueueSchema,
+  ...morningBriefSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,

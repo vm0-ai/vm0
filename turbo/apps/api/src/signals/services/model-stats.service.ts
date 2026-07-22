@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { lt, sql } from "drizzle-orm";
+import { eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -65,16 +65,11 @@ function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
 }
 
-function getModelStatsModelIdSql() {
-  return sql.join(
-    [
-      ...Object.keys(VM0_MODEL_TO_PROVIDER),
-      ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
-    ].map((model) => {
-      return sql`${model}`;
-    }),
-    sql`, `,
-  );
+function getModelStatsModelIds(): string[] {
+  return [
+    ...Object.keys(VM0_MODEL_TO_PROVIDER),
+    ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
+  ];
 }
 
 interface ModelStatsAggregationResult {
@@ -142,7 +137,7 @@ function modelUsageObservationModelExpression() {
   const modelColumn = modelUsageObservation.model;
   return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+      return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
     }),
     sql` `,
   )} ELSE ${modelColumn} END`;
@@ -152,7 +147,7 @@ function modelStatModelExpression() {
   const modelColumn = modelStat.model;
   return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+      return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
     }),
     sql` `,
   )} ELSE ${modelColumn} END`;
@@ -164,16 +159,16 @@ async function replaceModelStats(
   windowEnd: Date,
 ): Promise<number> {
   const observationModelExpr = modelUsageObservationModelExpression();
-  const modelStatsModelIdSql = getModelStatsModelIdSql();
+  const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
 
   const insertedCount = await db.transaction(async (tx) => {
     await tx.execute(sql`
       DELETE FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${windowStartParam}::timestamp
-        AND ${modelStat.hourStart} < ${windowEndParam}::timestamp
-        AND ${modelStat.model} IN (${modelStatsModelIdSql})
+      WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
+        AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
     `);
 
     const { rowCount } = await tx.execute(sql`
@@ -184,19 +179,19 @@ async function replaceModelStats(
           ${modelUsageObservation.orgId} AS org_id,
           ${modelUsageObservation.userId} AS user_id,
           COALESCE(${modelUsageObservation.runId}::text, ${modelUsageObservation.idempotencyKey}::text) AS request_key,
-          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_INPUT}
+          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_INPUT)}
             THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS input_tokens,
-          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_OUTPUT}
+          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_OUTPUT)}
             THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS output_tokens,
-          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_CACHE_READ}
+          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_READ)}
             THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_read_input_tokens,
-          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_CACHE_CREATION}
+          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_CREATION)}
             THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
           0::bigint AS credits_charged
         FROM ${modelUsageObservation}
-        WHERE ${modelUsageObservation.observedAt} >= ${windowStartParam}::timestamp
-          AND ${modelUsageObservation.observedAt} < ${windowEndParam}::timestamp
-          AND ${modelUsageObservation.model} IN (${modelStatsModelIdSql})
+        WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
+          AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
+          AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
           AND ${modelUsageObservation.category} IN (
             ${TOKEN_CATEGORY_INPUT},
             ${TOKEN_CATEGORY_OUTPUT},
@@ -292,8 +287,7 @@ async function selectModelRankings(
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
   const modelExpr = modelStatModelExpression();
-  const currentModelStatsModelIdSql = getModelStatsModelIdSql();
-  const previousModelStatsModelIdSql = getModelStatsModelIdSql();
+  const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(window.start);
   const windowEndParam = utcTimestampParam(window.end);
   const previousStartParam = utcTimestampParam(previousStart);
@@ -306,22 +300,22 @@ async function selectModelRankings(
       SELECT
         ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
+        COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
+        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
       FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${windowStartParam}::timestamp
-        AND ${modelStat.hourStart} < ${windowEndParam}::timestamp
-        AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
+      WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
+        AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
       GROUP BY 1
     ),
     previous_period AS (
       SELECT
         ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
+        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS previous_total_tokens
       FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${previousStartParam}::timestamp
-        AND ${modelStat.hourStart} < ${previousEndParam}::timestamp
-        AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
+      WHERE ${gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`)}
+        AND ${lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`)}
+        AND ${inArray(modelStat.model, modelStatsModelIds)}
       GROUP BY 1
     )
     SELECT

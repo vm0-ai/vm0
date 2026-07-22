@@ -7,7 +7,11 @@ import {
   type ZeroAgentRequest,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { apiKeysContract } from "@vm0/api-contracts/contracts/api-keys";
+import {
+  cliAuthApproveContract,
+  cliAuthDeviceContract,
+  cliAuthTokenContract,
+} from "@vm0/api-contracts/contracts/cli-auth";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -52,15 +56,25 @@ async function cliAuthHeaders(
     role === "admin" ? "org:admin" : "org:member",
   );
 
-  const response = await accept(
-    setupApp({ context })(apiKeysContract).create({
-      body: { name: "Test Token", expiresInDays: 1 },
+  const device = await accept(
+    setupApp({ context })(cliAuthDeviceContract).create({ body: {} }),
+    [200],
+  );
+  await accept(
+    setupApp({ context })(cliAuthApproveContract).approve({
       headers: authHeaders(),
+      body: { device_code: device.body.device_code },
     }),
-    [201],
+    [200],
+  );
+  const response = await accept(
+    setupApp({ context })(cliAuthTokenContract).exchange({
+      body: { device_code: device.body.device_code },
+    }),
+    [200],
   );
 
-  return { authorization: `Bearer ${response.body.token}` };
+  return { authorization: `Bearer ${response.body.access_token}` };
 }
 
 function agentsClient() {

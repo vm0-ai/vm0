@@ -680,6 +680,7 @@ async fn run_start_with_home(
         network_policy_refresh,
         session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
+        fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),

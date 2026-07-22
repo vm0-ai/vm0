@@ -383,27 +383,35 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 async function enqueueWorkflowAutomationEventIfBusy(input: {
   readonly db: Db;
   readonly args: RunWorkflowAutomationNowArgs;
+  readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const { db, args, signal } = input;
+  const { db, args, signal, timing } = input;
   const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
     return false;
   }
-  const admission = await admitWorkflowAutomationEvent(db, {
-    automation,
-    chatThreadId,
-    triggerSource: args.triggerSource ?? "workflow-schedule",
-    triggerBrief: args.triggerBrief,
-    params: {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt: args.appendSystemPrompt,
-      callbacks: args.callbacks,
-      recordLastRunId: args.recordLastRunId,
-      recordLastRunAt: args.recordLastRunAt,
+  const admission = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
+    "nested",
+    async () => {
+      return await admitWorkflowAutomationEvent(db, {
+        automation,
+        chatThreadId,
+        triggerSource: args.triggerSource ?? "workflow-schedule",
+        triggerBrief: args.triggerBrief,
+        params: {
+          version: 1,
+          prompt: args.prompt,
+          appendSystemPrompt: args.appendSystemPrompt,
+          callbacks: args.callbacks,
+          recordLastRunId: args.recordLastRunId,
+          recordLastRunAt: args.recordLastRunAt,
+        },
+      });
     },
-  });
+  );
   signal.throwIfAborted();
   if (admission === "enqueued") {
     await publishChatThreadWorkflowQueueChangedSafely(
@@ -474,6 +482,7 @@ export const runWorkflowAutomationNow$ = command(
     const enqueued = await enqueueWorkflowAutomationEventIfBusy({
       db,
       args,
+      timing,
       signal,
     });
     if (enqueued) {

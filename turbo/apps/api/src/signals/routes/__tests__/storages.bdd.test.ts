@@ -413,10 +413,7 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
     expect(preparedMissingEmptyVolume.uploads).toBeDefined();
 
     authOrg.mockClerkOrg(actor);
-    const key = await authOrg.createApiKey(actor, {
-      name: "BDD storages token",
-      expiresInDays: 7,
-    });
+    const key = await authOrg.createCliToken(actor);
     const bearerList = await api.requestListStoragesWithBearer(
       key.token,
       "artifact",

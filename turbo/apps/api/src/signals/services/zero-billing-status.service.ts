@@ -16,6 +16,7 @@ import {
   lte,
   or,
   sql,
+  sum,
 } from "drizzle-orm";
 
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
@@ -641,7 +642,7 @@ export function zeroBillingStatus(
       db
         .select({
           total:
-            sql`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`.mapWith(
+            sql`COALESCE(${sum(creditExpiresRecord.remaining)}, 0)::int`.mapWith(
               pgIntegerDecoder,
             ),
         })

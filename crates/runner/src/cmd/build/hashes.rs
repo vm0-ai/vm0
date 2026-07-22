@@ -11,7 +11,8 @@ use super::scripts::{CUSTOMIZE_SCRIPT, TEMPLATE_BUILD_SCRIPT};
 
 /// Bump to invalidate all shared template images in R2.
 ///
-/// Bumping orphans previous R2 objects; swept by `runner gc` after TTL.
+/// Bumping orphans previous R2 objects; the bucket lifecycle expires them after
+/// the configured retention window.
 const TEMPLATE_CACHE_VERSION: u32 = 1;
 
 /// Bump to invalidate all local rootfs images.

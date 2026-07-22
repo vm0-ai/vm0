@@ -49,7 +49,7 @@ import {
 import { agents$ } from "../../signals/agent.ts";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import {
-  applyArtifactFavoriteOverrides,
+  applyArtifactFavorites,
   artifactFavoriteOverrides$,
   artifactsGridElement$,
   artifactsGridWidth$,
@@ -65,6 +65,7 @@ import {
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
+  remoteArtifactFavoriteUrls$,
   requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
@@ -78,6 +79,7 @@ import {
   startArtifactChat$,
   syncArtifactsScrollMetrics$,
   toggleArtifactFavorite$,
+  type ArtifactPageItem,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
 import {
@@ -698,23 +700,27 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   );
 }
 
+interface ArtifactCardActionsProps {
+  readonly favorited: boolean;
+  readonly item: ArtifactPageItem;
+  readonly previewUrl: string;
+  readonly favoriteActionEnabled: boolean;
+  readonly showFavoriteAction: boolean;
+  readonly onOpenChat: (threadId: string) => void;
+  readonly onStartChat: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
+}
+
 function ArtifactCardActions({
   favorited,
   item,
   previewUrl,
+  favoriteActionEnabled,
   showFavoriteAction,
   onOpenChat,
   onStartChat,
   onToggleFavorite,
-}: {
-  readonly favorited: boolean;
-  readonly item: ArtifactItem;
-  readonly previewUrl: string;
-  readonly showFavoriteAction: boolean;
-  readonly onOpenChat: (threadId: string) => void;
-  readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
-}) {
+}: ArtifactCardActionsProps) {
   return (
     <div
       className="flex shrink-0 gap-1"
@@ -740,6 +746,7 @@ function ArtifactCardActions({
               : `Add ${item.filename} to favorites`
           }
           aria-pressed={favorited}
+          disabled={!favoriteActionEnabled}
           title={
             favorited
               ? `Remove ${item.filename} from favorites`
@@ -835,22 +842,24 @@ function ArtifactCard({
   onOpenPreview,
   onStartChat,
   onToggleFavorite,
+  favoriteActionEnabled,
   showFavoriteAction,
 }: {
   readonly cardRef: (element: HTMLElement | null) => void;
   readonly index: number;
-  readonly item: ArtifactItem;
+  readonly item: ArtifactPageItem;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
+  readonly favoriteActionEnabled: boolean;
   readonly showFavoriteAction: boolean;
 }) {
   const kindLabel = formatArtifactKind(item.artifactKind);
   const contextLabel = artifactContextLabel({ item, kindLabel });
   const previewUrl = publicAttachmentUrl(item.url);
   const previewable = artifactLightboxKind(item) !== "file";
-  const favorited = item.isFavorited === true;
+  const favorited = item.isFavorited;
   return (
     <article
       ref={cardRef}
@@ -909,6 +918,7 @@ function ArtifactCard({
         </div>
         <ArtifactCardActions
           favorited={favorited}
+          favoriteActionEnabled={favoriteActionEnabled}
           item={item}
           previewUrl={previewUrl}
           showFavoriteAction={showFavoriteAction}
@@ -1168,9 +1178,10 @@ function ArtifactsList({
   onOpenPreview,
   onStartChat,
   onToggleFavorite,
+  favoriteActionEnabled,
   showFavoriteAction,
 }: {
-  readonly artifacts: readonly ArtifactItem[];
+  readonly artifacts: readonly ArtifactPageItem[];
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
@@ -1178,7 +1189,8 @@ function ArtifactsList({
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
+  readonly favoriteActionEnabled: boolean;
   readonly showFavoriteAction: boolean;
 }) {
   const scrollViewport = useGet(artifactsScrollViewport$);
@@ -1265,6 +1277,7 @@ function ArtifactsList({
             <ArtifactCard
               key={artifact.artifactItemId}
               cardRef={setArtifactCardRef}
+              favoriteActionEnabled={favoriteActionEnabled}
               index={index}
               item={artifact}
               onOpenChat={onOpenChat}
@@ -1305,10 +1318,15 @@ export function ArtifactsPage() {
   const lightboxUrl = useGet(lightboxUrl$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
   const cachedLoadable = useLastLoadable(cachedArtifacts$);
+  const favoriteUrlsLoadable = useLastLoadable(remoteArtifactFavoriteUrls$);
   const agents = useLastResolved(agents$) ?? [];
   const features = useLastResolved(featureSwitch$);
   const artifactFavoritesEnabled =
     features?.[FeatureSwitchKey.ArtifactFavorites] ?? false;
+  const favoriteUrls =
+    favoriteUrlsLoadable.state === "hasData" ? favoriteUrlsLoadable.data : null;
+  const artifactFavoritesReady =
+    artifactFavoritesEnabled && favoriteUrls !== null;
   const remoteData =
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
@@ -1317,15 +1335,16 @@ export function ArtifactsPage() {
   // authoritative set. Cached fallback is only used before remote data loads or
   // when the refresh errors.
   const sourceData = remoteData ?? cachedData;
-  const sourceArtifacts = applyArtifactFavoriteOverrides(
+  const sourceArtifacts = applyArtifactFavorites(
     sourceData?.artifacts ?? [],
+    favoriteUrls,
     favoriteOverrides,
   );
   const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,
     category: selectedCategory,
-    favoritesOnly: artifactFavoritesEnabled && favoritesOnly,
+    favoritesOnly: artifactFavoritesReady && favoritesOnly,
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
@@ -1373,8 +1392,8 @@ export function ArtifactsPage() {
             search={search}
             selectedAgentId={selectedAgentId}
             selectedCategory={selectedCategory}
-            favoritesOnly={artifactFavoritesEnabled && favoritesOnly}
-            showFavoritesFilter={artifactFavoritesEnabled}
+            favoritesOnly={artifactFavoritesReady && favoritesOnly}
+            showFavoritesFilter={artifactFavoritesReady}
             agents={agents}
             onSearchChange={setSearch}
             onAgentChange={setSelectedAgentId}
@@ -1383,6 +1402,7 @@ export function ArtifactsPage() {
           />
           <ArtifactsList
             artifacts={artifacts}
+            favoriteActionEnabled={artifactFavoritesReady}
             loading={loading}
             error={error}
             visibleCount={visibleCount}

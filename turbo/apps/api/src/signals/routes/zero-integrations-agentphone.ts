@@ -20,7 +20,6 @@ import type { RouteEntry } from "../route-entry";
 import {
   buildAgentPhoneConnectUrl,
   describeAgentPhoneHandleShape,
-  ensureAgentPhoneArtifactStorage$,
   handleAgentPhoneMessage$,
   isAgentPhoneChannel,
   isValidAgentPhoneHandle,
@@ -510,13 +509,6 @@ const connectAgentPhone$ = command(
     if (!result.ok) {
       return connectConflict(result.reason);
     }
-
-    await set(
-      ensureAgentPhoneArtifactStorage$,
-      { userId: auth.userId, orgId: auth.orgId },
-      signal,
-    );
-    signal.throwIfAborted();
 
     await publishAgentPhoneUserChanged(auth.userId);
     signal.throwIfAborted();

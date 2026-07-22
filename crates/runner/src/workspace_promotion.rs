@@ -2,12 +2,10 @@ use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use futures_util::FutureExt;
-use guest_contracts::session_history_identity::{
-    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE, SESSION_HISTORY_SIDECAR_MAX_BYTES,
-    SessionHistorySidecarExportMetadata,
-};
-use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
+use guest_contracts::session_history_identity::SessionHistorySidecarExportMetadata;
+use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 use tokio::fs;
 use tracing::warn;
@@ -23,8 +21,6 @@ use crate::workspace_mount::freeze_workspace_drive;
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
-const SESSION_HISTORY_SIDECAR_EXPORT_EXPECTED_EXIT_CODES: &[i32] =
-    &[SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE];
 
 enum WorkspacePromotionAction {
     Promoted,
@@ -246,7 +242,7 @@ async fn export_session_history_sidecar(
         timeout: SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT,
         env: &env,
         sudo: false,
-        expected_exit_codes: SESSION_HISTORY_SIDECAR_EXPORT_EXPECTED_EXIT_CODES,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
@@ -270,16 +266,6 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
-    if matches!(
-        result.termination,
-        ExecTermination::Exited {
-            exit_code: SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE
-        }
-    ) {
-        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-            .await;
-        return None;
-    }
     if !helper_exec_succeeded(&result) {
         warn!(
             run_id = %promotion.run_id(),
@@ -299,7 +285,7 @@ async fn export_session_history_sidecar(
     ) {
         Ok(metadata)
             if metadata.encoded_size > 0
-                && metadata.encoded_size <= SESSION_HISTORY_SIDECAR_MAX_BYTES =>
+                && metadata.encoded_size <= RESUME_SESSION_HISTORY_MAX_BYTES =>
         {
             metadata
         }
@@ -338,7 +324,7 @@ async fn export_session_history_sidecar(
             &export_path,
             sidecar_source.tmp_path(),
             CopyFileOptions {
-                max_bytes: SESSION_HISTORY_SIDECAR_MAX_BYTES,
+                max_bytes: RESUME_SESSION_HISTORY_MAX_BYTES,
                 timeout: SESSION_HISTORY_SIDECAR_COPY_TIMEOUT,
                 missing_ok: false,
             },

@@ -27,6 +27,9 @@ describe("platform auth URLs", () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
     expect(resolveWebOrigin()).toBe("https://pr-18532-www.vm6.ai");
 
+    setBrowserUrl("https://pr-18532-app.omby.ai/agents");
+    expect(resolveWebOrigin()).toBe("https://pr-18532-www.omby.ai");
+
     setBrowserUrl("https://app.vm0.ai/agents");
     expect(resolveWebOrigin()).toBe("https://www.vm0.ai");
   });
@@ -37,6 +40,9 @@ describe("platform auth URLs", () => {
     );
     expect(deriveServiceOrigin("https://staging-app.vm6.ai", "www")).toBe(
       "https://staging-www.vm6.ai",
+    );
+    expect(deriveServiceOrigin("https://staging-app.omby.ai", "www")).toBe(
+      "https://staging-www.omby.ai",
     );
     expect(deriveServiceOrigin("https://pr-18532-app.vm6.ai", "api")).toBe(
       "https://pr-18532-api.vm6.ai",

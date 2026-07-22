@@ -21,13 +21,10 @@ import {
   IconCpu,
   IconCreditCard,
   IconFileInvoice,
-  IconKey,
   IconUsers,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
   settingsActiveSection$,
@@ -36,7 +33,6 @@ import {
   type SettingsSection,
 } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { PreferenceSection } from "./sections/preference-section.tsx";
-import { ApiKeysSection } from "./sections/api-keys-section.tsx";
 import { ModelSection } from "./sections/model-section.tsx";
 import { DebugSection } from "./sections/debug-section.tsx";
 import { GeneralSection } from "./sections/general-section.tsx";
@@ -56,10 +52,6 @@ const SECTION_META = {
   preference: {
     title: "Preference",
     description: "Personalize how the app looks and behaves.",
-  },
-  "api-keys": {
-    title: "API Keys",
-    description: "Create and manage API keys for programmatic access.",
   },
   model: {
     title: "Models",
@@ -113,7 +105,6 @@ const PERSONAL_GROUP = {
       label: "Preference",
       icon: IconAdjustmentsHorizontal,
     },
-    { id: "api-keys", label: "API Keys", icon: IconKey },
     { id: "debug", label: "Debug", icon: IconBug },
   ],
 } as const satisfies SidebarGroup;
@@ -160,9 +151,6 @@ function billingGroup(isAdmin: boolean): SidebarGroup {
 const SECTION_COMPONENTS = {
   preference: () => {
     return <PreferenceSection />;
-  },
-  "api-keys": () => {
-    return <ApiKeysSection />;
   },
   model: () => {
     return <ModelSection />;
@@ -212,20 +200,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
   const externalProfileModalOpen = useGet(externalProfileModalOpen$);
-  const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const apiKeysEnabled = Boolean(features[FeatureSwitchKey.ApiKeys]);
-  const personalGroup: SidebarGroup = {
-    ...PERSONAL_GROUP,
-    items: PERSONAL_GROUP.items.filter((item) => {
-      return item.id !== "api-keys" || apiKeysEnabled;
-    }),
-  };
-
   const sidebarGroups: readonly SidebarGroup[] = [
-    personalGroup,
+    PERSONAL_GROUP,
     ...(isAdmin ? [WORKSPACE_GROUP] : []),
     MODELS_GROUP,
     billingGroup(isAdmin),
@@ -233,8 +212,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
-    (!apiKeysEnabled && activeSection === "api-keys") ||
-    (!isAdmin && isAdminOnlySettingsSection(activeSection))
+    !isAdmin && isAdminOnlySettingsSection(activeSection)
       ? "preference"
       : activeSection;
   const meta =

@@ -302,6 +302,7 @@ import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
+import { topvisor } from "./connectors/topvisor";
 import { tripo } from "./connectors/tripo";
 import { twenty } from "./connectors/twenty";
 import { twilio } from "./connectors/twilio";
@@ -732,6 +733,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...ticketmaster,
   ...tldv,
   ...together,
+  ...topvisor,
   ...tripo,
   ...twenty,
   ...twilio,

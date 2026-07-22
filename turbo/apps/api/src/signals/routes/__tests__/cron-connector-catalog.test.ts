@@ -2,8 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+import {
+  testSystemStoragePresignedUrlCacheStateContract,
+  type TestSystemStoragePresignedUrlCacheStateActionBody,
+} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
@@ -18,6 +24,11 @@ import {
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+} from "@vm0/connectors/firewall-metadata/runner-runtime";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -29,6 +40,7 @@ import {
 } from "vitest";
 
 import { createApp } from "../../../app-factory";
+import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -56,6 +68,7 @@ import {
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
@@ -63,6 +76,8 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const PRIVATE_VALUE = "SECRET_TOKEN";
@@ -703,8 +718,10 @@ function setArtifactAuthMethods(
   firstRecord(artifact.connectors, "connectors").authMethods = methods;
 }
 
-function buildBundledSkill(connectorRef: string): JsonRecord {
-  const versionId = "a".repeat(64);
+function buildBundledSkill(
+  connectorRef: string,
+  versionId = "a".repeat(64),
+): JsonRecord {
   const storageName = `connector-skill@${connectorRef}`;
   const prefix = `__system__/volume/${storageName}/${versionId}`;
   return {
@@ -1182,6 +1199,76 @@ function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
 
 function cronClient() {
   return setupApp({ context })(cronConnectorCatalogContract);
+}
+
+function runnerFirewallClient() {
+  return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
+}
+
+interface VolumeStorageState {
+  readonly s3_prefix: string;
+  readonly size: number;
+  readonly file_count: number;
+  readonly head_version_id: string | null;
+}
+
+function systemStorageStateClient() {
+  return setupAppWithRoutes({
+    context,
+    routes: testSystemStoragePresignedUrlCacheStateRoutes,
+  })(testSystemStoragePresignedUrlCacheStateContract);
+}
+
+async function systemStorageStateAction(
+  body: TestSystemStoragePresignedUrlCacheStateActionBody,
+) {
+  return await accept(systemStorageStateClient().action({ body }), [200]);
+}
+
+async function readVolumeStorageState(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+}): Promise<VolumeStorageState | null> {
+  const response = await systemStorageStateAction({
+    action: "read-storage-state",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+  });
+  return response.body.storage_state ?? null;
+}
+
+async function restoreVolumeStorageState(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly previous: VolumeStorageState | null;
+}): Promise<void> {
+  await systemStorageStateAction({
+    action: "restore-storage-state",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+    previous: args.previous,
+  });
+}
+
+async function seedVolumeStorageVersion(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly versionId: string;
+  readonly s3Prefix: string;
+  readonly s3Key: string;
+}): Promise<void> {
+  await systemStorageStateAction({
+    action: "seed-storage-version",
+    org_id: args.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: args.storageName,
+    version_id: args.versionId,
+    s3_prefix: args.s3Prefix,
+    s3_key: args.s3Key,
+    archive_size: 321,
+  });
 }
 
 async function syncCatalog() {
@@ -2259,6 +2346,328 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRun);
     await runs.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
+
+  it("composes accepted connector and local model-provider runner firewalls", async () => {
+    const connectorRef = "external-runner-firewall";
+    configureSource();
+    const first = buildRelease({
+      version: "2026-07-15.external-runner-firewall-1",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([first], first));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const headers = { authorization: OFFICIAL_RUNNER_AUTHORIZATION };
+    const providerName = "model-provider:openai-api-key";
+    const callsBeforeReads = context.mocks.s3.send.mock.calls.length;
+    const subset = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: [connectorRef, connectorRef, providerName] },
+      }),
+      [200],
+    );
+    expect(Object.keys(subset.body.firewalls).sort()).toStrictEqual([
+      connectorRef,
+      providerName,
+    ]);
+    expect(subset.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      "https://api.example.test/v1",
+    );
+    expect(subset.body.firewalls[providerName]?.apis[0]?.base).toBe(
+      "https://api.openai.com/v1/responses",
+    );
+
+    const full = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    const providerNames = Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS)
+      .map((firewall) => {
+        return firewall.name;
+      })
+      .sort();
+    expect(Object.keys(full.body.firewalls).sort()).toStrictEqual(
+      [connectorRef, ...providerNames].sort(),
+    );
+    expect(subset.body.catalogDigest).toBe(full.body.catalogDigest);
+    expect(subset.body.catalogVersion).toBe(full.body.catalogVersion);
+    const firstHex = createHash("sha256")
+      .update(JSON.stringify(full.body.firewalls, null, 2))
+      .digest("hex");
+    expect(full.body.catalogDigest).toBe(`sha256:${firstHex}`);
+    expect(full.body.catalogVersion).toBe(`sha256-${firstHex.slice(0, 12)}`);
+    for (const [name, firewall] of Object.entries(full.body.firewalls)) {
+      expect(firewall.name).toBe(name);
+    }
+    const serialized = JSON.stringify(full.body);
+    expect(serialized).not.toContain("sourceId");
+    expect(serialized).not.toContain("integrityDigest");
+    expect(serialized).not.toContain(first.integrityKey);
+
+    const missing = await accept(
+      runnerFirewallClient().resolve({
+        headers,
+        body: { names: ["github"] },
+      }),
+      [400],
+    );
+    expect(missing.body.error.message).toBe("Unknown builtin firewall: github");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReads);
+
+    const changedBase = "https://api.example.test/v2";
+    const second = buildRelease({
+      version: "2026-07-15.external-runner-firewall-2",
+      connectorRef,
+      label: "External Runner Firewall",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        setPrivateFirewallBase(artifact, changedBase);
+      },
+      mutateRunnerFirewalls: (artifact) => {
+        setRunnerFirewallBase(artifact, changedBase);
+      },
+    });
+    serveObjects(catalogObjects([first, second], second));
+    await syncCatalog();
+    const callsBeforeSecondRead = context.mocks.s3.send.mock.calls.length;
+    const updated = await accept(
+      runnerFirewallClient().resolve({ headers, body: {} }),
+      [200],
+    );
+    expect(updated.body.catalogDigest).not.toBe(full.body.catalogDigest);
+    expect(updated.body.catalogVersion).not.toBe(full.body.catalogVersion);
+    expect(updated.body.firewalls[connectorRef]?.apis[0]?.base).toBe(
+      changedBase,
+    );
+    expect(updated.body.firewalls[providerName]).toStrictEqual(
+      full.body.firewalls[providerName],
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSecondRead);
+  });
+
+  it("keeps runner firewall resolution static in shadow mode", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.shadow-runner-firewall",
+      connectorRef: "external-shadow-runner-firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
+
+    const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
+    const response = await accept(
+      runnerFirewallClient().resolve({
+        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+        body: { names: ["github"] },
+      }),
+      [200],
+    );
+    expect(response.body.catalogDigest).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+    );
+    expect(response.body.catalogVersion).toBe(
+      RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+    );
+    expect(response.body.firewalls.github?.name).toBe("github");
+    await flushWaitUntilForTest();
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRead);
+  });
+
+  it("mounts an external connector skill from its exact system version", async () => {
+    const connectorRef = `external-skill-${randomUUID().slice(0, 8)}`;
+    const storageName = `connector-skill@${connectorRef}`;
+    const selectedVersionId = createHash("sha256")
+      .update(`selected:${randomUUID()}`)
+      .digest("hex");
+    const otherVersionId = createHash("sha256")
+      .update(`other:${randomUUID()}`)
+      .digest("hex");
+    const newerVersionId = createHash("sha256")
+      .update(`newer:${randomUUID()}`)
+      .digest("hex");
+    const canonicalPrefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-exact-skill",
+      connectorRef,
+      label: "External Exact Skill",
+      mutatePrivate: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").skill =
+          buildBundledSkill(connectorRef, selectedVersionId);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    const runtimeOrgId = actor.orgId;
+    const previousSystemState = await readVolumeStorageState({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+    });
+    const previousRuntimeState = await readVolumeStorageState({
+      orgId: runtimeOrgId,
+      storageName,
+    });
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External exact connector skill agent",
+      visibility: "private",
+    });
+    let successfulRunId: string | undefined;
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      if (successfulRunId) {
+        await runs.requestCancelRun(actor, successfulRunId, [200, 404]);
+      }
+      await systemStorageStateAction({
+        action: "cleanup",
+        object_key_prefix: canonicalPrefix,
+      });
+      await restoreVolumeStorageState({
+        orgId: SYSTEM_ORG_ID,
+        storageName,
+        previous: previousSystemState,
+      });
+      await restoreVolumeStorageState({
+        orgId: runtimeOrgId,
+        storageName,
+        previous: previousRuntimeState,
+      });
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        connectorRef,
+        [204, 404],
+      );
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+    await connectorsApi.connectManualGrant(
+      actor,
+      connectorRef,
+      "api-token",
+      { credential: "catalog-skill-secret" },
+      agent.agentId,
+    );
+
+    const createSkillRun = async () => {
+      return await runs.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: "Use the connector skill",
+        modelProvider: "anthropic-api-key",
+      });
+    };
+    const expectRegistrationFailure = async () => {
+      const failed = await createSkillRun();
+      expect(failed).toMatchObject({
+        status: "failed",
+        error: "Connector skill registration is unavailable",
+      });
+    };
+
+    await seedVolumeStorageVersion({
+      orgId: runtimeOrgId,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+    await restoreVolumeStorageState({
+      orgId: runtimeOrgId,
+      storageName,
+      previous: previousRuntimeState,
+    });
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: otherVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${otherVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${storageName}`;
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: wrongPrefix,
+      s3Key: `${wrongPrefix}/${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/wrong-${selectedVersionId}`,
+    });
+    await expectRegistrationFailure();
+
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: selectedVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${selectedVersionId}`,
+    });
+    await seedVolumeStorageVersion({
+      orgId: SYSTEM_ORG_ID,
+      storageName,
+      versionId: newerVersionId,
+      s3Prefix: canonicalPrefix,
+      s3Key: `${canonicalPrefix}/${newerVersionId}`,
+    });
+
+    const run = await createSkillRun();
+    successfulRunId = run.runId;
+    expect(run.status).not.toBe("failed");
+    await runs.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await runs.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await runs.claimRunnerJob(run.runId);
+    const mountedSkills =
+      claim.storageManifest?.storages.filter((storage) => {
+        return (
+          storage.mountPath === `/home/user/.claude/skills/${connectorRef}`
+        );
+      }) ?? [];
+    expect(mountedSkills).toHaveLength(1);
+    expect(mountedSkills[0]).toMatchObject({
+      name: storageName,
+      mountPath: `/home/user/.claude/skills/${connectorRef}`,
+      vasStorageName: storageName,
+      vasVersionId: selectedVersionId,
+      archiveSize: 321,
+      archiveUrl: expect.any(String),
+    });
+    await runs.requestCancelRun(actor, run.runId, [200]);
+    successfulRunId = undefined;
+  }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
     mockTestOAuthDeviceConnectorProvider();

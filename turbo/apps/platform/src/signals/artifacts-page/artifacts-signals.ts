@@ -49,6 +49,7 @@ const internalArtifactsFavoritesOnly$ = state(false);
 const internalArtifactFavoriteOverrides$ = state<
   Readonly<Record<string, boolean>>
 >({});
+const internalArtifactFavoritesReload$ = state(0);
 const internalArtifactsReload$ = state(0);
 const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
@@ -262,6 +263,10 @@ export const resetArtifactsFilters$ = command(({ set }) => {
   set(internalArtifactsAgentId$, null);
   set(internalArtifactsCategory$, null);
   set(internalArtifactsFavoritesOnly$, false);
+  set(internalArtifactFavoriteOverrides$, {});
+  set(internalArtifactFavoritesReload$, (version) => {
+    return version + 1;
+  });
   set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
@@ -376,22 +381,37 @@ export const cachedArtifacts$ = computed(
   },
 );
 
-function applyArtifactFavoriteOverride(
+export const remoteArtifactFavoriteUrls$ = computed(
+  async (get): Promise<ReadonlySet<string>> => {
+    get(internalArtifactFavoritesReload$);
+    const client = get(zeroClient$)(artifactsContract);
+    const result = await accept(client.listFavorites(), [200]);
+    return new Set(result.body.artifactUrls);
+  },
+);
+
+export type ArtifactPageItem = ArtifactItem & {
+  readonly isFavorited: boolean;
+};
+
+function applyArtifactFavoriteState(
   item: ArtifactItem,
+  favoriteUrls: ReadonlySet<string> | null,
   overrides: Readonly<Record<string, boolean>>,
-): ArtifactItem {
-  if (!(item.url in overrides)) {
-    return item;
-  }
-  return { ...item, isFavorited: overrides[item.url] ?? false };
+): ArtifactPageItem {
+  return {
+    ...item,
+    isFavorited: overrides[item.url] ?? favoriteUrls?.has(item.url) ?? false,
+  };
 }
 
-export function applyArtifactFavoriteOverrides(
+export function applyArtifactFavorites(
   artifacts: readonly ArtifactItem[],
+  favoriteUrls: ReadonlySet<string> | null,
   overrides: Readonly<Record<string, boolean>>,
-): ArtifactItem[] {
+): ArtifactPageItem[] {
   return artifacts.map((artifact) => {
-    return applyArtifactFavoriteOverride(artifact, overrides);
+    return applyArtifactFavoriteState(artifact, favoriteUrls, overrides);
   });
 }
 
@@ -402,14 +422,14 @@ export const artifactFavoriteOverrides$ = computed((get) => {
 // Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
-  artifacts: readonly ArtifactItem[],
+  artifacts: readonly ArtifactPageItem[],
   filters: {
     readonly search: string;
     readonly agentId: string | null;
     readonly category: ArtifactCategory | null;
     readonly favoritesOnly: boolean;
   },
-): ArtifactItem[] {
+): ArtifactPageItem[] {
   const searchTokens = normalizedSearchTokens(filters.search);
   const filtered = artifacts.filter((item) => {
     if (filters.agentId && item.agentId !== filters.agentId) {
@@ -433,8 +453,8 @@ export function filterArtifacts(
 }
 
 export const toggleArtifactFavorite$ = command(
-  async ({ get, set }, item: ArtifactItem, signal: AbortSignal) => {
-    const currentIsFavorited = item.isFavorited === true;
+  async ({ get, set }, item: ArtifactPageItem, signal: AbortSignal) => {
+    const currentIsFavorited = item.isFavorited;
     const nextIsFavorited = !currentIsFavorited;
     set(internalArtifactFavoriteOverrides$, (overrides) => {
       return { ...overrides, [item.url]: nextIsFavorited };
@@ -464,14 +484,6 @@ export const toggleArtifactFavorite$ = command(
       }
     });
     signal.throwIfAborted();
-
-    const dbPromise = get(chatIdb$);
-    signal.throwIfAborted();
-    await artifactItemCacheStores(dbPromise).writeStore.upsertItems([
-      { ...item, isFavorited: nextIsFavorited },
-    ]);
-    signal.throwIfAborted();
-    set(reloadArtifacts$);
   },
 );
 

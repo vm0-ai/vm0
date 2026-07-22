@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.28.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.0...desktop-v0.28.1) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+
+## [0.28.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.67...desktop-v0.28.0) (2026-07-21)
+
+
+### Features
+
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+
+## [0.27.67](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.66...desktop-v0.27.67) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+
+## [0.27.66](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.65...desktop-v0.27.66) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+
 ## [0.27.65](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.64...desktop-v0.27.65) (2026-07-21)
 
 

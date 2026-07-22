@@ -2,7 +2,8 @@ use super::super::super::signals::{SignalController, SignalHandlerTask};
 use super::super::super::*;
 use super::super::support::{
     assert_run_exits_within, minimal_context, mock_run_config, mock_run_config_with_overrides,
-    push_job, shutdown, test_profiles, wait_cancel_token, wait_discover_entered, wait_status_mode,
+    push_job, shutdown, test_profiles, wait_cancel_token, wait_cancel_token_removed,
+    wait_discover_entered, wait_status_mode,
 };
 use std::sync::Arc;
 
@@ -95,21 +96,24 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
 /// than blocking on the 2h JOB_TIMEOUT.
 #[tokio::test]
 async fn hard_shutdown_cancels_active_jobs() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        gate,
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
-    // Wait for the job to enter the gated wait — cancel token is now in the map.
-    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter the lifecycle gate");
 
     // SIGTERM equivalent: latch hard-shutdown, cancel all in-flight jobs.
     env.trigger_stopping().await;
+    assert!(token.is_cancelled(), "hard shutdown must cancel the job");
 
     assert_run_exits_within(
         run_handle,
@@ -117,6 +121,7 @@ async fn hard_shutdown_cancels_active_jobs() {
         "hard shutdown should exit within 3s — got stuck",
     )
     .await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     // The cancelled job reports the synthetic "cancelled by user" error.
     let comps = env.handle.completions.lock().unwrap();

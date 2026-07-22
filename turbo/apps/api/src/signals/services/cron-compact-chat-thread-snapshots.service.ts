@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { sql, type SQL } from "drizzle-orm";
+import { eq, lt, sql, type SQL } from "drizzle-orm";
 import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -51,7 +51,7 @@ function allScopesCte(staleCutoff: Date): SQL {
       SELECT ${chatThreads.userId} AS user_id, ${agentComposes.orgId} AS org_id
       FROM ${chatThreads}
       INNER JOIN ${agentComposes}
-        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
 
       UNION
 
@@ -62,7 +62,7 @@ function allScopesCte(staleCutoff: Date): SQL {
 
       SELECT ${chatThreadSnapshots.userId} AS user_id, ${chatThreadSnapshots.orgId} AS org_id
       FROM ${chatThreadSnapshots}
-      WHERE ${chatThreadSnapshots.updatedAt} < ${staleCutoff}
+      WHERE ${lt(chatThreadSnapshots.updatedAt, staleCutoff)}
     )
   `;
 }

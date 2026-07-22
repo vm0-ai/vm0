@@ -43,7 +43,16 @@ case "$url" in
     printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai"}}\n'
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
-    if [[ "${MOCK_PAGES_DOMAIN_EXISTS:-true}" == "false" ]] && \
+    if [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
+      request_count="$(<"$MOCK_PAGES_STATE_FILE")"
+      request_count="$((request_count + 1))"
+      printf '%s\n' "$request_count" > "$MOCK_PAGES_STATE_FILE"
+      if (( request_count <= MOCK_PAGES_PENDING_RESPONSES )); then
+        printf '{"success":true,"result":{"status":"pending","verification_data":{"status":"pending"}}}\n'
+      else
+        printf '{"success":true,"result":{"status":"active","verification_data":{"status":"active"}}}\n'
+      fi
+    elif [[ "${MOCK_PAGES_DOMAIN_EXISTS:-true}" == "false" ]] && \
       ! grep -q -- '--request POST' "$MOCK_CURL_LOG"; then
       printf '{"success":false,"errors":[{"code":8000021,"message":"domain does not exist"}],"result":null}\n'
     else
@@ -75,6 +84,12 @@ esac
 EOF
 chmod +x "${tmp_dir}/bin/curl"
 
+cat > "${tmp_dir}/bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "${tmp_dir}/bin/sleep"
+
 export CLOUDFLARE_API_TOKEN="test-token"
 export MOCK_CURL_LOG="$request_log"
 
@@ -91,6 +106,18 @@ export MOCK_DNS_CONTENT="okou-app.pages.dev"
 PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
 grep -q -- '--request PUT' "$request_log"
+
+: > "$request_log"
+pages_state_file="${tmp_dir}/pages-state-count"
+printf '0\n' > "$pages_state_file"
+export MOCK_PAGES_PENDING_RESPONSES="31"
+export MOCK_PAGES_STATE_FILE="$pages_state_file"
+export MOCK_DNS_CONTENT="okou-app.pages.dev"
+PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+test "$(<"$pages_state_file")" = "32"
+grep -q -- '--request PUT' "$request_log"
+unset MOCK_PAGES_PENDING_RESPONSES MOCK_PAGES_STATE_FILE
 
 : > "$request_log"
 export MOCK_PAGES_DOMAIN_EXISTS="false"

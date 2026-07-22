@@ -1,7 +1,6 @@
 import { command } from "ccstate";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { authContext$ } from "../auth/auth-context";
@@ -10,19 +9,9 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
+import { latestRunFinishMessageSubquery } from "../services/zero-chat-thread-read-state-query";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
-
-function latestRunFinishCreatedAtSql() {
-  return sql`(
-    SELECT ${chatMessages.createdAt}
-    FROM ${chatMessages}
-    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
-      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
-    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
-    LIMIT 1
-  )`;
-}
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -58,19 +47,19 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 
   const lastReadAt = thread.lastReadAt?.toISOString() ?? null;
-  const latestRunFinishAt = latestRunFinishCreatedAtSql();
+  const latestRunFinish = latestRunFinishMessageSubquery(writeDb, params.id);
   const [updated] = await writeDb
     .update(chatThreads)
-    .set({ lastReadAt: latestRunFinishAt })
+    .set({ lastReadAt: latestRunFinish.createdAt })
+    .from(latestRunFinish)
     .where(
       and(
         eq(chatThreads.id, params.id),
         eq(chatThreads.userId, auth.userId),
-        sql`${latestRunFinishAt} IS NOT NULL`,
         or(
           isNull(chatThreads.lastReadAt),
-          sql`${latestRunFinishAt} > ${chatThreads.lastReadAt}`,
-        )!,
+          gt(latestRunFinish.createdAt, chatThreads.lastReadAt),
+        ),
       ),
     )
     .returning({ lastReadAt: chatThreads.lastReadAt });

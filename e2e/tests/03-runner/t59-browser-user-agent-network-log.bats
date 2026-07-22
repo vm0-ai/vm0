@@ -26,14 +26,13 @@ teardown_file() {
 }
 
 @test "t59-0: browser User-Agent marker appears in network logs" {
-    run $VM0_CLI run "$AGENT_NAME" \
+    run run_compose_fixture "$AGENT_NAME" \
         "curl -sS -o /dev/null -w 'BROWSER_STATUS=%{http_code}\n' -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' https://example.com"
 
     assert_success
-    assert_output --partial "Run completed successfully"
     assert_output --partial "BROWSER_STATUS=200"
 
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    RUN_ID=$(run_fixture_field "$output" '.runId')
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1

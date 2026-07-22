@@ -6,7 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, max, min, sql } from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
@@ -204,10 +204,10 @@ export function zeroInsightsRange(args: {
   return computed(async (get): Promise<InsightsRangeResponse> => {
     const [row] = await get(db$)
       .select({
-        minDate: sql`MIN(${insightsDaily.date})`
+        minDate: min(insightsDaily.date)
           .mapWith(nullableTextDecoder)
           .as("min_date"),
-        maxDate: sql`MAX(${insightsDaily.date})`
+        maxDate: max(insightsDaily.date)
           .mapWith(nullableTextDecoder)
           .as("max_date"),
         totalDays: sql`COUNT(*)::int`

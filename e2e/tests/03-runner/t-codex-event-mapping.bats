@@ -58,9 +58,9 @@ teardown_file() {
 }
 
 @test "t-codex-event-mapping-1: rich fixture renders all item types" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=event-mapping-rich" \
-        "drive the rich fixture"
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the rich fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"event-mapping-rich"}}'
 
     assert_success
     # thread.started -> init
@@ -87,9 +87,9 @@ teardown_file() {
 }
 
 @test "t-codex-event-mapping-2: turn-failed fixture renders Codex Failed" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=turn-failed" \
-        "drive the turn-failed fixture"
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the turn-failed fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"turn-failed"}}'
 
     # The mock binary always exits 0; turn.failed is data-only, so the
     # run lifecycle status stays completed and the CLI exits success.
@@ -100,9 +100,9 @@ teardown_file() {
 }
 
 @test "t-codex-event-mapping-3: error-event fixture renders Codex Failed" {
-    run $VM0_CLI run "$AGENT_NAME" \
-        --vars "MOCK_CODEX_FIXTURE=error-event" \
-        "drive the error-event fixture"
+    run run_compose_fixture "$AGENT_NAME" \
+        "drive the error-event fixture" \
+        '{"vars":{"MOCK_CODEX_FIXTURE":"error-event"}}'
 
     assert_output --partial "▷ Codex Started"
     # error events parse to a failed result

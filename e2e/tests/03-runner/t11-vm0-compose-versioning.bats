@@ -15,10 +15,10 @@ teardown() {
 }
 
 # ============================================
-# vm0 run with version specifier tests
+# Direct-run compose version selection tests
 # ============================================
 
-@test "vm0 run with version specifier runs specific version" {
+@test "direct run can use a specific compose version" {
     export ARTIFACT_NAME="e2e-versioning-artifact-$(date +%s%3N)-$RANDOM"
 
     echo "# Creating initial config..."
@@ -60,68 +60,9 @@ EOF
     assert_success
 
     echo "# Running with specific version (version 1)..."
-    run $VM0_CLI run "$AGENT_NAME:$VERSION1" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo hello"
-    assert_success
-}
-
-@test "vm0 run with :latest tag runs HEAD version" {
-    export ARTIFACT_NAME="e2e-versioning-latest-$(date +%s%3N)-$RANDOM"
-
-    echo "# Creating config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Latest version test"
-    framework: claude-code
-EOF
-
-    echo "# Building agent..."
-    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Initializing artifact storage..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
-    assert_success
-
-    echo "# Running with :latest tag..."
-    run $VM0_CLI run "$AGENT_NAME:latest" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo hello"
-    assert_success
-}
-
-@test "vm0 run without version specifier runs HEAD (backward compatible)" {
-    export ARTIFACT_NAME="e2e-versioning-compat-$(date +%s%3N)-$RANDOM"
-
-    echo "# Creating config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Backward compatibility test"
-    framework: claude-code
-EOF
-
-    echo "# Building agent..."
-    run seed_compose_fixture "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Initializing artifact storage..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    run seed_storage_fixture artifact "$ARTIFACT_NAME" .
-    assert_success
-
-    echo "# Running without version specifier (should use HEAD)..."
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "echo hello"
+    run run_compose_version_fixture "$VERSION1" \
+        "echo hello" \
+        "$(jq -nc --arg name "$ARTIFACT_NAME" \
+            '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
 }
