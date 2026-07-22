@@ -270,7 +270,7 @@ describe("onboarding flow", () => {
     click(buttonByText("Continue"));
 
     await waitFor(() => {
-      expect(pathname().startsWith("/onboarding")).toBe(false);
+      expect(pathname()).not.toMatch(/^\/onboarding/u);
     });
   });
 
