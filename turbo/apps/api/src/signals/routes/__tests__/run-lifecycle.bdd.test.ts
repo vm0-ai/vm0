@@ -7690,7 +7690,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero maps --help",
       "Public-web search, current public facts, and source discovery",
       "zero web-search <query>",
-      "do not use native web search",
       "external public-web provider",
       "bounded, ranked results",
       "result-count, recency, and domain filters",
@@ -7728,6 +7727,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroWebSearch]: true,
+    });
     expect(claim.disallowedTools).toStrictEqual([
       ...EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
       "WebSearch",

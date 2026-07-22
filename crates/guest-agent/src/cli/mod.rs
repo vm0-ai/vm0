@@ -1659,6 +1659,13 @@ mod tests {
         let user_env = HashMap::new();
         let mut runtime =
             runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+
+        let disabled_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        assert!(
+            command_config_index(&disabled_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
+                .is_none()
+        );
+
         runtime.zero_web_search_enabled = true;
 
         let new_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
