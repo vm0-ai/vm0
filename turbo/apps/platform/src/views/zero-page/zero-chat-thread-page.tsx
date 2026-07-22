@@ -303,6 +303,7 @@ import {
   startCheckout$,
   startCreditCheckout$,
 } from "../../signals/zero-page/billing.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -5573,34 +5574,29 @@ function CreditsAvailableMessage() {
 }
 
 function insufficientCreditsCopy(params: {
-  readonly isFree: boolean;
-  readonly requiresPro: boolean;
+  readonly canBuyCredits: boolean;
   readonly roleResolved: boolean;
   readonly canManageBilling: boolean;
 }): { readonly headline: string; readonly helper: string } {
-  const headline = params.requiresPro
-    ? "Upgrade to Pro to run Zero"
-    : params.isFree
-      ? "You've used your free credits"
-      : "You're out of credits";
+  const headline = params.canBuyCredits
+    ? "You're out of credits"
+    : "Upgrade to Pro to run Zero";
   if (!params.roleResolved) {
     return { headline, helper: "Checking billing permissions..." };
   }
   if (!params.canManageBilling) {
     return {
       headline,
-      helper:
-        params.requiresPro || params.isFree
-          ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
-          : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+      helper: !params.canBuyCredits
+        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+        : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
     };
   }
   return {
     headline,
-    helper:
-      params.requiresPro || params.isFree
-        ? "Upgrade to Pro to keep chatting with Zero."
-        : "Add credits to keep chatting with Zero.",
+    helper: !params.canBuyCredits
+      ? "Upgrade to Pro to keep chatting with Zero."
+      : "Add credits to keep chatting with Zero.",
   };
 }
 
@@ -5691,15 +5687,15 @@ function InsufficientCreditsCard() {
   const pageSignal = useGet(pageSignal$);
 
   const billingResolved = billingLoadable.state === "hasData";
-  const tier = billingResolved ? billingLoadable.data.tier : null;
   const credits = billingResolved ? billingLoadable.data.credits : null;
+  const canBuyCredits = billingResolved
+    ? orgPlanCapabilitiesFromBilling(billingLoadable.data).canBuyCredits
+    : false;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
-  const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === "limited-free-1";
-  const shouldStartProCheckout = requiresPro || isFree;
+  const hasAvailableCredits = canBuyCredits && credits !== null && credits > 0;
+  const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
   const redirecting =
     checkoutLoadable.state === "loading" ||
@@ -5710,8 +5706,7 @@ function InsufficientCreditsCard() {
   }
 
   const { headline, helper } = insufficientCreditsCopy({
-    isFree,
-    requiresPro,
+    canBuyCredits,
     roleResolved: billingResolved && roleResolved,
     canManageBilling: billingResolved && canManageBilling,
   });

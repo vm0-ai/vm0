@@ -14,29 +14,40 @@
  * reading existing rows. This module is the narrow test-boundary exception
  * for those persisted states.
  */
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
+import { upsertOrgPlanEntitlement } from "../signals/services/org-plan-entitlements.service";
 
 export async function upsertOrgMetadataFixture(values: {
   readonly orgId: string;
   readonly tier: string;
   readonly credits: number;
 }): Promise<void> {
+  const tier = orgTierSchema.parse(values.tier);
   await createStore()
     .set(writeDb$)
-    .insert(orgMetadata)
-    .values(values)
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: {
-        tier: values.tier,
-        credits: values.credits,
-        updatedAt: sql`now()`,
-      },
+    .transaction(async (tx) => {
+      await tx
+        .insert(orgMetadata)
+        .values(values)
+        .onConflictDoUpdate({
+          target: orgMetadata.orgId,
+          set: {
+            tier: values.tier,
+            credits: values.credits,
+            updatedAt: sql`now()`,
+          },
+        });
+      await upsertOrgPlanEntitlement(tx, {
+        orgId: values.orgId,
+        tier,
+        source: "org_metadata_migration",
+      });
     });
 }
 

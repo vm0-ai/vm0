@@ -292,6 +292,49 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("uses the plan capability when a paid tier cannot buy credits", async () => {
+    const threadId = "failed-guidance-capability-blocked-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 2,
+        concurrencySubscriptions: [],
+        canBuyCredits: false,
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+      expect(queryButtonByText("$100")).toBeNull();
+    });
+  });
+
   it("shows credit top-ups when a Custom workspace runs out of credits", async () => {
     const threadId = "failed-guidance-custom-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });

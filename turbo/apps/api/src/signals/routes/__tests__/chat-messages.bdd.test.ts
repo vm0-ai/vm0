@@ -32,6 +32,7 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
   createBddApi,
   expectApiError,
@@ -1523,6 +1524,11 @@ describe("CHAT-02: admission without spendable credits", () => {
       tier: "pro-suspend",
       credits: 0,
     });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
@@ -1576,7 +1582,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     if (!guidance) {
       throw new Error("Expected insufficient-credits assistant guidance");
     }
-    expect(guidance.content).toContain("Upgrade to Pro");
+    expect(guidance.content).toContain("Buy more credits");
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadMessages(actor, sent.body.threadId, {
