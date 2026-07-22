@@ -490,7 +490,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
   });
 
@@ -574,7 +574,7 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      expect(within(connectorCard).getByText("Authorize")).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("dialog", { name: "Public Stripe" }),
