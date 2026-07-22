@@ -3,10 +3,6 @@ import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { IconCircleCheck, IconLoader2 } from "@tabler/icons-react";
 import { Button, cn } from "@vm0/ui";
 import {
-  getStaticConnectorIconMetadata,
-  isStaticConnectorIconType,
-} from "@vm0/connectors/static-connector-icons";
-import {
   connectorRefSchema,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
@@ -34,19 +30,6 @@ function connectorRefs(values: readonly string[]): ConnectorRef[] {
     const parsed = connectorRefSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
-}
-
-export function OnboardingConnectorIcon({
-  connectorId,
-  size = 22,
-}: {
-  readonly connectorId: string;
-  readonly size?: number;
-}) {
-  const icon = isStaticConnectorIconType(connectorId)
-    ? getStaticConnectorIconMetadata(connectorId)
-    : undefined;
-  return <ConnectorIcon icon={icon} size={size} />;
 }
 
 function promptHelpText(helpText: string | undefined): string {
@@ -84,7 +67,7 @@ function OnboardingConnectorRow({
       )}
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
-        <OnboardingConnectorIcon connectorId={connectorRef} />
+        <ConnectorIcon icon={item?.icon} size={22} />
       </span>
       <div className="min-w-0 flex-1">
         {variant === "workflow" ? (
@@ -200,7 +183,10 @@ export function OnboardingConnectorSetup({
                     return connect(
                       connectorRef,
                       authMethod,
-                      { connectorLabel: connector.label },
+                      {
+                        connectorLabel: connector.label,
+                        connectorIcon: connector.icon,
+                      },
                       pageSignal,
                     );
                   },

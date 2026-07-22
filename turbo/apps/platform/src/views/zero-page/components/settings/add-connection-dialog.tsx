@@ -94,6 +94,9 @@ type PostConnectOptions = {
   readonly connectorLabel?: string;
   readonly agentId?: string;
 };
+type BrowserAuthPostConnectOptions = PostConnectOptions & {
+  readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
+};
 
 type SubmitManualGrantFn = (
   connectorRef: ConnectorRef,
@@ -107,7 +110,7 @@ type ConnectOAuthAuthCodeAndSettleFn = (
   connectorRef: ConnectorRef,
   method: PublicConnectorCatalogAuthMethodDetail,
   onSuccess: () => void | Promise<void>,
-  options: PostConnectOptions,
+  options: BrowserAuthPostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
 
@@ -386,6 +389,7 @@ function OAuthAuthCodeConnectButton({
             onSuccess,
             {
               connectorLabel: item.label,
+              connectorIcon: item.icon,
               ...(agentId ? { agentId } : {}),
             },
             signal,

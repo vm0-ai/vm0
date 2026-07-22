@@ -273,6 +273,7 @@ function runDirectedAuthorize(params: {
     method: PublicConnectorCatalogAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
+      readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
       readonly agentId?: string;
     },
     signal: AbortSignal,
@@ -318,16 +319,17 @@ function runDirectedAuthorize(params: {
     launchMode === "no-auth" && params.item
       ? getOnlyAvailableStatusNoAuthMethod(params.item)
       : null;
-  if (browserAuthMethod || noAuthMethod) {
+  if ((browserAuthMethod && params.item) || noAuthMethod) {
     detach(
       (async () => {
         let connected = false;
-        if (browserAuthMethod) {
+        if (browserAuthMethod && params.item) {
           connected = await params.connect(
             params.connectorRef,
             browserAuthMethod,
             {
               connectorLabel: params.connectorLabel,
+              connectorIcon: params.item.icon,
               agentId: params.agentId,
             },
             params.signal,
