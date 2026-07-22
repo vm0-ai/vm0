@@ -22,7 +22,12 @@ import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/ze
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
-import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
+import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
+import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
+import {
+  reloadUserModelPreference$,
+  userModelPreference$,
+} from "../../../signals/external/user-model-preference.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import {
   resetChatPageModelSelection$,
@@ -74,6 +79,52 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("keeps model resources cached across Clerk profile events", async () => {
+    const policy = buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000205",
+      model: "kimi-k2.7-code",
+      modelLabel: "Kimi K2.7 Code",
+      isDefault: true,
+      defaultProviderType: "moonshot-api-key",
+      credentialScope: "org",
+      modelProviderId: MOONSHOT_PROVIDER_ID,
+    });
+    let policiesRequestCount = 0;
+    let preferenceRequestCount = 0;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
+      policiesRequestCount += 1;
+      return respond(200, {
+        policies: [policy],
+        workspaceDefaultModel: policy.model,
+        workspaceDefaultPolicyId: policy.id,
+      });
+    });
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      preferenceRequestCount += 1;
+      return respond(200, { selectedModel: null, updatedAt: null });
+    });
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await waitFor(() => {
+      expect(policiesRequestCount).toBe(1);
+      expect(preferenceRequestCount).toBe(1);
+    });
+
+    await act(async () => {
+      emitMockedClerkEvent();
+      await context.store.get(orgModelPolicies$);
+      await context.store.get(userModelPreference$);
+    });
+
+    expect(policiesRequestCount).toBe(1);
+    expect(preferenceRequestCount).toBe(1);
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();

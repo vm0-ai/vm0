@@ -26,13 +26,7 @@ export const agentName$ = computed((get) => {
 // ---------------------------------------------------------------------------
 
 function isValidTab(tab: string): boolean {
-  return (
-    tab === "authorization" ||
-    tab === "automations" ||
-    tab === "workflows" ||
-    tab === "profile" ||
-    tab === "instructions"
-  );
+  return tab === "authorization" || tab === "profile" || tab === "instructions";
 }
 
 function getInitialTab(): string {

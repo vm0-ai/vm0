@@ -5,7 +5,6 @@ import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
 import {
   currentAgentId$,
   agents$,
@@ -54,19 +53,6 @@ export const setupAgentDetailPage$ = command(
     set(setActiveAgent$, agentId);
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);
-    const params = get(searchParams$);
-    const tab = params.get("tab");
-    if (tab === "automations" || tab === "workflows") {
-      const nextParams = new URLSearchParams(params);
-      nextParams.delete("tab");
-      set(detachedNavigateTo$, ROUTES.agentDetail, {
-        pathParams: { agentId },
-        searchParams: nextParams,
-        replace: true,
-      });
-      return;
-    }
-
     const displayName = agent.displayName ?? "Agent";
     set(updateDocumentTitle$, displayName);
 

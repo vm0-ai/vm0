@@ -12,7 +12,6 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -186,13 +185,9 @@ function slackPostMessageCallsJson(): string {
   return JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls);
 }
 
-async function waitForExpectation(assertion: () => void): Promise<void> {
-  await expect
-    .poll(async () => {
-      const result = await settle(Promise.resolve().then(assertion));
-      return result.ok;
-    })
-    .toBe(true);
+async function flushWaitUntilAndAssert(assertion: () => void): Promise<void> {
+  await flushWaitUntilForTest();
+  assertion();
 }
 
 async function pollRunnerRun(
@@ -200,14 +195,9 @@ async function pollRunnerRun(
   message: string,
 ): Promise<string> {
   await runs.heartbeatRunner(runnerGroup);
-  let runId: string | undefined;
-  await expect
-    .poll(async () => {
-      const poll = await runs.pollRunner(runnerGroup);
-      runId = poll.body.job?.runId;
-      return runId ?? null;
-    })
-    .not.toBeNull();
+  await flushWaitUntilForTest();
+  const poll = await runs.pollRunner(runnerGroup);
+  const runId = poll.body.job?.runId;
   if (!runId) {
     throw new Error(message);
   }
@@ -1410,8 +1400,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       cliAgentType: claim1.cliAgentType,
       assistantText: "Canonical Slack answer one",
     });
-    await flushWaitUntilForTest();
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1642,7 +1631,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: threadTs,
       channel: channelId,
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
       ).toHaveBeenCalledWith(
@@ -1718,7 +1707,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim1.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ channel: channelId, thread_ts: threadTs }),
       );
@@ -1799,7 +1788,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3 = await runs.readRun(actor, run3Id);
     expect(run3.result?.agentSessionId).not.toBe(session1);
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(slackPostMessageCallsJson()).toContain(
         "Responded by BDD Slack Switch Agent",
       );
@@ -1877,7 +1866,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "2000.000100",
       channel: "C_BDD_LOGIN",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "C_BDD_LOGIN",
@@ -1897,7 +1886,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "2000.000200",
       channel: "D_BDD_LOGIN",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "D_BDD_LOGIN",
@@ -1946,7 +1935,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel: "D_BDD_LOGIN",
       subtype: "file_share",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
       expect(slackPostMessageCallsJson()).toContain(
         "Please connect your account first",
@@ -1999,7 +1988,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "2100.000100",
       channel: "C_BDD_NOAGENT",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "C_BDD_NOAGENT",
@@ -2067,7 +2056,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "2100.000200",
       channel: "D_BDD_MISSING_AGENT",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "D_BDD_MISSING_AGENT",
@@ -2532,7 +2521,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "2200.000100",
       channel: "D_BDD_HIDDEN",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "D_BDD_HIDDEN",
@@ -2581,7 +2570,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       tab: "home",
       channel: "D_BDD_HOME",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
         expect.objectContaining({ user_id: slackUserId }),
       );
@@ -2596,7 +2585,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       tab: "messages",
       channel: "D_BDD_HOME",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ channel: "D_BDD_HOME" }),
@@ -2639,7 +2628,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       tab: "home",
       channel: "D_BDD_HOME",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
       expect(
         JSON.stringify(context.mocks.slack.views.publish.mock.calls),
@@ -2651,7 +2640,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       tab: "messages",
       channel: "D_BDD_HOME",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
     });
 
@@ -2761,7 +2750,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "5000.000100",
       channel: "D_BDD_FAIL",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: "D_BDD_FAIL",
@@ -2771,7 +2760,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       );
     });
     expect(slackPostMessageCallsJson()).not.toContain("Sent via");
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
       ).toHaveBeenCalledWith(
@@ -2804,7 +2793,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "5000.000200",
       channel: "D_BDD_FAIL",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(slackPostMessageCallsJson()).toContain(
         "Sent via BDD Slack Failing Override",
       );
@@ -2845,7 +2834,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim1.sandboxToken}` },
       [200],
     );
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
       ).toHaveBeenCalledWith({
@@ -2861,7 +2850,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim1.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           channel: channelId,
@@ -2876,7 +2865,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       `https://app.vm0.test/activities/${run1Id}`,
     );
     expect(auditedBlocks).toContain("Claude Sonnet 5");
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
       ).toHaveBeenLastCalledWith({
@@ -2903,7 +2892,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim2.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({ text: "final codex answer" }),
       );
@@ -2937,7 +2926,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim3.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(slackPostMessageCallsJson()).toContain(
         `Reply to <@${slackUser2}>`,
       );
@@ -2964,7 +2953,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim4.sandboxToken}` },
       [200],
     );
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           text: "Cannot continue session from checkpoint",
@@ -2989,7 +2978,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim5.sandboxToken}` },
       [200],
     );
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           text: "Oops, something went wrong. Please try again later.",
@@ -3019,7 +3008,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim6.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           channel: channelId,
@@ -3073,7 +3062,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       { authorization: `Bearer ${claim1.sandboxToken}` },
       [200],
     );
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
       ).toHaveBeenLastCalledWith({
@@ -3089,7 +3078,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: claim1.sandboxToken,
       cliAgentType: "claude-code",
     });
-    await waitForExpectation(() => {
+    await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           channel: channelId,

@@ -128,13 +128,17 @@ wait_for_auth_completion() {
   agent-browser wait 500
   accept_legal_consent
   click_continue
-  agent-browser wait 5000
+
+  local sign_up_state
+  if ! sign_up_state="$(wait_for_auth_next_step "sign-up" 45)"; then
+    step_screenshot "sign-up-next-step-not-detected"
+    echo "# Clerk sign-up did not reach OTP or redirect state" >&3
+    return 1
+  fi
   step_screenshot "after-sign-up-continue"
 
   # Handle OTP verification if prompted
-  local snap
-  snap=$(full_snapshot)
-  if contains "$snap" "verify your email\|verification code"; then
+  if [[ "$sign_up_state" == "otp" ]]; then
     enter_otp "$OTP"
     step_screenshot "after-sign-up-otp"
   fi
@@ -194,7 +198,7 @@ wait_for_auth_completion() {
 
   # Handle password or OTP-based sign-in
   local sign_in_state
-  if ! sign_in_state="$(wait_for_sign_in_next_step 45)"; then
+  if ! sign_in_state="$(wait_for_auth_next_step "sign-in" 45)"; then
     step_screenshot "sign-in-next-step-not-detected"
     echo "# Clerk sign-in did not reach password, OTP, or redirect state" >&3
     return 1

@@ -17,19 +17,12 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
   callbacks?: OpenDBCallbacks<DBTypes>,
 ) => Promise<IDBPDatabase<DBTypes>>;
 
-interface ChatIdbStoreState {
-  dbName: string | null;
-  dbPromise: Promise<IDBPDatabase> | null;
-  previousClosePromise: Promise<void> | null;
-  reloadTriggered: boolean;
-}
-
-interface ChatIdbStoreOptions {
+interface ChatIdbOpenerOptions {
   readonly openDatabase?: OpenChatIdbDatabase;
   readonly reload?: () => void;
 }
 
-interface ChatIdbStore {
+interface ChatIdbOpener {
   readonly openChatIdb: (
     userId: string,
     orgId: string,
@@ -40,99 +33,50 @@ function chatIdbName(userId: string, orgId: string): string {
   return `vm0-chat-${userId}-${orgId}`;
 }
 
-export function createChatIdbStore(
-  options: ChatIdbStoreOptions = {},
-): ChatIdbStore {
+export function createChatIdbOpener(
+  options: ChatIdbOpenerOptions = {},
+): ChatIdbOpener {
   const openDatabase = options.openDatabase ?? openDB;
   const reload =
     options.reload ??
     (() => {
       window.location.reload();
     });
-  const state: ChatIdbStoreState = {
-    dbName: null,
-    dbPromise: null,
-    previousClosePromise: null,
-    reloadTriggered: false,
-  };
-
-  function handleVersionChange(
-    dbName: string,
-    db: IDBPDatabase,
-    event: IDBVersionChangeEvent,
-  ): void {
-    L.warn("versionchange", {
-      dbName,
-      currentVersion: event.oldVersion,
-      nextVersion: event.newVersion,
-    });
-    db.close();
-    if (state.dbName === dbName) {
-      state.dbName = null;
-      state.dbPromise = null;
-    }
-
-    if (state.reloadTriggered) {
-      return;
-    }
-    state.reloadTriggered = true;
-    reload();
-  }
-
-  async function openChatIdbConnection(dbName: string): Promise<IDBPDatabase> {
-    const db = await openDatabase(dbName, CHAT_IDB_VERSION, {
-      upgrade(db, oldVersion) {
-        L.debug("openDB:upgrade", { dbName });
-        upgradeChatIdb(db, oldVersion);
-      },
-      blocked(currentVersion, blockedVersion) {
-        L.warn("openDB:blocked", { dbName, currentVersion, blockedVersion });
-      },
-    });
-    db.addEventListener("versionchange", (event) => {
-      handleVersionChange(dbName, db, event);
-    });
-    return db;
-  }
-
-  async function closeChatIdbAfterOpen(
-    promise: Promise<IDBPDatabase>,
-  ): Promise<void> {
-    const [result] = await Promise.allSettled([promise]);
-    if (result?.status === "fulfilled") {
-      result.value.close();
-    }
-  }
 
   return {
-    openChatIdb(userId, orgId) {
-      if (state.reloadTriggered) {
-        return Promise.reject(
-          new Error("Chat IndexedDB is closing for a page reload"),
-        );
-      }
-
+    async openChatIdb(userId, orgId) {
       const dbName = chatIdbName(userId, orgId);
-      if (state.dbName === dbName && state.dbPromise !== null) {
-        return state.dbPromise;
-      }
-
       L.debug("openDB", { dbName });
-      const previous = state.dbPromise;
-      const promise = openChatIdbConnection(dbName);
-      state.dbName = dbName;
-      state.dbPromise = promise;
-      if (previous !== null) {
-        state.previousClosePromise = closeChatIdbAfterOpen(previous);
-      }
-      return promise;
+      const db = await openDatabase(dbName, CHAT_IDB_VERSION, {
+        upgrade(db, oldVersion) {
+          L.debug("openDB:upgrade", { dbName });
+          upgradeChatIdb(db, oldVersion);
+        },
+        blocked(currentVersion, blockedVersion) {
+          L.warn("openDB:blocked", { dbName, currentVersion, blockedVersion });
+        },
+      });
+      db.addEventListener(
+        "versionchange",
+        (event) => {
+          L.warn("versionchange", {
+            dbName,
+            currentVersion: event.oldVersion,
+            nextVersion: event.newVersion,
+          });
+          db.close();
+          reload();
+        },
+        { once: true },
+      );
+      return db;
     },
   };
 }
 
-const defaultChatIdbStore = createChatIdbStore();
+const defaultChatIdbOpener = createChatIdbOpener();
 
-export const openChatIdb = defaultChatIdbStore.openChatIdb;
+export const openChatIdb = defaultChatIdbOpener.openChatIdb;
 
 export const chatIdb$ = computed(async (get): Promise<IDBPDatabase> => {
   const { userId, orgId } = await get(authenticatedIdentity$);

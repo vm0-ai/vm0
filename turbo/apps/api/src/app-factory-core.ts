@@ -70,9 +70,7 @@ interface ClientHeaderLogFields {
 function isSupportedZeroMailClientVersion(
   clientVersion: string | undefined,
 ): boolean {
-  // Keep already-open v2 browser tabs working while the v3 mail UI rolls out.
-  // Remove v2 only after the v3 frontend rollout window has fully drained.
-  return clientVersion === "2" || clientVersion === ZERO_MAIL_CLIENT_VERSION;
+  return clientVersion === ZERO_MAIL_CLIENT_VERSION;
 }
 
 interface AxiomRequestLogEvent

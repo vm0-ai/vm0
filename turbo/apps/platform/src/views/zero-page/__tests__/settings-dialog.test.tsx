@@ -69,27 +69,4 @@ describe("settings dialog", () => {
     expect(within(dialog).queryByText("Workspace")).not.toBeInTheDocument();
     expect(screen.getByText("Theme")).toBeInTheDocument();
   });
-
-  it("opens legacy provider links in unified model settings", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      slug: "test-org",
-      name: "Test Org",
-      role: "admin",
-    });
-    detachedSetupPage({ context, path: "/?settings=providers" });
-
-    const dialog = await screen.findByRole("dialog", { name: "Settings" });
-    expect(
-      within(dialog).getByRole("heading", { name: "Models" }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("heading", { name: "Workspace" }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("heading", { name: "Personal" }),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Claude Code OAuth")).toBeInTheDocument();
-    expect(within(dialog).getByText("ChatGPT (Codex)")).toBeInTheDocument();
-  });
 });

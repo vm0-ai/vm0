@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/cron";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -7,19 +5,11 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
-import { S3ObjectSizeLimitError } from "../external/s3";
-import { safeJsonParse, safeSync, settle } from "../utils";
 import {
-  CONNECTOR_SKILL_MAX_TOTAL_BYTES,
   CONNECTOR_SKILL_STORAGE_PATH_PREFIX,
-  connectorSkillManifestSchema,
   type ConnectorCatalogPrivateArtifact,
 } from "./connector-catalog-artifacts/artifacts";
-import type { ConnectorCatalogArtifactReader } from "./connector-catalog-artifacts/loader";
 
-const CONNECTOR_SKILL_MANIFEST_MAX_BYTES = 128 * 1024;
-const CONNECTOR_SKILL_ARCHIVE_MAX_BYTES = CONNECTOR_SKILL_MAX_TOTAL_BYTES * 2;
-const CONNECTOR_SKILL_READ_CONCURRENCY = 8;
 const SYSTEM_STORAGE_CREATOR = "system";
 
 type PrivateConnector = ConnectorCatalogPrivateArtifact["connectors"][number];
@@ -56,7 +46,7 @@ interface ConnectorSkillIdentity {
 }
 
 export interface PreparedConnectorSkillRegistration {
-  readonly provenance: "existing" | "verified";
+  readonly provenance: "catalog" | "existing";
   readonly storageName: string;
   readonly versionId: string;
   readonly s3Prefix: string;
@@ -93,10 +83,6 @@ function fail(
   throw new ConnectorCatalogSkillError({ code, cacheable });
 }
 
-function digest(bytes: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-
 function skillIdentity(skill: BundledConnectorSkill): ConnectorSkillIdentity {
   const s3Prefix = `${CONNECTOR_SKILL_STORAGE_PATH_PREFIX}/${skill.storageName}`;
   return {
@@ -107,34 +93,34 @@ function skillIdentity(skill: BundledConnectorSkill): ConnectorSkillIdentity {
   };
 }
 
-function reusableExistingVersion(
-  existing: ExistingStorageVersion,
-  identity: ConnectorSkillIdentity,
-): PreparedConnectorSkillRegistration | undefined {
-  if (
-    existing.orgId !== SYSTEM_ORG_ID ||
-    existing.userId !== VOLUME_ORG_USER_ID ||
-    existing.name !== identity.storageName ||
-    existing.s3Prefix !== identity.s3Prefix ||
-    existing.s3Key !== identity.s3Key ||
-    existing.message !== null ||
-    existing.createdBy !== SYSTEM_STORAGE_CREATOR ||
-    !Number.isSafeInteger(existing.size) ||
-    existing.size < 0 ||
-    !Number.isSafeInteger(existing.archiveSize) ||
-    existing.archiveSize <= 0 ||
-    !Number.isSafeInteger(existing.fileCount) ||
-    existing.fileCount <= 0
-  ) {
-    return undefined;
-  }
+function registrationFromSkill(
+  skill: BundledConnectorSkill,
+): PreparedConnectorSkillRegistration {
   return {
-    ...identity,
-    provenance: "existing",
-    size: existing.size,
-    archiveSize: existing.archiveSize,
-    fileCount: existing.fileCount,
+    ...skillIdentity(skill),
+    provenance: "catalog",
+    size: skill.size,
+    archiveSize: skill.archiveSize,
+    fileCount: skill.fileCount,
   };
+}
+
+function existingVersionMatchesRegistration(
+  existing: ExistingStorageVersion,
+  registration: PreparedConnectorSkillRegistration,
+): boolean {
+  return (
+    existing.orgId === SYSTEM_ORG_ID &&
+    existing.userId === VOLUME_ORG_USER_ID &&
+    existing.name === registration.storageName &&
+    existing.s3Prefix === registration.s3Prefix &&
+    existing.s3Key === registration.s3Key &&
+    existing.size === registration.size &&
+    existing.archiveSize === registration.archiveSize &&
+    existing.fileCount === registration.fileCount &&
+    existing.message === null &&
+    existing.createdBy === SYSTEM_STORAGE_CREATOR
+  );
 }
 
 async function readExistingVersions(
@@ -170,88 +156,8 @@ async function readExistingVersions(
   );
 }
 
-async function readSkillObject(
-  reader: ConnectorCatalogArtifactReader,
-  key: string,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<Buffer> {
-  const result = await settle(reader.readArtifact(key, maxBytes), signal);
-  if (!result.ok) {
-    if (result.error instanceof S3ObjectSizeLimitError) {
-      fail("object-too-large", true);
-    }
-    fail("source-unavailable", false);
-  }
-  const bytes = Buffer.from(result.value);
-  if (bytes.length > maxBytes) {
-    fail("object-too-large", true);
-  }
-  return bytes;
-}
-
-function parseSkillManifest(bytes: Uint8Array) {
-  const decoded = safeSync(() => {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  });
-  if (!("ok" in decoded)) {
-    fail("invalid-json", true);
-  }
-  const value = safeJsonParse(decoded.ok);
-  if (value === undefined) {
-    fail("invalid-json", true);
-  }
-  const parsed = connectorSkillManifestSchema.safeParse(value);
-  if (!parsed.success) {
-    fail("invalid-artifact", true);
-  }
-  return parsed.data;
-}
-
-async function verifySkill(
-  reader: ConnectorCatalogArtifactReader,
-  skill: BundledConnectorSkill,
-  signal: AbortSignal,
-): Promise<PreparedConnectorSkillRegistration> {
-  const [manifestBytes, archiveBytes] = await Promise.all([
-    readSkillObject(
-      reader,
-      skill.manifest.key,
-      CONNECTOR_SKILL_MANIFEST_MAX_BYTES,
-      signal,
-    ),
-    readSkillObject(
-      reader,
-      skill.archive.key,
-      CONNECTOR_SKILL_ARCHIVE_MAX_BYTES,
-      signal,
-    ),
-  ]);
-  signal.throwIfAborted();
-  if (
-    digest(manifestBytes) !== skill.manifest.digest ||
-    digest(archiveBytes) !== skill.archive.digest
-  ) {
-    fail("digest-mismatch", true);
-  }
-  if (archiveBytes.length === 0) {
-    fail("invalid-artifact", true);
-  }
-  const manifest = parseSkillManifest(manifestBytes);
-  return {
-    ...skillIdentity(skill),
-    provenance: "verified",
-    size: manifest.files.reduce((total, file) => {
-      return total + file.size;
-    }, 0),
-    archiveSize: archiveBytes.length,
-    fileCount: manifest.files.length,
-  };
-}
-
 export async function prepareConnectorCatalogSkills(args: {
   readonly db: ReadonlyDb;
-  readonly reader: ConnectorCatalogArtifactReader;
   readonly privateArtifact: ConnectorCatalogPrivateArtifact;
   readonly signal: AbortSignal;
 }): Promise<readonly PreparedConnectorSkillRegistration[]> {
@@ -265,54 +171,17 @@ export async function prepareConnectorCatalogSkills(args: {
     }),
     args.signal,
   );
-  const prepared: PreparedConnectorSkillRegistration[] = [];
-  const skillsToVerify: BundledConnectorSkill[] = [];
-  for (const skill of bundledSkills) {
+  return bundledSkills.map((skill) => {
+    const registration = registrationFromSkill(skill);
     const existing = existingByVersion.get(skill.versionId);
-    if (existing) {
-      const reusable = reusableExistingVersion(existing, skillIdentity(skill));
-      if (!reusable) {
-        fail("invalid-reference", false);
-      }
-      prepared.push(reusable);
-      continue;
+    if (!existing) {
+      return registration;
     }
-    skillsToVerify.push(skill);
-  }
-  for (
-    let offset = 0;
-    offset < skillsToVerify.length;
-    offset += CONNECTOR_SKILL_READ_CONCURRENCY
-  ) {
-    prepared.push(
-      ...(await Promise.all(
-        skillsToVerify
-          .slice(offset, offset + CONNECTOR_SKILL_READ_CONCURRENCY)
-          .map(async (skill) => {
-            return await verifySkill(args.reader, skill, args.signal);
-          }),
-      )),
-    );
-  }
-  return prepared;
-}
-
-function existingVersionMatchesRegistration(
-  existing: ExistingStorageVersion,
-  registration: PreparedConnectorSkillRegistration,
-): boolean {
-  const reusable = reusableExistingVersion(existing, {
-    storageName: registration.storageName,
-    versionId: registration.versionId,
-    s3Prefix: registration.s3Prefix,
-    s3Key: registration.s3Key,
+    if (!existingVersionMatchesRegistration(existing, registration)) {
+      fail("invalid-reference", false);
+    }
+    return { ...registration, provenance: "existing" };
   });
-  return (
-    reusable !== undefined &&
-    reusable.size === registration.size &&
-    reusable.archiveSize === registration.archiveSize &&
-    reusable.fileCount === registration.fileCount
-  );
 }
 
 async function missingRegistrations(

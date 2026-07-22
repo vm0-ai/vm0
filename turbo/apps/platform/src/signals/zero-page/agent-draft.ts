@@ -156,11 +156,12 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    set(
-      draft.seed$,
-      result.body.draftContent ?? "",
-      attachments.map(createRestoredAttachment),
-    );
+    set(draft.seed$, {
+      content: result.body.draftContent ?? "",
+      structuredPrompt: null,
+      generationTemplate: undefined,
+      attachments: attachments.map(createRestoredAttachment),
+    });
   },
 );
 

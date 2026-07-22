@@ -793,7 +793,6 @@ async function prepareCandidateSkillsForSync(
   const prepared = await settle(
     prepareConnectorCatalogSkills({
       db: runtime.db,
-      reader: runtime.reader,
       privateArtifact: candidate.privateArtifact,
       signal: runtime.signal,
     }),

@@ -96,14 +96,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseDeckMetadata(doc: Document): DeckMetadata {
+function deckMetadataScript(doc: Document): HTMLScriptElement {
   const script = doc.getElementById(METADATA_SCRIPT_ID);
-  if (!script?.textContent) {
-    return {};
+  if (!(script instanceof HTMLScriptElement) || !script.textContent) {
+    throw new Error("Presentation deck metadata is required");
   }
+  return script;
+}
+
+function parseDeckMetadata(doc: Document): DeckMetadata {
+  const script = deckMetadataScript(doc);
   const parsed: unknown = JSON.parse(script.textContent);
   if (!isRecord(parsed)) {
-    return {};
+    throw new Error("Invalid presentation deck metadata");
   }
   const slidesValue = parsed.slides;
   const slides: Record<string, DeckMetadataSlide> = {};
@@ -128,12 +133,12 @@ function parseDeckMetadata(doc: Document): DeckMetadata {
 }
 
 function parseMutableDeckMetadata(doc: Document): Record<string, unknown> {
-  const script = doc.getElementById(METADATA_SCRIPT_ID);
-  if (!script?.textContent) {
-    return {};
-  }
+  const script = deckMetadataScript(doc);
   const parsed: unknown = JSON.parse(script.textContent);
-  return isRecord(parsed) ? { ...parsed } : {};
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid presentation deck metadata");
+  }
+  return { ...parsed };
 }
 
 function serializeDoc(doc: Document): string {
@@ -354,19 +359,6 @@ function findEditable(slide: Element, editId: string): Element | null {
       return editIdForElement(editable, index) === editId;
     }) ?? null
   );
-}
-
-function ensureMetadataScript(doc: Document): HTMLScriptElement {
-  const existing = doc.getElementById(METADATA_SCRIPT_ID);
-  if (existing instanceof HTMLScriptElement) {
-    existing.type = "application/json";
-    return existing;
-  }
-  const script = doc.createElement("script");
-  script.type = "application/json";
-  script.id = METADATA_SCRIPT_ID;
-  doc.body.append(script);
-  return script;
 }
 
 function isTransientPresentationEditorAttribute(name: string): boolean {
@@ -875,7 +867,7 @@ export function patchPresentationHtml(params: {
     };
   }
   metadata.slides = metadataSlides;
-  ensureMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
+  deckMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
   syncPresentationElementOffsetRuntime(doc);
   return serializeDoc(doc);
 }

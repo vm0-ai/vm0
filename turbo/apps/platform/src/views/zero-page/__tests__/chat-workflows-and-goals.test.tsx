@@ -1102,60 +1102,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("shows historical template labels after picker rollout", async () => {
-    const threadId = "template-message-history-gated";
-    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Template labels gated",
-      chatMessages: [
-        {
-          id: "msg-template-presentation-gated",
-          role: "user",
-          content: "Create the business review deck",
-          runId: "run-template-presentation-gated",
-          generationTemplate: {
-            type: "presentation",
-            selection: {
-              templateId: presentationTemplate.templateId,
-            },
-          },
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-template-illustration-gated",
-          role: "user",
-          content: "Create an illustrated launch card",
-          runId: "run-template-illustration-gated",
-          generationTemplate: {
-            type: "illustration",
-            selection: {
-              illustrationStyleId: illustrationTemplate.illustrationStyleId,
-            },
-          },
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Create the business review deck")).toBeVisible();
-      expect(
-        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
-      ).toHaveTextContent("Presentation");
-      expect(
-        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
-      ).toHaveTextContent("Illustration");
-    });
-  });
-
   it("copies a user message with legacy inline attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
     const threadId = "legacy-attachment-copy";

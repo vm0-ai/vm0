@@ -7,10 +7,14 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
+import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_MESSAGES_STORE } from "../../../signals/external/chat-idb-schema.ts";
-import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
+import {
+  chatIdb$,
+  openChatIdb,
+} from "../../../signals/external/chat-idb-store.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 vi.mock("idb", async () => {
@@ -52,7 +56,15 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 
 describe("chat message persistence", () => {
   it("round-trips structured and legacy messages through IndexedDB on thread re-entry", async () => {
-    const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
+    mockUser(
+      { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
+      { token: "test-token" },
+    );
+    mockOrganization({
+      activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
+      memberships: [{ id: "idb-reentry-org" }],
+    });
+    const appDb = await context.store.get(chatIdb$);
     const structuredPrompt = structuredPromptFixture();
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
@@ -153,24 +165,29 @@ describe("chat message persistence", () => {
       });
       expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
       await waitFor(async () => {
-        const structuredMessage: unknown = await testDb.get(
-          CHAT_MESSAGES_STORE,
-          STRUCTURED_MESSAGE_ID,
-        );
-        expect(structuredMessage).toMatchObject({
-          content: STRUCTURED_MESSAGE,
-          structuredPrompt,
-          threadId: FIRST_THREAD_ID,
-        });
-        const persistedMessage: unknown = await testDb.get(
-          CHAT_MESSAGES_STORE,
-          FIRST_MESSAGE_ID,
-        );
-        expect(persistedMessage).toMatchObject({
-          content: FIRST_MESSAGE,
-          threadId: FIRST_THREAD_ID,
-        });
-        expect(persistedMessage).not.toHaveProperty("structuredPrompt");
+        const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
+        try {
+          const structuredMessage: unknown = await testDb.get(
+            CHAT_MESSAGES_STORE,
+            STRUCTURED_MESSAGE_ID,
+          );
+          expect(structuredMessage).toMatchObject({
+            content: STRUCTURED_MESSAGE,
+            structuredPrompt,
+            threadId: FIRST_THREAD_ID,
+          });
+          const persistedMessage: unknown = await testDb.get(
+            CHAT_MESSAGES_STORE,
+            FIRST_MESSAGE_ID,
+          );
+          expect(persistedMessage).toMatchObject({
+            content: FIRST_MESSAGE,
+            threadId: FIRST_THREAD_ID,
+          });
+          expect(persistedMessage).not.toHaveProperty("structuredPrompt");
+        } finally {
+          testDb.close();
+        }
       });
 
       await user.click(await findThreadLink("IndexedDB other thread"));
@@ -193,7 +210,7 @@ describe("chat message persistence", () => {
       });
     } finally {
       blockedRemote.resolve();
-      testDb.close();
+      appDb.close();
     }
   });
 
@@ -205,15 +222,28 @@ describe("chat message persistence", () => {
     const cachedMessage = "Invalid cached structured message";
     const remoteMessagesCaughtUp = context.mocks.deferred<void>();
     const testDb = await openChatIdb(userId, orgId);
-    await testDb.put(CHAT_MESSAGES_STORE, {
-      id: "00000000-0000-4000-8000-000000000734",
-      role: "user",
-      content: cachedMessage,
-      structuredPrompt: { version: 1, parts: [] },
-      createdAt: "2026-06-09T10:00:00Z",
-      threadId,
-      orderSequence: -1,
+    try {
+      await testDb.put(CHAT_MESSAGES_STORE, {
+        id: "00000000-0000-4000-8000-000000000734",
+        role: "user",
+        content: cachedMessage,
+        structuredPrompt: { version: 1, parts: [] },
+        createdAt: "2026-06-09T10:00:00Z",
+        threadId,
+        orderSequence: -1,
+      });
+    } finally {
+      testDb.close();
+    }
+    mockUser(
+      { id: userId, fullName: "Invalid IndexedDB Test User" },
+      { token: "test-token" },
+    );
+    mockOrganization({
+      activeOrg: { id: orgId, name: "Invalid IndexedDB Test Org" },
+      memberships: [{ id: orgId }],
     });
+    const appDb = await context.store.get(chatIdb$);
 
     mockChatLifecycle(context, {
       threadId,
@@ -256,7 +286,7 @@ describe("chat message persistence", () => {
       ).resolves.toBeInTheDocument();
       expect(screen.queryByText(cachedMessage)).not.toBeInTheDocument();
     } finally {
-      testDb.close();
+      appDb.close();
     }
   });
 });

@@ -18,7 +18,10 @@ use crate::duration::duration_ms;
 /// Local-only hostname used to validate a namespace's DNS redirect path.
 pub const DNS_READINESS_HOSTNAME: &str = "vm0-readiness.invalid";
 
-/// TEST-NET address returned for [`DNS_READINESS_HOSTNAME`].
+/// Local-only hostname reserved for post-failure namespace diagnostics.
+pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-diagnostic.invalid";
+
+/// TEST-NET address returned for the readiness and diagnostic hostnames.
 pub const DNS_READINESS_IPV4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 
 pub(super) const DNS_READINESS_OPERATION_TIMEOUT: Duration = Duration::from_secs(3);
@@ -60,9 +63,9 @@ enum DnsReadinessStage {
     Timeout,
 }
 
-impl fmt::Display for DnsReadinessStage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl DnsReadinessStage {
+    fn as_str(self) -> &'static str {
+        match self {
             Self::SpawnThread => "spawn_thread",
             Self::OpenCurrentNamespace => "open_current_namespace",
             Self::OpenTargetNamespace => "open_target_namespace",
@@ -77,7 +80,13 @@ impl fmt::Display for DnsReadinessStage {
             Self::RestoreNamespace => "restore_namespace",
             Self::WaitForThread => "wait_for_thread",
             Self::Timeout => "timeout",
-        })
+        }
+    }
+}
+
+impl fmt::Display for DnsReadinessStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -115,11 +124,15 @@ impl DnsReadinessError {
         self.stage
     }
 
-    fn io_kind(&self) -> Option<io::ErrorKind> {
+    pub(crate) fn stage_label(&self) -> &'static str {
+        self.stage.as_str()
+    }
+
+    pub(crate) fn io_kind(&self) -> Option<io::ErrorKind> {
         self.io_kind
     }
 
-    fn attempts(&self) -> u16 {
+    pub(crate) fn attempts(&self) -> u16 {
         self.attempts
     }
 
@@ -180,23 +193,42 @@ pub(super) async fn run_dns_readiness_probe(
 }
 
 pub(super) async fn probe_namespace_dns(namespace: String) -> Result<u16, DnsReadinessError> {
+    probe_namespace_dns_for_hostname(namespace, PROBE_TIMEOUT, DNS_READINESS_HOSTNAME).await
+}
+
+pub(crate) async fn probe_namespace_dns_diagnostic(
+    namespace: String,
+    probe_timeout: Duration,
+) -> Result<u16, DnsReadinessError> {
+    probe_namespace_dns_for_hostname(namespace, probe_timeout, DNS_DIAGNOSTIC_HOSTNAME).await
+}
+
+async fn probe_namespace_dns_for_hostname(
+    namespace: String,
+    probe_timeout: Duration,
+    hostname: &'static str,
+) -> Result<u16, DnsReadinessError> {
     let (tx, rx) = oneshot::channel();
     std::thread::Builder::new()
         .name("vm0-dns-readiness".into())
         .spawn(move || {
-            let result = probe_namespace_dns_blocking(&namespace);
+            let result = probe_namespace_dns_blocking(&namespace, probe_timeout, hostname);
             let _ = tx.send(result);
         })
         .map_err(|error| DnsReadinessError::io(DnsReadinessStage::SpawnThread, &error))?;
 
-    match tokio::time::timeout(PROBE_TIMEOUT + PROBE_THREAD_GRACE, rx).await {
+    match tokio::time::timeout(probe_timeout + PROBE_THREAD_GRACE, rx).await {
         Ok(Ok(result)) => result,
         Ok(Err(_)) => Err(DnsReadinessError::stage(DnsReadinessStage::WaitForThread)),
         Err(_) => Err(DnsReadinessError::stage(DnsReadinessStage::Timeout)),
     }
 }
 
-fn probe_namespace_dns_blocking(namespace: &str) -> Result<u16, DnsReadinessError> {
+fn probe_namespace_dns_blocking(
+    namespace: &str,
+    probe_timeout: Duration,
+    hostname: &str,
+) -> Result<u16, DnsReadinessError> {
     let current = File::open("/proc/self/ns/net")
         .map_err(|error| DnsReadinessError::io(DnsReadinessStage::OpenCurrentNamespace, &error))?;
     let target = File::open(Path::new(NETNS_DIR).join(namespace))
@@ -206,7 +238,8 @@ fn probe_namespace_dns_blocking(namespace: &str) -> Result<u16, DnsReadinessErro
 
     let result = probe_dns_endpoint(
         SocketAddrV4::new(DNS_READINESS_IPV4, DNS_PORT),
-        PROBE_TIMEOUT,
+        probe_timeout,
+        hostname,
     );
     let restore = setns(&current, CloneFlags::CLONE_NEWNET)
         .map_err(|errno| DnsReadinessError::errno(DnsReadinessStage::RestoreNamespace, errno));
@@ -218,6 +251,7 @@ fn probe_namespace_dns_blocking(namespace: &str) -> Result<u16, DnsReadinessErro
 fn probe_dns_endpoint(
     destination: SocketAddrV4,
     timeout: Duration,
+    hostname: &str,
 ) -> Result<u16, DnsReadinessError> {
     let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
         .map_err(|error| DnsReadinessError::io(DnsReadinessStage::BindSocket, &error))?;
@@ -241,8 +275,8 @@ fn probe_dns_endpoint(
 
         attempts = attempts.saturating_add(1);
         let transaction_id = NEXT_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed);
-        let query =
-            build_dns_query(transaction_id).map_err(|error| error.with_attempts(attempts))?;
+        let query = build_dns_query(transaction_id, hostname)
+            .map_err(|error| error.with_attempts(attempts))?;
         if let Err(error) = socket.send(&query) {
             last_error =
                 DnsReadinessError::io(DnsReadinessStage::SendQuery, &error).with_attempts(attempts);
@@ -287,7 +321,7 @@ fn sleep_before_retry(deadline: Instant) {
     }
 }
 
-fn build_dns_query(transaction_id: u16) -> Result<Vec<u8>, DnsReadinessError> {
+fn build_dns_query(transaction_id: u16, hostname: &str) -> Result<Vec<u8>, DnsReadinessError> {
     let mut query = Vec::with_capacity(64);
     query.extend_from_slice(&transaction_id.to_be_bytes());
     query.extend_from_slice(&DNS_QUERY_FLAGS_RECURSION_DESIRED.to_be_bytes());
@@ -295,7 +329,7 @@ fn build_dns_query(transaction_id: u16) -> Result<Vec<u8>, DnsReadinessError> {
     query.extend_from_slice(&0_u16.to_be_bytes());
     query.extend_from_slice(&0_u16.to_be_bytes());
     query.extend_from_slice(&0_u16.to_be_bytes());
-    for label in DNS_READINESS_HOSTNAME.split('.') {
+    for label in hostname.split('.') {
         let length = u8::try_from(label.len())
             .map_err(|_| DnsReadinessError::stage(DnsReadinessStage::BuildQuery))?;
         query.push(length);
@@ -422,7 +456,7 @@ mod tests {
 
     #[test]
     fn query_uses_readiness_name_and_a_record() {
-        let query = build_dns_query(0x1234).unwrap();
+        let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
 
         assert_eq!(query.get(..2).unwrap(), &0x1234_u16.to_be_bytes());
         assert_eq!(
@@ -438,8 +472,24 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_query_uses_distinct_fixed_name() {
+        let query = build_dns_query(0x1234, DNS_DIAGNOSTIC_HOSTNAME).unwrap();
+
+        assert!(
+            query
+                .windows("vm0-diagnostic".len())
+                .any(|part| part == b"vm0-diagnostic")
+        );
+        assert!(
+            !query
+                .windows("vm0-readiness".len())
+                .any(|part| part == b"vm0-readiness")
+        );
+    }
+
+    #[test]
     fn response_validation_accepts_expected_compressed_a_record() {
-        let query = build_dns_query(0x1234).unwrap();
+        let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
         let response = response_for_query(&query, DNS_READINESS_IPV4);
 
         validate_dns_response(&response, 0x1234, DNS_READINESS_IPV4).unwrap();
@@ -447,7 +497,7 @@ mod tests {
 
     #[test]
     fn response_validation_rejects_wrong_transaction_and_answer() {
-        let query = build_dns_query(0x1234).unwrap();
+        let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
         let response = response_for_query(&query, Ipv4Addr::new(192, 0, 2, 2));
 
         assert!(validate_dns_response(&response, 0x4321, DNS_READINESS_IPV4).is_err());
@@ -456,7 +506,7 @@ mod tests {
 
     #[test]
     fn response_validation_rejects_truncated_name() {
-        let query = build_dns_query(0x1234).unwrap();
+        let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
         let mut response = response_for_query(&query, DNS_READINESS_IPV4);
         response.truncate(13);
 
@@ -477,7 +527,7 @@ mod tests {
             server.send_to(&response, peer).unwrap();
         });
 
-        probe_dns_endpoint(destination, Duration::from_secs(1)).unwrap();
+        probe_dns_endpoint(destination, Duration::from_secs(1), DNS_READINESS_HOSTNAME).unwrap();
         server_thread.join().unwrap();
     }
 
@@ -497,7 +547,11 @@ mod tests {
             release_rx.recv().unwrap();
         });
 
-        let result = probe_dns_endpoint(destination, Duration::from_millis(30));
+        let result = probe_dns_endpoint(
+            destination,
+            Duration::from_millis(30),
+            DNS_READINESS_HOSTNAME,
+        );
 
         let received = received_rx.recv_timeout(Duration::from_secs(1));
         release_tx.send(()).unwrap();

@@ -2623,6 +2623,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    let affinitySnapshotSequence = 0;
+    function nextAffinitySnapshotSequence(): number {
+      affinitySnapshotSequence += 1;
+      return affinitySnapshotSequence;
+    }
+
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
@@ -2638,6 +2644,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         admittableProfiles: args.admittableProfiles,
         heldSessionStates: [
           {
@@ -2689,6 +2697,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runnerId: affinityRunnerId,
         runnerName: "bdd-runner",
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         totalVcpu: 8,
         totalMemoryMb: 16_384,
         maxConcurrent: 2,
@@ -2759,6 +2769,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
       admittableProfiles: [],
       heldSessionStates: [
         {
@@ -2784,6 +2796,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 2,
       admittableProfiles: [],
       heldSessionStates: [],
       mode: "stopping",
@@ -2806,6 +2820,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
       admittableProfiles: ["vm0/default"],
       heldSessionStates: [
         {
@@ -3142,7 +3158,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 
-  it("keeps runner heartbeat snapshots ordered without breaking legacy senders", async () => {
+  it("keeps runner heartbeat snapshots ordered", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -3181,8 +3197,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     async function heartbeat(args: {
-      readonly generation?: number;
-      readonly sequence?: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly advertisesReusableSandbox: boolean;
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
@@ -3272,9 +3288,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       advertisesReusableSandbox: true,
     });
     await expectReusableAffinity(false);
-
-    await heartbeat({ advertisesReusableSandbox: true });
-    await expectReusableAffinity(true);
   });
 
   it("prioritizes exact reusable work only for its runner and protection window", async () => {
@@ -7823,7 +7836,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
     });
     const agent = await bdd.createAgent(actor, {
@@ -7964,7 +7976,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
-      "Managed public-web discovery",
+      "Public-web search, current public facts, and source discovery",
       "zero web-search <query>",
       "external public-web provider",
       "bounded, ranked results",
@@ -8003,9 +8015,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
-    expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-    );
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroWebSearch]: true,
+    });
+    expect(claim.disallowedTools).toStrictEqual([
+      ...EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      "WebSearch",
+    ]);
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
     const zeroToken = claim.environment?.ZERO_TOKEN;
@@ -8037,13 +8054,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("does not advertise scrape when only web search is enabled", async () => {
+  it("advertises scrape when web search is disabled", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroWebSearch]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -8053,8 +8066,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").not.toContain(
+      "zero web-search --help",
+    );
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -8141,9 +8156,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
+    expect(claim.disallowedTools).not.toContain("WebSearch");
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain(
       "zero web-search --help",
     );

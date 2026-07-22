@@ -173,6 +173,12 @@ export function clearMockedAuth() {
 
 const clerkListeners: (() => void)[] = [];
 
+export function emitMockedClerkEvent(): void {
+  for (const listener of clerkListeners) {
+    listener();
+  }
+}
+
 type GetTokenImpl = (options?: {
   skipCache?: boolean;
 }) => Promise<string | null>;

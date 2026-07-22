@@ -228,6 +228,9 @@ function selectionOverlayPresentationHtml(): string {
 <html>
   <head>
     <title>Selection overlay</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
   </head>
   <body>
     <section data-vm0-slide data-slide-id="slide-intro">
@@ -249,6 +252,9 @@ function clampedPresentationHtml(): string {
 <html>
   <head>
     <title>Clamped presentation</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
   </head>
   <body>
     <section data-vm0-slide data-slide-id="slide-intro">
@@ -279,6 +285,9 @@ function presentationHtmlWithDeckBackground(): string {
 <html>
   <head>
     <title>Dog world</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
     <style>
       :root {
         --bg: #000000;
@@ -328,6 +337,9 @@ function responsivePresentationHtml(): string {
 <html>
   <head>
     <title>Responsive layouts</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
     <style>
       .slide {
         display: none;
@@ -416,7 +428,6 @@ const PRESENTATION_UPLOAD_ID = "123e4567-e89b-42d3-a456-426614174000";
 
 interface PresentationUploadCapture {
   finalizedUploadId: string | null;
-  legacyUploaded: File | null;
   prepared: {
     readonly contentType: string;
     readonly filename: string;
@@ -427,7 +438,6 @@ interface PresentationUploadCapture {
 
 function mockPresentationGoogleSlidesUpload(options: {
   readonly beforeFinalize?: () => void;
-  readonly previousApi?: boolean;
   readonly response: {
     readonly id: string;
     readonly name: string;
@@ -436,7 +446,6 @@ function mockPresentationGoogleSlidesUpload(options: {
 }): PresentationUploadCapture {
   const capture: PresentationUploadCapture = {
     finalizedUploadId: null,
-    legacyUploaded: null,
     prepared: null,
     uploaded: null,
   };
@@ -469,20 +478,6 @@ function mockPresentationGoogleSlidesUpload(options: {
       if (typeof uploadId === "string") {
         capture.finalizedUploadId = uploadId;
       }
-      if (options.previousApi && typeof uploadId === "string") {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "BAD_REQUEST",
-              message: "No presentation file provided",
-            },
-          },
-          { status: 400 },
-        );
-      }
-      const legacyUploaded = formData.get("file");
-      capture.legacyUploaded =
-        legacyUploaded instanceof File ? legacyUploaded : null;
       return HttpResponse.json(options.response);
     },
   );
@@ -722,6 +717,9 @@ function assetBackedPresentationHtml(
 <html>
   <head>
     <title>Asset backed deck</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
     <style>
       .slide-bg { background-image: url("${assetUrl}"); }
     </style>
@@ -732,28 +730,6 @@ function assetBackedPresentationHtml(
       <img src="${assetUrl}" alt="Roadmap cover" />
       <img src="${externalAssetUrl}" alt="External cover" />
     </section>
-  </body>
-</html>`;
-}
-
-function fallbackEditablePresentationHtml(): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <title>Legacy launch plan</title>
-    <meta http-equiv="refresh" content="0;url=https://example.com/redirect">
-  </head>
-  <body onclick="window.evil = true">
-    <h1>Legacy launch plan</h1>
-    <p>Review the older deck format before launch.</p>
-    <div>
-      <span>Nested fallback copy</span>
-    </div>
-    <a href="j a v a s c r i p t:alert(1)">Unsafe action</a>
-    <a href="http://[invalid">Broken action</a>
-    <a href="https://example.com/safe">Safe action</a>
-    <img src="data:text/html,blocked" alt="Blocked inline asset">
-    <iframe src="https://example.com/embed"></iframe>
   </body>
 </html>`;
 }
@@ -2974,7 +2950,6 @@ describe("zero artifact sidebar", () => {
       beforeFinalize: () => {
         expect(agentAuthorized).toBeTruthy();
       },
-      previousApi: true,
       response: {
         id: "slides-file-quarterly-roadmap",
         name: "quarterly-roadmap",
@@ -3013,11 +2988,9 @@ describe("zero artifact sidebar", () => {
     completePresentationPptxExport(exportFrame, await presentationPptxBlob());
 
     await waitFor(() => {
-      expect(upload.legacyUploaded).toBeInstanceOf(File);
+      expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
     });
-    expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
-    expect(upload.legacyUploaded?.name).toBe("quarterly-roadmap.pptx");
-    expect(upload.legacyUploaded?.size).toBeGreaterThan(0);
+    expect(upload.uploaded?.size).toBeGreaterThan(0);
   });
 
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
@@ -3242,7 +3215,12 @@ ${openFencedHostedSiteUrl}`,
     const browser = context.mocks.browser.blobDownload();
     const html = `<!doctype html>
 <html>
-  <head><title>Relative assets</title></head>
+  <head>
+    <title>Relative assets</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
+  </head>
   <body>
     <section data-vm0-slide data-slide-id="slide-intro">
       <h1 data-vm0-editable="text" data-vm0-edit-id="intro">Intro</h1>
@@ -3338,6 +3316,9 @@ ${openFencedHostedSiteUrl}`,
     const html = `<!doctype html>
 <html>
   <head>
+    <script id="vm0-deck-metadata" type="application/json">
+      { "kind": "presentation-html", "editProtocolVersion": 1, "slides": {} }
+    </script>
     <style>
       :root { --paper: #f6f5f1; }
       html, body { margin: 0; min-height: 100%; background: var(--paper); }
@@ -4156,99 +4137,6 @@ ${openFencedHostedSiteUrl}`,
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
     expect(redeployCalled).toBeFalsy();
-  });
-
-  it("edits a fallback presentation deck without embedded metadata", async () => {
-    const presentationUrl = "https://deck.sites.vm7.io/legacy-launch-plan.html";
-    const immutableArtifactUrl =
-      "https://dpl-55555555-5555-4555-8555-555555555555.sites.vm7.io";
-    const html = fallbackEditablePresentationHtml();
-    let redeployedHtml: string | null = null;
-
-    context.mocks.api(
-      zeroHostContract.redeployPresentationHtml,
-      ({ body, respond }) => {
-        redeployedHtml = body.html;
-        return respond(200, {
-          siteId: "44444444-4444-4444-8444-444444444444",
-          deploymentId: "55555555-5555-4555-8555-555555555555",
-          publicSlug: "legacy-launch-plan",
-          url: presentationUrl,
-          deploymentVersion: 2,
-          artifactUrl: immutableArtifactUrl,
-          aliasUrl: presentationUrl,
-          isActive: true,
-          activeDeploymentVersion: 2,
-          status: "ready",
-        });
-      },
-    );
-    setupPresentationArtifactThread(presentationUrl, html);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Edit presentation"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
-      expect(screen.getByLabelText("Open slide 1")).toBeInTheDocument();
-      expect(screen.getByLabelText("Speaker notes")).toHaveValue("");
-    });
-    expect(screen.getByTestId("presentation-editor-workspace")).toHaveClass(
-      "grid-rows-[auto_minmax(0,1fr)]",
-      "md:grid-cols-[260px_minmax(0,1fr)]",
-    );
-    expect(screen.getByTestId("presentation-editor-slide-list")).toHaveClass(
-      "overflow-x-auto",
-      "md:overflow-auto",
-    );
-    expect(screen.getByTestId("presentation-editor-main-pane")).toHaveClass(
-      "grid-rows-[minmax(0,1fr)_136px]",
-      "md:grid-rows-[minmax(0,1fr)_180px]",
-    );
-
-    await fill(
-      screen.getByLabelText("Speaker notes"),
-      "Use cleaned launch narrative.",
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Close presentation editor"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Do you want to save your changes?", {
-          selector: "h2",
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(redeployedHtml).toBeNull();
-
-    click(screen.getByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
-      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
-      expect(context.store.get(searchParams$).get("artifact")).toBe(
-        immutableArtifactUrl,
-      );
-    });
-    expect(redeployedHtml).toContain("vm0-deck-metadata");
-    expect(redeployedHtml).toContain(
-      '"speakerNotes": "Use cleaned launch narrative."',
-    );
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Presentation updated"),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("exits the presentation editor without publishing draft changes", async () => {

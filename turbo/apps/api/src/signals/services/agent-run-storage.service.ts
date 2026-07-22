@@ -2100,6 +2100,40 @@ async function resolveStorageManifestInputs(
   );
 }
 
+function projectLegacyStorageNames(args: {
+  readonly manifest: LegacyStorageManifest;
+  readonly composeVolumes: readonly ResolvedVolume[];
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+}): LegacyStorageManifest {
+  const declarationByMountPath = new Map<
+    string,
+    { readonly name: string; readonly storageName: string }
+  >();
+  for (const volume of args.composeVolumes) {
+    declarationByMountPath.set(volume.mountPath, {
+      name: volume.name,
+      storageName: volume.vasStorageName,
+    });
+  }
+  for (const volume of args.additionalVolumes ?? []) {
+    declarationByMountPath.set(volume.mountPath, {
+      name: volume.name,
+      storageName: volume.name,
+    });
+  }
+
+  return {
+    storages: args.manifest.storages.map((storage) => {
+      const declaration = declarationByMountPath.get(storage.mountPath);
+      if (!declaration || declaration.storageName !== storage.vasStorageName) {
+        return storage;
+      }
+      return { ...storage, name: declaration.name };
+    }),
+    artifacts: args.manifest.artifacts,
+  };
+}
+
 async function ensureStorageManifestArtifacts(
   get: ComputedGetter,
   args: {
@@ -2702,11 +2736,25 @@ async function prepareCompletePersistedStorageManifest(
     timing: args.timing,
     stats: args.stats,
   });
-  return await assembleStorageManifest({
+  const prepared = await assembleStorageManifest({
     ...entries,
     timing: args.timing,
     stats: args.stats,
   });
+  // The complete canonical snapshot stays authoritative. Legacy declarations
+  // are used only to restore aliases for rollback-compatible runner output.
+  const legacyInputs = await settle(resolveStorageManifestInputs(args));
+  if (!legacyInputs.ok) {
+    return prepared;
+  }
+  return {
+    ...prepared,
+    storageManifest: projectLegacyStorageNames({
+      manifest: prepared.storageManifest,
+      composeVolumes: legacyInputs.value.composeVolumes,
+      additionalVolumes: args.additionalVolumes,
+    }),
+  };
 }
 
 export function prepareAgentRunStorageManifest(

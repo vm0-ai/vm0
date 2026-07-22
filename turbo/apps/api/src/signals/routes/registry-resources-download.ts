@@ -179,9 +179,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "736c14987395cb828dfa3626ace6ea947ca9852509b64d2867c6be105bdb8a12",
 } as const satisfies Record<string, string>;
 
-// Keep the default archive version for already released CLIs. Newer CLIs opt
-// into these refreshed presentation packages by sending their expected digest.
-// This prevents a backend-only deployment from breaking existing CLI users.
+// Presentation runbook versions keyed by the digest in the current registry.
 const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-blueprint-academy-runbook": {
     d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72:
@@ -212,8 +210,6 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
       "cc0fd39023d6f920ae5dcae7a2dce3c176d1fd34392b35818f5bd2677e81f874",
   },
   "template:html-ppt-landing-consulting-runbook": {
-    "3b2fa8e03ebe9bdd8397bfa4fdf526e9f10b11d2b1676829f7b32eeaa8336cf8":
-      "e027d3b085d2151bb72bd4b3f535dfa1130fb00321e15821d3125eadad22bffa",
     "01323dcebc9413781ad518d86f6b6611c3fb39a8bfd6287b2abced7c9432b6c7":
       "fc15dfea6f7dda89180e837843cc1dfbcdbe14b70361d39ef902a2d8ad42472c",
   },
@@ -226,8 +222,6 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
       "b1af398afe34a0625f0fd08e97444ac77c26ffb218ec62c315fe338558fb9133",
   },
   "template:html-ppt-mosaic-geometric-runbook": {
-    e9e489d2bcd817968c30ebae6b41513e3e175c58fd7a1db36351918ff45e1576:
-      "8e2ec2d02439606a525c36257db38c32d026953d75f9fd55c64fbaef482fe8ea",
     fd036b42ef323011f0a2c771ceb0bbc6cfb6fb29272633f4e187cd672a89d336:
       "0e11dc5bccb9abfa9d008c117aaf14908b363d20613bfbb57cab6267c90e90a5",
   },
@@ -236,8 +230,6 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
       "6b3fb7b9eabb60d76d37f40b86a71f95682fcbca08ce1c331f899f6e72c95239",
   },
   "template:html-ppt-nocturne-runbook": {
-    efd5031c618ea76fa20d460f583c69c086459a965e006e38ef189390fe1692a6:
-      "eab50c15e578fce0dabdbbd1b2de11fa1c1b36596622157f7f142d8d2212c9cd",
     "83d26dbd95a839310db7553b3a2e4dfe2cc3d9678d988fa864d4dd61f6941213":
       "ec30051e82c3d7cc903bc3bc9b7b1b3b5d94d134e897ede0f4b6e5f2a4a0dc8f",
   },
@@ -248,8 +240,6 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-playful-launch-runbook": {
     "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3":
       "6a81763e63f55e2fe446957fccd8bf770d02efe6d613b1fc988fc206b697d511",
-    "9c7524540e98a3605b71a35c918d1a186d9599f34f9e67aa8c86c457dc6b4582":
-      "6bbcb6decd53b667eb4aae4f79b05b10eb487fd83496265105d5b4c47542c9aa",
   },
   "template:html-ppt-playful-pop-runbook": {
     "1c84b4a0df81a8ca169ac30a589410b8d846af5900c38d08fb77688b2556a565":
@@ -260,20 +250,14 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
       "a6ec614912182e6ace467ff0c96036f263cab8030d01146b414af5996e9f278c",
   },
   "template:html-ppt-schoolhouse-runbook": {
-    bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63:
-      "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
     "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad":
       "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
   },
   "template:html-ppt-sticker-scrapbook-runbook": {
-    f59e1ee3e70b6ca220e584bf230749ef8768941fcdf7873f4704d6f02ad72c73:
-      "1e0571aa497862d02c00067875cf213ee1b3c4b7d34b78877f21bf66e1dd54b3",
     cddd7f14573af6aa922b2873658dc81fbcd45dfb42b84da8be9b8e0866874dab:
       "4876f30e79ac5a035b79e210b0e2a99c4e989bba9c38f3b0ff046b4f56f857bc",
   },
   "template:html-ppt-strata-runbook": {
-    c91074decc1642d5c17644aa2aac43702dc727220046807e8f29db1eb47bd450:
-      "358d4479fb2bb312a0dad0eb4a9f4b9fdae1037e2f46554535ce8425b12a3cd0",
     "39ebdffe9de88faebb6427d734927b57ebe69b9b98db5efbee59b5f7ab120cc6":
       "56e7d344c982b946fc578d026ac8fbe1ee0ffe50d096be94cb25418bfa6fbd3a",
   },
@@ -289,30 +273,27 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
 
 export function resolvePrivateRegistryResourceArchive(
   id: string,
-  expectedSha256: string | undefined,
+  expectedSha256: string,
   defaultSha256: string,
 ): PrivateRegistryResourceArchive | undefined {
   const defaultVersionId =
     PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS[
       id as keyof typeof PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS
     ];
-  if (!defaultVersionId) {
+  if (!defaultVersionId || expectedSha256 !== defaultSha256) {
     return undefined;
   }
 
-  const requestedVersionId = expectedSha256
-    ? (
-        PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 as Readonly<
-          Record<string, Readonly<Record<string, string>>>
-        >
-      )[id]?.[expectedSha256]
-    : undefined;
+  const requestedVersionId = (
+    PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 as Readonly<
+      Record<string, Readonly<Record<string, string>>>
+    >
+  )[id]?.[expectedSha256];
 
   return {
     storageName: `registry-resource@${id}`,
     versionId: requestedVersionId ?? defaultVersionId,
-    sha256:
-      requestedVersionId && expectedSha256 ? expectedSha256 : defaultSha256,
+    sha256: expectedSha256,
   };
 }
 

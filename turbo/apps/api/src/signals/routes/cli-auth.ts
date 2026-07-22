@@ -64,7 +64,6 @@ const createDeviceInner$ = command(async ({ set }, signal: AbortSignal) => {
 
   await writeDb.insert(deviceCodes).values({
     code: deviceCode,
-    purpose: "cli",
     status: "pending",
     expiresAt,
     createdAt: now,
@@ -99,11 +98,14 @@ const exchangeTokenInner$ = command(
     const writeDb = set(writeDb$);
     const deviceCode = bodyResult.data.device_code;
     const [session] = await writeDb
-      .select()
+      .select({
+        status: deviceCodes.status,
+        userId: deviceCodes.userId,
+        orgId: deviceCodes.orgId,
+        expiresAt: deviceCodes.expiresAt,
+      })
       .from(deviceCodes)
-      .where(
-        and(eq(deviceCodes.code, deviceCode), eq(deviceCodes.purpose, "cli")),
-      )
+      .where(eq(deviceCodes.code, deviceCode))
       .limit(1);
     signal.throwIfAborted();
 
@@ -193,12 +195,11 @@ const approveDeviceInner$ = command(
       .toUpperCase();
     const writeDb = set(writeDb$);
     const [session] = await writeDb
-      .select()
+      .select({ expiresAt: deviceCodes.expiresAt })
       .from(deviceCodes)
       .where(
         and(
           eq(deviceCodes.code, normalizedCode),
-          eq(deviceCodes.purpose, "cli"),
           eq(deviceCodes.status, "pending"),
         ),
       )
@@ -225,7 +226,6 @@ const approveDeviceInner$ = command(
       .where(
         and(
           eq(deviceCodes.code, normalizedCode),
-          eq(deviceCodes.purpose, "cli"),
           eq(deviceCodes.status, "pending"),
         ),
       );

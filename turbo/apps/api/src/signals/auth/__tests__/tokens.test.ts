@@ -119,21 +119,6 @@ describe("auth tokens", () => {
     });
   });
 
-  it("rejects CLI-scoped tokens behind the sandbox prefix", () => {
-    const nowSeconds = currentSecond();
-    const legacyCliToken = signSandboxJwtForTests({
-      scope: "cli",
-      userId: "user_legacy",
-      orgId: "org_legacy",
-      tokenId: "token_legacy",
-      iat: nowSeconds,
-      exp: nowSeconds + 60,
-    });
-
-    expect(isSandboxToken(legacyCliToken)).toBeTruthy();
-    expect(verifyCliToken(legacyCliToken)).toBeNull();
-  });
-
   it("includes maps capability in zero-scoped tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
@@ -164,21 +149,10 @@ describe("auth tokens", () => {
     );
   });
 
-  it("grants scrape capability from user feature switch overrides", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const overrideToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroScrape]: true },
-    );
+  it("grants scrape capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "scrape:read",
-    );
-    expect(verifyZeroToken(overrideToken)?.capabilities).toContain(
-      "scrape:read",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("scrape:read");
   });
 
   it("grants web-search capability from user feature switch overrides", () => {

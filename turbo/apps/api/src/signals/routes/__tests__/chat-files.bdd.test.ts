@@ -22,9 +22,9 @@ helper gap:
 - CHAT-03 memory updates still need a visible run or callback journey that
   publishes memory versions without direct fixture writes; non-empty run
   artifacts and Google Drive status now live in chat-threads.bdd.test.ts.
-- FILE-01 legacy /f/:userId/:id/:filename and raw hosted-content download do
-  not have exported typed contracts; this file covers typed upload, storage,
-  and host APIs instead of using DB or untyped route fallbacks.
+- FILE-01 raw hosted-content download does not have an exported typed contract;
+  this file covers typed upload, storage, and host APIs instead of using DB or
+  untyped route fallbacks.
 - CHAIN-CHAT callback-signing branches are blocked by the CHAT-02 callback
   signing gap; the run-to-artifact path is covered through public run and
   sandbox upload APIs in chat-threads.bdd.test.ts.

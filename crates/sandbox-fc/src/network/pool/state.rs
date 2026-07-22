@@ -30,8 +30,8 @@ use super::completion::{
 use super::host::ConntrackFlushOutcome;
 use super::host::{
     NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
-    delete_pool_firewall_rules_by_comment, enable_host_ip_forwarding, get_default_interface,
-    reconcile_orphan_namespaces, setup_dns_input_filter,
+    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
+    setup_dns_input_filter,
 };
 use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
@@ -514,10 +514,11 @@ impl NetnsPoolState {
         }
     }
 
-    fn checkout(&mut self, info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
+    fn checkout(&mut self, mut info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
         if !self.in_flight.insert(info.name.clone()) {
             return Err(info);
         }
+        info.attachment_generation = info.attachment_generation.saturating_add(1);
         Ok(NetnsLease::new(info, self.instance_id))
     }
 
@@ -878,7 +879,7 @@ impl NetnsPoolState {
                 .chain(self.proxy_queue.iter())
                 .cloned(),
         );
-        let dns_input_filter_comment = if namespaces.is_empty() && wait_for_pending.is_none() {
+        let dns_input_filter_comment = if wait_for_pending.is_none() {
             self.dns_input_filter_comment.clone()
         } else {
             None
@@ -1039,7 +1040,10 @@ impl NetnsPoolInner {
             }
         }
 
-        let delete = (plan.ops.delete_namespace)(plan.info.clone()).await;
+        let delete = plan
+            .ops
+            .delete_network_resources(vec![plan.info.clone()], None)
+            .await;
         let mut state = self.state.lock().await;
         state.commit_release_delete(lease, &plan, delete)
     }
@@ -1056,22 +1060,27 @@ impl NetnsPoolInner {
             }
 
             let names = cleanup_namespace_names(&plan.namespaces);
-            delete_namespaces_with_ops(plan.ops, plan.namespaces).await;
+            let dns_input_filter_comment = plan.dns_input_filter_comment;
+            let outcome = delete_network_resources_with_ops(
+                plan.ops,
+                plan.namespaces,
+                dns_input_filter_comment.clone(),
+            )
+            .await;
+            if let Some(comment) = &dns_input_filter_comment
+                && matches!(outcome, NamespaceDeleteOutcome::Abandoned)
+            {
+                warn!(
+                    comment,
+                    "DNS input filter cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                );
+            }
             {
                 let mut state = self.state.lock().await;
                 state.remove_queued_namespaces(&names);
-            }
-
-            if let Some(comment) = plan.dns_input_filter_comment {
-                let outcome = delete_pool_firewall_rules_by_comment(&comment).await;
-                if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
-                    warn!(
-                        comment,
-                        "DNS input filter cleanup did not complete cleanly; startup orphan reconciliation will retry"
-                    );
+                if let Some(comment) = &dns_input_filter_comment {
+                    state.commit_dns_input_filter_cleanup(comment);
                 }
-                let mut state = self.state.lock().await;
-                state.commit_dns_input_filter_cleanup(&comment);
             }
 
             if let Some(mut waiter) = plan.wait_for_pending
@@ -1301,20 +1310,28 @@ where
 }
 
 async fn delete_namespaces_with_ops(ops: NetnsLifecycleOps, namespaces: Vec<NetnsInfo>) {
+    delete_network_resources_with_ops(ops, namespaces, None).await;
+}
+
+async fn delete_network_resources_with_ops(
+    ops: NetnsLifecycleOps,
+    namespaces: Vec<NetnsInfo>,
+    dns_input_filter_comment: Option<String>,
+) -> NamespaceDeleteOutcome {
     let count = namespaces.len();
     if count > 0 {
         info!(count, "cleaning up namespace pool entries");
     }
-    for ns in namespaces {
-        let outcome = (ops.delete_namespace)(ns.clone()).await;
-        if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
-            warn!(
-                name = %ns.name,
-                host_device = %ns.host_device,
-                "namespace cleanup was abandoned; startup orphan reconciliation will retry"
-            );
-        }
+    let outcome = ops
+        .delete_network_resources(namespaces, dns_input_filter_comment)
+        .await;
+    if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
+        warn!(
+            namespace_count = count,
+            "network resource batch cleanup was abandoned; startup orphan reconciliation will retry"
+        );
     }
+    outcome
 }
 
 fn cleanup_namespace_names(namespaces: &[NetnsInfo]) -> HashSet<String> {
@@ -1325,8 +1342,8 @@ fn cleanup_namespace_names(namespaces: &[NetnsInfo]) -> HashSet<String> {
 mod tests {
     use super::*;
     use std::collections::VecDeque;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     const TEST_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -1458,10 +1475,11 @@ mod tests {
                         flush_outcome
                     })
                 }),
-                delete_namespace: Arc::new(move |_| {
+                delete_network_resources: Arc::new(move |namespaces, _| {
                     let delete_count = Arc::clone(&delete_count_for_ops);
+                    let count = namespaces.len();
                     Box::pin(async move {
-                        delete_count.fetch_add(1, Ordering::SeqCst);
+                        delete_count.fetch_add(count, Ordering::SeqCst);
                         delete_outcome
                     })
                 }),
@@ -1485,7 +1503,9 @@ mod tests {
                     ConntrackFlushOutcome::Trusted
                 })
             }),
-            delete_namespace: Arc::new(|_| Box::pin(async { NamespaceDeleteOutcome::Deleted })),
+            delete_network_resources: Arc::new(|_, _| {
+                Box::pin(async { NamespaceDeleteOutcome::Deleted })
+            }),
         };
         let probe = probe_for_test(move |namespace| {
             let phase = Arc::clone(&phase_for_probe);
@@ -1557,7 +1577,9 @@ mod tests {
                         ConntrackFlushOutcome::Trusted
                     })
                 }),
-                delete_namespace: Arc::new(|_| Box::pin(async { NamespaceDeleteOutcome::Deleted })),
+                delete_network_resources: Arc::new(|_, _| {
+                    Box::pin(async { NamespaceDeleteOutcome::Deleted })
+                }),
             },
             entered,
             release,
@@ -1582,10 +1604,11 @@ mod tests {
                         ConntrackFlushOutcome::Trusted
                     })
                 }),
-                delete_namespace: Arc::new(move |_| {
+                delete_network_resources: Arc::new(move |namespaces, _| {
                     let delete_count = Arc::clone(&delete_count_for_ops);
+                    let count = namespaces.len();
                     Box::pin(async move {
-                        delete_count.fetch_add(1, Ordering::SeqCst);
+                        delete_count.fetch_add(count, Ordering::SeqCst);
                         NamespaceDeleteOutcome::Deleted
                     })
                 }),
@@ -1620,10 +1643,11 @@ mod tests {
                         ConntrackFlushOutcome::Trusted
                     })
                 }),
-                delete_namespace: Arc::new(move |_| {
+                delete_network_resources: Arc::new(move |namespaces, _| {
                     let delete_count = Arc::clone(&delete_count_for_ops);
+                    let count = namespaces.len();
                     Box::pin(async move {
-                        delete_count.fetch_add(1, Ordering::SeqCst);
+                        delete_count.fetch_add(count, Ordering::SeqCst);
                         NamespaceDeleteOutcome::Deleted
                     })
                 }),
@@ -1645,12 +1669,13 @@ mod tests {
         BlockingDeleteLifecycle {
             ops: NetnsLifecycleOps {
                 flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
-                delete_namespace: Arc::new(move |_| {
+                delete_network_resources: Arc::new(move |namespaces, _| {
                     let entered = Arc::clone(&entered_for_ops);
                     let release = Arc::clone(&release_for_ops);
                     let delete_count = Arc::clone(&delete_count_for_ops);
+                    let count = namespaces.len();
                     Box::pin(async move {
-                        let attempt = delete_count.fetch_add(1, Ordering::SeqCst);
+                        let attempt = delete_count.fetch_add(count, Ordering::SeqCst);
                         if attempt == 0 {
                             entered.notify_one();
                             release.notified().await;
@@ -1683,12 +1708,13 @@ mod tests {
                         ConntrackFlushOutcome::Untrusted
                     })
                 }),
-                delete_namespace: Arc::new(move |_| {
+                delete_network_resources: Arc::new(move |namespaces, _| {
                     let delete_count = Arc::clone(&delete_count_for_ops);
                     let entered = Arc::clone(&entered_for_ops);
                     let release = Arc::clone(&release_for_ops);
+                    let count = namespaces.len();
                     Box::pin(async move {
-                        let attempt = delete_count.fetch_add(1, Ordering::SeqCst);
+                        let attempt = delete_count.fetch_add(count, Ordering::SeqCst);
                         if attempt == 0 {
                             entered.notify_one();
                             release.notified().await;
@@ -2605,6 +2631,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn attachment_generation_increments_when_namespace_is_reused() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.active = true;
+        pool.ops = NetnsLifecycleOps::trusted_for_test();
+        let first = pool.checkout(test_info("reused-ns")).unwrap();
+        assert_eq!(first.info().attachment_generation(), 1);
+        let mut first = Some(first);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
+
+        let outcome = handle.release(&mut first).await;
+        assert!(matches!(outcome, NetnsReleaseOutcome::Released));
+
+        let second = {
+            let mut pool = handle.inner.state.lock().await;
+            let info = pool.plain_queue.pop_front().unwrap();
+            pool.checkout(info).unwrap()
+        };
+        assert_eq!(second.info().attachment_generation(), 2);
+    }
+
+    #[tokio::test]
     async fn cancelled_untrusted_release_marks_namespace_non_reusable_for_retry() {
         let FirstDeleteBlocksLifecycle {
             ops,
@@ -3050,6 +3097,42 @@ mod tests {
         let pool = pool.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_batches_queued_namespaces_and_dns_filter() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let calls_for_ops = Arc::clone(&calls);
+        let ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
+            delete_network_resources: Arc::new(move |namespaces, dns_comment| {
+                let calls = Arc::clone(&calls_for_ops);
+                Box::pin(async move {
+                    calls.lock().unwrap().push((
+                        namespaces
+                            .into_iter()
+                            .map(|namespace| namespace.name)
+                            .collect::<Vec<_>>(),
+                        dns_comment,
+                    ));
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        state.plain_queue.push_back(test_info("plain-ns"));
+        state.proxy_queue.push_back(test_info("proxy-ns"));
+        state.dns_input_filter_comment = Some("vm0-ns-00-dns".into());
+        state.ops = ops;
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        pool.cleanup().await.unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, ["plain-ns", "proxy-ns"]);
+        assert_eq!(calls[0].1.as_deref(), Some("vm0-ns-00-dns"));
     }
 
     #[tokio::test]

@@ -15,6 +15,8 @@ pub struct NetnsInfo {
     /// Veth namespace-side IP (e.g. `10.200.0.2`). This is the source IP
     /// that the proxy sees after NAT, used as the VM registry key.
     pub(super) peer_ip: String,
+    /// Process-local count of successful checkouts for this namespace.
+    pub(super) attachment_generation: u64,
 }
 
 impl NetnsInfo {
@@ -23,6 +25,7 @@ impl NetnsInfo {
             name,
             host_device,
             peer_ip,
+            attachment_generation: 0,
         }
     }
 
@@ -39,6 +42,11 @@ impl NetnsInfo {
     /// Returns the namespace-side veth IP used to identify the VM behind NAT.
     pub fn peer_ip(&self) -> &str {
         &self.peer_ip
+    }
+
+    /// Returns the process-local checkout generation for this attachment.
+    pub(crate) fn attachment_generation(&self) -> u64 {
+        self.attachment_generation
     }
 }
 

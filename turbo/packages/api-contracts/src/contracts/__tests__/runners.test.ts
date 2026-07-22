@@ -530,11 +530,13 @@ describe("runner resume session contract", () => {
     expect(heldSessionState.workspaceCaches).toBeUndefined();
   });
 
-  it("accepts legacy or fully ordered heartbeat snapshots", () => {
+  it("accepts ordered heartbeat snapshots", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
       runnerName: "runner-contract-test",
       group: "vm0/test",
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
       totalVcpu: 8,
       totalMemoryMb: 16_384,
       maxConcurrent: 4,
@@ -546,7 +548,6 @@ describe("runner resume session contract", () => {
       mode: "running",
     } as const;
 
-    expect(heartbeatBodySchema.safeParse(heartbeat).success).toBe(true);
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
@@ -579,18 +580,6 @@ describe("runner resume session contract", () => {
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
-        snapshotGeneration: 7,
-      }).success,
-    ).toBe(false);
-    expect(
-      heartbeatBodySchema.safeParse({
-        ...heartbeat,
-        snapshotSequence: 42,
-      }).success,
-    ).toBe(false);
-    expect(
-      heartbeatBodySchema.safeParse({
-        ...heartbeat,
         snapshotGeneration: Number.MAX_SAFE_INTEGER + 1,
         snapshotSequence: 42,
       }).success,
@@ -602,6 +591,8 @@ describe("runner resume session contract", () => {
       runnerId: "33333333-3333-4333-8333-333333333333",
       runnerName: "runner-contract-test",
       group: "vm0/test",
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
       totalVcpu: 8,
       totalMemoryMb: 16_384,
       maxConcurrent: 4,

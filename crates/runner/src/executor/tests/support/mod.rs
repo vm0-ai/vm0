@@ -28,4 +28,6 @@ pub(super) use self::sandbox::{
     sandbox_write_file_error,
 };
 pub(super) use self::tracing::{CapturedEvent, CapturedEvents};
-pub(super) use self::workspace_cache::seed_workspace_image_cache;
+pub(super) use self::workspace_cache::{
+    seed_workspace_image_cache, seed_workspace_image_cache_with_fingerprints,
+};

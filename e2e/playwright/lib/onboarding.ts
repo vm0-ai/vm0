@@ -42,6 +42,15 @@ export async function startVideoOnboardingCheckout(
   ).toBeVisible({ timeout: 30_000 });
   expect(new URL(page.url()).pathname).toBe("/onboarding/video-template");
 
+  // The template pickers no longer pre-select a default, so a template must be
+  // chosen before Continue becomes enabled.
+  const videoTemplate = page
+    .getByRole("button", { name: /video template$/iu })
+    .first();
+  await expect(videoTemplate).toBeVisible({ timeout: 30_000 });
+  await videoTemplate.click();
+  await expect(videoTemplate).toHaveAttribute("aria-pressed", "true");
+
   await clickOnboardingButton(page, /^Continue$/i);
   await expect(
     page.getByRole("heading", { name: /customize your video/i }),

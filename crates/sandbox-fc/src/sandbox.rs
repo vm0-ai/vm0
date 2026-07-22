@@ -39,7 +39,7 @@ use crate::exec_operation_result::{
 };
 use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
-    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_snapshot,
+    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
@@ -535,6 +535,10 @@ impl SandboxNetwork {
 
     fn host_device(&self) -> &str {
         self.info.host_device()
+    }
+
+    fn attachment_generation(&self) -> u64 {
+        self.info.attachment_generation()
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -1266,7 +1270,7 @@ impl FirecrackerSandbox {
                 }
                 Err(error) => {
                     timing.record(SandboxStartStage::GuestDnsReadiness, dns_started, false);
-                    capture_guest_dns_failure_snapshot(
+                    capture_guest_dns_failure_diagnostics(
                         vsock_guest.as_ref(),
                         GuestDnsFailureDiagnosticContext {
                             sandbox_id: &self.id,
@@ -1275,6 +1279,12 @@ impl FirecrackerSandbox {
                             host_device: self.network.host_device(),
                             peer_ip: self.network.peer_ip(),
                             dns_port,
+                            attachment_generation: self.network.attachment_generation(),
+                            startup_mode: if self.factory_config.snapshot.is_some() {
+                                "snapshot_restore"
+                            } else {
+                                "fresh"
+                            },
                         },
                     )
                     .await;

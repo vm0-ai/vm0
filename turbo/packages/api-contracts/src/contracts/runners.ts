@@ -751,20 +751,12 @@ export const heartbeatBodySchema = z
     runnerId: z.uuid(),
     runnerName: z.string(),
     group: runnerGroupSchema,
-    // Optional for rolling compatibility: new APIs accept legacy runners, and
-    // old APIs ignore this additive pair from new runners.
     snapshotGeneration: z
       .number()
       .int()
       .positive()
-      .max(Number.MAX_SAFE_INTEGER)
-      .optional(),
-    snapshotSequence: z
-      .number()
-      .int()
-      .positive()
-      .max(Number.MAX_SAFE_INTEGER)
-      .optional(),
+      .max(Number.MAX_SAFE_INTEGER),
+    snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     totalVcpu: z.number().int().nonnegative(),
     totalMemoryMb: z.number().int().nonnegative(),
     maxConcurrent: z.number().int().nonnegative(),
@@ -776,18 +768,6 @@ export const heartbeatBodySchema = z
     mode: z.enum(["starting", "running", "draining", "stopping"]),
   })
   .superRefine((heartbeat, ctx) => {
-    if (
-      (heartbeat.snapshotGeneration === undefined) !==
-      (heartbeat.snapshotSequence === undefined)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["snapshotGeneration"],
-        message:
-          "snapshotGeneration and snapshotSequence must be provided together",
-      });
-    }
-
     const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
       (count, state) => {
         return count + (state.workspaceCaches?.length ?? 0);
