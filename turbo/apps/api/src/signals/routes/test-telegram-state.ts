@@ -669,10 +669,12 @@ async function seedAgentRunCallbackForAction(
   if (!runId) {
     return actionBadRequest("run_id is required");
   }
-  const encryptedSecret = await encryptPersistentSecretValue(
-    readActionOptionalString(body, "secret") ?? "test-callback-secret",
-    {},
-  );
+  const encryptedSecret = readActionBoolean(body, "persist_secret", true)
+    ? await encryptPersistentSecretValue(
+        readActionOptionalString(body, "secret") ?? "test-callback-secret",
+        {},
+      )
+    : null;
   signal.throwIfAborted();
   const [row] = await db
     .insert(agentRunCallbacks)
@@ -1250,6 +1252,7 @@ async function getTelegramPostRunStateForAction(
         id: agentRunCallbacks.id,
         url: agentRunCallbacks.url,
         internalKind: agentRunCallbacks.internalKind,
+        encryptedSecret: agentRunCallbacks.encryptedSecret,
         payload: agentRunCallbacks.payload,
         status: agentRunCallbacks.status,
         attempts: agentRunCallbacks.attempts,
@@ -1268,7 +1271,16 @@ async function getTelegramPostRunStateForAction(
   return actionOk({
     run,
     zero_run: zeroRun ?? null,
-    callbacks,
+    callbacks: callbacks.map((callback) => {
+      return {
+        id: callback.id,
+        url: callback.url,
+        internalKind: callback.internalKind,
+        hasEncryptedSecret: callback.encryptedSecret !== null,
+        payload: callback.payload,
+        status: callback.status,
+      };
+    }),
     job_exists: job !== undefined,
   });
 }

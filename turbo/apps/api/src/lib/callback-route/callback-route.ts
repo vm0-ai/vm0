@@ -118,7 +118,7 @@ export function callbackRoute<T>(
             .limit(1);
       signal.throwIfAborted();
 
-      if (!record) {
+      if (!record?.encryptedSecret) {
         return { status: 404, body: { error: "Callback not found" } };
       }
 

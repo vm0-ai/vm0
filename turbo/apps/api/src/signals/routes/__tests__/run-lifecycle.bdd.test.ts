@@ -175,6 +175,7 @@ const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_run_admission",
+  "api_dispatch_prepare_run_callbacks",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
   "api_dispatch_prepare_context_resolve_compose",
@@ -1046,6 +1047,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       ["api_dispatch_check_run_admission"],
       "top_level",
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_run_callbacks",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        span_kind: "nested",
+        run_callback_internal_count_bucket: "0",
+        run_callback_http_count_bucket: "0",
+      }),
     );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",

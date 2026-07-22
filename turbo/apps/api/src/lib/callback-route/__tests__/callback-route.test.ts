@@ -59,7 +59,7 @@ function signedHeaders(
   return headers;
 }
 
-async function seedCallback(): Promise<{
+async function seedCallback(persistSecret = true): Promise<{
   runId: string;
   callbackId: string;
 }> {
@@ -87,6 +87,7 @@ async function seedCallback(): Promise<{
       runId: run.runId,
       url: `http://localhost${PATH}`,
       payload: {},
+      persistSecret,
     },
     context.signal,
   );
@@ -139,6 +140,31 @@ describe("callbackRoute$ primitive", () => {
     });
     const rawBody = JSON.stringify({
       runId: randomUUID(),
+      status: "completed",
+      payload: {},
+    });
+
+    const response = await app.request(PATH, {
+      method: "POST",
+      headers: signedHeaders(rawBody),
+      body: rawBody,
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Callback not found",
+    });
+  });
+
+  it("returns 404 when callback authentication material is missing", async () => {
+    const { runId, callbackId } = await seedCallback(false);
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: [probeRoute],
+    });
+    const rawBody = JSON.stringify({
+      callbackId,
+      runId,
       status: "completed",
       payload: {},
     });

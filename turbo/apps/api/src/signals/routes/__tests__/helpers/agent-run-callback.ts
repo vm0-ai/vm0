@@ -11,12 +11,14 @@ interface SeedAgentRunCallbackOptions {
   readonly internalKind?: string;
   readonly payload: Record<string, unknown>;
   readonly secret?: string;
+  readonly persistSecret?: boolean;
   readonly status?: "pending" | "delivered" | "failed";
 }
 
 interface AgentRunCallbackSnapshot {
   readonly id: string;
   readonly internalKind: string | null;
+  readonly hasEncryptedSecret: boolean;
   readonly payload: unknown;
   readonly status: "pending" | "delivered" | "failed";
   readonly attempts: number;
@@ -71,12 +73,18 @@ function agentRunCallbackSnapshot(
       value.status === "failed")
       ? value.status
       : null;
-  if (!id || !status) {
+  const hasEncryptedSecret =
+    "hasEncryptedSecret" in value &&
+    typeof value.hasEncryptedSecret === "boolean"
+      ? value.hasEncryptedSecret
+      : null;
+  if (!id || !status || hasEncryptedSecret === null) {
     return null;
   }
   return {
     id,
     internalKind,
+    hasEncryptedSecret,
     payload: "payload" in value ? value.payload : undefined,
     status,
     attempts:
@@ -110,6 +118,7 @@ export const seedAgentRunCallback$ = command(
           internal_kind: options.internalKind ?? null,
           payload: options.payload,
           secret: options.secret,
+          persist_secret: options.persistSecret,
           status: options.status,
         }),
       },
