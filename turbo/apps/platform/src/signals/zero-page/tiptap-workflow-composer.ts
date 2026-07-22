@@ -57,10 +57,9 @@ import { createComposerWorkflows } from "./composer-workflows.ts";
 type AgentIdValue = string | null | Promise<string | null>;
 
 const EDITOR_CONTENT_CLASS =
-  // The editor grows with its content instead of scrolling inside a fixed
-  // 200px box: a nested scroll region felt cramped once queued references and
-  // typed text stacked up. Overflow is delegated to the surrounding page.
-  "w-full whitespace-pre-wrap " +
+  // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
+  // before it crowds out the chat message history.
+  "w-full max-h-[min(40vh,320px)] overflow-y-auto whitespace-pre-wrap " +
   "break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground " +
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";

@@ -8,7 +8,6 @@ import {
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -116,10 +115,7 @@ import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
-import {
-  personalModelProvider$,
-  selectedModelAvailable$,
-} from "../zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
@@ -714,13 +710,6 @@ function createModelSelection(
   };
 }
 
-type ModelSelectionForSendResult =
-  | { readonly available: false }
-  | {
-      readonly available: true;
-      readonly selection: ModelProviderSelection | null;
-    };
-
 function createModelSelectionForSend({
   selectedModel$,
   codexFastModeActive$,
@@ -730,26 +719,19 @@ function createModelSelectionForSend({
 }) {
   return command(
     async (
-      { get, set },
+      { get },
       signal: AbortSignal,
-    ): Promise<ModelSelectionForSendResult> => {
+    ): Promise<ModelProviderSelection | null> => {
       const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
       if (!selectedModel) {
-        return { available: true, selection: null };
-      }
-      if (!(await set(selectedModelAvailable$, selectedModel, signal))) {
-        toast.error("The selected model is not available");
-        return { available: false };
+        return null;
       }
       const codexFastModeActive = await get(codexFastModeActive$);
       signal.throwIfAborted();
-      return {
-        available: true,
-        selection: codexFastModeActive
-          ? { selectedModel, codexServiceTier: "fast" }
-          : { selectedModel },
-      };
+      return codexFastModeActive
+        ? { selectedModel, codexServiceTier: "fast" }
+        : { selectedModel };
     },
   );
 }
@@ -2925,6 +2907,12 @@ function createRunTracking({
     await set(initializeIndexedDbMessages$, signal);
     signal.throwIfAborted();
 
+    const onThreadDetailChanged$ = command(({ set }) => {
+      L.debug("onThreadDetailChanged$ fired", { threadId });
+      set(reloadThread$);
+      return false;
+    });
+
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
       await set(syncRemoteMessages$, sig);
@@ -2988,6 +2976,7 @@ function createRunTracking({
           {
             threadId,
             handlers: {
+              onThreadDetailChanged$,
               onMessageCreated$,
               onMessageUpdated$,
               onRunChanged$,
@@ -3173,7 +3162,7 @@ interface SendMessageDeps {
   pendingSendCount$: State<number>;
   agentId$: Computed<string | null>;
   modelSelectionForSend$: Command<
-    Promise<ModelSelectionForSendResult>,
+    Promise<ModelProviderSelection | null>,
     [AbortSignal]
   >;
   draft: DraftSignals;
@@ -3352,11 +3341,8 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return false;
       }
-      const modelSelectionResult = await set(modelSelectionForSend$, signal);
+      const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      if (!modelSelectionResult.available) {
-        return false;
-      }
       set(pendingSendCount$, (count) => {
         return count + 1;
       });
@@ -3367,7 +3353,7 @@ function createSendMessage(deps: SendMessageDeps) {
             prompt,
             options,
             agentId,
-            modelSelection: modelSelectionResult.selection,
+            modelSelection,
           },
           signal,
         ),
@@ -3385,7 +3371,7 @@ interface QueueMessageDeps {
   threadId: string;
   agentId$: Computed<string | null>;
   modelSelectionForSend$: Command<
-    Promise<ModelSelectionForSendResult>,
+    Promise<ModelProviderSelection | null>,
     [AbortSignal]
   >;
   draft: DraftSignals;
@@ -3437,12 +3423,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
       }
       const generationTemplate = get(draft.generationTemplate$);
 
-      const modelSelectionResult = await set(modelSelectionForSend$, signal);
+      const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      if (!modelSelectionResult.available) {
-        return false;
-      }
-      const modelSelection = modelSelectionResult.selection;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,

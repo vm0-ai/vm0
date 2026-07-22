@@ -13,12 +13,14 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
+const api = createRunsApi(context);
 
 interface ChatThreadFixture {
   readonly userId: string;
@@ -30,6 +32,23 @@ interface ChatThreadFixture {
 async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
+  const { providerId } = await api.ensureOrgModelProvider(actor);
+  await api.updateOrgModelPolicies(actor, [
+    {
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: providerId,
+    },
+    {
+      model: "claude-sonnet-5",
+      isDefault: false,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: providerId,
+    },
+  ]);
   const agent = await bdd.createAgent(actor, {
     displayName: "Chat thread model selection agent",
     visibility: "private",

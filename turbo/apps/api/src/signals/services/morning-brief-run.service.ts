@@ -36,12 +36,9 @@ import {
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import {
   postRunUserMessage,
-  resolveRunChatThreadModelPin,
+  resolveRunChatThreadModelContext,
 } from "./zero-chat-run-message.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -338,6 +335,7 @@ async function ensureMorningBriefChatThread(
 interface MorningBriefModelContext {
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly codexServiceTier: "fast" | undefined;
 }
 
 async function resolveMorningBriefModelContext(
@@ -346,30 +344,24 @@ async function resolveMorningBriefModelContext(
   chatThreadId: string,
 ): Promise<MorningBriefModelContext | null> {
   const { row, deliveryId, currentTime } = claimed;
-  const modelPin = await resolveRunChatThreadModelPin({
+  const modelContext = await resolveRunChatThreadModelContext({
     db,
     orgId: row.orgId,
     userId: row.userId,
     threadId: chatThreadId,
   });
-  if ("status" in modelPin) {
+  if ("status" in modelContext) {
     // Credit / provider admission problems skip silently by design; the
     // schedule already points at tomorrow 7:00.
     await markDeliveryFailed(
       db,
       deliveryId,
-      modelPin.body.error.message,
+      modelContext.body.error.message,
       currentTime,
     );
     return null;
   }
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db,
-    orgId: row.orgId,
-    userId: row.userId,
-    modelPin,
-    requestedModelProvider: undefined,
-  });
+  const { pin, providerAdmission, runCodexServiceTier } = modelContext;
   if (providerAdmission.error) {
     await markDeliveryFailed(
       db,
@@ -380,8 +372,9 @@ async function resolveMorningBriefModelContext(
     return null;
   }
   return {
-    modelPin,
+    modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    codexServiceTier: runCodexServiceTier,
   };
 }
 
@@ -514,6 +507,7 @@ const startMorningBriefRun$ = command(
         modelProviderCredentialScope:
           model.modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: model.modelPin.selectedModel ?? undefined,
+        codexServiceTier: model.codexServiceTier,
         appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
           briefDate,
           timezone,

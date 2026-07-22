@@ -4,7 +4,6 @@ import {
   chatThreadModelSelectionContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { isCodexFastModeModel } from "@vm0/api-contracts/contracts/model-providers";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -19,10 +18,12 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import {
+  isCodexFastServiceTierSupported,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
   type ModelFirstPin,
 } from "../services/zero-model-selection.service";
+import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
 
 const modelSelectionBody$ = bodyResultOf(
@@ -67,8 +68,11 @@ async function validateCodexServiceTierPatch(params: {
     return providerAdmission.error;
   }
   if (
-    providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastModeModel(params.pin.selectedModel)
+    isCodexFastServiceTierSupported({
+      selectedModel: params.pin.selectedModel,
+      effectiveModelProvider: providerAdmission.effectiveModelProvider,
+      codexFastModeEnabled: true,
+    })
   ) {
     return undefined;
   }
@@ -125,10 +129,7 @@ const updateModelSelectionInner$ = command(
       const [thread] = await tx
         .update(chatThreads)
         .set({
-          modelProviderId: pin.modelProviderId,
-          modelProviderType: pin.modelProviderType,
-          modelProviderCredentialScope: pin.modelProviderCredentialScope,
-          selectedModel: pin.selectedModel,
+          ...chatThreadModelPinColumns(pin),
           codexServiceTier: body.data.codexServiceTier ?? null,
           updatedAt,
         })
