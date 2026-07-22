@@ -2,11 +2,13 @@ import {
   connectorAuthCodeGrantCallbackOrigin,
   connectorOpenIdAuthGrantCallbackOrigin,
 } from "@vm0/connectors/connector-utils";
+import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
 } from "@vm0/connectors/connectors";
 
+import { env } from "../../lib/env";
 import {
   getOAuthApiOrigin,
   getOAuthCanonicalRedirectUrl,
@@ -29,17 +31,32 @@ function resolveCallbackOrigin(
   }
 }
 
-export function getConnectorOAuthCallbackOriginForMethod(args: {
+export function getConnectorOAuthCallbackUrlForMethod(args: {
   readonly request: Request;
   readonly method: ConnectorAuthMethodRuntimeConfig;
+  readonly connectorRef: string;
+  readonly callbackTarget: "app" | undefined;
 }): string {
   if (args.method.grant.kind !== "auth-code") {
     throw new Error("Auth-code connector method required");
   }
-  return resolveCallbackOrigin(
-    args.request,
-    connectorAuthCodeGrantCallbackOrigin(args.method.grant),
+  const callbackOrigin = connectorAuthCodeGrantCallbackOrigin(
+    args.method.grant,
   );
+  if (
+    args.callbackTarget === "app" &&
+    isConnectorAppOauthCallbackEnabled(args.connectorRef) &&
+    callbackOrigin === "web"
+  ) {
+    return new URL(
+      `/connectors/${encodeURIComponent(args.connectorRef)}/callback`,
+      env("APP_URL"),
+    ).toString();
+  }
+  return new URL(
+    `/api/connectors/${encodeURIComponent(args.connectorRef)}/callback`,
+    resolveCallbackOrigin(args.request, callbackOrigin),
+  ).toString();
 }
 
 export function getConnectorOpenIdCallbackOriginForMethod(args: {

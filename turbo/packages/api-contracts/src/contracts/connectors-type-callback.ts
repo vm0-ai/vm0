@@ -5,6 +5,24 @@ import { connectorRefSchema } from "./connector-identity";
 
 const c = initContract();
 
+export const connectorOauthCallbackResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("success"),
+      username: z.string().nullable(),
+    }),
+    z.object({
+      status: z.literal("error"),
+      message: z.string(),
+    }),
+  ],
+);
+
+export type ConnectorOauthCallbackResult = z.infer<
+  typeof connectorOauthCallbackResultSchema
+>;
+
 export const connectorsTypeCallbackContract = c.router({
   callback: {
     method: "GET",
@@ -19,6 +37,7 @@ export const connectorsTypeCallbackContract = c.router({
         realmId: z.string().optional(),
         error: z.string().optional(),
         error_description: z.string().optional(),
+        responseMode: z.literal("json").optional(),
         "openid.mode": z.string().optional(),
         "openid.ns": z.string().optional(),
         "openid.op_endpoint": z.string().optional(),
@@ -33,6 +52,7 @@ export const connectorsTypeCallbackContract = c.router({
       })
       .catchall(z.string()),
     responses: {
+      200: connectorOauthCallbackResultSchema,
       307: c.noBody(),
     },
     summary: "Complete connector browser authorization",

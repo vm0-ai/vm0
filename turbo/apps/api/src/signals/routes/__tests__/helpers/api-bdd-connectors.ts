@@ -1272,6 +1272,7 @@ export function createConnectorBddApi(context: TestContext) {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 500)[];
         readonly agentId?: string;
         readonly authorizeAgent?: true;
+        readonly callbackTarget?: "app";
       },
     ) {
       const client = setupApp({ context })(zeroConnectorOauthStartContract);
@@ -1283,6 +1284,9 @@ export function createConnectorBddApi(context: TestContext) {
             authMethod,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+            ...(options.callbackTarget
+              ? { callbackTarget: options.callbackTarget }
+              : {}),
           },
         }),
         options.statuses,
@@ -1332,6 +1336,20 @@ export function createConnectorBddApi(context: TestContext) {
         client.callback({ params: { type }, query, headers: {} }),
         [307],
       );
+    },
+
+    async completeOauthCallbackResult(type: string, query: CallbackQuery) {
+      const client = setupApp({ context })(connectorsTypeCallbackContract);
+      const response = await accept(
+        client.callback({
+          params: { type },
+          query: { ...query, responseMode: "json" },
+          headers: {},
+        }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
     },
 
     /**

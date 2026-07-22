@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import {
+  connectorsTypeCallbackContract,
+  type ConnectorOauthCallbackResult,
+} from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorRef,
@@ -430,6 +433,31 @@ function successRedirectResponse(args: {
   return response;
 }
 
+function callbackResultFromRedirect(
+  response: Response,
+): ConnectorOauthCallbackResult {
+  const location = response.headers.get("location");
+  if (!location) {
+    throw new Error("Connector callback response is missing a redirect");
+  }
+  const url = new URL(location);
+  if (url.pathname === "/connector/success") {
+    return {
+      status: "success",
+      username: url.searchParams.get("username") || null,
+    };
+  }
+  if (url.pathname === "/connector/error") {
+    return {
+      status: "error",
+      message:
+        url.searchParams.get("message") ||
+        "OAuth authorization failed. Please try again.",
+    };
+  }
+  throw new Error(`Unexpected connector callback redirect: ${location}`);
+}
+
 function callbackOAuthContext(args: {
   readonly storedContext: string | undefined;
   readonly realmId: string | undefined;
@@ -770,6 +798,7 @@ const handleOpenIdConnectorCallback$ = command(
 
 function authCodeCallbackPreflight(args: {
   readonly type: ConnectorRef;
+  readonly query: ConnectorCallbackQuery;
   readonly request: Request;
   readonly origin: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -783,6 +812,9 @@ function authCodeCallbackPreflight(args: {
   });
   if (!connectorResult.ok) {
     return connectorResult.response;
+  }
+  if (args.query.responseMode === "json") {
+    return null;
   }
   const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrlForMethods(
     args.request,
@@ -940,30 +972,33 @@ const callbackConnectorInner$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
     signal.throwIfAborted();
 
-    if (hasOpenIdCallbackFields(query)) {
-      return await set(
-        handleOpenIdConnectorCallback$,
-        {
-          type,
-          query,
-          origin,
-          snapshot,
-        },
-        signal,
-      );
-    }
+    const response = hasOpenIdCallbackFields(query)
+      ? await set(
+          handleOpenIdConnectorCallback$,
+          {
+            type,
+            query,
+            origin,
+            snapshot,
+          },
+          signal,
+        )
+      : await set(
+          handleAuthCodeConnectorCallback$,
+          {
+            type,
+            query,
+            request,
+            origin,
+            snapshot,
+          },
+          signal,
+        );
+    signal.throwIfAborted();
 
-    return await set(
-      handleAuthCodeConnectorCallback$,
-      {
-        type,
-        query,
-        request,
-        origin,
-        snapshot,
-      },
-      signal,
-    );
+    return query.responseMode === "json"
+      ? { status: 200 as const, body: callbackResultFromRedirect(response) }
+      : response;
   },
 );
 
