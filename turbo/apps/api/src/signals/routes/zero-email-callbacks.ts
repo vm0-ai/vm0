@@ -23,6 +23,7 @@ import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
 import {
   buildFromAddress,
+  buildOneClickUnsubscribeUrl,
   buildReplyToAddress,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
@@ -202,7 +203,9 @@ const handleEmailReplyCallback$ = command(
         replyTo: buildReplyToAddress(session.replyToToken),
         headers: {
           ...buildReplyThreadingHeaders(payload, session.lastEmailMessageId),
-          ...buildUnsubscribeHeaders(unsubscribeUrl),
+          ...buildUnsubscribeHeaders(
+            buildOneClickUnsubscribeUrl(session.userId),
+          ),
         },
         threadAction: {
           action: "update_thread_session",
@@ -318,7 +321,9 @@ const handleVerifiedEmailTriggerCallback$ = command(
             payload.inboundMessageId,
             payload.inboundReferences,
           ),
-          ...buildUnsubscribeHeaders(unsubscribeUrl),
+          ...buildUnsubscribeHeaders(
+            buildOneClickUnsubscribeUrl(payload.userId),
+          ),
         },
         threadAction: agentSessionId
           ? {

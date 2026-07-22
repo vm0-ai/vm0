@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash } from "node:crypto";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
@@ -45,6 +45,12 @@ import {
   safeSync,
   tapError,
 } from "../utils";
+import {
+  buildFromAddress,
+  buildOneClickUnsubscribeUrl,
+  buildUnsubscribeHeaders,
+  buildUnsubscribeUrl,
+} from "./zero-email-common.service";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -172,38 +178,6 @@ function activeExportJobStatus(status: string): ActiveExportJobStatus {
   }
 
   throw new Error(`Unexpected active export job status: ${status}`);
-}
-
-function fromDomain(): string {
-  const domain = env("RESEND_FROM_DOMAIN");
-  if (!domain) {
-    throw new Error("RESEND_FROM_DOMAIN is not configured");
-  }
-  return domain;
-}
-
-function buildFromAddress(localPart: string): string {
-  return `Zero <${localPart}@${fromDomain()}>`;
-}
-
-function generateUnsubscribeToken(userId: string): string {
-  const hmac = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(`unsubscribe:${userId}`)
-    .digest("hex")
-    .slice(0, 32);
-  return `${userId}.${hmac}`;
-}
-
-function buildUnsubscribeUrl(userId: string): string {
-  const token = generateUnsubscribeToken(userId);
-  return `${env("VM0_WEB_URL")}/api/email/unsubscribe?token=${token}`;
-}
-
-function buildUnsubscribeHeaders(url: string): Record<string, string> {
-  return {
-    "List-Unsubscribe": `<${url}>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-  };
 }
 
 function primaryEmail(user: ClerkEmailProfile): string | null {
@@ -1031,6 +1005,7 @@ async function enqueueExportReadyEmail(
 
   const email = await getCachedUserEmail(runtime, args.userId);
   const unsubscribeUrl = buildUnsubscribeUrl(args.userId);
+  const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(args.userId);
   const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -1041,7 +1016,7 @@ async function enqueueExportReadyEmail(
     fromAddress: buildFromAddress("vm0"),
     toAddresses: email,
     subject: DATA_EXPORT_READY_SUBJECT,
-    headers: buildUnsubscribeHeaders(unsubscribeUrl),
+    headers: buildUnsubscribeHeaders(oneClickUnsubscribeUrl),
     template: {
       template: "data-export-ready",
       props: {

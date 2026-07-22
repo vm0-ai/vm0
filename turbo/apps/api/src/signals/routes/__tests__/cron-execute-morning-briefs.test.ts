@@ -532,18 +532,21 @@ describe("cron execute morning briefs", () => {
     expect(email.headers?.["List-Unsubscribe"]).toContain(
       "/api/email/morning-brief/unsubscribe",
     );
+    // The body manage link points at the app confirmation page.
+    expect(email.html).toContain("/email/unsubscribe?scope=morning-brief");
 
-    // The one-click unsubscribe link turns the preference off.
-    const manageUrlMatch = email.html.match(
-      /href="([^"]*morning-brief\/unsubscribe[^"]*)"/u,
-    );
-    if (!manageUrlMatch?.[1]) {
-      throw new Error("Expected the manage link in the email");
+    // The RFC 8058 one-click POST turns the preference off.
+    const headerUrlMatch =
+      email.headers?.["List-Unsubscribe"]?.match(/<([^>]+)>/u);
+    if (!headerUrlMatch?.[1]) {
+      throw new Error("Expected the List-Unsubscribe header URL");
     }
-    const manageUrl = new URL(manageUrlMatch[1].replaceAll("&amp;", "&"));
+    const oneClickUrl = new URL(headerUrlMatch[1]);
     const unsubscribeResponse = await createApp({
       signal: context.signal,
-    }).request(`${manageUrl.pathname}${manageUrl.search}`);
+    }).request(`${oneClickUrl.pathname}${oneClickUrl.search}`, {
+      method: "POST",
+    });
     expect(unsubscribeResponse.status).toBe(200);
 
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);

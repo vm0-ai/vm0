@@ -24,7 +24,8 @@ import {
   getUserEmail,
 } from "./zero-email-common.service";
 import {
-  buildMorningBriefUnsubscribeUrl,
+  buildMorningBriefManageUrl,
+  buildMorningBriefOneClickUnsubscribeUrl,
   MORNING_BRIEF_PREHEADER,
 } from "./morning-brief-email-link.service";
 
@@ -177,10 +178,7 @@ async function enqueueMorningBriefEmail(
     .limit(1);
 
   const dateLabel = morningBriefDateLabel(delivery.briefDate);
-  const manageUrl = buildMorningBriefUnsubscribeUrl(
-    delivery.orgId,
-    delivery.userId,
-  );
+  const manageUrl = buildMorningBriefManageUrl(delivery.orgId, delivery.userId);
   const continueUrl = schedule?.chatThreadId
     ? `${appUrl()}/chats/${schedule.chatThreadId}`
     : appUrl();
@@ -189,7 +187,9 @@ async function enqueueMorningBriefEmail(
     fromAddress: buildFromAddress("zero"),
     toAddresses: userEmail,
     subject: `Morning Briefing - ${dateLabel}`,
-    headers: buildUnsubscribeHeaders(manageUrl),
+    headers: buildUnsubscribeHeaders(
+      buildMorningBriefOneClickUnsubscribeUrl(delivery.orgId, delivery.userId),
+    ),
     template: {
       template: "morning-brief",
       props: {

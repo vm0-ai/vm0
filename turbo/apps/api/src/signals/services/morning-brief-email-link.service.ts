@@ -17,12 +17,24 @@ function tokenSignature(orgId: string, userId: string): string {
     .slice(0, SIGNATURE_HEX_LENGTH);
 }
 
-export function buildMorningBriefUnsubscribeUrl(
+function morningBriefUnsubscribeToken(orgId: string, userId: string): string {
+  return `${orgId}.${userId}.${tokenSignature(orgId, userId)}`;
+}
+
+export function buildMorningBriefManageUrl(
   orgId: string,
   userId: string,
 ): string {
-  const token = `${orgId}.${userId}.${tokenSignature(orgId, userId)}`;
-  return `${env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${token}`;
+  const token = morningBriefUnsubscribeToken(orgId, userId);
+  return `${env("APP_URL")}/email/unsubscribe?scope=morning-brief&token=${token}`;
+}
+
+export function buildMorningBriefOneClickUnsubscribeUrl(
+  orgId: string,
+  userId: string,
+): string {
+  const token = morningBriefUnsubscribeToken(orgId, userId);
+  return `${env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${token}`;
 }
 
 export function verifyMorningBriefUnsubscribeToken(
