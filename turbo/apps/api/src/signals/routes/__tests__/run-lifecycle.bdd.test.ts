@@ -9555,6 +9555,59 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("keeps claim auth valid through timeout finalization and expires it after three hours", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const issuedAt = now();
+    mockNow(issuedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "time out after the runner execution budget",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    mockNow(issuedAt + 2 * 60 * 60 * 1000 + 60_000);
+    const telemetry = await webhooks.requestAgentTelemetry(
+      { runId: run.runId },
+      sandboxHeaders,
+      [200],
+    );
+    expect(telemetry.body).toStrictEqual({ success: true, id: run.runId });
+
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 124,
+        error: "runner job timed out",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("runner job timed out");
+
+    mockNow(issuedAt + 3 * 60 * 60 * 1000 + 1000);
+    const expiredTelemetry = await webhooks.requestAgentTelemetry(
+      { runId: run.runId },
+      sandboxHeaders,
+      [401],
+    );
+    expectApiError(expiredTelemetry.body);
+    expect(expiredTelemetry.body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
