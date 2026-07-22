@@ -39,6 +39,12 @@ interface SignedHeaderOptions {
   readonly staleTimestamp?: boolean;
 }
 
+interface SeedCallbackOptions {
+  readonly persistSecret?: boolean;
+  readonly seedLegacyInternalCallback?: boolean;
+  readonly seedUnauthenticatedHttpCallback?: boolean;
+}
+
 function signedHeaders(
   rawBody: string,
   secret = TEST_CALLBACK_SECRET,
@@ -59,7 +65,7 @@ function signedHeaders(
   return headers;
 }
 
-async function seedCallback(persistSecret = true): Promise<{
+async function seedCallback(options: SeedCallbackOptions = {}): Promise<{
   runId: string;
   callbackId: string;
 }> {
@@ -81,13 +87,37 @@ async function seedCallback(persistSecret = true): Promise<{
     prompt: "callback route probe run",
     modelProvider: "anthropic-api-key",
   });
+  if (options.seedLegacyInternalCallback) {
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: run.runId,
+        internalKind: "chat",
+        payload: {},
+        secret: "legacy-internal-callback-secret",
+      },
+      context.signal,
+    );
+  }
+  if (options.seedUnauthenticatedHttpCallback) {
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: run.runId,
+        url: `http://localhost${PATH}`,
+        payload: {},
+        persistSecret: false,
+      },
+      context.signal,
+    );
+  }
   const { callbackId } = await store.set(
     seedAgentRunCallback$,
     {
       runId: run.runId,
       url: `http://localhost${PATH}`,
       payload: {},
-      persistSecret,
+      persistSecret: options.persistSecret,
     },
     context.signal,
   );
@@ -157,7 +187,9 @@ describe("callbackRoute$ primitive", () => {
   });
 
   it("returns 404 when callback authentication material is missing", async () => {
-    const { runId, callbackId } = await seedCallback(false);
+    const { runId, callbackId } = await seedCallback({
+      persistSecret: false,
+    });
     const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
@@ -179,6 +211,31 @@ describe("callbackRoute$ primitive", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: "Callback not found",
     });
+  });
+
+  it("selects an authenticated HTTP callback for the runId fallback", async () => {
+    const { runId } = await seedCallback({
+      seedLegacyInternalCallback: true,
+      seedUnauthenticatedHttpCallback: true,
+    });
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: [probeRoute],
+    });
+    const rawBody = JSON.stringify({
+      runId,
+      status: "completed",
+      payload: {},
+    });
+
+    const response = await app.request(PATH, {
+      method: "POST",
+      headers: signedHeaders(rawBody),
+      body: rawBody,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ ok: true, runId });
   });
 
   it("returns 401 on invalid signature", async () => {
