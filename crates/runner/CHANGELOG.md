@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.27...runner-rs-v0.146.28) (2026-07-22)
+
+
+### Performance Improvements
+
+* **runner:** deliver bounded cold archives while fresh sandboxes start ([#22409](https://github.com/vm0-ai/vm0/issues/22409)) ([bc9a4c1](https://github.com/vm0-ai/vm0/commit/bc9a4c1718410a928ff4cb0859fc9367f63fee44))
+
 ## [0.146.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.26...runner-rs-v0.146.27) (2026-07-21)
 
 
