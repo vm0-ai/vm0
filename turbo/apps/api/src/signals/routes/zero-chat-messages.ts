@@ -639,7 +639,7 @@ function resolveRuntimeNormalSendBody(
   if (!structuredPromptEnabled || !body.structuredPrompt) {
     return {
       ...body,
-      structuredPrompt: undefined,
+      structuredPrompt: body.structuredPrompt,
       agentPrompt: buildFullPrompt(body.prompt, body.attachFiles),
       hasTextContent: body.hasTextContent !== false,
     };

@@ -5,7 +5,7 @@ import type {
 
 const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 
-export interface StructuredUserMessageProjection {
+interface StructuredUserMessageProjection {
   readonly agentPrompt: string;
   readonly legacyContent: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
