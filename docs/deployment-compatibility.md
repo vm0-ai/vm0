@@ -169,6 +169,26 @@ For runner/backend API changes:
 - Include poll, claim, heartbeat, completion, artifact, and session-resume paths
   when those protocols change.
 
+### Storage mount manifest rollout
+
+The runtime Storage unification uses a receiver-first Runner rollout. New
+Runners advertise `storage-mounts-v1` through the existing claim
+`capabilities[]` field and accept exactly one of these response shapes:
+
+- canonical `storageMounts`
+- legacy `storages` plus `artifacts`
+
+Mixed, incomplete, and representation-free manifests are invalid. The initial
+receiver release does not change backend output: the API continues returning
+the legacy shape and safely ignores the capability. After the receiver fleet is
+deployed, the API may send `storageMounts` only to a Runner that advertised the
+capability; old Runners must continue receiving both legacy arrays.
+
+Runner and guest binaries ship together, so the Runner-to-guest manifest uses
+the canonical shape immediately while the guest reader temporarily accepts both
+representations. Remove the legacy readers and the capability only after the
+canonical API output has been stable across the fully upgraded Runner fleet.
+
 ### Firewall hostname policy
 
 The backend is the single owner of firewall configuration hostname policy.

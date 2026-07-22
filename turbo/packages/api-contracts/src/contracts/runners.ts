@@ -290,6 +290,62 @@ export const artifactEntrySchema = z
   });
 
 /**
+ * Canonical resolved Storage mount accepted by new runners.
+ *
+ * The API continues to emit the legacy manifest during the receiver-first
+ * rollout. A later phase will select this representation only for runners that
+ * advertise the storage-mounts-v1 claim capability.
+ */
+export const storageMountEntrySchema = z
+  .object({
+    name: z.string(),
+    storageId: z.string(),
+    versionId: z.string(),
+    mountPath: z.string(),
+    archiveUrl: z.string().optional(),
+    archiveSize: archiveSizeSchema.optional(),
+    empty: z.boolean().optional(),
+    instructionsTargetFilename: z.string().optional(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
+    writeback: z.boolean().optional(),
+  })
+  .superRefine((mount, ctx) => {
+    const writeback = mount.writeback ?? false;
+    if (
+      mount.archiveUrl === undefined &&
+      !(writeback && mount.empty === true)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["archiveUrl"],
+        message:
+          "archiveUrl is required unless an empty writeback mount is requested",
+      });
+    }
+    if (!writeback && mount.empty === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["empty"],
+        message: "empty is only valid for writeback mounts",
+      });
+    }
+    if (writeback && mount.instructionsTargetFilename !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["instructionsTargetFilename"],
+        message: "instructionsTargetFilename is not valid for writeback mounts",
+      });
+    }
+    if (!writeback && mount.missingRootPolicy !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["missingRootPolicy"],
+        message: "missingRootPolicy is only valid for writeback mounts",
+      });
+    }
+  });
+
+/**
  * Storage manifest with presigned URLs for download
  */
 export const storageManifestSchema = z.object({
@@ -726,6 +782,7 @@ export type SecretConnectorMetadata = z.infer<
 >;
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
+export type StorageMountEntry = z.infer<typeof storageMountEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
