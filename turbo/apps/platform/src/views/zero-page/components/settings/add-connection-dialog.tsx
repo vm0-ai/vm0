@@ -1335,7 +1335,7 @@ export function ConnectModal({
         <ConnectModalContent
           item={item}
           agentId={agentId}
-              onSuccess={async () => {
+          onSuccess={async () => {
             await onSuccess?.();
             clearConnectorOAuthDeviceAuth();
             clearConnectorExternalCode();

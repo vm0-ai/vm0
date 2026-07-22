@@ -982,12 +982,7 @@ export function ZeroConnectorsPage() {
         return;
       }
       detach(
-        connect(
-          type,
-          authMethod,
-          { connectorLabel: ct.label },
-          signal,
-        ),
+        connect(type, authMethod, { connectorLabel: ct.label }, signal),
         Reason.DomCallback,
       );
       return;

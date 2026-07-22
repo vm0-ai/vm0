@@ -2520,9 +2520,7 @@ describe("connectors page", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByText("AWS connected"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("AWS connected")).toBeInTheDocument();
     });
     expect(
       screen.queryByText("You've successfully connected with AWS!"),
