@@ -66,6 +66,7 @@ const teamsGraphMentionSchema = z
 const teamsGraphMessageSchema = z
   .object({
     id: z.string().optional(),
+    replyToId: z.string().nullable().optional(),
     createdDateTime: z.string().nullable().optional(),
     messageType: z.string().nullable().optional(),
     from: z
@@ -91,6 +92,31 @@ const teamsGraphMessageSchema = z
 const teamsGraphMessagesResponseSchema = z
   .object({
     value: z.array(teamsGraphMessageSchema),
+  })
+  .passthrough();
+
+const teamsGraphChatSchema = z
+  .object({
+    id: z.string().min(1),
+    chatType: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const teamsGraphUserInstalledAppSchema = z
+  .object({
+    id: z.string().min(1),
+    teamsApp: z
+      .object({
+        externalId: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const teamsGraphUserInstalledAppsResponseSchema = z
+  .object({
+    value: z.array(teamsGraphUserInstalledAppSchema),
   })
   .passthrough();
 
@@ -469,6 +495,40 @@ function teamsGraphChannelMessageUrl(args: {
     url.searchParams.set("$top", String(args.limit));
   }
   return url.toString();
+}
+
+function teamsGraphChatMessagesUrl(args: {
+  readonly chatId: string;
+  readonly limit: number;
+}): string {
+  const url = new URL(
+    `${graphBaseUrl()}/chats/${encodeURIComponent(args.chatId)}/messages`,
+  );
+  url.searchParams.set("$top", String(args.limit));
+  url.searchParams.set("$orderby", "createdDateTime desc");
+  return url.toString();
+}
+
+function teamsGraphUserInstalledAppsUrl(args: {
+  readonly userId: string;
+  readonly teamsAppId: string;
+}): string {
+  const url = new URL(
+    `${graphBaseUrl()}/users/${encodeURIComponent(args.userId)}/teamwork/installedApps`,
+  );
+  const teamsAppId = args.teamsAppId.replaceAll("'", "''");
+  url.searchParams.set("$filter", `teamsApp/externalId eq '${teamsAppId}'`);
+  url.searchParams.set("$expand", "teamsApp");
+  return url.toString();
+}
+
+function teamsGraphUserInstalledAppChatUrl(args: {
+  readonly userId: string;
+  readonly installationId: string;
+}): string {
+  return `${graphBaseUrl()}/users/${encodeURIComponent(
+    args.userId,
+  )}/teamwork/installedApps/${encodeURIComponent(args.installationId)}/chat`;
 }
 
 function teamsGraphUserUrl(userId: string): string {
@@ -971,6 +1031,75 @@ export async function fetchTeamsChannelMessages(args: {
     return result;
   }
   return { kind: "ok", messages: result.data.value };
+}
+
+async function fetchTeamsChatMessages(args: {
+  readonly tenantId: string;
+  readonly chatId: string;
+  readonly limit: number;
+  readonly signal: AbortSignal;
+}): Promise<FetchTeamsGraphMessagesResult> {
+  const result = await fetchTeamsGraphJson({
+    tenantId: args.tenantId,
+    url: teamsGraphChatMessagesUrl({
+      chatId: args.chatId,
+      limit: args.limit,
+    }),
+    schema: teamsGraphMessagesResponseSchema,
+    signal: args.signal,
+  });
+  if (result.kind === "teams-error") {
+    return result;
+  }
+  return { kind: "ok", messages: [...result.data.value].reverse() };
+}
+
+export async function fetchTeamsPersonalChatMessages(args: {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly teamsAppId: string;
+  readonly limit: number;
+  readonly signal: AbortSignal;
+}): Promise<FetchTeamsGraphMessagesResult> {
+  const installedAppsResult = await fetchTeamsGraphJson({
+    tenantId: args.tenantId,
+    url: teamsGraphUserInstalledAppsUrl({
+      userId: args.userId,
+      teamsAppId: args.teamsAppId,
+    }),
+    schema: teamsGraphUserInstalledAppsResponseSchema,
+    signal: args.signal,
+  });
+  if (installedAppsResult.kind === "teams-error") {
+    return installedAppsResult;
+  }
+  const installedApp = installedAppsResult.data.value.find((candidate) => {
+    return candidate.teamsApp?.externalId === args.teamsAppId;
+  });
+  if (!installedApp) {
+    return teamsApiError(404, "Microsoft Teams personal app not installed");
+  }
+  const chatResult = await fetchTeamsGraphJson({
+    tenantId: args.tenantId,
+    url: teamsGraphUserInstalledAppChatUrl({
+      userId: args.userId,
+      installationId: installedApp.id,
+    }),
+    schema: teamsGraphChatSchema,
+    signal: args.signal,
+  });
+  if (chatResult.kind === "teams-error") {
+    return chatResult;
+  }
+  if (chatResult.data.chatType !== "oneOnOne") {
+    return teamsApiError(404, "Microsoft Teams personal chat not found");
+  }
+  return await fetchTeamsChatMessages({
+    tenantId: args.tenantId,
+    chatId: chatResult.data.id,
+    limit: args.limit,
+    signal: args.signal,
+  });
 }
 
 export async function fetchTeamsChannelMessage(args: {

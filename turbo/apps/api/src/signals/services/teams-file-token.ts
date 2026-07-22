@@ -5,7 +5,7 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { safeJsonParse } from "../utils";
 
-const teamsFileTokenPayloadSchema = z.object({
+export const teamsFileTokenPayloadSchema = z.object({
   tenantId: z.string().min(1),
   url: z.string().url(),
   downloadMode: z.literal("graph").optional(),
@@ -33,14 +33,6 @@ function constantTimeEqual(left: string, right: string): boolean {
     leftBuffer.byteLength === rightBuffer.byteLength &&
     timingSafeEqual(leftBuffer, rightBuffer)
   );
-}
-
-export function encodeTeamsFileToken(payload: TeamsFileTokenPayload): string {
-  const parsed = teamsFileTokenPayloadSchema.parse(payload);
-  const encodedPayload = Buffer.from(JSON.stringify(parsed), "utf8").toString(
-    "base64url",
-  );
-  return `${encodedPayload}.${signatureFor(encodedPayload)}`;
 }
 
 export function decodeTeamsFileToken(

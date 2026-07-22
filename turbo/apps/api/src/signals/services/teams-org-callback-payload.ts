@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import { teamsFileTokenPayloadSchema } from "./teams-file-token";
+
+const teamsOrgCallbackFileSchema = teamsFileTokenPayloadSchema.extend({
+  fileId: z.string().min(1),
+});
+
 export const teamsOrgCallbackPayloadSchema = z
   .object({
     tenantId: z.string().min(1),
@@ -20,6 +26,7 @@ export const teamsOrgCallbackPayloadSchema = z
     botName: z.string().nullable(),
     agentId: z.string().min(1),
     existingSessionId: z.string().nullable(),
+    files: z.array(teamsOrgCallbackFileSchema).optional(),
   })
   .passthrough();
 

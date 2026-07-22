@@ -2,16 +2,23 @@ import { command } from "ccstate";
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { inferMimetype } from "../../lib/mimetype";
+import type { AuthContext } from "../../types/auth";
+import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
+import { db$, type ReadonlyDb } from "../external/db";
 import { fetchTeamsFile } from "../external/teams-bot-client";
 import {
   decodeTeamsFileToken,
+  teamsFileTokenPayloadSchema,
   type TeamsFileTokenPayload,
 } from "../services/teams-file-token";
+import { teamsOrgCallbackPayloadSchema } from "../services/teams-org-callback-payload";
 import type { RouteEntry } from "../route-entry";
 import { safeUriComponentDecode } from "../utils";
 
@@ -132,6 +139,55 @@ function sanitizeDownloadFilename(filename: string): string {
   return filename.trim().replace(/[/\\]/gu, "_").slice(0, 255) || "teams-file";
 }
 
+async function teamsFilePayloadForRun(args: {
+  readonly db: ReadonlyDb;
+  readonly runId: string;
+  readonly fileId: string;
+}): Promise<TeamsFileTokenPayload | null> {
+  const [callback] = await args.db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "teams:org"),
+      ),
+    )
+    .limit(1);
+  if (!callback) {
+    return null;
+  }
+  const parsed = teamsOrgCallbackPayloadSchema.safeParse(callback.payload);
+  const file = parsed.success
+    ? parsed.data.files?.find((candidate) => {
+        return candidate.fileId === args.fileId;
+      })
+    : undefined;
+  return file ? teamsFileTokenPayloadSchema.parse(file) : null;
+}
+
+async function resolveTeamsFilePayload(args: {
+  readonly db: ReadonlyDb;
+  readonly fileId: string;
+  readonly runId: string | undefined;
+}): Promise<TeamsFileTokenPayload | null> {
+  const signedPayload = decodeTeamsFileToken(args.fileId);
+  if (signedPayload) {
+    return signedPayload;
+  }
+  return args.runId
+    ? await teamsFilePayloadForRun({
+        db: args.db,
+        runId: args.runId,
+        fileId: args.fileId,
+      })
+    : null;
+}
+
+function runIdFromAuth(auth: AuthContext): string | undefined {
+  return "runId" in auth ? auth.runId : undefined;
+}
+
 function resolveFilename(args: {
   readonly payload: TeamsFileTokenPayload;
   readonly response: Response;
@@ -153,7 +209,12 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
     return jsonResponse(400, "file_id is required", "BAD_REQUEST");
   }
 
-  const payload = decodeTeamsFileToken(query.file_id);
+  const payload = await resolveTeamsFilePayload({
+    db: get(db$),
+    fileId: query.file_id,
+    runId: runIdFromAuth(get(authContext$)),
+  });
+  signal.throwIfAborted();
   if (!payload) {
     return jsonResponse(400, "Invalid Microsoft Teams file id", "BAD_REQUEST");
   }
