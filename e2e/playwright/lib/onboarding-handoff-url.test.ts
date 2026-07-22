@@ -19,16 +19,6 @@ test("rewrites the standing app handoff to a cross-domain preview app", () => {
   );
 });
 
-test("preserves the same-domain preview handoff", () => {
-  const rewrittenUrl = rewritePreviewAppFallbackUrl(
-    new URL("https://staging-app.vm6.ai/prompt"),
-    "https://pr-22231-app.vm6.ai",
-    "https://pr-22231-www.vm6.ai",
-  );
-
-  assert.equal(rewrittenUrl, "https://pr-22231-app.vm6.ai/prompt");
-});
-
 test("rewrites a nested Clerk redirect to the preview app", () => {
   const authUrl = new URL("https://staging-app.vm6.ai/sign-in");
   authUrl.searchParams.set(
@@ -59,16 +49,6 @@ test("keeps an unrelated app origin unchanged", () => {
   );
 
   assert.equal(rewrittenUrl, null);
-});
-
-test("rewrites the staging app handoff to the Cloudflare staging app", () => {
-  const rewrittenUrl = rewritePreviewAppFallbackUrl(
-    new URL("https://staging-app.vm6.ai/prompt"),
-    "https://staging-app.omby.ai",
-    "https://staging-www.vm6.ai",
-  );
-
-  assert.equal(rewrittenUrl, "https://staging-app.omby.ai/prompt");
 });
 
 test("does not rewrite the configured staging app to itself", () => {

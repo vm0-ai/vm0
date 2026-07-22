@@ -7,29 +7,29 @@ import {
 } from "../preview-bypass-cookie.ts";
 
 describe("preview bypass cookie", () => {
-  it("builds a vm6.ai scoped Vercel bypass cookie from the standard query", () => {
+  it("builds a host-only Vercel bypass cookie from the standard query", () => {
     expect(
       buildPreviewBypassCookie({
-        hostname: "pr-123-app.vm6.ai",
+        hostname: "pr-123-app.omby.ai",
         protocol: "https:",
         search: "?x-vercel-protection-bypass=preview-secret",
       }),
     ).toBe(
-      "x-vercel-protection-bypass=preview-secret; Path=/; Max-Age=3600; SameSite=Lax; Domain=.vm6.ai; Secure",
+      "x-vercel-protection-bypass=preview-secret; Path=/; Max-Age=3600; SameSite=Lax; Secure",
     );
   });
 
   it("does not read legacy vm0 preview bypass query params", () => {
     expect(
       buildPreviewBypassCookie({
-        hostname: "pr-123-app.vm6.ai",
+        hostname: "pr-123-app.omby.ai",
         protocol: "https:",
         search: "?vm0_preview_bypass=preview-secret",
       }),
     ).toBeNull();
   });
 
-  it("falls back to a host-only cookie outside vm6.ai", () => {
+  it("builds a host-only cookie for local previews", () => {
     expect(
       buildPreviewBypassCookie({
         hostname: "localhost",
@@ -47,7 +47,7 @@ describe("preview bypass cookie", () => {
     expect(
       writePreviewBypassCookie(
         {
-          hostname: "staging-app.vm6.ai",
+          hostname: "staging-app.omby.ai",
           protocol: "https:",
           search: "?x-vercel-protection-bypass=preview%20secret",
         },
@@ -55,7 +55,7 @@ describe("preview bypass cookie", () => {
       ),
     ).toBeTruthy();
     expect(setCookie).toHaveBeenCalledWith(
-      "x-vercel-protection-bypass=preview%20secret; Path=/; Max-Age=3600; SameSite=Lax; Domain=.vm6.ai; Secure",
+      "x-vercel-protection-bypass=preview%20secret; Path=/; Max-Age=3600; SameSite=Lax; Secure",
     );
   });
 

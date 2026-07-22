@@ -278,7 +278,6 @@ jobs:
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
-              "$PREVIEW_DOMAIN" \
               "$CF_PAGES_PREVIEW_DOMAIN")"
             {
               echo "app-url=${APP_URL}"
