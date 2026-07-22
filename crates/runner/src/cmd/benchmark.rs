@@ -141,6 +141,8 @@ pub async fn run_benchmark(
         registry_path: runner_paths.proxy_registry(),
         registry_lock_path: runner_paths.proxy_registry_lock(),
         builtin_firewall_catalog_cache_path: runner_paths.builtin_firewall_catalog_cache(),
+        runtime_dir: runner_paths.mitmdump_runtime_dir(),
+        runtime_lock_path: runner_paths.mitmdump_runtime_lock(),
         api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
         client_session_id: uuid::Uuid::new_v4().to_string(),
     })
