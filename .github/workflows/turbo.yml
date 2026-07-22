@@ -349,10 +349,13 @@ jobs:
   block-connector-source-changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Block connector source additions and modifications
         env:
