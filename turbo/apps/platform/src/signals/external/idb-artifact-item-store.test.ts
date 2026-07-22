@@ -244,6 +244,7 @@ function artifact(
     size: 1024 + index,
     url: `https://cdn.vm0.test/artifact-${index}.html`,
     createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+    updatedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
     artifactKind: "hosted-site",
     ...overrides,
   };

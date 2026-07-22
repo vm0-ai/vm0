@@ -5,7 +5,8 @@ const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
 const CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION = 10;
 const CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION = 11;
 const CHAT_IDB_LOCAL_CACHE_RESET_VERSION = 14;
-const CHAT_IDB_SCHEMA_VERSION = 15;
+const CHAT_IDB_ARTIFACT_URL_WINNER_RESET_VERSION = 16;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_ARTIFACT_URL_WINNER_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -120,6 +121,11 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
     db.objectStoreNames.contains(LEGACY_CHAT_THREAD_META_STORE)
   ) {
     db.deleteObjectStore(LEGACY_CHAT_THREAD_META_STORE);
+  }
+
+  if (oldVersion < CHAT_IDB_ARTIFACT_URL_WINNER_RESET_VERSION) {
+    deleteObjectStoreIfExists(db, ARTIFACT_ITEMS_STORE);
+    deleteObjectStoreIfExists(db, ARTIFACT_SYNC_STORE);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
