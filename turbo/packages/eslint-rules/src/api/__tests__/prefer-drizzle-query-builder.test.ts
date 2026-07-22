@@ -325,6 +325,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         db.select({
           value: users.id,
         }).from(users).where(${scalarQuery});
+        db.selectDistinctOn([${scalarQuery}], { value: users.id });
       `,
     },
     {
@@ -478,7 +479,7 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         import { sql } from "drizzle-orm";
         const fields = {
           value: ${mappedScalarQuery},
-        } as const;
+        } satisfies Record<string, unknown>;
         db.select(fields);
         db.select({ ...fields });
       `,
