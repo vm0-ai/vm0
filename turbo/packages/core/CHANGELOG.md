@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.451.0](https://github.com/vm0-ai/vm0/compare/core-v8.450.0...core-v8.451.0) (2026-07-22)
+
+
+### Features
+
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+
 ## [8.450.0](https://github.com/vm0-ai/vm0/compare/core-v8.449.0...core-v8.450.0) (2026-07-22)
 
 
