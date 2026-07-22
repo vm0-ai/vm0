@@ -237,4 +237,5 @@ export {
   prepareHostedSite,
   completeHostedSite,
   getHostedSiteFiles,
+  getHostedSiteDeployments,
 } from "./domains/zero-host";

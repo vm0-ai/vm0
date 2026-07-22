@@ -14,6 +14,10 @@ interface TestFile {
 
 interface TestEnvOptions {
   readonly files?: Record<string, TestFile>;
+  readonly immutableDeployment?: {
+    readonly deploymentId: string;
+    readonly body: string;
+  };
 }
 
 const DEFAULT_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
@@ -103,6 +107,56 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
     ],
     ...fileObjects,
   ]);
+
+  if (options.immutableDeployment) {
+    const immutable = options.immutableDeployment;
+    const immutablePrefix = `sites/orgs/org_test/demo/versions/1`;
+    const immutableManifestKey = `${immutablePrefix}/manifest.json`;
+    objects.set(
+      `sites/deployments/${immutable.deploymentId}.json`,
+      objectBody(
+        JSON.stringify({
+          version: 1,
+          publicSlug,
+          siteId: "site_1",
+          deploymentId: immutable.deploymentId,
+          deploymentVersion: 1,
+          artifactUrl: `https://dpl-${immutable.deploymentId}.sites.vm0.io`,
+          prefix: immutablePrefix,
+          manifestKey: immutableManifestKey,
+          spaFallback: false,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    objects.set(
+      immutableManifestKey,
+      objectBody(
+        JSON.stringify({
+          version: 1,
+          deploymentId: immutable.deploymentId,
+          deploymentVersion: 1,
+          siteId: "site_1",
+          site: "demo",
+          publicSlug,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          spaFallback: false,
+          files: {
+            "/index.html": {
+              path: "/index.html",
+              size: byteLength(immutable.body),
+              sha256: "b".repeat(64),
+              contentType: "text/html; charset=utf-8",
+            },
+          },
+        }),
+      ),
+    );
+    objects.set(
+      `${immutablePrefix}/index.html`,
+      objectBody(immutable.body, "text/html; charset=utf-8"),
+    );
+  }
 
   return {
     HOST_DOMAIN: "sites.vm0.io",
@@ -211,5 +265,31 @@ describe("hosted site worker", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(customRobots);
+  });
+
+  it("keeps immutable artifact hosts pinned when the alias points at a newer deployment", async () => {
+    const immutableDeploymentId = "00000000-0000-4000-8000-000000000002";
+    const workerEnv = env({
+      immutableDeployment: {
+        deploymentId: immutableDeploymentId,
+        body: "<!doctype html>version one",
+      },
+    });
+
+    const immutableResponse = await worker.fetch(
+      new Request(
+        `https://dpl-${immutableDeploymentId}.sites.vm0.io/index.html`,
+      ),
+      workerEnv,
+    );
+    const aliasResponse = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/index.html"),
+      workerEnv,
+    );
+
+    expect(immutableResponse.status).toBe(200);
+    expect(await immutableResponse.text()).toBe("<!doctype html>version one");
+    expect(aliasResponse.status).toBe(200);
+    expect(await aliasResponse.text()).toBe("<!doctype html>ok");
   });
 });

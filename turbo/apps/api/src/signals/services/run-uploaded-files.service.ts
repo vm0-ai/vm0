@@ -35,7 +35,10 @@ interface RecordHostedSiteArtifactArgs {
   readonly artifactKind: HostedArtifactKind;
   readonly siteId: string;
   readonly deploymentId: string;
+  readonly deploymentVersion: number | null;
+  readonly site: string;
   readonly publicSlug: string;
+  readonly aliasUrl: string;
   readonly url: string;
   readonly fileCount: number;
   readonly sizeBytes: number;
@@ -108,7 +111,9 @@ function videoArtifactPreviewArgs(
 /**
  * Insert (or upsert) a `run_uploaded_files` row for a hosted website
  * artifact. The artifact URL points at the hosted `*.sites` deployment;
- * no user-storage upload is created. Idempotency is by (runId, source, url).
+ * no user-storage upload is created. Versioned deployments use their immutable
+ * deployment ID for idempotency; legacy deployments continue using the alias
+ * URL during the rollout window.
  */
 export const recordHostedSiteArtifact$ = command(
   async (
@@ -121,16 +126,22 @@ export const recordHostedSiteArtifact$ = command(
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "web", signal);
+    const externalId =
+      args.deploymentVersion === null ? args.url : args.deploymentId;
+    const filename =
+      args.deploymentVersion === null
+        ? `${args.publicSlug}.html`
+        : `${args.site}-v${args.deploymentVersion}.html`;
 
     const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
         source,
-        externalId: args.url,
+        externalId,
         userId: args.userId,
         orgId: args.orgId,
-        filename: `${args.publicSlug}.html`,
+        filename,
         contentType: "text/html",
         sizeBytes: args.sizeBytes,
         url: args.url,
@@ -139,6 +150,8 @@ export const recordHostedSiteArtifact$ = command(
           artifactKind: args.artifactKind,
           siteId: args.siteId,
           deploymentId: args.deploymentId,
+          deploymentVersion: args.deploymentVersion,
+          aliasUrl: args.aliasUrl,
           publicSlug: args.publicSlug,
           fileCount: args.fileCount,
           entrypoint: args.entrypoint,
@@ -154,7 +167,7 @@ export const recordHostedSiteArtifact$ = command(
         set: {
           userId: args.userId,
           orgId: args.orgId,
-          filename: `${args.publicSlug}.html`,
+          filename,
           contentType: "text/html",
           sizeBytes: args.sizeBytes,
           url: args.url,
@@ -163,15 +176,17 @@ export const recordHostedSiteArtifact$ = command(
             artifactKind: args.artifactKind,
             siteId: args.siteId,
             deploymentId: args.deploymentId,
+            deploymentVersion: args.deploymentVersion,
+            aliasUrl: args.aliasUrl,
             publicSlug: args.publicSlug,
             fileCount: args.fileCount,
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
           },
-          // Content changed on redeploy: drop the stale preview so the
-          // deploy-time trigger (or the cron sweep as a fallback) regenerates
-          // it against the new deployment.
-          previewImageUrl: null,
+          // Legacy redeploys reuse a mutable alias row, so their preview must
+          // be regenerated. Versioned rows are immutable and keep their own
+          // preview when completion is retried.
+          ...(args.deploymentVersion === null ? { previewImageUrl: null } : {}),
           updatedAt: sql`now()`,
         },
       })
