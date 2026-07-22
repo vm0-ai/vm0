@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::future::Future;
 use std::pin::Pin;
@@ -899,21 +899,14 @@ enum SnapshotSource<T> {
 }
 
 #[derive(Debug)]
-struct CapturedFirewallRule {
-    pool_index: u32,
-    rule: String,
-}
-
-#[derive(Debug)]
 struct FirewallTableSnapshot {
     command: &'static str,
     table: &'static str,
-    rules: SnapshotSource<Vec<CapturedFirewallRule>>,
+    rules_by_pool: SnapshotSource<BTreeMap<u32, Vec<String>>>,
 }
 
 #[derive(Debug)]
 struct CapturedNamespace {
-    pool_index: u32,
     name: String,
     host_device: String,
 }
@@ -924,7 +917,7 @@ struct ReconciliationSnapshot {
     ipv4_nat: FirewallTableSnapshot,
     ipv4_filter: FirewallTableSnapshot,
     ipv6_filter: FirewallTableSnapshot,
-    namespaces: SnapshotSource<Vec<CapturedNamespace>>,
+    namespaces_by_pool: SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>>,
 }
 
 impl ReconciliationSnapshot {
@@ -941,7 +934,7 @@ impl ReconciliationSnapshot {
             ipv4_nat,
             ipv4_filter,
             ipv6_filter,
-            namespaces,
+            namespaces_by_pool: namespaces,
         }
     }
 
@@ -953,12 +946,12 @@ impl ReconciliationSnapshot {
             &self.ipv4_filter,
             &self.ipv6_filter,
         ] {
-            if let SnapshotSource::Captured(rules) = &table.rules {
-                indexes.extend(rules.iter().map(|rule| rule.pool_index));
+            if let SnapshotSource::Captured(rules_by_pool) = &table.rules_by_pool {
+                indexes.extend(rules_by_pool.keys().copied());
             }
         }
-        if let SnapshotSource::Captured(namespaces) = &self.namespaces {
-            indexes.extend(namespaces.iter().map(|namespace| namespace.pool_index));
+        if let SnapshotSource::Captured(namespaces_by_pool) = &self.namespaces_by_pool {
+            indexes.extend(namespaces_by_pool.keys().copied());
         }
         indexes
     }
@@ -969,18 +962,21 @@ async fn capture_firewall_table(
     save_command: &'static str,
     table: &'static str,
 ) -> FirewallTableSnapshot {
-    let rules = match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT).await {
-        Ok(output) => SnapshotSource::Captured(
-            output
-                .lines()
-                .filter_map(|line| {
-                    firewall_rule_pool_index(line).map(|pool_index| CapturedFirewallRule {
-                        pool_index,
-                        rule: line.to_string(),
-                    })
-                })
-                .collect(),
-        ),
+    let rules_by_pool = match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT)
+        .await
+    {
+        Ok(output) => {
+            let mut rules_by_pool: BTreeMap<u32, Vec<String>> = BTreeMap::new();
+            for line in output.lines() {
+                if let Some(pool_index) = firewall_rule_pool_index(line) {
+                    rules_by_pool
+                        .entry(pool_index)
+                        .or_default()
+                        .push(line.to_string());
+                }
+            }
+            SnapshotSource::Captured(rules_by_pool)
+        }
         Err(error) => {
             warn!(save_command, table, %error, "failed to capture firewall rules for startup reconciliation");
             SnapshotSource::Abandoned
@@ -989,7 +985,7 @@ async fn capture_firewall_table(
     FirewallTableSnapshot {
         command,
         table,
-        rules,
+        rules_by_pool,
     }
 }
 
@@ -1021,7 +1017,7 @@ fn pool_index_from_comment(comment: &str) -> Option<u32> {
     (pool_index < MAX_POOLS && format_hex_index(pool_index) == pool_hex).then_some(pool_index)
 }
 
-async fn capture_namespaces() -> SnapshotSource<Vec<CapturedNamespace>> {
+async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>> {
     let output = match exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await {
         Ok(output) => output,
         Err(error) => {
@@ -1030,38 +1026,41 @@ async fn capture_namespaces() -> SnapshotSource<Vec<CapturedNamespace>> {
         }
     };
 
-    SnapshotSource::Captured(
-        output
-            .lines()
-            .filter_map(|line| line.split_whitespace().next())
-            .filter_map(|name| {
-                let parsed = parse_netns_name(name)?;
-                let pool_idx = format_hex_index(parsed.pool_index);
-                let ns_idx = format_hex_index(parsed.namespace_index);
-                Some(CapturedNamespace {
-                    pool_index: parsed.pool_index,
-                    name: name.to_string(),
-                    host_device: make_host_device(&pool_idx, &ns_idx),
-                })
-            })
-            .collect(),
-    )
+    let mut namespaces_by_pool: BTreeMap<u32, Vec<CapturedNamespace>> = BTreeMap::new();
+    for name in output
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+    {
+        let Some(parsed) = parse_netns_name(name) else {
+            continue;
+        };
+        let pool_idx = format_hex_index(parsed.pool_index);
+        let ns_idx = format_hex_index(parsed.namespace_index);
+        namespaces_by_pool
+            .entry(parsed.pool_index)
+            .or_default()
+            .push(CapturedNamespace {
+                name: name.to_string(),
+                host_device: make_host_device(&pool_idx, &ns_idx),
+            });
+    }
+    SnapshotSource::Captured(namespaces_by_pool)
 }
 
 async fn delete_firewall_rules_from_snapshot(
     snapshot: &FirewallTableSnapshot,
     pool_index: u32,
 ) -> NamespaceDeleteOutcome {
-    let SnapshotSource::Captured(rules) = &snapshot.rules else {
+    let SnapshotSource::Captured(rules_by_pool) = &snapshot.rules_by_pool else {
         return NamespaceDeleteOutcome::Abandoned;
+    };
+    let Some(rules) = rules_by_pool.get(&pool_index) else {
+        return NamespaceDeleteOutcome::Deleted;
     };
 
     let mut outcomes = Vec::new();
-    for captured in rules
-        .iter()
-        .filter(|captured| captured.pool_index == pool_index)
-    {
-        let rule = captured.rule.replacen("-A ", "-D ", 1);
+    for captured in rules {
+        let rule = captured.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", snapshot.table];
         args.extend(rule.split_whitespace().map(|token| token.trim_matches('"')));
         outcomes.push(
@@ -1102,17 +1101,12 @@ async fn cleanup_namespaces_from_snapshot(
     index: u32,
 ) -> NamespaceDeleteOutcome {
     let firewall = delete_pool_firewall_rules_from_snapshot(snapshot, index).await;
-    let SnapshotSource::Captured(namespaces) = &snapshot.namespaces else {
+    let SnapshotSource::Captured(namespaces_by_pool) = &snapshot.namespaces_by_pool else {
         return NamespaceDeleteOutcome::Abandoned;
     };
-    let namespaces: Vec<_> = namespaces
-        .iter()
-        .filter(|namespace| namespace.pool_index == index)
-        .collect();
-
-    if namespaces.is_empty() {
+    let Some(namespaces) = namespaces_by_pool.get(&index) else {
         return firewall;
-    }
+    };
 
     let idx_str = format_hex_index(index);
     info!(count = namespaces.len(), index = %idx_str, "cleaning up orphaned namespaces");
