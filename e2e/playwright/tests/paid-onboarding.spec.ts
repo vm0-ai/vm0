@@ -14,7 +14,8 @@ import {
 import { fillStripeCheckout } from "../lib/stripe-checkout";
 import { deriveAppUrl } from "../playwright.config";
 
-test("paid onboarding completes through the video workflow", async ({
+// TODO: Re-enable when staging Stripe webhook delivery is restored.
+test.skip("paid onboarding completes through the video workflow", async ({
   page,
 }) => {
   test.setTimeout(240_000);

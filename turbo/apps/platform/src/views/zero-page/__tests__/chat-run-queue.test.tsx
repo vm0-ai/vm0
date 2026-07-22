@@ -314,7 +314,7 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
-  it("keeps the draft when the hydrated model is unavailable for queueing", async () => {
+  it("queues when the hydrated model needs server reconciliation", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];
     context.mocks.data.orgModelPolicies([]);
@@ -334,12 +334,17 @@ describe("chat run queue", () => {
     await fill(composer, "Keep this queued draft");
     await user.keyboard("{Enter}");
 
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(queuedBodies).toHaveLength(0);
-    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-    expect(composer).toHaveTextContent("Keep this queued draft");
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Keep this queued draft",
+      );
+    });
+    expect(queuedBodies[0]?.modelSelection).toBeUndefined();
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
+    expect(composer.textContent).toBe("");
   });
 
   it("preserves Codex fast mode when queueing a follow-up", async () => {
