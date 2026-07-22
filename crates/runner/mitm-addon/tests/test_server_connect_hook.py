@@ -105,6 +105,36 @@ def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+def test_server_connect_does_not_bind_parameterized_connector_to_undeclared_port(
+    tmp_path,
+    mitm_ctx,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.{domain}",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+            network_policy={
+                "allow": ["read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    data = _data(sni="api.example", address=("203.0.113.10", 8443))
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 8443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
     tmp_path,
     mitm_ctx,
