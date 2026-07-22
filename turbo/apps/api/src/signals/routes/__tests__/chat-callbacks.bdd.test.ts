@@ -1261,6 +1261,69 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
+  it("starts a fresh goal session after current policy changes framework", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the goal route changes framework",
+    });
+    const objective = "Continue autonomously through the current model route";
+    await createGoalForRun(actor, first.runId, objective);
+
+    const provider = await misc.upsertOrgModelProvider(
+      actor,
+      { type: "openai-api-key", secret: "goal-openai-key" },
+      [201],
+    );
+    if (provider.status !== 201) {
+      throw new Error("Expected the goal OpenAI provider to be created");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.body.provider.id,
+      },
+    ]);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the goal route changed"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, objective);
+        });
+      },
+    );
+    const continuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, objective);
+    });
+    if (!continuation?.runId) {
+      throw new Error("Expected goal continuation run id");
+    }
+    const goalContext = await waitForRunContext(actor, continuation.runId);
+    expect(goalContext.body.sessionId).toBeNull();
+    expect(goalContext.body.environment.OPENAI_MODEL).toBe("gpt-5.6-terra");
+    expect(goalContext.body.environment.ANTHROPIC_MODEL).toBeUndefined();
+
+    await api.requestCancelRun(actor, continuation.runId, [200]);
+    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
   it("auto-sends a queued user message before continuing an active goal", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -2552,7 +2615,7 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("preserves the CLI session across same-family queued model switches without regenerating an existing title", async () => {
+  it("recovers a queued message through the current same-family workspace default", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2604,16 +2667,20 @@ describe("CHAT-02: auto-send across a model switch", () => {
       prompt: "And stringify?",
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await chat.updateThreadModelSelection(
-      actor,
-      first.threadId,
-      "claude-sonnet-4-6",
-    );
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "queued after model switch",
+      prompt: "queued before policy removal",
     });
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "Use JSON.stringify(value)."),
     ]);
@@ -2627,7 +2694,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === "queued after model switch" &&
+            message.content === "queued before policy removal" &&
             message.runId !== undefined
           );
         });
@@ -2635,13 +2702,13 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
     const claimed = userMessages(messages.messages).find((message) => {
       return (
-        message.content === "queued after model switch" &&
+        message.content === "queued before policy removal" &&
         message.runId !== undefined
       );
     });
     if (!claimed?.runId) {
       throw new Error(
-        "Expected the queued message to be auto-claimed after the model switch",
+        "Expected the queued message to be auto-claimed after policy removal",
       );
     }
 
@@ -2652,6 +2719,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
+    );
+    expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
     );
 
     const thread = await chat.readThread(actor, first.threadId);
@@ -2664,13 +2734,15 @@ describe("CHAT-02: auto-send across a model switch", () => {
     if (threadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");
     }
-    expect(threadEvents.body.events).toContainEqual(
-      expect.objectContaining({
-        kind: "model_selection_updated",
-        chatThreadId: first.threadId,
-        selectedModel: "claude-sonnet-4-6",
+    expect(
+      threadEvents.body.events.filter((event) => {
+        return (
+          event.kind === "model_selection_updated" &&
+          event.chatThreadId === first.threadId &&
+          event.selectedModel === "claude-sonnet-4-6"
+        );
       }),
-    );
+    ).toHaveLength(1);
 
     expect(titlePrompts).toHaveLength(1);
     const initialTitlePrompt = titlePrompts[0];

@@ -122,7 +122,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     // Network-First: cache the app shell on each successful navigation so
-    // the PWA can cold-open offline. Vercel serves index.html with
+    // the PWA can cold-open offline. Production serves index.html with
     // `cache-control: must-revalidate`, which prevents the browser's HTTP
     // cache from being used without a server check. The SW Cache Storage
     // is not bound by HTTP cache directives, so we cache explicitly here
