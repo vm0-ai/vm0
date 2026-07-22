@@ -111,7 +111,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
@@ -143,7 +142,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
@@ -218,9 +216,6 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.PresentationElementDragging,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroScrape,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroWebSearch,
     );
 
@@ -230,12 +225,10 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.PresentationElementDragging]: true,
-        [FeatureSwitchKey.ZeroScrape]: true,
         [FeatureSwitchKey.ZeroWebSearch]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
-      [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
