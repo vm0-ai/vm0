@@ -235,11 +235,15 @@ const resolvedAuthContext$ = command(
 );
 
 function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
+  const message =
+    capability === "computer-use:write"
+      ? "Computer Use is not authorized for this run. Authorize a computer once in the conversation, then retry."
+      : `Missing required capability: ${capability}`;
   return {
     status: 403,
     body: {
       error: {
-        message: `Missing required capability: ${capability}`,
+        message,
         code: "FORBIDDEN",
       },
     },
