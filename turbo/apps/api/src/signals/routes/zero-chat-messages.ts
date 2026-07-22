@@ -8,11 +8,7 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  isCodexFastModeModel,
-  modelProviderCredentialScopeSchema,
-  modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
@@ -23,6 +19,7 @@ import {
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { conversations } from "@vm0/db/schema/conversation";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -55,7 +52,6 @@ import {
   conflict,
   insufficientCredits,
   notFound,
-  providerDeleted,
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
@@ -87,12 +83,16 @@ import {
 } from "../services/zero-chat-title.service";
 import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-initial-thinking.service";
 import {
+  isCodexFastServiceTierSupported,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
-  modelProviderPinAvailable,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
+import {
+  chatThreadModelPinColumns,
+  resolvePersistedChatThreadModel,
+} from "../services/zero-chat-thread-model.service";
 import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
@@ -179,7 +179,6 @@ interface ResolvedThread {
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
-  readonly codexServiceTier: CodexServiceTier | null;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
 }
@@ -201,6 +200,23 @@ interface WebChatPriorRun {
 interface LatestThreadSession {
   readonly sessionId: string;
   readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
+  readonly cliAgentType: string | null;
+}
+
+type ModelFirstProviderAdmission = Awaited<
+  ReturnType<typeof resolveModelFirstProviderAdmission>
+>;
+
+interface ResolvedRunConfiguration {
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly codexServiceTier: "fast" | undefined;
+}
+
+interface ResolvedThreadAndRunConfiguration {
+  readonly thread: ResolvedThread;
+  readonly runConfiguration: ResolvedRunConfiguration;
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
@@ -226,7 +242,11 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
-  readonly codexFastModeEnabled: boolean;
+  readonly runConfiguration: ResolvedRunConfiguration;
+  readonly clientMessagePrechecked: boolean;
+  readonly preflightClientMessageConflict:
+    | ReturnType<typeof duplicateClientMessageIdResponse>
+    | undefined;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -252,7 +272,6 @@ interface ResolvedComputerUseHostGrant {
 
 type NormalSendFailure =
   | ReturnType<typeof notFound>
-  | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
   | ReturnType<typeof conflict>
   | ReturnType<typeof insufficientCredits>
@@ -752,9 +771,13 @@ async function latestSessionForThread(
     .select({
       result: agentRuns.result,
       selectedModel: zeroRuns.selectedModel,
+      modelProvider: zeroRuns.modelProvider,
+      cliAgentType: conversations.cliAgentType,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
     // Only web-source runs join the thread's session-continuity chain, so
     // Workflow Automation runs never resume a web session and a later web turn
     // never resumes an automated one. The 'web' filter (before .limit) is
@@ -776,20 +799,12 @@ async function latestSessionForThread(
       return {
         sessionId: row.result.agentSessionId,
         selectedModel: row.selectedModel,
+        modelProvider: row.modelProvider,
+        cliAgentType: row.cliAgentType,
       };
     }
   }
   return undefined;
-}
-
-function selectedModelForSessionDecision(params: {
-  readonly modelSelection: IncomingModelSelection;
-  readonly threadSelectedModel: string | null;
-}): string | null {
-  if (params.modelSelection) {
-    return params.modelSelection.selectedModel;
-  }
-  return params.threadSelectedModel;
 }
 
 async function getLatestRunsByThreadId(
@@ -954,35 +969,6 @@ async function resolveClientThreadRetryRun(
   };
 }
 
-async function getStoredThreadModelPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  const [thread] = await db
-    .select({
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      selectedModel: chatThreads.selectedModel,
-    })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  if (!thread?.selectedModel) {
-    return null;
-  }
-  return {
-    modelProviderId: thread.modelProviderId,
-    modelProviderType: modelProviderTypeSchema
-      .nullable()
-      .parse(thread.modelProviderType),
-    modelProviderCredentialScope: modelProviderCredentialScopeSchema
-      .nullable()
-      .parse(thread.modelProviderCredentialScope),
-    selectedModel: thread.selectedModel,
-  };
-}
-
 function emptyModelFirstThreadPin(): ThreadModelPin {
   return {
     modelProviderId: null,
@@ -992,179 +978,77 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
   };
 }
 
-async function resolveStoredModelFirstPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly pin: ThreadModelPin;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-> {
-  if (!params.pin.selectedModel) {
-    return params.pin;
-  }
-  if (params.pin.modelProviderId) {
-    const available = await modelProviderPinAvailable({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      modelProviderId: params.pin.modelProviderId,
-    });
-    if (!available) {
-      return providerDeleted();
-    }
-    return params.pin;
-  }
-  if (params.pin.modelProviderType || params.pin.modelProviderCredentialScope) {
-    return params.pin;
-  }
-  return resolveModelSelectionPin({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelSelection: {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: params.pin.selectedModel,
-    },
-  });
-}
-
-async function resolveRunModelPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly threadId: string;
-  readonly modelSelection: IncomingModelSelection;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-> {
-  if (!params.modelSelection) {
-    const existing = await getStoredThreadModelPin(params.db, params.threadId);
-    if (!existing) {
-      return badRequestMessage("A model selection is required");
-    }
-    const pin = await resolveStoredModelFirstPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      pin: existing,
-    });
-    if ("status" in pin) {
-      return pin;
-    }
-    return pin;
-  }
-
-  const pin = await resolveModelSelectionPin({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelSelection: params.modelSelection,
-  });
-  if ("status" in pin) {
-    return pin;
-  }
-  return pin;
-}
-
-async function validateModelSelection(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelSelection: IncomingModelSelection;
-}): Promise<
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-  | undefined
-> {
-  if (params.modelSelection) {
-    const pin = await resolveModelSelectionPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      modelSelection: params.modelSelection,
-    });
-    if ("status" in pin) {
-      return pin;
-    }
-  }
-  return undefined;
-}
-
-async function resolveCodexServiceTierValidationPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly body: NormalSendBody;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-> {
-  if (params.body.modelSelection) {
-    return await resolveModelSelectionPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      modelSelection: params.body.modelSelection,
-    });
-  }
-  if (params.body.threadId) {
-    const existing = await getStoredThreadModelPin(
-      params.db,
-      params.body.threadId,
-    );
-    if (!existing) {
-      return badRequestMessage("A model selection is required");
-    }
-    return await resolveStoredModelFirstPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      pin: existing,
-    });
-  }
-  return badRequestMessage("A model selection is required");
-}
-
-async function validateCodexServiceTierBeforeThread(params: {
+async function resolveExplicitRunConfiguration(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-}): Promise<NormalSendFailure | undefined> {
-  if (!codexFastServiceTierRequested(params.body)) {
+  readonly timing?: ApiDispatchTimingCollector;
+}): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
+  const modelSelection = params.body.modelSelection;
+  if (!modelSelection) {
     return undefined;
   }
-  const modelPin = await resolveCodexServiceTierValidationPin(params);
+  const modelPin = await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+    "nested",
+    () => {
+      return resolveModelSelectionPin({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        modelSelection,
+      });
+    },
+  );
   if ("status" in modelPin) {
     return modelPin;
   }
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelPin,
-    requestedModelProvider: undefined,
-  });
-  const codexServiceTierError = validateCodexServiceTier({
-    body: params.body,
-    modelPin,
-    providerAdmission,
-    codexFastModeEnabled: params.codexFastModeEnabled,
-  });
+  const providerAdmission = await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+    "nested",
+    () => {
+      return resolveModelFirstProviderAdmission({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        modelPin,
+        requestedModelProvider: undefined,
+      });
+    },
+  );
+  if (providerAdmission.error && providerAdmission.error.status !== 402) {
+    return providerAdmission.error;
+  }
+  const codexServiceTierError = await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
+    "nested",
+    () => {
+      return validateCodexServiceTier({
+        body: params.body,
+        modelPin,
+        providerAdmission,
+        codexFastModeEnabled: params.codexFastModeEnabled,
+      });
+    },
+  );
   if (codexServiceTierError) {
     return codexServiceTierError;
   }
-  return providerAdmission.error;
+  return {
+    modelPin,
+    providerAdmission,
+    codexServiceTier: codexServiceTierForRun({
+      body: params.body,
+      modelPin,
+      providerAdmission,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    }),
+  };
 }
 
 async function resolveNormalSendFeatureSwitches(
@@ -1250,10 +1134,7 @@ async function maybePersistExplicitCodexServiceTier(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
 }): Promise<void> {
-  if (
-    params.body.modelSelection === undefined &&
-    params.body.runOptions === undefined
-  ) {
+  if (params.body.modelSelection === undefined) {
     return;
   }
   await params.db
@@ -1399,10 +1280,7 @@ async function createChatThread(
           userId: args.userId,
           agentComposeId: args.agentId,
           title: null,
-          modelProviderId: args.pin.modelProviderId,
-          modelProviderType: args.pin.modelProviderType,
-          modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
-          selectedModel: args.pin.selectedModel,
+          ...chatThreadModelPinColumns(args.pin),
           codexServiceTier: args.codexServiceTier,
         })
         .onConflictDoNothing({ target: chatThreads.id })
@@ -1445,10 +1323,7 @@ async function createChatThread(
         userId: args.userId,
         agentComposeId: args.agentId,
         title: null,
-        modelProviderId: args.pin.modelProviderId,
-        modelProviderType: args.pin.modelProviderType,
-        modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
-        selectedModel: args.pin.selectedModel,
+        ...chatThreadModelPinColumns(args.pin),
         codexServiceTier: args.codexServiceTier,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1470,36 +1345,17 @@ async function createChatThread(
   });
 }
 
-async function resolveInitialThreadModelPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
+function resolveInitialThreadModelPin(params: {
   readonly existingThreadId: string | undefined;
-  readonly modelSelection: IncomingModelSelection;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-> {
+  readonly explicitRunConfiguration: ResolvedRunConfiguration | undefined;
+}): ThreadModelPin | ReturnType<typeof badRequestMessage> {
   if (params.existingThreadId) {
     return emptyModelFirstThreadPin();
   }
-  if (!params.modelSelection) {
+  if (!params.explicitRunConfiguration?.modelPin.selectedModel) {
     return badRequestMessage("A model selection is required");
   }
-  const pin = await resolveModelSelectionPin({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelSelection: params.modelSelection,
-  });
-  if ("status" in pin) {
-    return pin;
-  }
-  if (!pin.selectedModel) {
-    return badRequestMessage("A model selection is required");
-  }
-  return pin;
+  return params.explicitRunConfiguration.modelPin;
 }
 
 async function resolveThread(params: {
@@ -1511,10 +1367,15 @@ async function resolveThread(params: {
   readonly clientThreadId: string | undefined;
   readonly chatThreadEventId: string | undefined;
   readonly initialPin: ThreadModelPin;
-  readonly codexServiceTier: CodexServiceTier | null;
-  readonly modelSelection: IncomingModelSelection;
-}): Promise<ResolvedThread | ReturnType<typeof notFound>> {
+  readonly explicitRunConfiguration: ResolvedRunConfiguration | undefined;
+  readonly requestedCodexServiceTier: CodexServiceTier | undefined;
+  readonly persistRequestedCodexServiceTier: boolean;
+  readonly codexFastModeEnabled: boolean;
+}): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
+    if (!params.explicitRunConfiguration) {
+      return badRequestMessage("A model selection is required");
+    }
     const thread = await createChatThread(params.db, {
       userId: params.userId,
       orgId: params.orgId,
@@ -1522,28 +1383,29 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       chatThreadEventId: params.chatThreadEventId,
       pin: params.initialPin,
-      codexServiceTier: params.codexServiceTier,
+      codexServiceTier:
+        params.explicitRunConfiguration.codexServiceTier ?? null,
     });
     if ("status" in thread) {
       return thread;
     }
     return {
-      threadId: thread.id,
-      sessionId: undefined,
-      incompleteContext: "",
-      computerUseHostId: null,
-      codexServiceTier: params.codexServiceTier,
-      isNewThread: !thread.clientThreadAlreadyExisted,
-      isClientThreadRetry: thread.clientThreadAlreadyExisted,
+      thread: {
+        threadId: thread.id,
+        sessionId: undefined,
+        incompleteContext: "",
+        computerUseHostId: null,
+        isNewThread: !thread.clientThreadAlreadyExisted,
+        isClientThreadRetry: thread.clientThreadAlreadyExisted,
+      },
+      runConfiguration: params.explicitRunConfiguration,
     };
   }
 
   const [thread] = await params.db
     .select({
       id: chatThreads.id,
-      selectedModel: chatThreads.selectedModel,
       computerUseHostId: chatThreads.computerUseHostId,
-      codexServiceTier: chatThreads.codexServiceTier,
     })
     .from(chatThreads)
     .where(
@@ -1557,25 +1419,53 @@ async function resolveThread(params: {
     return notFound("Chat thread not found");
   }
 
+  let runConfiguration = params.explicitRunConfiguration;
+  if (!runConfiguration) {
+    const persisted = await resolvePersistedChatThreadModel({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      threadId: thread.id,
+      requestedCodexServiceTier: params.requestedCodexServiceTier,
+      persistRequestedCodexServiceTier: params.persistRequestedCodexServiceTier,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    });
+    if (!persisted) {
+      return notFound("Chat thread not found");
+    }
+    if ("status" in persisted) {
+      return persisted;
+    }
+    runConfiguration = {
+      modelPin: persisted.pin,
+      providerAdmission: persisted.providerAdmission,
+      codexServiceTier: persisted.runCodexServiceTier,
+    };
+  }
+
   const [latestSession, incompleteContext] = await Promise.all([
     latestSessionForThread(params.db, thread.id),
     loadWebChatIncompleteContext(params.db, thread.id),
   ]);
   const startNewSession = shouldStartNewChatSession({
     latestModel: latestSession?.selectedModel,
-    nextModel: selectedModelForSessionDecision({
-      modelSelection: params.modelSelection,
-      threadSelectedModel: thread.selectedModel,
-    }),
+    nextModel: runConfiguration.modelPin.selectedModel,
+    latestModelProvider: latestSession?.modelProvider,
+    nextModelProvider:
+      runConfiguration.providerAdmission.effectiveModelProvider,
+    latestCliAgentType: latestSession?.cliAgentType,
+    nextCliAgentType: runConfiguration.providerAdmission.cliAgentType,
   });
   return {
-    threadId: thread.id,
-    sessionId: startNewSession ? undefined : latestSession?.sessionId,
-    incompleteContext: startNewSession ? "" : incompleteContext,
-    computerUseHostId: thread.computerUseHostId,
-    codexServiceTier: thread.codexServiceTier,
-    isNewThread: false,
-    isClientThreadRetry: false,
+    thread: {
+      threadId: thread.id,
+      sessionId: startNewSession ? undefined : latestSession?.sessionId,
+      incompleteContext: startNewSession ? "" : incompleteContext,
+      computerUseHostId: thread.computerUseHostId,
+      isNewThread: false,
+      isClientThreadRetry: false,
+    },
+    runConfiguration,
   };
 }
 
@@ -2189,20 +2079,23 @@ function loadTimedAuthorizedAgent(
   );
 }
 
-function validateTimedModelSelection(
+function resolveTimedExplicitRunConfiguration(
   args: NormalSendArgs,
   db: Db,
-): ReturnType<typeof validateModelSelection> {
+  featureSwitches: NormalSendFeatureSwitches,
+): ReturnType<typeof resolveExplicitRunConfiguration> {
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
     "nested",
     () => {
-      return validateModelSelection({
+      return resolveExplicitRunConfiguration({
         db,
         orgId: args.orgId,
         userId: args.userId,
-        modelSelection: args.body.modelSelection,
+        body: args.body,
+        codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+        timing: args.timing,
       });
     },
   );
@@ -2222,42 +2115,18 @@ function resolveTimedNormalSendFeatureSwitches(
   );
 }
 
-function validateTimedCodexServiceTierBeforeThread(
-  args: NormalSendArgs,
-  db: Db,
-  featureSwitches: NormalSendFeatureSwitches,
-): ReturnType<typeof validateCodexServiceTierBeforeThread> {
-  return measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
-    "nested",
-    () => {
-      return validateCodexServiceTierBeforeThread({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        body: args.body,
-        codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-      });
-    },
-  );
-}
-
 function resolveTimedInitialThreadModelPin(
   args: NormalSendArgs,
-  db: Db,
-): ReturnType<typeof resolveInitialThreadModelPin> {
+  explicitRunConfiguration: ResolvedRunConfiguration | undefined,
+): Promise<ReturnType<typeof resolveInitialThreadModelPin>> {
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
     "nested",
     () => {
       return resolveInitialThreadModelPin({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
         existingThreadId: args.body.threadId,
-        modelSelection: args.body.modelSelection,
+        explicitRunConfiguration,
       });
     },
   );
@@ -2267,6 +2136,8 @@ function resolveTimedThread(
   args: NormalSendArgs,
   db: Db,
   initialPin: ThreadModelPin,
+  explicitRunConfiguration: ResolvedRunConfiguration | undefined,
+  featureSwitches: NormalSendFeatureSwitches,
 ): ReturnType<typeof resolveThread> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2282,8 +2153,12 @@ function resolveTimedThread(
         clientThreadId: args.body.clientThreadId,
         chatThreadEventId: args.body.chatThreadEventId,
         initialPin,
-        codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
-        modelSelection: args.body.modelSelection,
+        explicitRunConfiguration,
+        requestedCodexServiceTier: args.body.runOptions?.codexServiceTier,
+        persistRequestedCodexServiceTier:
+          args.body.modelSelection !== undefined ||
+          args.body.runOptions !== undefined,
+        codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
       });
     },
   );
@@ -2374,49 +2249,80 @@ const prepareNormalSend$ = command(
     { set },
     args: NormalSendArgs,
     signal: AbortSignal,
-  ): Promise<PreparedNormalSend | NormalSendFailure> => {
+  ): Promise<
+    PreparedNormalSend | NormalSendFailure | CreatedChatMessageResponse
+  > => {
     const db = set(writeDb$);
     const agent = await loadTimedAuthorizedAgent(args, db, signal);
     if ("status" in agent) {
       return agent;
     }
 
-    const modelError = await validateTimedModelSelection(args, db);
-    signal.throwIfAborted();
-    if (modelError) {
-      return modelError;
-    }
-    const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
-      args,
-      db,
+    const preflightThreadId = args.body.threadId ?? args.body.clientThreadId;
+    const clientMessagePrechecked = Boolean(
+      preflightThreadId && args.body.clientMessageId,
     );
+    const preflightClientMessageResponse = preflightThreadId
+      ? await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+          "nested",
+          () => {
+            return resolveClientMessageSend({
+              db,
+              userId: args.userId,
+              threadId: preflightThreadId,
+              clientMessageId: args.body.clientMessageId,
+            });
+          },
+        )
+      : undefined;
     signal.throwIfAborted();
-    const codexServiceTierError =
-      await validateTimedCodexServiceTierBeforeThread(
-        args,
-        db,
-        featureSwitches,
-      );
-    signal.throwIfAborted();
-    if (codexServiceTierError) {
-      return codexServiceTierError;
+    if (preflightClientMessageResponse?.status === 201) {
+      return preflightClientMessageResponse;
     }
+
     const generationTemplateError = validateGenerationTemplatePrompt(args.body);
     if (generationTemplateError) {
       return generationTemplateError;
     }
 
-    const initialPin = await resolveTimedInitialThreadModelPin(args, db);
+    const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
+      args,
+      db,
+    );
+    signal.throwIfAborted();
+    const explicitRunConfiguration = await resolveTimedExplicitRunConfiguration(
+      args,
+      db,
+      featureSwitches,
+    );
+    signal.throwIfAborted();
+    if (explicitRunConfiguration && "status" in explicitRunConfiguration) {
+      return explicitRunConfiguration;
+    }
+
+    const initialPin = await resolveTimedInitialThreadModelPin(
+      args,
+      explicitRunConfiguration,
+    );
     signal.throwIfAborted();
     if ("status" in initialPin) {
       return initialPin;
     }
 
-    const thread = await resolveTimedThread(args, db, initialPin);
+    const threadAndRunConfiguration = await resolveTimedThread(
+      args,
+      db,
+      initialPin,
+      explicitRunConfiguration,
+      featureSwitches,
+    );
     signal.throwIfAborted();
-    if ("status" in thread) {
-      return thread;
+    if ("status" in threadAndRunConfiguration) {
+      return threadAndRunConfiguration;
     }
+    const { thread, runConfiguration } = threadAndRunConfiguration;
 
     const priorContext = await prepareTimedRecentChatContext(args, db, thread);
     signal.throwIfAborted();
@@ -2448,7 +2354,9 @@ const prepareNormalSend$ = command(
       computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
-      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+      runConfiguration,
+      clientMessagePrechecked,
+      preflightClientMessageConflict: preflightClientMessageResponse,
     };
   },
 );
@@ -2905,52 +2813,6 @@ async function appendInsufficientCreditsMessages(params: {
   };
 }
 
-type ModelFirstProviderAdmission = Awaited<
-  ReturnType<typeof resolveModelFirstProviderAdmission>
->;
-
-async function resolveTimedRunModelPin(
-  args: NormalSendArgs,
-  prepared: PreparedNormalSend,
-): ReturnType<typeof resolveRunModelPin> {
-  return await measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-    "nested",
-    async () => {
-      return await resolveRunModelPin({
-        db: prepared.db,
-        orgId: args.orgId,
-        userId: args.userId,
-        threadId: prepared.thread.threadId,
-        modelSelection: args.body.modelSelection,
-      });
-    },
-  );
-}
-
-async function resolveTimedProviderAdmission(params: {
-  readonly args: NormalSendArgs;
-  readonly prepared: PreparedNormalSend;
-  readonly modelPin: ThreadModelPin;
-  readonly requestedModelProvider: string | undefined;
-}): ReturnType<typeof resolveModelFirstProviderAdmission> {
-  return await measureApiDispatchTiming(
-    params.args.timing,
-    "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-    "nested",
-    async () => {
-      return await resolveModelFirstProviderAdmission({
-        db: params.prepared.db,
-        orgId: params.args.orgId,
-        userId: params.args.userId,
-        modelPin: params.modelPin,
-        requestedModelProvider: params.requestedModelProvider,
-      });
-    },
-  );
-}
-
 function codexFastServiceTierRequested(body: NormalSendBody): boolean {
   return body.runOptions?.codexServiceTier === "fast";
 }
@@ -2970,8 +2832,11 @@ function validateCodexServiceTier(params: {
     );
   }
   if (
-    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastModeModel(params.modelPin.selectedModel)
+    isCodexFastServiceTierSupported({
+      selectedModel: params.modelPin.selectedModel,
+      effectiveModelProvider: params.providerAdmission.effectiveModelProvider,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    })
   ) {
     return undefined;
   }
@@ -2986,10 +2851,12 @@ function codexServiceTierForRun(params: {
   readonly providerAdmission: ModelFirstProviderAdmission;
   readonly codexFastModeEnabled: boolean;
 }): "fast" | undefined {
-  return params.codexFastModeEnabled &&
-    codexFastServiceTierRequested(params.body) &&
-    params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastModeModel(params.modelPin.selectedModel)
+  return codexFastServiceTierRequested(params.body) &&
+    isCodexFastServiceTierSupported({
+      selectedModel: params.modelPin.selectedModel,
+      effectiveModelProvider: params.providerAdmission.effectiveModelProvider,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    })
     ? "fast"
     : undefined;
 }
@@ -2997,10 +2864,10 @@ function codexServiceTierForRun(params: {
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
-  readonly modelPin: ThreadModelPin;
-  readonly providerAdmission: ModelFirstProviderAdmission;
 }) {
-  const { args, prepared, modelPin, providerAdmission } = params;
+  const { args, prepared } = params;
+  const { modelPin, providerAdmission, codexServiceTier } =
+    prepared.runConfiguration;
   const fullPrompt = buildFullPrompt(args.body.prompt, args.body.attachFiles);
   return {
     auth: args.auth,
@@ -3011,12 +2878,7 @@ function buildCreateZeroRunArgs(params: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
-    codexServiceTier: codexServiceTierForRun({
-      body: args.body,
-      modelPin,
-      providerAdmission,
-      codexFastModeEnabled: prepared.codexFastModeEnabled,
-    }),
+    codexServiceTier,
     callbacks: [
       {
         internalKind: "chat" as const,
@@ -3056,8 +2918,6 @@ function buildCreateZeroRunArgs(params: {
 async function buildTimedCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
-  readonly modelPin: ThreadModelPin;
-  readonly providerAdmission: ModelFirstProviderAdmission;
 }): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
@@ -3176,20 +3036,11 @@ const createNormalChatRun$ = command(
   ) => {
     const { args, prepared } = params;
     const createNormalRunStartedAt = now();
-    const modelPin = await resolveTimedRunModelPin(args, prepared);
-    signal.throwIfAborted();
-    if ("status" in modelPin) {
-      return modelPin;
-    }
-
-    const providerAdmission = await resolveTimedProviderAdmission({
-      args,
-      prepared,
-      modelPin,
-      requestedModelProvider: undefined,
-    });
-    signal.throwIfAborted();
+    const { modelPin, providerAdmission } = prepared.runConfiguration;
     if (providerAdmission.error) {
+      if (providerAdmission.error.status !== 402) {
+        return providerAdmission.error;
+      }
       return await appendInsufficientCreditsMessages({
         prepared,
         body: args.body,
@@ -3203,21 +3054,9 @@ const createNormalChatRun$ = command(
       });
     }
 
-    const codexServiceTierError = validateCodexServiceTier({
-      body: args.body,
-      modelPin,
-      providerAdmission,
-      codexFastModeEnabled: prepared.codexFastModeEnabled,
-    });
-    if (codexServiceTierError) {
-      return codexServiceTierError;
-    }
-
     const createRunArgs = await buildTimedCreateZeroRunArgs({
       args,
       prepared,
-      modelPin,
-      providerAdmission,
     });
     signal.throwIfAborted();
 
@@ -3312,19 +3151,25 @@ const sendNormalMessage$ = command(
       return prepared;
     }
 
-    const clientMessageResolution = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-      "nested",
-      async () => {
-        return await resolveClientMessageSend({
-          db: prepared.db,
-          userId: args.userId,
-          threadId: prepared.thread.threadId,
-          clientMessageId: args.body.clientMessageId,
-        });
-      },
-    );
+    const clientMessageResolution =
+      prepared.preflightClientMessageConflict ??
+      (!prepared.clientMessagePrechecked ||
+      args.body.revokesMessageId !== undefined ||
+      prepared.thread.isClientThreadRetry
+        ? await measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+            "nested",
+            async () => {
+              return await resolveClientMessageSend({
+                db: prepared.db,
+                userId: args.userId,
+                threadId: prepared.thread.threadId,
+                clientMessageId: args.body.clientMessageId,
+              });
+            },
+          )
+        : undefined);
     signal.throwIfAborted();
     if (clientMessageResolution) {
       return clientMessageResolution;

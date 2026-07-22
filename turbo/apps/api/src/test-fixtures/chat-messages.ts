@@ -1,5 +1,5 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { and, count, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -178,11 +178,13 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
- * Holds a table lock that permits row selection but pauses chat-message writes.
- * This is a timing-only boundary exception for proving queue claim races through
- * the product API; the transaction neither creates nor changes product rows.
+ * Holds one queued user-message row so a claim and recall can reach the same
+ * product lock in a test-owned order. This timing-only boundary neither creates
+ * nor changes product rows and cannot block unrelated queue items.
  */
-export async function holdChatMessageWritesFixture(args: {
+export async function holdChatMessageQueueItemFixture(args: {
+  readonly threadId: string;
+  readonly messageId: string;
   readonly signal: AbortSignal;
 }): Promise<{
   readonly release: () => void;
@@ -192,17 +194,31 @@ export async function holdChatMessageWritesFixture(args: {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
-    await tx.execute(sql`LOCK TABLE ${chatMessages} IN SHARE MODE`);
-    const rows = await executeRawRows(
+    const rows = await tx
+      .select({ id: chatMessageQueue.id })
+      .from(chatMessageQueue)
+      .where(
+        and(
+          eq(chatMessageQueue.chatThreadId, args.threadId),
+          eq(chatMessageQueue.chatMessageId, args.messageId),
+          eq(chatMessageQueue.itemType, "user_message"),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!rows[0]) {
+      throw new Error("Expected the queued chat message row");
+    }
+    const pidRows = await executeRawRows(
       tx,
       sql`
         SELECT pg_backend_pid() AS "pid"
       `,
       databasePidRowSchema,
     );
-    const holderPid = rows[0]?.pid;
+    const holderPid = pidRows[0]?.pid;
     if (!holderPid) {
-      throw new Error("Expected the chat-message lock holder pid");
+      throw new Error("Expected the chat-message queue lock holder pid");
     }
     started.resolve(holderPid);
     await released.promise;

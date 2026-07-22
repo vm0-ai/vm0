@@ -5,6 +5,7 @@ import {
   chatThreadRenameContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
@@ -113,7 +114,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     expect(metadataResponse.body).toStrictEqual({
       id: fixture.threadId,
       title: "CLI renamed title",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
   });
 
