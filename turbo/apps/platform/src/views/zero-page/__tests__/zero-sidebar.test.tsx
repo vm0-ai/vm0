@@ -1781,6 +1781,41 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("moves to an unread unpinned agent shown in the sidebar", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: [SUPPORT_AGENT_ID] });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${RESEARCH_AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Support Agent")).toBeInTheDocument();
+      return current;
+    });
+    expect(
+      within(agentRowByName(nav, "Support Agent")).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+    });
+  });
+
   it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
