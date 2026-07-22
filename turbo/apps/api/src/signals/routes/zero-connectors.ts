@@ -49,7 +49,7 @@ import { getConnectorOAuthAuthorizationUrl } from "../services/connector-oauth-s
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 import {
-  getConnectorOAuthCallbackOriginForMethod,
+  getConnectorOAuthCallbackUrlForMethod,
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
 import {
@@ -502,14 +502,15 @@ const startConnectorOauthInner$ = command(
       return internalServerError("Connector execution is not configured");
     }
 
-    const origin = getConnectorOAuthCallbackOriginForMethod({
+    const redirectUri = getConnectorOAuthCallbackUrlForMethod({
       request,
       method,
+      connectorRef: resolved.connectorRef,
+      callbackTarget: bodyResult.data.callbackTarget,
     });
     const prepared = prepareConnectorAuthCodeStartWithMethod({
-      connectorRef: resolved.connectorRef,
       method,
-      origin,
+      redirectUri,
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {

@@ -32,6 +32,10 @@
       "import": "./src/feature-switch-key.ts",
       "types": "./src/feature-switch-key.ts"
     },
+    "./app-oauth-callback": {
+      "import": "./src/app-oauth-callback.ts",
+      "types": "./src/app-oauth-callback.ts"
+    },
     "./firewall-expander": {
       "import": "./src/firewall-expander.ts",
       "types": "./src/firewall-expander.ts"

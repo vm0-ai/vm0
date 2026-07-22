@@ -315,6 +315,98 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
 });
 
 describe("CONN-02: OAuth start and callback", () => {
+  it("uses App callbacks for enabled connectors while returning structured callback results", async () => {
+    mockGitHubConnectorOAuth();
+
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const startResponse = await connectorsApi.requestOauthStart(
+      actor,
+      "github",
+      "oauth",
+      {
+        statuses: [200],
+        authorizeAgent: true,
+        callbackTarget: "app",
+      },
+    );
+    if (startResponse.status !== 200) {
+      throw new Error(`Unexpected OAuth start status ${startResponse.status}`);
+    }
+    const authorizationUrl = await connectorsApi.continueOauth(
+      "github",
+      startResponse.body.authorizationUrl,
+    );
+    expect(
+      new URL(authorizationUrl.searchParams.get("redirect_uri") ?? "").pathname,
+    ).toBe("/connectors/github/callback");
+    const state = stateFromAuthorizationUrl(authorizationUrl.toString());
+
+    const callbackResult = await connectorsApi.completeOauthCallbackResult(
+      "github",
+      {
+        code: "github-app-success-code",
+        state,
+      },
+    );
+    expect(callbackResult.body).toStrictEqual({
+      status: "success",
+      username: "bdd-github-user",
+    });
+    expect(callbackResult.headers.get("cache-control")).toBe("no-store");
+    expect(callbackResult.headers.getSetCookie()).toStrictEqual(
+      expect.arrayContaining([...CONNECTOR_OAUTH_COOKIE_CLEARS]),
+    );
+    await expect(
+      connectorsApi.readConnectorByType(actor, "github"),
+    ).resolves.toMatchObject({
+      type: "github",
+      externalUsername: "bdd-github-user",
+      connectionStatus: "connected",
+    });
+
+    const failedActor = bdd.user();
+    const failedStartResponse = await connectorsApi.requestOauthStart(
+      failedActor,
+      "github",
+      "oauth",
+      {
+        statuses: [200],
+        authorizeAgent: true,
+        callbackTarget: "app",
+      },
+    );
+    if (failedStartResponse.status !== 200) {
+      throw new Error(
+        `Unexpected OAuth start status ${failedStartResponse.status}`,
+      );
+    }
+    const failedAuthorizationUrl = await connectorsApi.continueOauth(
+      "github",
+      failedStartResponse.body.authorizationUrl,
+    );
+    const failedState = stateFromAuthorizationUrl(
+      failedAuthorizationUrl.toString(),
+    );
+    const failedCallbackResult =
+      await connectorsApi.completeOauthCallbackResult("github", {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: failedState,
+      });
+    expect(failedCallbackResult.body).toStrictEqual({
+      status: "error",
+      message: "Provider denied access",
+    });
+    const failedConnector = await connectorsApi.requestReadConnectorByType(
+      failedActor,
+      "github",
+      [404],
+    );
+    expectApiError(failedConnector.body);
+    expect(failedConnector.body.error.code).toBe("NOT_FOUND");
+  });
+
   it("starts GitHub OAuth, completes the callback, rejects replay visibly, and keeps safe connector state", async () => {
     mockGitHubConnectorOAuth();
 

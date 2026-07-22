@@ -101,6 +101,7 @@ export const zeroConnectorOauthStartContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
+      callbackTarget: z.literal("app").optional(),
     }),
     responses: {
       200: connectorOauthStartResponseSchema,

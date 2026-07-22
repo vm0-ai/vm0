@@ -26,9 +26,8 @@ type PrepareConnectorAuthCodeStartWithMethodResult =
     };
 
 export function prepareConnectorAuthCodeStartWithMethod(args: {
-  readonly connectorRef: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly origin: string;
+  readonly redirectUri: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareConnectorAuthCodeStartWithMethodResult {
   if (args.method.grant.kind !== "auth-code" || !args.method.client) {
@@ -45,7 +44,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
   return {
     ok: true,
     state,
-    redirectUri: `${args.origin}/api/connectors/${args.connectorRef}/callback`,
+    redirectUri: args.redirectUri,
     authClient,
   };
 }

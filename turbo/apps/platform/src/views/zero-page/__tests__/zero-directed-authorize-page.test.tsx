@@ -123,6 +123,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
         authMethod: "oauth",
         agentId: AGENT_ID,
         authorizeAgent: true,
+        callbackTarget: "app",
       });
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.type}/authorize`,

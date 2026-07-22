@@ -58,6 +58,7 @@ import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
+import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callback-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
@@ -173,6 +174,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.computerUseAuthorize,
     setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
+  },
+  {
+    path: ROUTES.connectorCallbackResult,
+    setup: setupConnectorCallbackPage$,
+  },
+  {
+    path: ROUTES.connectorCallback,
+    setup: setupConnectorCallbackPage$,
   },
   {
     path: ROUTES.connectorRedirecting,

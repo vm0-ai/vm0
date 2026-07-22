@@ -19,6 +19,7 @@ import {
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
 import {
   zeroConnectorOauthStartContract,
   zeroConnectorOpenIdStartContract,
@@ -216,7 +217,17 @@ function startGoogleDriveConnectAndRun(params: {
                 .createClient(zeroConnectorOauthStartContract, {
                   apiBase: OAUTH_API_BASE,
                 })
-                .start(request),
+                .start({
+                  ...request,
+                  body: {
+                    ...request.body,
+                    ...(isConnectorAppOauthCallbackEnabled(
+                      params.connector.connectorRef,
+                    )
+                      ? { callbackTarget: "app" as const }
+                      : {}),
+                  },
+                }),
               [200],
             );
       params.pageSignal.throwIfAborted();
