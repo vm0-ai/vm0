@@ -226,6 +226,9 @@ case "$COMMAND_NAME" in
     fi
     if contains_argument VM0-RECONCILE-IDLE "$@" \
       && contains_argument "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns" "$@"; then
+      if flock -n "/var/lock/vm0-netns-pool-${VM0_RECONCILE_FIREWALL_POOL_INDEX}.lock" true; then
+        printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-unlocked"
+      fi
       printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
       exit 0
     fi
@@ -304,6 +307,7 @@ sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --env "VM0_RECONCILE_REAL_IPTABLES=$REAL_IPTABLES" \
   --env "VM0_RECONCILE_REAL_IPTABLES_SAVE=$REAL_IPTABLES_SAVE" \
   --env "VM0_RECONCILE_REAL_IP6TABLES_SAVE=$REAL_IP6TABLES_SAVE" \
+  --env "VM0_RECONCILE_FIREWALL_POOL_INDEX=${RECONCILE_POOL_INDEXES[2]}" \
   --env "VM0_RECONCILE_FIREWALL_POOL_HEX=$RECONCILE_FIREWALL_POOL_HEX" \
   --env "VM0_RECONCILE_ACTIVE_POOL_HEX=$RECONCILE_ACTIVE_POOL_HEX" \
   --env "VM0_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
@@ -364,6 +368,7 @@ assert_reconcile_count iptables.own-delete 1
 assert_reconcile_count ip.own-link-delete 1
 assert_reconcile_count ip.own-netns-delete 1
 assert_reconcile_count iptables.firewall-only-delete 1
+assert_reconcile_count iptables.firewall-only-unlocked 0
 assert_reconcile_count iptables.decoy-delete 0
 assert_reconcile_count ip.active-delete 0
 echo "PASS: startup reconciled one snapshot without modifying the active pool"
