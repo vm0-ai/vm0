@@ -1321,21 +1321,14 @@ async fn delete_network_resources_with_ops(
     if count > 0 {
         info!(count, "cleaning up namespace pool entries");
     }
-    let namespace_metadata: Vec<_> = namespaces
-        .iter()
-        .map(|namespace| (namespace.name.clone(), namespace.host_device.clone()))
-        .collect();
     let outcome = ops
         .delete_network_resources(namespaces, dns_input_filter_comment)
         .await;
     if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
-        for (name, host_device) in namespace_metadata {
-            warn!(
-                name,
-                host_device,
-                "namespace cleanup was abandoned; startup orphan reconciliation will retry"
-            );
-        }
+        warn!(
+            count,
+            "namespace resource batch cleanup was abandoned; startup orphan reconciliation will retry"
+        );
     }
     outcome
 }

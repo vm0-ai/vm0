@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::future::Future;
 use std::io::Write;
@@ -25,6 +25,12 @@ use super::naming::{
 use super::types::NetnsInfo;
 
 const NETNS_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+
+// Each namespace starts two `ip` children concurrently. A 16-wide window caps
+// that fanout at 32 processes. At the 256-namespace hard limit, sixteen
+// 10-second waves leave room inside the runner's 300-second systemd stop
+// budget for firewall cleanup and the other teardown phases.
+const NAMESPACE_DELETE_CONCURRENCY: usize = 16;
 static CONNTRACK_NOT_FOUND_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Peer-side device name inside namespaces (fixed).
@@ -495,23 +501,136 @@ async fn delete_network_resources(
             .await
     };
 
-    let mut outcome = firewall;
-    for namespace in namespaces {
-        info!(name = %namespace.name, "deleting namespace");
-        let namespace_outcome =
-            delete_namespace_link_and_netns(&namespace.name, &namespace.host_device).await;
-        if matches!(namespace_outcome, NamespaceDeleteOutcome::Deleted) {
-            info!(name = %namespace.name, "namespace deleted");
-        } else {
-            warn!(
-                name = %namespace.name,
-                host_device = %namespace.host_device,
-                "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
-            );
-            outcome = NamespaceDeleteOutcome::Abandoned;
+    let namespace_outcome = delete_namespace_resources_bounded(
+        namespaces
+            .into_iter()
+            .map(NamespaceResources::from)
+            .collect(),
+    )
+    .await;
+    combine_namespace_delete_outcomes([firewall, namespace_outcome])
+}
+
+async fn delete_namespace_resources_bounded(
+    namespaces: Vec<NamespaceResources>,
+) -> NamespaceDeleteOutcome {
+    delete_namespace_resources_bounded_with(namespaces, |name, host_device| async move {
+        delete_namespace_link_and_netns(&name, &host_device).await
+    })
+    .await
+}
+
+async fn delete_namespace_resources_bounded_with<F, Fut>(
+    namespaces: Vec<NamespaceResources>,
+    delete: F,
+) -> NamespaceDeleteOutcome
+where
+    F: Fn(String, String) -> Fut + Clone + Send + 'static,
+    Fut: Future<Output = NamespaceDeleteOutcome> + Send + 'static,
+{
+    let count = namespaces.len();
+    if count == 0 {
+        return NamespaceDeleteOutcome::Deleted;
+    }
+
+    info!(
+        count,
+        concurrency = NAMESPACE_DELETE_CONCURRENCY,
+        "deleting namespace resource batch"
+    );
+    let mut pending = namespaces.into_iter();
+    let mut tasks = tokio::task::JoinSet::new();
+    let mut in_flight = HashMap::new();
+
+    while tasks.len() < NAMESPACE_DELETE_CONCURRENCY {
+        let Some(namespace) = pending.next() else {
+            break;
+        };
+        spawn_namespace_resource_delete(&mut tasks, &mut in_flight, namespace, delete.clone());
+    }
+
+    let mut outcome = NamespaceDeleteOutcome::Deleted;
+    let mut failed = 0_usize;
+    while let Some(result) = tasks.join_next_with_id().await {
+        let task_id = match &result {
+            Ok((task_id, _)) => *task_id,
+            Err(error) => error.id(),
+        };
+        let namespace = in_flight.remove(&task_id);
+
+        match (namespace, result) {
+            (Some(_), Ok((_, NamespaceDeleteOutcome::Deleted))) => {}
+            (Some(namespace), Ok((_, NamespaceDeleteOutcome::Abandoned))) => {
+                warn!(
+                    name = %namespace.name,
+                    host_device = %namespace.host_device,
+                    "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                );
+                outcome = NamespaceDeleteOutcome::Abandoned;
+                failed += 1;
+            }
+            (Some(namespace), Err(error)) => {
+                warn!(
+                    name = %namespace.name,
+                    host_device = %namespace.host_device,
+                    %error,
+                    "namespace cleanup task did not complete cleanly; startup orphan reconciliation will retry"
+                );
+                outcome = NamespaceDeleteOutcome::Abandoned;
+                failed += 1;
+            }
+            (None, result) => {
+                warn!(
+                    task_id = %task_id,
+                    result = ?result,
+                    "namespace cleanup task lost its resource metadata; startup orphan reconciliation will retry"
+                );
+                outcome = NamespaceDeleteOutcome::Abandoned;
+                failed += 1;
+            }
+        }
+
+        if let Some(namespace) = pending.next() {
+            spawn_namespace_resource_delete(&mut tasks, &mut in_flight, namespace, delete.clone());
         }
     }
+
+    for (_, namespace) in in_flight {
+        warn!(
+            name = %namespace.name,
+            host_device = %namespace.host_device,
+            "namespace cleanup task was not joined; startup orphan reconciliation will retry"
+        );
+        outcome = NamespaceDeleteOutcome::Abandoned;
+        failed += 1;
+    }
+
+    if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
+        info!(count, "namespace resource batch deleted");
+    } else {
+        warn!(
+            count,
+            failed,
+            "namespace resource batch cleanup was abandoned; startup orphan reconciliation will retry"
+        );
+    }
     outcome
+}
+
+fn spawn_namespace_resource_delete<F, Fut>(
+    tasks: &mut tokio::task::JoinSet<NamespaceDeleteOutcome>,
+    in_flight: &mut HashMap<tokio::task::Id, NamespaceResources>,
+    namespace: NamespaceResources,
+    delete: F,
+) where
+    F: Fn(String, String) -> Fut + Send + 'static,
+    Fut: Future<Output = NamespaceDeleteOutcome> + Send + 'static,
+{
+    let name = namespace.name.clone();
+    let host_device = namespace.host_device.clone();
+    let task = tasks.spawn(async move { delete(name, host_device).await });
+    let replaced = in_flight.insert(task.id(), namespace);
+    debug_assert!(replaced.is_none());
 }
 
 /// Delete the host veth and netns only; callers handle host iptables separately.
@@ -817,16 +936,25 @@ impl FirewallSnapshot {
     }
 }
 
-#[derive(Debug)]
-struct CapturedNamespace {
+#[derive(Clone, Debug)]
+struct NamespaceResources {
     name: String,
     host_device: String,
+}
+
+impl From<NetnsInfo> for NamespaceResources {
+    fn from(namespace: NetnsInfo) -> Self {
+        Self {
+            name: namespace.name,
+            host_device: namespace.host_device,
+        }
+    }
 }
 
 #[derive(Debug)]
 struct ReconciliationSnapshot {
     firewall: FirewallSnapshot,
-    namespaces_by_pool: SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>>,
+    namespaces_by_pool: SnapshotSource<BTreeMap<u32, Vec<NamespaceResources>>>,
 }
 
 impl ReconciliationSnapshot {
@@ -907,7 +1035,7 @@ fn pool_index_from_comment(comment: &str) -> Option<u32> {
     (pool_index < MAX_POOLS && format_hex_index(pool_index) == pool_hex).then_some(pool_index)
 }
 
-async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<CapturedNamespace>>> {
+async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<NamespaceResources>>> {
     let output = match exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await {
         Ok(output) => output,
         Err(error) => {
@@ -916,7 +1044,7 @@ async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<CapturedNamesp
         }
     };
 
-    let mut namespaces_by_pool: BTreeMap<u32, Vec<CapturedNamespace>> = BTreeMap::new();
+    let mut namespaces_by_pool: BTreeMap<u32, Vec<NamespaceResources>> = BTreeMap::new();
     for name in output
         .lines()
         .filter_map(|line| line.split_whitespace().next())
@@ -929,7 +1057,7 @@ async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<CapturedNamesp
         namespaces_by_pool
             .entry(parsed.pool_index)
             .or_default()
-            .push(CapturedNamespace {
+            .push(NamespaceResources {
                 name: name.to_string(),
                 host_device: make_host_device(&pool_idx, &ns_idx),
             });
@@ -1141,33 +1269,8 @@ async fn cleanup_namespaces_from_snapshot(
 
     let idx_str = format_hex_index(index);
     info!(count = namespaces.len(), index = %idx_str, "cleaning up orphaned namespaces");
-    let mut set = tokio::task::JoinSet::new();
-    for namespace in namespaces {
-        let ns_name = namespace.name.clone();
-        let host_device = namespace.host_device.clone();
-        set.spawn(async move {
-            info!(name = %ns_name, "deleting namespace");
-            let outcome = delete_namespace_link_and_netns(&ns_name, &host_device).await;
-            if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
-                info!(name = %ns_name, "namespace deleted");
-            } else {
-                warn!(
-                    name = %ns_name,
-                    host_device,
-                    "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
-                );
-            }
-            outcome
-        });
-    }
-
-    let mut outcome = firewall;
-    while let Some(result) = set.join_next().await {
-        if !matches!(result, Ok(NamespaceDeleteOutcome::Deleted)) {
-            outcome = NamespaceDeleteOutcome::Abandoned;
-        }
-    }
-    outcome
+    let namespace_outcome = delete_namespace_resources_bounded(namespaces.clone()).await;
+    combine_namespace_delete_outcomes([firewall, namespace_outcome])
 }
 
 /// Clean orphans from `own_index` and captured pool indexes with no active
@@ -1249,6 +1352,209 @@ fn try_claim_idle_pool_lock(locks: &LockPaths, index: u32) -> Option<Flock<File>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    use tokio::sync::Semaphore;
+
+    const TEST_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
+
+    async fn wait_for_test_sync<T>(phase: &'static str, future: impl Future<Output = T>) -> T {
+        match tokio::time::timeout(TEST_SYNC_TIMEOUT, future).await {
+            Ok(value) => value,
+            Err(_) => panic!("test synchronization timed out waiting for {phase}"),
+        }
+    }
+
+    fn namespace_resources_for_test(count: usize) -> Vec<NamespaceResources> {
+        (0..count)
+            .map(|index| NamespaceResources {
+                name: format!("vm0-ns-test-{index:02x}"),
+                host_device: format!("vm0-ve-test-{index:02x}"),
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn namespace_resource_deletion_uses_fixed_concurrency_window() {
+        let count = NAMESPACE_DELETE_CONCURRENCY + 2;
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let completed = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(Semaphore::new(0));
+        let release = Arc::new(Semaphore::new(0));
+        let cleanup = tokio::spawn(delete_namespace_resources_bounded_with(
+            namespace_resources_for_test(count),
+            {
+                let active = Arc::clone(&active);
+                let peak = Arc::clone(&peak);
+                let completed = Arc::clone(&completed);
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_, _| {
+                    let active = Arc::clone(&active);
+                    let peak = Arc::clone(&peak);
+                    let completed = Arc::clone(&completed);
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    async move {
+                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak.fetch_max(current, Ordering::SeqCst);
+                        started.add_permits(1);
+                        release.acquire().await.unwrap().forget();
+                        active.fetch_sub(1, Ordering::SeqCst);
+                        completed.fetch_add(1, Ordering::SeqCst);
+                        NamespaceDeleteOutcome::Deleted
+                    }
+                }
+            },
+        ));
+
+        for _ in 0..NAMESPACE_DELETE_CONCURRENCY {
+            wait_for_test_sync(
+                "namespace deletion to enter the fixed window",
+                started.acquire(),
+            )
+            .await
+            .unwrap()
+            .forget();
+        }
+        assert_eq!(active.load(Ordering::SeqCst), NAMESPACE_DELETE_CONCURRENCY);
+        assert_eq!(peak.load(Ordering::SeqCst), NAMESPACE_DELETE_CONCURRENCY);
+        assert_eq!(started.available_permits(), 0);
+
+        release.add_permits(count);
+        let outcome = wait_for_test_sync("namespace deletion batch to complete", cleanup)
+            .await
+            .unwrap();
+
+        assert_eq!(outcome, NamespaceDeleteOutcome::Deleted);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+        assert_eq!(peak.load(Ordering::SeqCst), NAMESPACE_DELETE_CONCURRENCY);
+        assert_eq!(completed.load(Ordering::SeqCst), count);
+    }
+
+    #[tokio::test]
+    async fn namespace_resource_deletion_aggregates_partial_failure() {
+        let count = NAMESPACE_DELETE_CONCURRENCY + 2;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let failed_name = "vm0-ns-test-03";
+
+        let outcome =
+            delete_namespace_resources_bounded_with(namespace_resources_for_test(count), {
+                let attempts = Arc::clone(&attempts);
+                move |name, _| {
+                    let attempts = Arc::clone(&attempts);
+                    async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        if name == failed_name {
+                            NamespaceDeleteOutcome::Abandoned
+                        } else {
+                            NamespaceDeleteOutcome::Deleted
+                        }
+                    }
+                }
+            })
+            .await;
+
+        assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
+        assert_eq!(attempts.load(Ordering::SeqCst), count);
+    }
+
+    #[tokio::test]
+    async fn namespace_resource_deletion_aggregates_task_panic() {
+        let outcome = delete_namespace_resources_bounded_with(
+            namespace_resources_for_test(3),
+            |name, _| async move {
+                assert_ne!(name, "vm0-ns-test-01", "synthetic deletion panic");
+                NamespaceDeleteOutcome::Deleted
+            },
+        )
+        .await;
+
+        assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
+    }
+
+    #[tokio::test]
+    async fn cancelling_namespace_resource_deletion_aborts_in_flight_tasks() {
+        struct NotifyOnDrop(Arc<Semaphore>);
+
+        impl Drop for NotifyOnDrop {
+            fn drop(&mut self) {
+                self.0.add_permits(1);
+            }
+        }
+
+        let started = Arc::new(Semaphore::new(0));
+        let dropped = Arc::new(Semaphore::new(0));
+        let cleanup = tokio::spawn(delete_namespace_resources_bounded_with(
+            namespace_resources_for_test(NAMESPACE_DELETE_CONCURRENCY + 1),
+            {
+                let started = Arc::clone(&started);
+                let dropped = Arc::clone(&dropped);
+                move |_, _| {
+                    let started = Arc::clone(&started);
+                    let dropped = Arc::clone(&dropped);
+                    async move {
+                        let _drop = NotifyOnDrop(dropped);
+                        started.add_permits(1);
+                        std::future::pending::<NamespaceDeleteOutcome>().await
+                    }
+                }
+            },
+        ));
+
+        for _ in 0..NAMESPACE_DELETE_CONCURRENCY {
+            wait_for_test_sync(
+                "namespace deletion to start before cancellation",
+                started.acquire(),
+            )
+            .await
+            .unwrap()
+            .forget();
+        }
+        cleanup.abort();
+        let error = wait_for_test_sync("cancelled deletion batch to stop", cleanup)
+            .await
+            .unwrap_err();
+        assert!(error.is_cancelled());
+        for _ in 0..NAMESPACE_DELETE_CONCURRENCY {
+            wait_for_test_sync(
+                "in-flight namespace deletion to be dropped",
+                dropped.acquire(),
+            )
+            .await
+            .unwrap()
+            .forget();
+        }
+    }
+
+    #[test]
+    fn namespace_delete_outcome_abandons_uncertain_commands() {
+        assert_eq!(
+            NamespaceDeleteOutcome::from_best_effort([
+                IgnoredCommandOutcome::Success,
+                IgnoredCommandOutcome::NonZero,
+            ]),
+            NamespaceDeleteOutcome::Deleted
+        );
+
+        for outcome in [
+            IgnoredCommandOutcome::NotFound,
+            IgnoredCommandOutcome::SpawnError,
+            IgnoredCommandOutcome::WaitError,
+            IgnoredCommandOutcome::PipeError,
+            IgnoredCommandOutcome::OutputTooLarge,
+            IgnoredCommandOutcome::Timeout,
+        ] {
+            assert_eq!(
+                NamespaceDeleteOutcome::from_best_effort(
+                    [IgnoredCommandOutcome::Success, outcome,]
+                ),
+                NamespaceDeleteOutcome::Abandoned,
+                "uncertain command outcome was treated as deleted: {outcome:?}"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn xtables_status_prepends_bare_wait() {
