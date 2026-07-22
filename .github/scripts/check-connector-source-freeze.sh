@@ -26,39 +26,49 @@ is_frozen_path() {
   return 1
 }
 
-changed_files="$(
-  git diff \
-    --find-renames \
-    --name-only \
-    --diff-filter=ACMRTUXB \
-    "$base_ref" \
-    "$head_ref" \
-    -- \
-    "${frozen_paths[@]}"
-)"
-
-rename_diff_file="$(mktemp)"
-trap 'rm -f "$rename_diff_file"' EXIT
+diff_file="$(mktemp)"
+trap 'rm -f "$diff_file"' EXIT
 git diff \
   --find-renames \
   --name-status \
   -z \
-  --diff-filter=R \
   "$base_ref" \
   "$head_ref" \
-  -- > "$rename_diff_file"
+  -- > "$diff_file"
 
-renamed_out_paths=()
+blocked_changes=()
 while IFS= read -r -d '' status; do
-  IFS= read -r -d '' old_path
-  IFS= read -r -d '' new_path
+  case "$status" in
+    R*)
+      IFS= read -r -d '' old_path
+      IFS= read -r -d '' new_path
+      if is_frozen_path "$old_path" || is_frozen_path "$new_path"; then
+        printf -v rendered_change '%q -> %q' "$old_path" "$new_path"
+        blocked_changes+=("$rendered_change")
+      fi
+      ;;
+    C*)
+      IFS= read -r -d '' old_path
+      IFS= read -r -d '' new_path
+      if is_frozen_path "$new_path"; then
+        printf -v rendered_change '%q -> %q' "$old_path" "$new_path"
+        blocked_changes+=("$rendered_change")
+      fi
+      ;;
+    D*)
+      IFS= read -r -d '' _
+      ;;
+    *)
+      IFS= read -r -d '' changed_path
+      if is_frozen_path "$changed_path"; then
+        printf -v rendered_change '%q' "$changed_path"
+        blocked_changes+=("$rendered_change")
+      fi
+      ;;
+  esac
+done < "$diff_file"
 
-  if [[ "$status" == R* ]] && is_frozen_path "$old_path" && ! is_frozen_path "$new_path"; then
-    renamed_out_paths+=("$old_path" "$new_path")
-  fi
-done < "$rename_diff_file"
-
-if [ -z "$changed_files" ] && [ "${#renamed_out_paths[@]}" -eq 0 ]; then
+if [ "${#blocked_changes[@]}" -eq 0 ]; then
   echo "Connector source freeze validated."
   exit 0
 fi
@@ -69,14 +79,7 @@ else
   echo "ERROR: Connector source data in vm0 is frozen." >&2
 fi
 
-if [ -n "$changed_files" ]; then
-  printf '%s\n' "$changed_files" | sed 's/^/  /' >&2
-fi
-for ((index = 0; index < ${#renamed_out_paths[@]}; index += 2)); do
-  printf '  %q -> %q\n' \
-    "${renamed_out_paths[$index]}" \
-    "${renamed_out_paths[$((index + 1))]}" >&2
-done
+printf '  %s\n' "${blocked_changes[@]}" >&2
 echo "" >&2
 echo "Make connector source changes in https://github.com/vm0-ai/vm0-connectors instead." >&2
 echo "Deleting migrated files from the frozen vm0 directories is allowed." >&2
