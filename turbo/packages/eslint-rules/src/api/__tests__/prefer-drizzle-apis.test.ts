@@ -140,6 +140,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .select({ id: users.id })
           .from(users)
           .as("selected_users");
+        const dynamicCondition = sql\`true\`;
         sql\` \`;
         sql\`true::boolean\`;
         db.select()
@@ -162,6 +163,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select()
           .from(users)
           .innerJoinLateral(selected, eq(selected.id, users.id));
+        db.select()
+          .from(users)
+          .innerJoinLateral(selected, dynamicCondition);
       `,
     },
     {

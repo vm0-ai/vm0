@@ -371,12 +371,11 @@ export const preferDrizzleApis = createRule({
     }
 
     function isTrueSqlTag(node: TSESTree.Expression): boolean {
-      const quasi =
-        node.type === AST_NODE_TYPES.TaggedTemplateExpression
-          ? node.quasi.quasis[0]
-          : undefined;
+      if (node.type !== AST_NODE_TYPES.TaggedTemplateExpression) {
+        return false;
+      }
+      const quasi = node.quasi.quasis[0];
       return (
-        node.type === AST_NODE_TYPES.TaggedTemplateExpression &&
         isDrizzleSqlTag(checker, services, node.tag) &&
         node.quasi.expressions.length === 0 &&
         node.quasi.quasis.length === 1 &&
