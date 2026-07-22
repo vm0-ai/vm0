@@ -127,6 +127,6 @@ function isChatUrl(url: URL): boolean {
   return /^\/(?:agents\/[^/]+\/chat|chats\/[^/]+)$/.test(url.pathname);
 }
 
-export function isPromptOrChatUrl(url: URL): boolean {
+function isPromptOrChatUrl(url: URL): boolean {
   return url.pathname === "/prompt" || isChatUrl(url);
 }
