@@ -9555,7 +9555,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("keeps claim auth valid through timeout finalization and expires it after three hours", async () => {
+  it("keeps claim auth valid through timeout completion and final telemetry", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -9576,13 +9576,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     };
 
     mockNow(issuedAt + 2 * 60 * 60 * 1000 + 60_000);
-    const telemetry = await webhooks.requestAgentTelemetry(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(telemetry.body).toStrictEqual({ success: true, id: run.runId });
-
     const completion = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
@@ -9597,6 +9590,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("runner job timed out");
+
+    const telemetry = await webhooks.requestAgentTelemetry(
+      { runId: run.runId },
+      sandboxHeaders,
+      [200],
+    );
+    expect(telemetry.body).toStrictEqual({ success: true, id: run.runId });
 
     mockNow(issuedAt + 3 * 60 * 60 * 1000 + 1000);
     const expiredTelemetry = await webhooks.requestAgentTelemetry(
