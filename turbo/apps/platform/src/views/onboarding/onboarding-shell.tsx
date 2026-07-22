@@ -8,7 +8,10 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { AccountDropdown } from "../zero-page/zero-sidebar.tsx";
-import { ZeroOrgSwitcherCompact } from "../zero-page/zero-org-switcher.tsx";
+import {
+  ZeroOrgSwitcher,
+  ZeroOrgSwitcherCompact,
+} from "../zero-page/zero-org-switcher.tsx";
 import { SettingsDialog } from "../zero-page/components/settings/settings-dialog.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -180,7 +183,10 @@ export function OnboardingShell({
           }
         }}
       />
-      <div className="fixed left-4 top-4 z-20 sm:left-6 sm:top-6">
+      <div className="fixed left-4 top-4 z-20 hidden w-60 sm:left-6 sm:top-6 sm:block">
+        <ZeroOrgSwitcher />
+      </div>
+      <div className="fixed left-4 top-4 z-20 sm:hidden">
         <ZeroOrgSwitcherCompact />
       </div>
       <div className="fixed bottom-6 left-4 z-20 hidden w-60 sm:block">
