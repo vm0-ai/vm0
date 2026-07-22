@@ -17,11 +17,11 @@ import {
   postMessage,
 } from "../external/slack-message-client";
 import { now, nowDate } from "../external/time";
+import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveSlackAgentResponsePresentation } from "./internal-slack-org-run-callback.service";
 import { slackChatCallbackPayloadSchema } from "./slack-chat-callback-payload";
-import { settle } from "../utils";
 
 const L = logger("InternalCallbacksSlackChat");
 
@@ -255,19 +255,18 @@ export async function dispatchSlackChatDeliveryOnce(
   signal: AbortSignal,
 ): Promise<void> {
   const startedAt = now();
-  const callback = await claimSlackChatDelivery(db, callbackId);
   signal.throwIfAborted();
+  const callback = await claimSlackChatDelivery(db, callbackId);
   if (!callback) {
     return;
   }
 
-  const delivery = await settle(
+  const delivery = await settleIncludingAbort(
     deliverClaimedSlackChatCallback({
       db,
       callback,
       signal,
     }),
-    signal,
   );
   if (!delivery.ok) {
     const message =

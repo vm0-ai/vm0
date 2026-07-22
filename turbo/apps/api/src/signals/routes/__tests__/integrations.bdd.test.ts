@@ -1504,7 +1504,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       }),
     );
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
-      new Error("Slack delivery unavailable"),
+      new DOMException("Slack delivery aborted", "AbortError"),
     );
     await completeSlackTriggeredRun({
       runId: run2Id,
@@ -1545,7 +1545,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(run2Delivery).toMatchObject({
       attempts: 1,
-      lastError: "Slack delivery unavailable",
+      lastError: "Slack delivery aborted",
     });
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
