@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.614.0](https://github.com/vm0-ai/vm0/compare/app-v0.613.6...app-v0.614.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** rebuild cached items with latest url winners ([#22411](https://github.com/vm0-ai/vm0/issues/22411)) ([28251e2](https://github.com/vm0-ai/vm0/commit/28251e231c7ccc0b7a8b5f9272f547de062b888a))
+* serve the morning brief unsubscribe page from the platform app ([#22495](https://github.com/vm0-ai/vm0/issues/22495)) ([44b0f9a](https://github.com/vm0-ai/vm0/commit/44b0f9a4de8e8fb4456f80492c694fc38987f44e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+
 ## [0.613.6](https://github.com/vm0-ai/vm0/compare/app-v0.613.5...app-v0.613.6) (2026-07-22)
 
 

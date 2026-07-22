@@ -839,7 +839,7 @@ async function getLatestRunsByThreadId(
         isNotNull(chatMessages.content),
         inArray(chatMessages.runId, runIds),
         inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(),
+        visibleChatMessageCondition(db),
       ),
     )
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));

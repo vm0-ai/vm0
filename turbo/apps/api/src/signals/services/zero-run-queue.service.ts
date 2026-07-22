@@ -2,7 +2,18 @@ import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { and, count, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -617,11 +628,12 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             lt(agentRuns.createdAt, cutoff),
-            sql`NOT EXISTS (
-              SELECT 1
-              FROM ${agentRunQueue}
-              WHERE ${eq(agentRunQueue.runId, agentRuns.id)}
-            )`,
+            notExists(
+              tx
+                .select({ runId: agentRunQueue.runId })
+                .from(agentRunQueue)
+                .where(eq(agentRunQueue.runId, agentRuns.id)),
+            ),
           ),
         )
         .orderBy(agentRuns.createdAt, agentRuns.id)
@@ -650,11 +662,12 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             inArray(agentRuns.id, candidateRunIds),
-            sql`NOT EXISTS (
-              SELECT 1
-              FROM ${agentRunQueue}
-              WHERE ${eq(agentRunQueue.runId, agentRuns.id)}
-            )`,
+            notExists(
+              tx
+                .select({ runId: agentRunQueue.runId })
+                .from(agentRunQueue)
+                .where(eq(agentRunQueue.runId, agentRuns.id)),
+            ),
           ),
         )
         .returning({

@@ -22,13 +22,10 @@ export const emailUnsubscribeContract = c.router({
     path: "/api/email/unsubscribe",
     query: emailUnsubscribeQuerySchema,
     responses: {
-      200: c.otherResponse({
-        contentType: "text/html",
-        body: z.unknown(),
-      }),
+      302: c.noBody(),
       400: emailUnsubscribeErrorSchema,
     },
-    summary: "Unsubscribe from system email notifications",
+    summary: "Redirect to the app unsubscribe page",
   },
   unsubscribe: {
     method: "POST",

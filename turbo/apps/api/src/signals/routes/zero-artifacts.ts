@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, sql, type SQL } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -53,39 +53,59 @@ function publicArtifactObjectKey(url: string): string | null {
   return key.length > 0 ? key : null;
 }
 
-function uploadedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
-  return sql`EXISTS (
-    SELECT 1
-    FROM ${runUploadedFiles}
-    WHERE ${eq(runUploadedFiles.userId, args.userId)}
-      AND ${eq(runUploadedFiles.orgId, args.orgId)}
-      AND ${eq(runUploadedFiles.url, args.artifactUrl)}
-    LIMIT 1
-  )`;
+function uploadedArtifactAccessCondition(
+  db: Pick<Db, "select">,
+  args: UserArtifactUrlAccessArgs,
+): SQL {
+  return exists(
+    db
+      .select({ id: runUploadedFiles.id })
+      .from(runUploadedFiles)
+      .where(
+        and(
+          eq(runUploadedFiles.userId, args.userId),
+          eq(runUploadedFiles.orgId, args.orgId),
+          eq(runUploadedFiles.url, args.artifactUrl),
+        ),
+      ),
+  );
 }
 
-function attachedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
+function attachedArtifactAccessCondition(
+  db: Pick<Db, "select">,
+  args: UserArtifactUrlAccessArgs,
+): SQL {
   const objectKey = publicArtifactObjectKey(args.artifactUrl);
   if (objectKey === null) {
     return sql`FALSE`;
   }
 
-  return sql`EXISTS (
-    SELECT 1
-    FROM ${chatMessages}
-    INNER JOIN ${chatThreads}
-      ON ${eq(chatThreads.id, chatMessages.chatThreadId)}
-    INNER JOIN ${agentComposes}
-      ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-    WHERE ${eq(chatThreads.userId, args.userId)}
-      AND ${eq(agentComposes.orgId, args.orgId)}
-      AND EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)) AS attached_file
-        WHERE attached_file->>'objectKey' = ${objectKey}
+  const attachedFile = sql`jsonb_array_elements(
+    COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)
+  ) AS attached_file`;
+  const attachedFileObjectKey = sql`attached_file->>'objectKey'`;
+  return exists(
+    db
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .innerJoin(
+        agentComposes,
+        eq(agentComposes.id, chatThreads.agentComposeId),
       )
-    LIMIT 1
-  )`;
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(agentComposes.orgId, args.orgId),
+          exists(
+            db
+              .select({ one: sql`1`.mapWith(Number) })
+              .from(attachedFile)
+              .where(eq(attachedFileObjectKey, objectKey)),
+          ),
+        ),
+      ),
+  );
 }
 
 async function userCanAccessArtifactUrl(
@@ -96,8 +116,8 @@ async function userCanAccessArtifactUrl(
     db,
     sql`
       SELECT (
-        ${uploadedArtifactAccessCondition(args)}
-        OR ${attachedArtifactAccessCondition(args)}
+        ${uploadedArtifactAccessCondition(db, args)}
+        OR ${attachedArtifactAccessCondition(db, args)}
       ) AS "canAccess"
     `,
     artifactAccessRowSchema,

@@ -39,7 +39,7 @@ export const monitorChatMessageQueue$ = command(
           isNull(chatMessages.runId),
           isNotNull(chatMessages.content),
           isNull(chatMessages.error),
-          visibleChatMessageCondition(),
+          visibleChatMessageCondition(db),
           notExists(
             db
               .select({ id: chatMessageQueue.id })

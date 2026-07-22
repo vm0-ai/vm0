@@ -58,6 +58,7 @@ import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
+import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
@@ -176,6 +177,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.connectorRedirecting,
     setup: setupConnectorRedirectingPage$,
+  },
+  {
+    path: ROUTES.emailUnsubscribe,
+    setup: setupEmailUnsubscribePage$,
   },
   {
     path: ROUTES.directedAuthorize,
