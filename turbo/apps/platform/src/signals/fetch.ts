@@ -6,19 +6,17 @@ import {
   handleUnauthorizedRedirect,
   unauthorizedRedirectSuppressionUntil$,
 } from "./auth-retry.ts";
-import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
+import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 
-const OAUTH_WEB_NAVIGATION_TARGET = "www";
-
 /**
- * Web base URL for OAuth and web-origin handoff navigation only.
- * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
- *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
+ * OAuth navigation uses the direct API in preview/development so those
+ * environments do not depend on a WWW proxy. Production keeps the canonical
+ * WWW route registered with providers.
  */
-export const webBaseForNavigation$ = computed(() => {
-  return resolveApiBaseForNavigation(OAUTH_WEB_NAVIGATION_TARGET);
+export const oauthBaseForNavigation$ = computed(() => {
+  return resolveOAuthApiBase();
 });
 
 /**

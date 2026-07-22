@@ -154,6 +154,7 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(
       runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
@@ -211,6 +212,9 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe(
       "https://pr-21537-api.vm6.ai",
     );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-21537-api.vm6.ai",
+    );
     expect(runtime.auth.resolveWebOrigin()).toBe("https://pr-21537-www.vm6.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       clerkPublishableKey: PREVIEW_CLERK_KEY,
@@ -242,6 +246,9 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-22085-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
       "https://pr-22085-api.vm6.ai",
     );
     expect(runtime.auth.resolveWebOrigin()).toBe(

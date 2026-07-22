@@ -28,7 +28,7 @@ import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contra
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { accept, ApiError } from "../../lib/accept.ts";
 import {
-  OAUTH_WEB_API_BASE,
+  OAUTH_API_BASE,
   zeroClient$,
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
@@ -214,7 +214,7 @@ function startGoogleDriveConnectAndRun(params: {
           : await accept(
               params
                 .createClient(zeroConnectorOauthStartContract, {
-                  apiBase: OAUTH_WEB_API_BASE,
+                  apiBase: OAUTH_API_BASE,
                 })
                 .start(request),
               [200],
