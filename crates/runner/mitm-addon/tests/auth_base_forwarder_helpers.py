@@ -1,10 +1,15 @@
 """Shared fake upstream helpers for auth.base forwarding tests."""
 
+import asyncio
 import contextlib
 import http.client as http_client
 import io
-from collections.abc import Callable, Iterator
+import threading
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from unittest.mock import patch
+
+from mitmproxy import http
 
 import auth_base_forwarder as forwarder
 
@@ -13,9 +18,15 @@ __all__ = [
     "FakeResponseFile",
     "FakeSocket",
     "FakeTLSContext",
+    "ForwarderConcurrencyHarness",
     "fake_forwarder_upstream",
+    "forwarder_concurrency_harness",
     "http_response",
 ]
+
+_FORWARD_START_TIMEOUT_SECONDS = 2.0
+_FORWARD_CLEANUP_TIMEOUT_SECONDS = 5.0
+_ForwardResult = tuple[int, bytes, http.Headers]
 
 
 def _addrinfo(address: str, port: int):
@@ -287,6 +298,117 @@ class FakeForwarderUpstream:
         return self.sockets[-1]
 
 
+class ForwarderConcurrencyHarness:
+    """Coordinate blocked fake connections and their forwarding tasks."""
+
+    def __init__(self, *, blocked_connections: int) -> None:
+        self._blocked_connections = blocked_connections
+        self._condition = threading.Condition()
+        self._release = threading.Event()
+        self._started = 0
+        self._active = 0
+        self._max_active = 0
+        self._workers: set[threading.Thread] = set()
+        self._tasks: set[asyncio.Task[_ForwardResult]] = set()
+
+    def create_connection(
+        self,
+        _address: tuple[str, int],
+        _timeout: object,
+        _source_address: object,
+    ) -> FakeSocket:
+        """Record and optionally block a worker at the connection boundary."""
+        with self._condition:
+            self._started += 1
+            current = self._started
+            self._active += 1
+            self._max_active = max(self._max_active, self._active)
+            self._workers.add(threading.current_thread())
+            self._condition.notify_all()
+
+        try:
+            if current <= self._blocked_connections and not self._release.wait(
+                timeout=_FORWARD_CLEANUP_TIMEOUT_SECONDS
+            ):
+                raise TimeoutError("test did not release blocked forwards")
+            return FakeSocket(http_response())
+        finally:
+            with self._condition:
+                self._active -= 1
+
+    def track_task(self, task: asyncio.Task[_ForwardResult]) -> asyncio.Task[_ForwardResult]:
+        """Register one scenario-owned task for failure-safe cleanup."""
+        self._tasks.add(task)
+        return task
+
+    async def wait_started(
+        self,
+        count: int,
+        *,
+        timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+    ) -> bool:
+        """Wait until at least ``count`` workers reach the connection boundary."""
+        return await asyncio.to_thread(self._wait_started, count, timeout)
+
+    def _wait_started(self, count: int, timeout: float) -> bool:
+        with self._condition:
+            return self._condition.wait_for(lambda: self._started >= count, timeout=timeout)
+
+    @property
+    def started(self) -> int:
+        with self._condition:
+            return self._started
+
+    @property
+    def active(self) -> int:
+        with self._condition:
+            return self._active
+
+    @property
+    def max_active(self) -> int:
+        with self._condition:
+            return self._max_active
+
+    def release(self) -> None:
+        """Release every connection blocked by this harness."""
+        self._release.set()
+
+    async def _cleanup(self) -> None:
+        self.release()
+        timed_out_tasks = await self._collect_tasks()
+        alive_workers = await asyncio.to_thread(self._join_workers)
+
+        failures: list[str] = []
+        if timed_out_tasks:
+            failures.append(f"{len(timed_out_tasks)} forward task(s) exceeded cleanup timeout")
+        if alive_workers:
+            worker_names = ", ".join(sorted(worker.name for worker in alive_workers))
+            failures.append(f"forward worker(s) did not finish before timeout: {worker_names}")
+        if failures:
+            raise AssertionError("; ".join(failures))
+
+    async def _collect_tasks(self) -> set[asyncio.Task[_ForwardResult]]:
+        if not self._tasks:
+            return set()
+
+        _, pending = await asyncio.wait(
+            self._tasks,
+            timeout=_FORWARD_CLEANUP_TIMEOUT_SECONDS,
+        )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        return pending
+
+    def _join_workers(self) -> set[threading.Thread]:
+        deadline = time.monotonic() + _FORWARD_CLEANUP_TIMEOUT_SECONDS
+        with self._condition:
+            workers = set(self._workers)
+        for worker in workers:
+            worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        return {worker for worker in workers if worker.is_alive()}
+
+
 @contextlib.contextmanager
 def fake_forwarder_upstream(
     *,
@@ -341,3 +463,17 @@ def fake_forwarder_upstream(
         ),
     ):
         yield upstream
+
+
+@contextlib.asynccontextmanager
+async def forwarder_concurrency_harness(
+    *,
+    blocked_connections: int = 1,
+) -> AsyncIterator[tuple[ForwarderConcurrencyHarness, FakeForwarderUpstream]]:
+    """Yield a blocked upstream harness and fully drain its workers on exit."""
+    harness = ForwarderConcurrencyHarness(blocked_connections=blocked_connections)
+    with fake_forwarder_upstream(create_connection=harness.create_connection) as upstream:
+        try:
+            yield harness, upstream
+        finally:
+            await harness._cleanup()
