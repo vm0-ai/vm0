@@ -280,6 +280,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Configure git safe directory
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
           version: "v0.15.0"

@@ -36,6 +36,13 @@ jq -e '
   (.jobs.compile.container.image | startswith("ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:")) and
   (.jobs.compile.if | contains("runner-binary-miss-count != '\''0'\''")) and
   .jobs.compile.strategy.matrix.include == "${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}" and
+  any(.jobs.compile.steps[];
+    .name == "Configure git safe directory" and
+    .shell == "bash" and
+    .run == "git config --global --add safe.directory \"$GITHUB_WORKSPACE\""
+  ) and
+  ((.jobs.compile.steps | map(.uses // .name) | index("Configure git safe directory")) <
+    (.jobs.compile.steps | map(.uses // .name) | index("Build runner binary"))) and
   any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@v0.0.10") and
   any(.jobs.compile.steps[]; .uses == "Swatinem/rust-cache@v2") and
   any(.jobs.compile.steps[]; .run == ".github/scripts/runner-binary-build/build.sh build") and
