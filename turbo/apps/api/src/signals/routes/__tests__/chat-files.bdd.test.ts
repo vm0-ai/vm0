@@ -195,7 +195,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     await api.renameThread(owner, thread.id, "Pinned launch plan");
-    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.4-mini");
+    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-terra");
     await api.pinThread(owner, thread.id);
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
@@ -215,7 +215,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: thread.id,
-        selectedModel: "gpt-5.4-mini",
+        selectedModel: "gpt-5.6-terra",
       }),
     );
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));
@@ -602,7 +602,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Persist the model selected at send time",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-terra",
       },
       [201],
     );
@@ -623,7 +623,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: modelSelected.body.threadId,
-        selectedModel: "gpt-5.4-mini",
+        selectedModel: "gpt-5.6-terra",
       }),
     );
   });

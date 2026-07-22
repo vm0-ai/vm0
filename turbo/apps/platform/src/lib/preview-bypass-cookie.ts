@@ -1,7 +1,7 @@
 const VERCEL_PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
 
 const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;
-const PREVIEW_COOKIE_ROOT_DOMAIN = "vm6.ai";
+const PREVIEW_API_ROOT_DOMAIN = "vm6.ai";
 const OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
 const APP_SERVICE_SUFFIX = "-app";
 const BYPASS_TARGET_SERVICE_SUFFIX = "-api";
@@ -10,14 +10,6 @@ interface PreviewBypassCookieLocation {
   readonly hostname: string;
   readonly protocol: string;
   readonly search: string;
-}
-
-function previewCookieDomain(hostname: string): string | undefined {
-  const normalized = hostname.toLowerCase();
-  return normalized === PREVIEW_COOKIE_ROOT_DOMAIN ||
-    normalized.endsWith(`.${PREVIEW_COOKIE_ROOT_DOMAIN}`)
-    ? `.${PREVIEW_COOKIE_ROOT_DOMAIN}`
-    : undefined;
 }
 
 function isHostnameWithin(hostname: string, rootDomain: string): boolean {
@@ -38,7 +30,7 @@ function isCorrespondingPreviewService(
     return false;
   }
   const prefix = source.slice(0, -APP_SERVICE_SUFFIX.length);
-  const target = hostnameBeforeRoot(targetHostname, PREVIEW_COOKIE_ROOT_DOMAIN);
+  const target = hostnameBeforeRoot(targetHostname, PREVIEW_API_ROOT_DOMAIN);
   return target === `${prefix}${BYPASS_TARGET_SERVICE_SUFFIX}`;
 }
 
@@ -71,7 +63,7 @@ function previewBypassForTarget(
   const targetHostname = targetUrl(target).hostname.toLowerCase();
   if (
     !isHostnameWithin(location.hostname, OKOU_PREVIEW_ROOT_DOMAIN) ||
-    !isHostnameWithin(targetHostname, PREVIEW_COOKIE_ROOT_DOMAIN) ||
+    !isHostnameWithin(targetHostname, PREVIEW_API_ROOT_DOMAIN) ||
     !isCorrespondingPreviewService(
       location.hostname.toLowerCase(),
       targetHostname,
@@ -137,10 +129,6 @@ export function buildPreviewBypassCookie(
     `Max-Age=${PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS}`,
     "SameSite=Lax",
   ];
-  const domain = previewCookieDomain(location.hostname);
-  if (domain) {
-    segments.push(`Domain=${domain}`);
-  }
   if (location.protocol === "https:") {
     segments.push("Secure");
   }

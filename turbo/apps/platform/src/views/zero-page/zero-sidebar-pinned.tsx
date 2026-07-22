@@ -41,6 +41,7 @@ import {
   defaultAgentName$,
 } from "../../signals/agent.ts";
 import {
+  displayedPinnedAgents$,
   setAgentPinned$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
@@ -206,7 +207,7 @@ export function PinnedAgentListSection({
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
-  const subagents = useLastResolved(subagents$) ?? [];
+  const displayedPinnedAgentsResolved = useLastResolved(displayedPinnedAgents$);
   const features = useGet(featureSwitch$);
   const agentUnreadIndicatorsEnabled =
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
@@ -226,13 +227,7 @@ export function PinnedAgentListSection({
       return agent.id;
     }),
   );
-  const unreadOnlyAgents =
-    agentUnreadIndicatorsEnabled && unreadAgentIds
-      ? subagents.filter((agent) => {
-          return unreadAgentIds.has(agent.id) && !pinnedAgentIds.has(agent.id);
-        })
-      : [];
-  const displayedPinnedAgents = [...pinnedAgents, ...unreadOnlyAgents];
+  const displayedPinnedAgents = displayedPinnedAgentsResolved ?? pinnedAgents;
 
   const selectedAgentId =
     routeAgentId ?? (routeThreadId ? null : sidebarAgentId);

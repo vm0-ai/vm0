@@ -244,6 +244,7 @@ interface MockLifecycleControl {
   setQueuePosition: (n: number) => void;
   setEvents: (e: AgentEvent[]) => void;
   setThreadList: (list: ThreadListItem[]) => void;
+  setCodexServiceTier: (tier: CodexServiceTier | null) => void;
   completeRun: (content?: string) => void;
   failRun: (error: string) => void;
   cancelRun: () => void;
@@ -990,6 +991,9 @@ export function mockChatLifecycle(
     },
     setThreadList: (list) => {
       threadListOverride = list;
+    },
+    setCodexServiceTier: (tier) => {
+      codexServiceTier = tier;
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

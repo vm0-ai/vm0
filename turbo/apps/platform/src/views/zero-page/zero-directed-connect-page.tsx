@@ -77,6 +77,7 @@ function runDirectedConnect(params: {
     method: PublicConnectorCatalogAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
+      readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
       readonly agentId?: string;
     },
     signal: AbortSignal,
@@ -135,6 +136,7 @@ function runDirectedConnect(params: {
           authMethod,
           {
             connectorLabel: params.item.label,
+            connectorIcon: params.item.icon,
             ...(params.agentId ? { agentId: params.agentId } : {}),
           },
           params.signal,

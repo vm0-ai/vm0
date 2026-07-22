@@ -206,7 +206,7 @@ describe("portable platform runtime environment", () => {
   });
 
   it("preserves preview services and suppresses production telemetry", async () => {
-    setBrowserUrl("https://pr-21537-app.vm6.ai/agents");
+    setBrowserUrl("https://pr-21537-app.omby.ai/agents");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(
@@ -215,8 +215,11 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
       "https://pr-21537-api.vm6.ai",
     );
-    expect(runtime.auth.resolveWebOrigin()).toBe("https://pr-21537-www.vm6.ai");
+    expect(runtime.auth.resolveWebOrigin()).toBe(
+      "https://pr-21537-www.omby.ai",
+    );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "preview",
       clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });

@@ -427,6 +427,11 @@ describe("zero workflow automation scheduler", () => {
     const onceCallback = emittedCallbacks.find((callback) => {
       return callback.internalKind === "workflow-automation:cron";
     });
+    expect(
+      emittedCallbacks.every((callback) => {
+        return !callback.hasEncryptedSecret;
+      }),
+    ).toBeTruthy();
     expect(onceCallback?.payload).toStrictEqual({
       automationId: created.body.id,
       timezone: "UTC",

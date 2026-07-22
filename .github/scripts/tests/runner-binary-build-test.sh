@@ -135,8 +135,8 @@ if TARGET_TRIPLE=powerpc-unknown-linux-musl \
 fi
 
 workflow_toolchain=$(awk '
-  /^  build:$/ { in_build = 1; next }
-  in_build && /^      image: / { sub(/^      image: /, ""); print; exit }
+  /^  compile:$/ { in_compile = 1; next }
+  in_compile && /^      image: / { sub(/^      image: /, ""); print; exit }
 ' "${REPO_ROOT}/.github/workflows/runner-image.yml")
 . "${REPO_ROOT}/.github/scripts/runner-binary-build/contract.env"
 [ "$workflow_toolchain" = "$RUNNER_BINARY_TOOLCHAIN_IMAGE" ] \
