@@ -1,4 +1,8 @@
-import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ESLintUtils,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 import {
   isArrowFunction,
   isBlock,
@@ -19,6 +23,7 @@ import {
   TypeFlags,
   type Expression as TypeScriptExpression,
   type Node,
+  type Symbol as TypeScriptSymbol,
   type Type,
   type VariableDeclaration,
 } from "typescript";
@@ -301,12 +306,16 @@ export const preferDrizzleApis = createRule({
     type: "problem",
     docs: {
       description:
-        "Prefer schema-aware Drizzle APIs for exactly equivalent SQL leaves",
+        "Prefer schema-aware Drizzle APIs for exactly equivalent SQL constructions",
       recommended: true,
       requiresTypeChecking: true,
     },
     schema: [],
     messages: {
+      crossJoinLateral:
+        "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
+      emptyFragment:
+        "Use Drizzle sql.empty() for this intentionally empty SQL fragment.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
     },
   },
@@ -331,6 +340,129 @@ export const preferDrizzleApis = createRule({
         messageId: "typedApi",
         data: { helper },
       });
+    }
+
+    function memberName(node: TSESTree.MemberExpression): string | undefined {
+      return !node.computed && node.property.type === AST_NODE_TYPES.Identifier
+        ? node.property.name
+        : undefined;
+    }
+
+    function isNamedDrizzleCall(
+      node: TSESTree.CallExpression,
+      name: string,
+    ): boolean {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      const signature = checker.getResolvedSignature(tsNode);
+      return (
+        signature !== undefined && isNamedDrizzleSignature(signature, name)
+      );
+    }
+
+    function isDrizzleMethod(
+      node: TSESTree.MemberExpression,
+      name: string,
+    ): boolean {
+      if (memberName(node) !== name) {
+        return false;
+      }
+      const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
+      return isDrizzleSymbol(checker, checker.getSymbolAtLocation(tsProperty));
+    }
+
+    function isTrueSqlTag(node: TSESTree.Expression): boolean {
+      if (node.type !== AST_NODE_TYPES.TaggedTemplateExpression) {
+        return false;
+      }
+      const quasi = node.quasi.quasis[0];
+      return (
+        isDrizzleSqlTag(checker, services, node.tag) &&
+        node.quasi.expressions.length === 0 &&
+        node.quasi.quasis.length === 1 &&
+        quasi !== undefined &&
+        quasiText(quasi).trim().toLowerCase() === "true"
+      );
+    }
+
+    function expressionSymbol(
+      node: TSESTree.Expression,
+    ): TypeScriptSymbol | undefined {
+      if (node.type !== AST_NODE_TYPES.Identifier) {
+        return undefined;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return resolvedSymbol(checker, checker.getSymbolAtLocation(tsNode));
+    }
+
+    function isRelationField(
+      node: TSESTree.Expression,
+      relationSymbol: TypeScriptSymbol | undefined,
+    ): boolean {
+      return (
+        relationSymbol !== undefined &&
+        node.type === AST_NODE_TYPES.MemberExpression &&
+        node.object.type === AST_NODE_TYPES.Identifier &&
+        expressionSymbol(node.object) === relationSymbol
+      );
+    }
+
+    function nullRejectsRelation(
+      node: TSESTree.Expression,
+      relationSymbol: TypeScriptSymbol | undefined,
+    ): boolean {
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      if (isNamedDrizzleCall(node, "isNotNull")) {
+        const argument = node.arguments[0];
+        return (
+          node.arguments.length === 1 &&
+          argument !== undefined &&
+          argument.type !== AST_NODE_TYPES.SpreadElement &&
+          isRelationField(argument, relationSymbol)
+        );
+      }
+      if (!isNamedDrizzleCall(node, "and")) {
+        return false;
+      }
+      return node.arguments.some((argument) => {
+        return (
+          argument.type !== AST_NODE_TYPES.SpreadElement &&
+          nullRejectsRelation(argument, relationSymbol)
+        );
+      });
+    }
+
+    function leftLateralIsNullRejected(
+      node: TSESTree.CallExpression,
+      relation: TSESTree.Expression,
+    ): boolean {
+      const relationSymbol = expressionSymbol(relation);
+      if (relationSymbol === undefined) {
+        return false;
+      }
+      const whereMember = node.parent;
+      if (
+        whereMember.type !== AST_NODE_TYPES.MemberExpression ||
+        whereMember.object !== node ||
+        memberName(whereMember) !== "where"
+      ) {
+        return false;
+      }
+      const whereCall = whereMember.parent;
+      if (
+        whereCall.type !== AST_NODE_TYPES.CallExpression ||
+        whereCall.callee !== whereMember ||
+        whereCall.arguments.length !== 1
+      ) {
+        return false;
+      }
+      const predicate = whereCall.arguments[0];
+      return (
+        predicate !== undefined &&
+        predicate.type !== AST_NODE_TYPES.SpreadElement &&
+        nullRejectsRelation(predicate, relationSymbol)
+      );
     }
 
     function isStringOrDrizzleWrapper(type: Type): boolean {
@@ -577,6 +709,39 @@ export const preferDrizzleApis = createRule({
     }
 
     return {
+      CallExpression(node: TSESTree.CallExpression): void {
+        if (node.callee.type !== AST_NODE_TYPES.MemberExpression) {
+          return;
+        }
+        const method = memberName(node.callee);
+        if (method !== "innerJoinLateral" && method !== "leftJoinLateral") {
+          return;
+        }
+        if (
+          !isDrizzleMethod(node.callee, method) ||
+          node.arguments.length !== 2
+        ) {
+          return;
+        }
+        const relation = node.arguments[0];
+        const condition = node.arguments[1];
+        if (
+          relation === undefined ||
+          relation.type === AST_NODE_TYPES.SpreadElement ||
+          condition === undefined ||
+          condition.type === AST_NODE_TYPES.SpreadElement ||
+          !isTrueSqlTag(condition)
+        ) {
+          return;
+        }
+        if (
+          method === "leftJoinLateral" &&
+          !leftLateralIsNullRejected(node, relation)
+        ) {
+          return;
+        }
+        context.report({ node, messageId: "crossJoinLateral" });
+      },
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
         if (!isDrizzleSqlTag(checker, services, node.tag)) {
           return;
@@ -584,6 +749,14 @@ export const preferDrizzleApis = createRule({
 
         const quasis = node.quasi.quasis.map(quasiText);
         const expressions = node.quasi.expressions;
+        if (
+          expressions.length === 0 &&
+          quasis.length === 1 &&
+          quasis[0] === ""
+        ) {
+          context.report({ node, messageId: "emptyFragment" });
+          return;
+        }
         for (let index = 0; index < expressions.length - 1; index += 1) {
           const leftNode = expressions[index];
           const rightNode = expressions[index + 1];

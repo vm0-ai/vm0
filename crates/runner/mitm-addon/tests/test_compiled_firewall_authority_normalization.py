@@ -253,6 +253,37 @@ def test_compiled_matches_parameterized_host_nonstandard_port_rejection():
 
 
 @pytest.mark.parametrize(
+    ("base", "port", "expected"),
+    [
+        ("https://api.{domain}", 443, True),
+        ("https://api.{domain}:443", 443, True),
+        ("https://api.{domain}:8443", 8443, True),
+        ("https://api.{domain}", 8443, False),
+        ("https://api.{domain}:8443", 443, False),
+        ("https://api.{domain}:8443", 9443, False),
+    ],
+)
+def test_compiled_parameterized_rightmost_host_param_respects_port(
+    base,
+    port,
+    expected,
+):
+    fws = wrap_firewalls(
+        [
+            {
+                "base": base,
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            }
+        ],
+        name="example",
+    )
+    compiled = compile_firewalls_or_fail(fws)
+
+    assert compiled.matches_ordinary_credential_authority("api.example", port) is expected
+
+
+@pytest.mark.parametrize(
     ("base", "host", "port"),
     [
         ("https://api.github.com", "api.github.com", 443),

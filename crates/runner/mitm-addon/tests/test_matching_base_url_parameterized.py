@@ -190,6 +190,14 @@ class TestMatchBaseUrl:
         )
         assert result is None
 
+    def test_rightmost_host_param_captures_only_hostname_with_declared_port(self):
+        result = matching.match_base_url(
+            "https://api.example:8443/items",
+            "https://api.{domain}:8443",
+        )
+
+        assert result == ("/items", {"domain": "example"})
+
     @pytest.mark.parametrize(
         ("url", "base"),
         [

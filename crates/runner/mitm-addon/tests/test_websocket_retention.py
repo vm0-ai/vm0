@@ -1,5 +1,7 @@
 """Tests for registered WebSocket message retention and cleanup."""
 
+import uuid
+
 import pytest
 from mitmproxy.flow import Error
 
@@ -26,12 +28,17 @@ def deferred_websocket_trim_scheduler(
     return capture_deferred_websocket_trims(monkeypatch)
 
 
-def _sum_quantities_by_category(events: list[dict]) -> dict[str, int]:
-    quantities: dict[str, int] = {}
-    for event in events:
-        category = event["category"]
-        quantities[category] = quantities.get(category, 0) + event["quantity"]
-    return quantities
+def _assert_billing_event_rows(
+    events: list[dict], expected_rows: list[tuple[str, str, int]]
+) -> None:
+    actual_rows = [(event["provider"], event["category"], event["quantity"]) for event in events]
+    assert len(events) == len(expected_rows)
+    assert sorted(actual_rows) == sorted(expected_rows)
+
+    idempotency_keys = [event["idempotencyKey"] for event in events]
+    assert len(set(idempotency_keys)) == len(idempotency_keys)
+    for key in idempotency_keys:
+        uuid.UUID(key)
 
 
 class TestModelProviderWebSocketRetentionWithUsageDelivery:
@@ -65,10 +72,13 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert messages == [old_client, old_server, latest_server]
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
+        _assert_billing_event_rows(
+            webhook.usage_events(),
+            [
+                ("gpt-5.5", "tokens.input", 10),
+                ("gpt-5.5", "tokens.output", 4),
+            ],
+        )
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert len(deferred_websocket_trim_scheduler) == 1
 
@@ -114,10 +124,15 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert flow.websocket.messages == [latest_server]
         assert model_provider_usage_sources(flow) == {}
-        assert _sum_quantities_by_category(webhook.usage_events()) == {
-            "tokens.input": 11,
-            "tokens.output": 5,
-        }
+        _assert_billing_event_rows(
+            webhook.usage_events(),
+            [
+                ("gpt-5.5", "tokens.input", 1),
+                ("gpt-5.5", "tokens.output", 1),
+                ("gpt-5.5", "tokens.input", 10),
+                ("gpt-5.5", "tokens.output", 4),
+            ],
+        )
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
 
     def test_model_websocket_end_clears_final_retained_message(
@@ -139,10 +154,13 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
+        _assert_billing_event_rows(
+            webhook.usage_events(),
+            [
+                ("gpt-5.5", "tokens.input", 10),
+                ("gpt-5.5", "tokens.output", 4),
+            ],
+        )
         assert flow.websocket is not None
         assert flow.websocket.messages == []
         assert "model_websocket_usage_enabled" not in flow.metadata
@@ -170,10 +188,13 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
+        _assert_billing_event_rows(
+            webhook.usage_events(),
+            [
+                ("gpt-5.5", "tokens.input", 10),
+                ("gpt-5.5", "tokens.output", 4),
+            ],
+        )
         assert flow.websocket is not None
         assert flow.websocket.messages == []
         assert "model_websocket_usage_enabled" not in flow.metadata
