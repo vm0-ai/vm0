@@ -635,16 +635,28 @@ async fn delete_firewall_rules_from_table(
             return NamespaceDeleteOutcome::Abandoned;
         }
     };
+    delete_firewall_rule_lines(
+        command,
+        table,
+        output
+            .lines()
+            .filter(|line| line.starts_with("-A ") && line.contains(comment)),
+    )
+    .await
+}
+
+async fn delete_firewall_rule_lines<'a>(
+    command: &str,
+    table: &str,
+    rules: impl Iterator<Item = &'a str>,
+) -> NamespaceDeleteOutcome {
     // Sequential: the legacy xtables lock serializes writes to the same table anyway.
     // Note: split_whitespace + trim_matches('"') is safe because namespace
     // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
     // did, iptables-save would quote them as `--comment "foo bar"` and the
     // split would incorrectly break the value into separate arguments.
     let mut outcomes = Vec::new();
-    for line in output
-        .lines()
-        .filter(|line| line.starts_with("-A ") && line.contains(comment))
-    {
+    for line in rules {
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
@@ -1058,17 +1070,12 @@ async fn delete_firewall_rules_from_snapshot(
         return NamespaceDeleteOutcome::Deleted;
     };
 
-    let mut outcomes = Vec::new();
-    for captured in rules {
-        let rule = captured.replacen("-A ", "-D ", 1);
-        let mut args: Vec<&str> = vec!["-t", snapshot.table];
-        args.extend(rule.split_whitespace().map(|token| token.trim_matches('"')));
-        outcomes.push(
-            exec_xtables_ignore_errors_with_timeout(snapshot.command, &args, NETNS_COMMAND_TIMEOUT)
-                .await,
-        );
-    }
-    NamespaceDeleteOutcome::from_best_effort(outcomes)
+    delete_firewall_rule_lines(
+        snapshot.command,
+        snapshot.table,
+        rules.iter().map(String::as_str),
+    )
+    .await
 }
 
 async fn delete_pool_firewall_rules_from_snapshot(
