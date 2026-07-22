@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.245.3](https://github.com/vm0-ai/vm0/compare/cli-v9.245.2...cli-v9.245.3) (2026-07-22)
+
+
+### Refactoring
+
+* **cli:** remove the vm0 binary and isolate e2e api auth ([#22431](https://github.com/vm0-ai/vm0/issues/22431)) ([2cbeb0d](https://github.com/vm0-ai/vm0/commit/2cbeb0de58e1947627e25ea9ceaf1a7f11d7edee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+
 ## [9.245.2](https://github.com/vm0-ai/vm0/compare/cli-v9.245.1...cli-v9.245.2) (2026-07-22)
 
 

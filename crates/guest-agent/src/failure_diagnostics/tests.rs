@@ -1092,6 +1092,22 @@ fn cli_failure_reason_classifies_claude_usage_limit() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_claude_fable_limits() {
+    for message in [
+        "Fable 5 requires usage credits. /model to switch models.",
+        "You've reached your Fable 5 limit. /model to switch models.",
+    ] {
+        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+        assert_eq!(
+            reason,
+            Some(FailureReason::UsageLimit),
+            "message: {message}"
+        );
+    }
+}
+
+#[test]
 fn cli_failure_reason_classifies_claude_subscription_access_disabled_as_usage_limit() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
