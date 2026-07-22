@@ -161,13 +161,11 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     const validToken = unsubscribeToken(`user_${randomUUID()}`);
     const unsubscribePage = await api.requestEmailUnsubscribePage(
       validToken,
-      [200],
+      [302],
     );
-    expect(unsubscribePage.headers.get("content-type")).toContain("text/html");
-    if (typeof unsubscribePage.body !== "string") {
-      throw new Error("Expected unsubscribe page to return HTML");
-    }
-    expect(unsubscribePage.body).toContain("You have been unsubscribed");
+    expect(unsubscribePage.headers.get("Location")).toBe(
+      `http://localhost:3002/email/unsubscribe?token=${validToken}`,
+    );
 
     const unsubscribed = await api.requestEmailUnsubscribe(validToken, [200]);
     expect(unsubscribed.body).toStrictEqual({ unsubscribed: true });
