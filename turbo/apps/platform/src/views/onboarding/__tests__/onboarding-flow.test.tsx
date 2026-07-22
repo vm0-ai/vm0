@@ -222,7 +222,7 @@ describe("onboarding flow", () => {
         .getAttribute("aria-label")
         ?.startsWith("Auto-merge GitHub PRs");
     });
-    expect(workflowButton).toHaveAttribute("aria-pressed", "true");
+    expect(workflowButton).toHaveAttribute("aria-pressed", "false");
 
     const previewButton = buttonsByAriaLabel("Preview workflow details")[0];
     if (!previewButton) {
@@ -251,6 +251,27 @@ describe("onboarding flow", () => {
     expect(context.store.get(searchParams$).get("workflow")).toBe(
       "auto-merge-github-prs",
     );
+  });
+
+  it("sends the custom workflow choice straight into the product", async () => {
+    await openMakePage();
+    chooseMakeOption("Workflow automation");
+
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Engineer"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Engineer workflows" }),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonByText("Talk to Zero and make my own"));
+    click(buttonByText("Continue"));
+
+    await waitFor(() => {
+      expect(pathname().startsWith("/onboarding")).toBe(false);
+    });
   });
 
   it("starts the standard connector flow from onboarding", async () => {
@@ -379,7 +400,7 @@ describe("onboarding flow", () => {
     const templateButton = buttonByAriaLabel(
       `Select ${template.title} presentation template`,
     );
-    expect(templateButton).toHaveAttribute("aria-pressed", "true");
+    expect(templateButton).toHaveAttribute("aria-pressed", "false");
 
     click(buttonByAriaLabel(`View ${template.title} presentation`));
     const preview = await screen.findByRole("dialog", {
