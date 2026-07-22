@@ -91,8 +91,7 @@ const patchModelSelection$ = command(
     signal: AbortSignal,
   ) => {
     const eventId = crypto.randomUUID();
-    const threadMeta = (await get(chatThreadMetaMap$)).get(threadId);
-    signal.throwIfAborted();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
     if (threadMeta) {
       set(registerOptimisticChatThreadEvent$, {
         id: eventId,

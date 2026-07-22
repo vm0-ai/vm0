@@ -3,10 +3,7 @@ import { currentChatAgentId$, setChatAgentId$ } from "../agent-chat.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
-import {
-  syncEventDrivenChatThreads$,
-  threadMeta,
-} from "./chat-thread-event-sourcing.ts";
+import { threadMeta } from "./chat-thread-event-sourcing.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
 
@@ -33,8 +30,7 @@ export const syncPrimaryThread$ = command(
     set(updateDocumentTitle$, "Chat");
 
     const threadMeta$ = threadMeta(threadId);
-    const meta = await get(threadMeta$);
-    signal.throwIfAborted();
+    const meta = get(threadMeta$);
     if (!meta) {
       return;
     }
@@ -48,11 +44,8 @@ export const syncPrimaryThread$ = command(
     set(updateDocumentTitle$, meta.title ?? "New chat");
 
     // Forever-running Ably loop until signal aborts.
-    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
-      await set(syncEventDrivenChatThreads$, sig);
-      sig.throwIfAborted();
-      const updatedMeta = await get(threadMeta$);
-      sig.throwIfAborted();
+    const onThreadUpdated$ = command(({ get, set }) => {
+      const updatedMeta = get(threadMeta$);
       if (updatedMeta) {
         set(updateDocumentTitle$, updatedMeta.title ?? "New chat");
       }

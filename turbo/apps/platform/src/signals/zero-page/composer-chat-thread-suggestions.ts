@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
@@ -27,6 +26,7 @@ export const composerChatThreadSuggestionsEnabled$ = computed(
 
 export function createComposerChatThreadSuggestions(
   activeRange$: Computed<ChatThreadSuggestionRange | null>,
+  agentId$: Computed<Promise<string | null>>,
 ): Computed<Promise<ComposerChatThreadSuggestionResult>> {
   return computed(async (get): Promise<ComposerChatThreadSuggestionResult> => {
     const range = get(activeRange$);
@@ -38,14 +38,14 @@ export function createComposerChatThreadSuggestions(
       };
     }
 
-    const agentId = await get(currentChatAgentRecordId$);
+    const agentId = await get(agentId$);
     if (!agentId) {
       return { agentId: null, query: range.query, chatThreads: [] };
     }
 
     const query = range.query.toLowerCase();
     const chatThreads: ComposerChatThreadSuggestion[] = [];
-    for (const thread of await get(eventDrivenChatThreads$)) {
+    for (const thread of get(eventDrivenChatThreads$)) {
       const title = thread.title;
       if (
         thread.agentId !== agentId ||

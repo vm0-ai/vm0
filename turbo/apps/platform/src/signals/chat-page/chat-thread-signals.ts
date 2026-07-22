@@ -70,16 +70,16 @@ export interface ChatThreadSignals {
   // -- Data signals ----------------------------------------------------------
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
-  threadMeta$: Computed<Promise<ThreadMeta | null>>;
+  threadMeta$: Computed<ThreadMeta | null>;
   reloadThread$: Command<void, []>;
-  threadTitle$: Computed<Promise<string | null>>;
-  threadTitleEmoji$: Computed<Promise<string | null>>;
-  threadTitleText$: Computed<Promise<string>>;
-  threadSettledInServer$: Computed<Promise<boolean>>;
+  threadTitle$: Computed<string | null>;
+  threadTitleEmoji$: Computed<string | null>;
+  threadTitleText$: Computed<string>;
+  threadSettledInServer$: Computed<boolean>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
-  selectedModel$: Computed<Promise<string | null>>;
+  selectedModel$: Computed<string | null>;
   codexFastModeActive$: Computed<Promise<boolean>>;
   selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
@@ -122,7 +122,7 @@ export interface ChatThreadSignals {
     [HTMLElement | null]
   >;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
-  agentId$: Computed<Promise<string | null>>;
+  agentId$: Computed<string | null>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // -- Thread-owned automation resources -----------------------------------

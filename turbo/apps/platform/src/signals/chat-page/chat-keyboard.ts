@@ -310,13 +310,8 @@ const setupChatPageShortcutActions$ = command(
 );
 
 const openFocusedThreadEmojiMenu$ = command(
-  async (
-    { get, set },
-    args: { thread: ChatThreadSignals },
-    signal: AbortSignal,
-  ) => {
-    const threadMeta = await get(args.thread.threadMeta$);
-    signal.throwIfAborted();
+  ({ get, set }, args: { thread: ChatThreadSignals }, _signal: AbortSignal) => {
+    const threadMeta = get(args.thread.threadMeta$);
     set(openChatThreadEmojiMenu$, {
       threadId: args.thread.threadId,
       title: threadMeta?.title,
@@ -325,16 +320,15 @@ const openFocusedThreadEmojiMenu$ = command(
 );
 
 const renameDialogRequestForThread$ = command(
-  async (
+  (
     { get },
     thread: ChatThreadSignals | null,
     threadId: string,
-    signal: AbortSignal,
-  ): Promise<RenameChatThreadDialogRequest> => {
+    _signal: AbortSignal,
+  ): RenameChatThreadDialogRequest => {
     const threadMeta = thread
-      ? await get(thread.threadMeta$)
-      : ((await get(chatThreadMetaMap$)).get(threadId) ?? null);
-    signal.throwIfAborted();
+      ? get(thread.threadMeta$)
+      : (get(chatThreadMetaMap$).get(threadId) ?? null);
     return {
       threadId,
       title: threadMeta?.title,
