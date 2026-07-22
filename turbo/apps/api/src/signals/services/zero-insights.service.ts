@@ -6,11 +6,10 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { and, desc, eq, gte, max, min, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, max, min, sql } from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
-  pgIntegerDecoder,
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
@@ -210,9 +209,7 @@ export function zeroInsightsRange(args: {
         maxDate: max(insightsDaily.date)
           .mapWith(nullableTextDecoder)
           .as("max_date"),
-        totalDays: sql`COUNT(*)::int`
-          .mapWith(pgIntegerDecoder)
-          .as("total_days"),
+        totalDays: count().as("total_days"),
       })
       .from(insightsDaily)
       .where(
