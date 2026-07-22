@@ -16,6 +16,7 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { beforeEach, describe, expect, it } from "vitest";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import {
@@ -669,6 +670,77 @@ describe("chat composer models", () => {
     });
   });
 
+  it("reloads a reconciled thread tier before the next send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000918",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000919",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
+      ).toBeInTheDocument();
+    });
+
+    lifecycle.setCodexServiceTier(null);
+    act(() => {
+      triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+    });
+    await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    await waitFor(() => {
+      expect(buttonContainingText("Standard", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Continue after server reconciliation",
+    );
+
+    await waitFor(() => {
+      expect(sentBody?.runOptions).toBeUndefined();
+    });
+  });
+
   it("clears Codex fast mode when switching to a non-fast model", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
@@ -1216,7 +1288,7 @@ describe("chat composer models", () => {
     expect(screen.queryByText("Loading models...")).not.toBeInTheDocument();
   });
 
-  it("blocks a hydrated restricted model for limited-free-1 before sending", async () => {
+  it("lets the server reconcile a hydrated restricted thread model", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
     mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
@@ -1244,14 +1316,15 @@ describe("chat composer models", () => {
     await fill(input, "Keep this restricted draft");
     await user.keyboard("{Enter}");
 
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(runCreateCount).toBe(0);
-    expect(input.textContent ?? "").toContain("Keep this restricted draft");
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
   });
 
-  it("blocks a hydrated BYOK model for limited-free-1 before sending", async () => {
+  it("lets the server reconcile a hydrated BYOK thread model", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
@@ -1280,14 +1353,15 @@ describe("chat composer models", () => {
     await fill(input, "Keep this BYOK draft");
     await user.keyboard("{Enter}");
 
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(runCreateCount).toBe(0);
-    expect(input.textContent ?? "").toContain("Keep this BYOK draft");
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
   });
 
-  it("blocks a hydrated model missing from the current policies", async () => {
+  it("lets the server reconcile a hydrated model missing from policy", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
     context.mocks.data.orgModelPolicies([
@@ -1314,14 +1388,15 @@ describe("chat composer models", () => {
     await fill(input, "Keep this stale draft");
     await user.keyboard("{Enter}");
 
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(runCreateCount).toBe(0);
-    expect(input.textContent ?? "").toContain("Keep this stale draft");
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
   });
 
-  it("blocks repeated keyboard sends while model validation is loading", async () => {
+  it("does not block an existing thread send on a policy refresh", async () => {
     const user = userEvent.setup({ delay: null });
     const policyGate = context.mocks.deferred<void>();
     const policy = buildModelPolicy({
@@ -1360,10 +1435,9 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeDisabled();
+      expect(runCreateCount).toBe(1);
     });
     await user.keyboard("{Enter}");
-
     policyGate.resolve();
 
     await waitFor(() => {
@@ -1371,7 +1445,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("revalidates the current model before sending during provider refresh", async () => {
+  it("does not block a persisted thread selection during provider refresh", async () => {
     const user = userEvent.setup({ delay: null });
     const providerReload = context.mocks.deferred<void>();
     const claudeProvider = buildProvider({
@@ -1471,17 +1545,14 @@ describe("chat composer models", () => {
     const input = screen.getByPlaceholderText(PLACEHOLDER);
     await fill(input, "Keep this draft");
     await user.keyboard("{Enter}");
-    expect(runCreateCount).toBe(0);
-    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
 
     providerReload.resolve();
-
-    await expect(
-      screen.findByText("The selected model is not available"),
-    ).resolves.toBeInTheDocument();
-    expect(runCreateCount).toBe(0);
-    expect(input.textContent ?? "").toContain("Keep this draft");
-    expect(screen.getByText("Model Configure")).toBeInTheDocument();
+    expect(
+      screen.queryByText("The selected model is not available"),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks routed model sends until the matching device login is opened", async () => {

@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.449.0](https://github.com/vm0-ai/vm0/compare/core-v8.448.5...core-v8.449.0) (2026-07-22)
+
+
+### Features
+
+* enable canonical slack for staff org ([#22524](https://github.com/vm0-ai/vm0/issues/22524)) ([8e8fdb6](https://github.com/vm0-ai/vm0/commit/8e8fdb6153eb751fdab3855b53a57690468c5ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.1
+
+## [8.448.5](https://github.com/vm0-ai/vm0/compare/core-v8.448.4...core-v8.448.5) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
 ## [8.448.4](https://github.com/vm0-ai/vm0/compare/core-v8.448.3...core-v8.448.4) (2026-07-22)
 
 

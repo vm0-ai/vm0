@@ -24,9 +24,6 @@ describe("platform auth URLs", () => {
     setBrowserUrl("https://app.vm7.ai:8443/agents");
     expect(resolveWebOrigin()).toBe("https://www.vm7.ai:8443");
 
-    setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
-    expect(resolveWebOrigin()).toBe("https://pr-18532-www.vm6.ai");
-
     setBrowserUrl("https://pr-18532-app.omby.ai/agents");
     expect(resolveWebOrigin()).toBe("https://pr-18532-www.omby.ai");
 
@@ -38,32 +35,29 @@ describe("platform auth URLs", () => {
     expect(deriveServiceOrigin("https://app.vm7.ai:8443", "api")).toBe(
       "https://api.vm7.ai:8443",
     );
-    expect(deriveServiceOrigin("https://staging-app.vm6.ai", "www")).toBe(
-      "https://staging-www.vm6.ai",
-    );
     expect(deriveServiceOrigin("https://staging-app.omby.ai", "www")).toBe(
       "https://staging-www.omby.ai",
     );
-    expect(deriveServiceOrigin("https://pr-18532-app.vm6.ai", "api")).toBe(
+    expect(deriveServiceOrigin("https://pr-18532-app.omby.ai", "api")).toBe(
       "https://pr-18532-api.vm6.ai",
     );
   });
 
   it("builds app auth URLs on the current origin without a domain hint", () => {
-    setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
+    setBrowserUrl("https://pr-18532-app.omby.ai/agents");
 
     const signInUrl = new URL(resolveAppAuthUrl("/sign-in"));
-    expect(signInUrl.origin).toBe("https://pr-18532-app.vm6.ai");
+    expect(signInUrl.origin).toBe("https://pr-18532-app.omby.ai");
     expect(signInUrl.pathname).toBe("/sign-in");
     expect(signInUrl.searchParams.has("domain")).toBeFalsy();
 
     const redirectUrl = new URL(
       resolveAppAuthUrl("/sign-in", {
-        redirectUrl: "https://pr-18532-app.vm6.ai/",
+        redirectUrl: "https://pr-18532-app.omby.ai/",
       }),
     );
     expect(redirectUrl.searchParams.get("redirect_url")).toBe(
-      "https://pr-18532-app.vm6.ai/",
+      "https://pr-18532-app.omby.ai/",
     );
     expect(redirectUrl.searchParams.has("domain")).toBeFalsy();
   });
@@ -155,7 +149,7 @@ describe("platform auth URLs", () => {
 
 describe("platform auth redirects", () => {
   it("redirects unauthenticated users to app auth on the current origin", async () => {
-    setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
+    setBrowserUrl("https://pr-18532-app.omby.ai/agents");
 
     detachedSetupPage({
       context,
@@ -166,17 +160,17 @@ describe("platform auth redirects", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://pr-18532-app.vm6.ai");
+      expect(url.origin).toBe("https://pr-18532-app.omby.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.has("domain")).toBeFalsy();
       expect(url.searchParams.get("redirect_url")).toBe(
-        "https://pr-18532-app.vm6.ai/agents",
+        "https://pr-18532-app.omby.ai/agents",
       );
     });
   });
 
   it("redirects users who need org selection to app auth", async () => {
-    setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
+    setBrowserUrl("https://pr-18532-app.omby.ai/agents");
 
     detachedSetupPage({
       context,
@@ -189,7 +183,7 @@ describe("platform auth redirects", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://pr-18532-app.vm6.ai");
+      expect(url.origin).toBe("https://pr-18532-app.omby.ai");
       expect(url.pathname).toBe("/sign-in/tasks/choose-organization");
       expect(url.searchParams.has("domain")).toBeFalsy();
     });

@@ -1,6 +1,23 @@
 import type { CSSProperties, ReactNode } from "react";
+import { useLastLoadable } from "ccstate-react";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
-import { OnboardingConnectorIcon } from "./onboarding-connectors.tsx";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+
+function DiagramConnectorIcon({
+  connectorRef,
+  size,
+}: {
+  readonly connectorRef: string;
+  readonly size: number;
+}) {
+  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
+  const icon =
+    catalogByRefLoadable.state === "hasData"
+      ? catalogByRefLoadable.data.get(connectorRef)?.icon
+      : undefined;
+  return <ConnectorIcon icon={icon} size={size} />;
+}
 
 const CONNECTOR_LABELS: Readonly<Record<string, string>> = {
   langfuse: "Langfuse",
@@ -211,7 +228,7 @@ function WorkflowDiagramNode({
               {visibleConnectors.map((item) => {
                 return (
                   <span key={item} className="owf-diagram-icon-stack-item">
-                    <OnboardingConnectorIcon connectorId={item} size={22} />
+                    <DiagramConnectorIcon connectorRef={item} size={22} />
                   </span>
                 );
               })}
@@ -222,7 +239,7 @@ function WorkflowDiagramNode({
               ) : null}
             </span>
           ) : connector ? (
-            <OnboardingConnectorIcon connectorId={connector} size={34} />
+            <DiagramConnectorIcon connectorRef={connector} size={34} />
           ) : null)}
       </span>
     </div>

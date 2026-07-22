@@ -78,6 +78,38 @@ pub mod runners {
             /// Artifact entries to mount for the run.
             pub artifacts: Vec<ArtifactEntry>,
         }
+
+        /// Canonical resolved Storage mount accepted by capability-aware runners.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageMountEntry {
+            /// Storage name retained for diagnostics and cache identity.
+            pub name: String,
+            /// Immutable Storage identifier.
+            pub storage_id: String,
+            /// Resolved Storage version identifier.
+            pub version_id: String,
+            /// Guest filesystem path where the Storage is mounted.
+            pub mount_path: String,
+            /// Optional presigned archive URL. Explicit empty writeback mounts may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_url: Option<String>,
+            /// Optional exact encoded archive size in bytes.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_size: Option<u64>,
+            /// Whether the resolved Storage version is explicitly empty.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub empty: Option<bool>,
+            /// Optional filename used when Storage instructions are normalized.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub instructions_target_filename: Option<String>,
+            /// Optional behavior when a writeback mount root is missing.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+            /// Whether changed contents are written back to the same Storage.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub writeback: Option<bool>,
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import {
   IconBox,
   IconBriefcase,
@@ -21,6 +21,7 @@ import {
   updateOnboardingDraft$,
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   CUSTOM_WORKFLOW_ID,
@@ -30,7 +31,6 @@ import {
   type OnboardingWorkflowCategory,
   type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
-import { OnboardingConnectorIcon } from "./onboarding-connectors.tsx";
 import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
@@ -38,6 +38,7 @@ import {
   OnboardingFooter,
   OnboardingShell,
 } from "./onboarding-shell.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
 const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
   engineering: IconCode,
@@ -50,6 +51,21 @@ const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
   operations: IconSun,
   everyone: IconSparkles,
 };
+
+function WorkflowConnectorIcon({
+  connectorRef,
+  size,
+}: {
+  readonly connectorRef: string;
+  readonly size: number;
+}) {
+  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
+  const icon =
+    catalogByRefLoadable.state === "hasData"
+      ? catalogByRefLoadable.data.get(connectorRef)?.icon
+      : undefined;
+  return <ConnectorIcon icon={icon} size={size} />;
+}
 
 export function WorkflowConnectorPills({
   connectorIds,
@@ -71,7 +87,7 @@ export function WorkflowConnectorPills({
             key={connectorId}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted/30"
           >
-            <OnboardingConnectorIcon connectorId={connectorId} size={14} />
+            <WorkflowConnectorIcon connectorRef={connectorId} size={14} />
           </span>
         );
       })}

@@ -95,6 +95,7 @@ interface EntitledChatActor {
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
+  readonly providerId: string;
 }
 
 type EntitledChatActorWithoutRunner = Omit<EntitledChatActor, "runnerGroup">;
@@ -109,12 +110,12 @@ async function entitledChatActorWithoutRunner(
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
   await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
+  const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName,
     visibility: "private",
   });
-  return { actor, agentId: agent.agentId };
+  return { actor, agentId: agent.agentId, providerId };
 }
 
 async function entitledChatActor(
@@ -284,6 +285,7 @@ async function sendNoCreditMessage(
     readonly prompt: string;
   },
 ): Promise<string> {
+  await api.ensureOrgModelProvider(actor);
   const sent = await chat.requestSendMessage(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId !== null) {
     throw new Error("Expected a no-credit send without a run");
@@ -517,6 +519,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
   it("returns chat thread snapshot and lifecycle events with cursor expiry", async () => {
     const actor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "Thread event sourcing agent",
     });
@@ -669,6 +672,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
   it("compacts chat thread snapshots from event markers and prunes deleted agent threads", async () => {
     mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     const actor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
     const liveAgent = await bdd.createAgent(actor, {
       displayName: "Snapshot compaction live agent",
     });
@@ -807,6 +811,52 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
   }, 90_000);
 
+  it("rejects explicit thread models outside current workspace policy", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor(
+      "Unavailable explicit thread model agent",
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const rejectedThreadId = randomUUID();
+    const rejectedCreate = await chat.requestCreateThread(
+      actor,
+      {
+        agentId,
+        clientThreadId: rejectedThreadId,
+        model: "claude-sonnet-4-6",
+      },
+      [400],
+    );
+    expectApiError(rejectedCreate.body);
+    expect(rejectedCreate.body.error.message).toBe(
+      "The selected model is not available in this workspace",
+    );
+    await chat.requestReadThread(actor, rejectedThreadId, [404]);
+
+    const thread = await chat.createThread(actor, {
+      agentId,
+      model: "claude-opus-4-6",
+    });
+    const rejectedUpdate = await chat.requestUpdateThreadModelSelection(
+      actor,
+      thread.id,
+      "claude-sonnet-4-6",
+      [400],
+    );
+    expectApiError(rejectedUpdate.body);
+    expect(rejectedUpdate.body.error.message).toBe(
+      "The selected model is not available in this workspace",
+    );
+  }, 90_000);
+
   it("rejects restricted model pins for limited-free-1 workspaces", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Limited free model pin agent",
@@ -823,6 +873,22 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       tier: "limited-free-1",
       credits: billingStatus.credits,
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "MiniMax-M3",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
 
     const thread = await chat.createThread(actor, {
       agentId,
@@ -860,6 +926,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
   it("updates the Computer Use host binding on a chat thread", async () => {
     const actor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "Computer-use thread agent",
     });

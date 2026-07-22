@@ -52,7 +52,7 @@ describe("test-oauth provider URLs", () => {
   it("uses the API preview alias when the configured URL is a web preview alias", () => {
     vi.stubEnv("APP_URL", "https://{pr}.vm6.ai");
     vi.stubEnv("VM0_API_BACKEND_URL", "https://pr-12962-www.vm6.ai");
-    vi.stubEnv("VERCEL_URL", "pr-12962-app.vm6.ai");
+    vi.stubEnv("VERCEL_URL", "pr-12962-api.vm6.ai");
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(

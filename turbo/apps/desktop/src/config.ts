@@ -97,10 +97,7 @@ function environmentForPlatformUrl(
   if (!hasExplicitUrl || platformUrl.hostname === "app.vm0.ai") {
     return "production";
   }
-  if (
-    platformUrl.hostname === "staging-app.omby.ai" ||
-    platformUrl.hostname === "staging-app.vm6.ai"
-  ) {
+  if (platformUrl.hostname === "staging-app.omby.ai") {
     return "staging";
   }
   return "development";

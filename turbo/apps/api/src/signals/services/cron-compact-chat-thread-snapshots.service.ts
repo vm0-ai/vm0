@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { eq, lt, sql, type SQL } from "drizzle-orm";
+import { count, eq, lt, sql, type SQL } from "drizzle-orm";
 import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -153,7 +153,7 @@ function rebuiltCte(): SQL {
         LIMIT 1
       ) marker ON true
       LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS count
+        SELECT ${count()}::int AS count
         FROM ${chatThreadEvents} event
         WHERE event.user_id = scope.user_id
           AND event.org_id = scope.org_id
@@ -163,7 +163,7 @@ function rebuiltCte(): SQL {
           )
       ) events_after_marker ON true
       LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS count
+        SELECT ${count()}::int AS count
         FROM jsonb_array_elements(
           COALESCE(snapshot.chat_threads, '[]'::jsonb)
         ) AS old_thread(thread)
@@ -218,7 +218,7 @@ function compactChatThreadSnapshotBatchSql(args: {
     ${rebuiltCte()},
     ${upsertedCte(args.updatedAt)}
     SELECT
-      COUNT(*)::int AS "scopes",
+      ${count()}::int AS "scopes",
       COALESCE(SUM(rebuilt.events_applied), 0)::int AS "eventsApplied",
       COALESCE(SUM(rebuilt.removed_deleted_agent_threads), 0)::int AS "removedDeletedAgentThreads"
     FROM rebuilt
@@ -281,7 +281,7 @@ async function compactChatThreadSnapshotsForAllScopes(
           AND (event.created_at, event.id) < (marker.created_at, marker.id)
         RETURNING 1
       )
-      SELECT COUNT(*)::int AS "count"
+      SELECT ${count()}::int AS "count"
       FROM pruned
     `,
     prunedEventsRowSchema,

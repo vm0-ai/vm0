@@ -469,12 +469,28 @@ describe("zero workflows", () => {
   it("runs a workflow slash command with workflow timing attribution", async () => {
     const actor = user({ orgRole: "org:admin" });
     await api.grantProEntitlement(actor);
-    await api.ensureOrgModelProvider(actor);
+    const provider = await miscApi.upsertOrgModelProvider(
+      actor,
+      { type: "openai-api-key", secret: "workflow-openai-key" },
+      [201],
+    );
+    if (provider.status !== 201) {
+      throw new Error("Expected the workflow OpenAI provider to be created");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.body.provider.id,
+      },
+    ]);
     const agent = await createAgent(actor, {
       displayName: "Workflow Runner Agent",
       visibility: "private",
     });
-    api.configureRunnerGroup();
+    const runnerGroup = api.configureRunnerGroup();
 
     const created = await createWorkflow(actor, {
       agentId: agent.agentId,
@@ -494,6 +510,13 @@ describe("zero workflows", () => {
     expect(run.body.chatThreadId).toStrictEqual(expect.any(String));
     expect(run.body.runId).toStrictEqual(expect.any(String));
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.body.runId);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.6-terra");
+    expect(claim.environment?.ANTHROPIC_MODEL).toBeUndefined();
+    await api.requestCancelRun(actor, run.body.runId, [200]);
   });
 
   it("requires agent write-permission to create public workflows under an agent", async () => {

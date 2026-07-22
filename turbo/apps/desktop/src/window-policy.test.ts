@@ -225,18 +225,6 @@ describe("resolveDesktopConfig", () => {
     );
   });
 
-  it("keeps the legacy staging app hostname compatible", () => {
-    const config = resolveDesktopConfig("https://staging-app.vm6.ai/");
-
-    expect(config.environment).toBe("staging");
-    expect(config.webUrl.toString()).toBe("https://staging-www.vm6.ai/");
-    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
-      "https://staging-api.vm6.ai",
-      "https://staging-app.vm6.ai",
-      "https://staging-www.vm6.ai",
-    ]);
-  });
-
   it("treats custom app hostnames as development", () => {
     const config = resolveDesktopConfig("https://app.vm7.ai:8443/");
 
@@ -267,18 +255,6 @@ describe("resolveDesktopConfig", () => {
       "https://pr-123-api.vm6.ai",
       "https://pr-123-app.omby.ai",
       "https://pr-123-www.omby.ai",
-    ]);
-  });
-
-  it("keeps legacy PR app hostnames compatible", () => {
-    const config = resolveDesktopConfig("https://pr-123-app.vm6.ai/");
-
-    expect(config.environment).toBe("development");
-    expect(config.webUrl.toString()).toBe("https://pr-123-www.vm6.ai/");
-    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
-      "https://pr-123-api.vm6.ai",
-      "https://pr-123-app.vm6.ai",
-      "https://pr-123-www.vm6.ai",
     ]);
   });
 
@@ -642,14 +618,8 @@ describe("computer use desktop runtime", () => {
       "https://api.vm7.ai",
     );
     expect(
-      resolveComputerUseApiBaseUrl(new URL("https://staging-app.vm6.ai")),
-    ).toBe("https://staging-api.vm6.ai");
-    expect(
       resolveComputerUseApiBaseUrl(new URL("https://staging-app.omby.ai")),
     ).toBe("https://staging-api.vm6.ai");
-    expect(
-      resolveComputerUseApiBaseUrl(new URL("https://pr-123-app.vm6.ai")),
-    ).toBe("https://pr-123-api.vm6.ai");
     expect(
       resolveComputerUseApiBaseUrl(new URL("https://pr-123-app.omby.ai")),
     ).toBe("https://pr-123-api.vm6.ai");

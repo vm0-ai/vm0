@@ -33,6 +33,8 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   storagesCommitContract,
   storagesDownloadContract,
@@ -83,6 +85,7 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-arti
 import { zeroHostRoutes } from "../../zero-host";
 import { zeroMemoryActivityRoutes } from "../../zero-memory-activity";
 import { zeroMemoryRoutes } from "../../zero-memory";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
@@ -91,10 +94,6 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
-
-function defaultCreateThreadModel(): string {
-  return "claude-sonnet-4-6";
-}
 
 type StorageType = "volume" | "artifact";
 
@@ -246,6 +245,7 @@ const chatFilesRoutes = [
   ...zeroHostRoutes,
   ...zeroMemoryRoutes,
   ...zeroMemoryActivityRoutes,
+  ...zeroModelPoliciesRoutes,
   ...storagesPrepareRoutes,
   ...storagesCommitRoutes,
   ...storagesListRoutes,
@@ -280,6 +280,26 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadsClient() {
     return chatFilesApp(context)(chatThreadsContract);
+  }
+
+  function modelPoliciesClient() {
+    return chatFilesApp(context)(zeroModelPoliciesMainContract);
+  }
+
+  async function defaultCreateThreadModel(
+    actor: ApiTestUser | null,
+  ): Promise<string> {
+    if (!actor?.orgId) {
+      return DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    }
+    const response = await accept(
+      modelPoliciesClient().list({ headers: authenticate(context, actor) }),
+      [200],
+    );
+    return (
+      response.body.workspaceDefaultModel ??
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
+    );
   }
 
   function threadByIdClient() {
@@ -445,7 +465,7 @@ export function createChatFilesBddApi(context: TestContext) {
               ? {}
               : { clientThreadId: body.clientThreadId }),
             ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
-            model: body.model ?? defaultCreateThreadModel(),
+            model: body.model ?? (await defaultCreateThreadModel(actor)),
           },
         }),
         [201],
@@ -462,7 +482,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly eventId?: string;
         readonly model?: string;
       },
-      statuses: readonly (201 | 401 | 402 | 404)[],
+      statuses: readonly (201 | 400 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadsClient().create({
@@ -474,7 +494,7 @@ export function createChatFilesBddApi(context: TestContext) {
               ? {}
               : { clientThreadId: body.clientThreadId }),
             ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
-            model: body.model ?? defaultCreateThreadModel(),
+            model: body.model ?? (await defaultCreateThreadModel(actor)),
           },
         }),
         statuses,
@@ -1259,13 +1279,15 @@ export function createChatFilesBddApi(context: TestContext) {
             chatMessagesContract,
           )
         : chatMessagesClient();
+      const defaultModel =
+        "prompt" in body &&
+        body.threadId === undefined &&
+        body.model === undefined
+          ? await defaultCreateThreadModel(actor)
+          : undefined;
       const requestBody =
         "prompt" in body
           ? (() => {
-              const defaultModel =
-                body.threadId === undefined && body.model === undefined
-                  ? defaultCreateThreadModel()
-                  : undefined;
               const selectedModel = body.model ?? defaultModel;
               return {
                 agentId: body.agentId,

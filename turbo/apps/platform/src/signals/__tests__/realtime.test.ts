@@ -74,6 +74,7 @@ function abortError(message: string): Error {
 
 function chatThreadRealtimeTopics(threadId: string): readonly string[] {
   return [
+    `chatThreadDetailChanged:${threadId}`,
     `chatThreadMessageCreated:${threadId}`,
     `chatThreadMessageUpdated:${threadId}`,
     `chatThreadRunCreated:${threadId}`,
@@ -552,6 +553,7 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$: keepAliveLoop$,
             onMessageCreated$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
@@ -565,7 +567,7 @@ describe("realtime signals", () => {
         context.signal,
       ),
     ).rejects.toThrow(
-      `Realtime subscription ended before ready: chatThreadMessageCreated:${threadId}`,
+      `Realtime subscription ended before ready: chatThreadDetailChanged:${threadId}`,
     );
 
     expectNoChatThreadSubscriptions(threadId);
@@ -584,6 +586,7 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$: keepAliveLoop$,
             onMessageCreated$: keepAliveLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
@@ -613,6 +616,7 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
+          onThreadDetailChanged$: keepAliveLoop$,
           onMessageCreated$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
@@ -635,6 +639,7 @@ describe("realtime signals", () => {
       {
         threadId,
         handlers: {
+          onThreadDetailChanged$: keepAliveLoop$,
           onMessageCreated$: keepAliveLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,

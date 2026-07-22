@@ -80,12 +80,10 @@ jobs:
         id: preview
         if: github.event_name == 'pull_request'
         env:
-          PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
           CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
         run: |
           platform_url="$(bash ../.github/scripts/resolve-app-preview-url.sh \
             "pr-${{ github.event.pull_request.number }}" \
-            "$PREVIEW_DOMAIN" \
             "$CF_PAGES_PREVIEW_DOMAIN")"
           echo "platform-url=${platform_url}" >> "$GITHUB_OUTPUT"
           echo "PR preview desktop URL: ${platform_url}"

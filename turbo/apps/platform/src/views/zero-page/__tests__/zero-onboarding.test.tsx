@@ -38,15 +38,15 @@ describe("zero onboarding routing", () => {
     );
   });
 
-  it("does not register the retired numeric onboarding path", async () => {
+  it("does not register nested onboarding paths", async () => {
     detachedSetupPage({
       context,
-      path: "/onboarding/491858?vm0_source=homepage",
+      path: "/onboarding/unknown?vm0_source=homepage",
     });
 
     await expect(
       screen.findByRole("heading", { name: "Page not found" }),
     ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/491858");
+    expect(pathname()).toBe("/onboarding/unknown");
   });
 });

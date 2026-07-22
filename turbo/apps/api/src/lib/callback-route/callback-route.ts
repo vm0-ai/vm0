@@ -1,5 +1,5 @@
 import { command, computed, state, type Command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 
@@ -114,11 +114,17 @@ export function callbackRoute<T>(
             })
             .from(agentRunCallbacks)
             .innerJoin(agentRuns, eq(agentRuns.id, agentRunCallbacks.runId))
-            .where(eq(agentRunCallbacks.runId, runId))
+            .where(
+              and(
+                eq(agentRunCallbacks.runId, runId),
+                isNotNull(agentRunCallbacks.url),
+                isNotNull(agentRunCallbacks.encryptedSecret),
+              ),
+            )
             .limit(1);
       signal.throwIfAborted();
 
-      if (!record) {
+      if (!record?.encryptedSecret) {
         return { status: 404, body: { error: "Callback not found" } };
       }
 
