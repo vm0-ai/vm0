@@ -342,15 +342,21 @@ describe("CONN-02: OAuth start and callback", () => {
     ).toBe("/connectors/github/callback");
     const state = stateFromAuthorizationUrl(authorizationUrl.toString());
 
-    await expect(
-      connectorsApi.completeOauthCallbackResult("github", {
+    const callbackResult = await connectorsApi.completeOauthCallbackResult(
+      "github",
+      {
         code: "github-app-success-code",
         state,
-      }),
-    ).resolves.toStrictEqual({
+      },
+    );
+    expect(callbackResult.body).toStrictEqual({
       status: "success",
       username: "bdd-github-user",
     });
+    expect(callbackResult.headers.get("cache-control")).toBe("no-store");
+    expect(callbackResult.headers.getSetCookie()).toStrictEqual(
+      expect.arrayContaining([...CONNECTOR_OAUTH_COOKIE_CLEARS]),
+    );
     await expect(
       connectorsApi.readConnectorByType(actor, "github"),
     ).resolves.toMatchObject({
@@ -382,13 +388,13 @@ describe("CONN-02: OAuth start and callback", () => {
     const failedState = stateFromAuthorizationUrl(
       failedAuthorizationUrl.toString(),
     );
-    await expect(
-      connectorsApi.completeOauthCallbackResult("github", {
+    const failedCallbackResult =
+      await connectorsApi.completeOauthCallbackResult("github", {
         error: "access_denied",
         error_description: "Provider denied access",
         state: failedState,
-      }),
-    ).resolves.toStrictEqual({
+      });
+    expect(failedCallbackResult.body).toStrictEqual({
       status: "error",
       message: "Provider denied access",
     });

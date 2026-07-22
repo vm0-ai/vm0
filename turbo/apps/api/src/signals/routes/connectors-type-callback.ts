@@ -17,7 +17,7 @@ import {
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
 
-import { request$ } from "../context/hono";
+import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -996,9 +996,15 @@ const callbackConnectorInner$ = command(
         );
     signal.throwIfAborted();
 
-    return query.responseMode === "json"
-      ? { status: 200 as const, body: callbackResultFromRedirect(response) }
-      : response;
+    if (query.responseMode !== "json") {
+      return response;
+    }
+
+    set(setResHeader$, "Cache-Control", "no-store");
+    for (const cookie of response.headers.getSetCookie()) {
+      set(setResHeader$, "Set-Cookie", cookie, { append: true });
+    }
+    return { status: 200 as const, body: callbackResultFromRedirect(response) };
   },
 );
 

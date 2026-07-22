@@ -1349,7 +1349,7 @@ export function createConnectorBddApi(context: TestContext) {
         [200],
       );
       expectStatus(response, 200);
-      return response.body;
+      return response;
     },
 
     /**
