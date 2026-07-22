@@ -99,14 +99,17 @@ async function readOrgCredits(actor: ApiTestUser): Promise<number> {
   return (await createMapsBillingApi(context).readBillingStatus(actor)).credits;
 }
 
-async function enableHostedArtifactVersions(actor: ApiTestUser): Promise<void> {
+async function setHostedArtifactVersions(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
   if (!actor.orgId) {
     throw new Error("Expected hosted artifact actor to have an org");
   }
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.HostedArtifactVersions]: true },
+    { [FeatureSwitchKey.HostedArtifactVersions]: enabled },
   );
 }
 
@@ -165,7 +168,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     if (!actor.orgId) {
       throw new Error("Expected versioned host actor to have an org");
     }
-    await enableHostedArtifactVersions(actor);
+    await setHostedArtifactVersions(actor, true);
     const capture = api.captureHostedSitesS3();
     await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
 
@@ -300,6 +303,78 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     ]);
   });
 
+  it("keeps an adopted site versioned after the feature switch is disabled [HOST-A]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected versioned host actor to have an org");
+    }
+    await setHostedArtifactVersions(actor, true);
+    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
+    const capture = api.captureHostedSitesS3();
+    const site = `bdd-sticky-versioned-${randomUUID().slice(0, 8)}`;
+    const body = {
+      site,
+      artifactKind: "hosted-site" as const,
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>version one</main>")],
+    };
+
+    const first = await api.prepareHostedSite(actor, body);
+    await api.completeHostedSite(actor, first.deploymentId);
+    await setHostedArtifactVersions(actor, false);
+
+    const second = await api.prepareHostedSite(actor, body);
+    expect(second).toMatchObject({
+      siteId: first.siteId,
+      publicSlug: first.publicSlug,
+      deploymentVersion: 2,
+      aliasUrl: first.aliasUrl,
+    });
+    expect(second.artifactUrl).not.toBe(first.artifactUrl);
+    const completedSecond = await api.completeHostedSite(
+      actor,
+      second.deploymentId,
+    );
+    expect(completedSecond).toMatchObject({
+      deploymentVersion: 2,
+      isActive: true,
+      activeDeploymentVersion: 2,
+    });
+
+    const third = await api.redeployHtml(actor, {
+      url: second.artifactUrl ?? "",
+      html: "<!doctype html><main>version three</main>",
+    });
+    expect(third).toMatchObject({
+      siteId: first.siteId,
+      publicSlug: first.publicSlug,
+      deploymentVersion: 3,
+      aliasUrl: first.aliasUrl,
+      isActive: true,
+      activeDeploymentVersion: 3,
+    });
+
+    const versionPrefix = `sites/orgs/${actor.orgId}/${site}/versions`;
+    expect(
+      capture.puts.map((put) => {
+        return put.key;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        `${versionPrefix}/1/manifest.json`,
+        `${versionPrefix}/2/manifest.json`,
+        `${versionPrefix}/3/manifest.json`,
+      ]),
+    );
+    expect(
+      capture.puts.filter((put) => {
+        return put.key === `sites/${first.publicSlug}/active.json`;
+      }),
+    ).toHaveLength(3);
+  });
+
   it("adds a four-character hash only when the simple alias is already occupied [HOST-A]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
@@ -318,7 +393,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     if (!actor.orgId) {
       throw new Error("Expected collision actor to have an org");
     }
-    await enableHostedArtifactVersions(actor);
+    await setHostedArtifactVersions(actor, true);
     const capture = api.captureHostedSitesS3();
     await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
     const versioned = await api.prepareHostedSite(actor, {

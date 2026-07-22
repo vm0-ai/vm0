@@ -27,6 +27,7 @@ Examples:
 
 Notes:
   - Authenticates via ZERO_TOKEN and requires host:read
+  - Requires hosted artifact versions to be enabled for the current user
   - The active marker identifies the version served by the site alias`,
   )
   .action(

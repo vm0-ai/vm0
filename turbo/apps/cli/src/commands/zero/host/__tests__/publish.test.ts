@@ -154,4 +154,69 @@ describe("zero host publish command", () => {
         Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
     });
   });
+
+  it("preserves the legacy suffix and response shape during rollout", async () => {
+    const index = "<!doctype html><main>Legacy hosted site</main>";
+    const legacyPublicSlug = "demo-site-a1b2c3d4-release-01";
+    const legacyUrl = `https://${legacyPublicSlug}.sites.example.com`;
+
+    writeFileSync(join(tempDir, "index.html"), index);
+    expect(zeroHostCommand.helpInformation()).toContain(
+      "--slug-suffix <suffix>",
+    );
+
+    server.use(
+      http.post(PREPARE_URL, async ({ request }) => {
+        const body = hostedSitePrepareRequestSchema.parse(await request.json());
+        expect(body.slugSuffix).toBe("release-01");
+        return HttpResponse.json({
+          siteId: "00000000-0000-4000-8000-000000000001",
+          deploymentId: "00000000-0000-4000-8000-000000000004",
+          publicSlug: legacyPublicSlug,
+          url: legacyUrl,
+          uploads: [
+            { path: "/index.html", uploadUrl: INDEX_UPLOAD_URL },
+            { path: "/robots.txt", uploadUrl: ROBOTS_UPLOAD_URL },
+          ],
+        });
+      }),
+      http.put(INDEX_UPLOAD_URL, () => {
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.put(ROBOTS_UPLOAD_URL, () => {
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.post(COMPLETE_URL, () => {
+        return HttpResponse.json({
+          siteId: "00000000-0000-4000-8000-000000000001",
+          deploymentId: "00000000-0000-4000-8000-000000000004",
+          publicSlug: legacyPublicSlug,
+          url: legacyUrl,
+          status: "ready",
+        });
+      }),
+    );
+
+    await zeroHostCommand.parseAsync([
+      "node",
+      "cli",
+      tempDir,
+      "--site",
+      "demo-site",
+      "--slug-suffix",
+      "release-01",
+      "--spa",
+      "--json",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      publicSlug: legacyPublicSlug,
+      url: legacyUrl,
+    });
+    expect(parsed.deploymentVersion).toBeUndefined();
+    expect(parsed.artifactUrl).toBeUndefined();
+    expect(parsed.aliasUrl).toBeUndefined();
+  });
 });

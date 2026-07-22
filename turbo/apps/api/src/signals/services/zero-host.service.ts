@@ -1811,6 +1811,33 @@ function deploymentVersionResponseFields(deployment: HostedDeploymentRow): {
   };
 }
 
+function hostedSiteUsesVersionedArtifacts(site: HostedSiteRow): boolean {
+  return (
+    site.activeDeploymentVersion !== null || site.nextDeploymentVersion > 1
+  );
+}
+
+async function shouldUseVersionedArtifacts(
+  db: Db,
+  args: PrepareDeploymentArgs,
+): Promise<boolean> {
+  if (args.versionedArtifactsEnabled) {
+    return true;
+  }
+  const [site] = await db
+    .select()
+    .from(hostedSites)
+    .where(
+      and(
+        eq(hostedSites.orgId, args.orgId),
+        eq(hostedSites.slug, args.body.site),
+        isNull(hostedSites.deletedAt),
+      ),
+    )
+    .limit(1);
+  return site !== undefined && hostedSiteUsesVersionedArtifacts(site);
+}
+
 function fileKey(prefix: string, path: string): string {
   return `${prefix}${path}`;
 }
@@ -2306,11 +2333,16 @@ export const prepareHostedSiteDeployment$ = command(
 
     const writeDb = set(writeDb$);
     const now = nowDate();
+    const useVersionedArtifacts = await shouldUseVersionedArtifacts(
+      writeDb,
+      args,
+    );
+    signal.throwIfAborted();
     let siteAndDeployment: CreatedSiteDeployment | null = null;
     let publicSlug = "";
     let url = "";
 
-    if (args.versionedArtifactsEnabled) {
+    if (useVersionedArtifacts) {
       const result = await createHostedSiteDeployment(writeDb, args, {
         kind: "versioned",
         now,
@@ -2405,20 +2437,30 @@ export const prepareHostedSiteDeployment$ = command(
   },
 );
 
-async function firstMissingHostedDeploymentPath(
-  deployment: HostedDeploymentRow,
-  objectExists: (key: string) => Promise<boolean>,
-  signal: AbortSignal,
-): Promise<string | null> {
-  for (const file of Object.values(deployment.manifest.files)) {
-    const exists = await objectExists(fileKey(deployment.r2Prefix, file.path));
-    signal.throwIfAborted();
-    if (!exists) {
-      return file.path;
+const firstMissingHostedDeploymentPath$ = command(
+  async (
+    { get },
+    args: {
+      readonly bucket: string;
+      readonly deployment: HostedDeploymentRow;
+    },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    for (const file of Object.values(args.deployment.manifest.files)) {
+      const exists = await get(
+        hostedSitesS3ObjectExists(
+          args.bucket,
+          fileKey(args.deployment.r2Prefix, file.path),
+        ),
+      );
+      signal.throwIfAborted();
+      if (!exists) {
+        return file.path;
+      }
     }
-  }
-  return null;
-}
+    return null;
+  },
+);
 
 function activeSitePointerForDeployment(
   deployment: HostedDeploymentRow,
@@ -2443,72 +2485,83 @@ function activeSitePointerForDeployment(
   };
 }
 
-function promoteHostedSiteDeployment(
-  writeDb: Db,
-  args: {
-    readonly deployment: HostedDeploymentRow;
-    readonly orgId: string;
-    readonly readyAt: Date;
-    readonly writeActivePointer: () => Promise<void>;
-  },
-  signal: AbortSignal,
-): Promise<HostedSitePromotion> {
-  return writeDb.transaction(async (tx) => {
-    const [site] = await tx
-      .select()
-      .from(hostedSites)
-      .where(
-        and(
-          eq(hostedSites.id, args.deployment.siteId),
-          eq(hostedSites.orgId, args.orgId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!site) {
-      throw new Error("Hosted site not found for deployment");
-    }
+const promoteHostedSiteDeployment$ = command(
+  (
+    { get, set },
+    args: {
+      readonly bucket: string;
+      readonly deployment: HostedDeploymentRow;
+      readonly orgId: string;
+      readonly pointer: ActiveSitePointer;
+      readonly readyAt: Date;
+    },
+    signal: AbortSignal,
+  ): Promise<HostedSitePromotion> => {
+    const writeDb = set(writeDb$);
+    return writeDb.transaction(async (tx) => {
+      const [site] = await tx
+        .select()
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.id, args.deployment.siteId),
+            eq(hostedSites.orgId, args.orgId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!site) {
+        throw new Error("Hosted site not found for deployment");
+      }
 
-    const shouldPromote =
-      args.deployment.deploymentVersion === null
-        ? site.activeDeploymentVersion === null
-        : site.activeDeploymentVersion === null ||
-          args.deployment.deploymentVersion >= site.activeDeploymentVersion;
-    if (shouldPromote) {
-      await args.writeActivePointer();
-      signal.throwIfAborted();
-    }
+      const shouldPromote =
+        args.deployment.deploymentVersion === null
+          ? site.activeDeploymentVersion === null
+          : site.activeDeploymentVersion === null ||
+            args.deployment.deploymentVersion >= site.activeDeploymentVersion;
+      if (shouldPromote) {
+        await get(
+          putHostedSitesS3Object(
+            args.bucket,
+            activePointerKey(args.deployment.manifest.publicSlug),
+            JSON.stringify(args.pointer, null, 2),
+            "application/json",
+          ),
+        );
+        signal.throwIfAborted();
+      }
 
-    await tx
-      .update(hostedDeployments)
-      .set({
-        status: "ready",
-        readyAt: args.readyAt,
-        updatedAt: args.readyAt,
-        error: null,
-      })
-      .where(eq(hostedDeployments.id, args.deployment.id));
-    if (shouldPromote) {
       await tx
-        .update(hostedSites)
+        .update(hostedDeployments)
         .set({
-          activeDeploymentId: args.deployment.id,
-          activeDeploymentVersion: args.deployment.deploymentVersion,
+          status: "ready",
+          readyAt: args.readyAt,
           updatedAt: args.readyAt,
+          error: null,
         })
-        .where(eq(hostedSites.id, args.deployment.siteId));
-    }
+        .where(eq(hostedDeployments.id, args.deployment.id));
+      if (shouldPromote) {
+        await tx
+          .update(hostedSites)
+          .set({
+            activeDeploymentId: args.deployment.id,
+            activeDeploymentVersion: args.deployment.deploymentVersion,
+            updatedAt: args.readyAt,
+          })
+          .where(eq(hostedSites.id, args.deployment.siteId));
+      }
 
-    return {
-      activeDeploymentId: shouldPromote
-        ? args.deployment.id
-        : site.activeDeploymentId,
-      activeDeploymentVersion: shouldPromote
-        ? args.deployment.deploymentVersion
-        : site.activeDeploymentVersion,
-    };
-  });
-}
+      return {
+        activeDeploymentId: shouldPromote
+          ? args.deployment.id
+          : site.activeDeploymentId,
+        activeDeploymentVersion: shouldPromote
+          ? args.deployment.deploymentVersion
+          : site.activeDeploymentVersion,
+      };
+    });
+  },
+);
 
 export const completeHostedSiteDeployment$ = command(
   async (
@@ -2544,12 +2597,11 @@ export const completeHostedSiteDeployment$ = command(
       };
     }
 
-    const missingPath = await firstMissingHostedDeploymentPath(
-      deployment,
-      async (key) => {
-        return await get(
-          hostedSitesS3ObjectExists(hostedR2.config.bucket, key),
-        );
+    const missingPath = await set(
+      firstMissingHostedDeploymentPath$,
+      {
+        bucket: hostedR2.config.bucket,
+        deployment,
       },
       signal,
     );
@@ -2592,22 +2644,14 @@ export const completeHostedSiteDeployment$ = command(
       signal.throwIfAborted();
     }
 
-    const promotion = await promoteHostedSiteDeployment(
-      writeDb,
+    const promotion = await set(
+      promoteHostedSiteDeployment$,
       {
+        bucket: hostedR2.config.bucket,
         deployment,
         orgId: args.orgId,
+        pointer,
         readyAt,
-        writeActivePointer: async () => {
-          await get(
-            putHostedSitesS3Object(
-              hostedR2.config.bucket,
-              activePointerKey(deployment.manifest.publicSlug),
-              JSON.stringify(pointer, null, 2),
-              "application/json",
-            ),
-          );
-        },
       },
       signal,
     );
@@ -2952,8 +2996,10 @@ const redeployHostedSiteIndexHtml$ = command(
     }
 
     const now = nowDate();
+    const useVersionedArtifacts =
+      args.versionedArtifactsEnabled || hostedSiteUsesVersionedArtifacts(site);
     const creationContext: CreateHostedSiteDeploymentContext =
-      args.versionedArtifactsEnabled
+      useVersionedArtifacts
         ? { kind: "versioned", now }
         : {
             kind: "legacy",

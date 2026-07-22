@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import chalk from "chalk";
 import {
   hostedArtifactKindSchema,
@@ -32,12 +32,7 @@ export const zeroHostCommand = new Command()
   .description("Publish and inspect owned static hosted sites")
   .argument("<dir>", "Static build directory, for example ./dist")
   .option("--site <slug>", "Public site slug, e.g. my-product-demo")
-  .addOption(
-    new Option(
-      "--slug-suffix <suffix>",
-      "Legacy generated site URL suffix",
-    ).hideHelp(),
-  )
+  .option("--slug-suffix <suffix>", "Reuse a legacy generated site URL suffix")
   .option(
     "--artifact-kind <kind>",
     "Artifact kind to record for this hosted deployment",
@@ -53,13 +48,15 @@ export const zeroHostCommand = new Command()
 Examples:
   Publish a Vite build:  zero host ./dist --site my-product-demo --spa
   Publish next version:  zero host ./dist --site my-product-demo --spa
+  Reuse a legacy URL:    zero host ./dist --site my-product-demo --slug-suffix release-01 --spa
   List site versions:    zero host versions my-product-demo
   Clone a hosted site:   zero host clone my-product-demo ./site
   Machine readable:     zero host ./dist --site my-product-demo --spa --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (publish requires host:write; clone requires host:read)
-  - Reusing --site creates a new immutable artifact behind the same alias
+  - With hosted artifact versions enabled, reusing --site publishes behind the same alias
+  - Otherwise, reuse both --site and --slug-suffix to keep a legacy URL
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,
   )
