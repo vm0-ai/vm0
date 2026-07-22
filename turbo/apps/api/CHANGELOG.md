@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.302.0](https://github.com/vm0-ai/vm0/compare/api-v1.301.0...api-v1.302.0) (2026-07-22)
+
+
+### Features
+
+* **api:** register connector skills during catalog sync ([#22586](https://github.com/vm0-ai/vm0/issues/22586)) ([d5635f7](https://github.com/vm0-ai/vm0/commit/d5635f76c5d6e08650e7f2f92bc233fa35f472f0))
+* **chat:** make structured prompts authoritative on send ([#22537](https://github.com/vm0-ai/vm0/issues/22537)) ([454772b](https://github.com/vm0-ai/vm0/commit/454772bcd57c585e7ac0fbe64615b04c6862fcb7))
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### CI
+
+* remove per-pr www preview infrastructure ([#22539](https://github.com/vm0-ai/vm0/issues/22539)) ([1aacb72](https://github.com/vm0-ai/vm0/commit/1aacb72ed6b6d22db3f161608e263087123ba9ec))
+
+
+### Performance Improvements
+
+* **api:** overlap storage and context preparation ([#22581](https://github.com/vm0-ai/vm0/issues/22581)) ([b77ffa3](https://github.com/vm0-ai/vm0/commit/b77ffa3897ec485d9cfcd75513684a5ee51cb0d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+    * @vm0/core bumped to 8.451.0
+    * @vm0/db bumped to 1.127.0
+
 ## [1.301.0](https://github.com/vm0-ai/vm0/compare/api-v1.300.2...api-v1.301.0) (2026-07-22)
 
 

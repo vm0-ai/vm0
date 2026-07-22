@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.143](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.142...sandbox-fc-v0.37.143) (2026-07-22)
+
+
+### Refactoring
+
+* **sandbox-fc:** encapsulate creation completions ([#22534](https://github.com/vm0-ai/vm0/issues/22534)) ([e4c1ae9](https://github.com/vm0-ai/vm0/commit/e4c1ae97b03bdec272a5e5c148b1a64069c1df0d))
+
 ## [0.37.142](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.141...sandbox-fc-v0.37.142) (2026-07-22)
 
 
