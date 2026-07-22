@@ -3344,6 +3344,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_provider_claim_accepts_canonical_storage_mount_response() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let mut response: serde_json::Value =
+            serde_json::from_str(RUNNER_CLAIM_RESPONSE_FIXTURE).unwrap();
+        response["storageManifest"] = serde_json::json!({
+            "storageMounts": [
+                {
+                    "name": "fixture-workspace",
+                    "storageId": "fixture-workspace-id",
+                    "versionId": "fixture-storage-version",
+                    "mountPath": "/home/user/workspace",
+                    "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz"
+                },
+                {
+                    "name": "fixture-artifacts",
+                    "storageId": "fixture-storage-id",
+                    "versionId": "fixture-artifact-version",
+                    "mountPath": "/home/user/artifacts",
+                    "archiveUrl": "https://storage.fixture.invalid/artifacts.tar.gz",
+                    "writeback": true
+                }
+            ]
+        });
+        let claim_mock = server
+            .mock_async(move |when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(response);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("canonical storage mount claim response should decode");
+        let manifest = claimed.context().storage_manifest.as_ref().unwrap();
+
+        assert_eq!(manifest.storages.len(), 1);
+        assert_eq!(manifest.storages[0].name, "fixture-workspace");
+        assert_eq!(
+            manifest.storages[0].vas_version_id,
+            "fixture-storage-version"
+        );
+        assert_eq!(manifest.artifacts.len(), 1);
+        assert_eq!(manifest.artifacts[0].vas_storage_id, "fixture-storage-id");
+        assert_eq!(
+            manifest.artifacts[0].vas_version_id,
+            "fixture-artifact-version"
+        );
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
     async fn api_provider_claim_accepts_previous_minimal_response() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
