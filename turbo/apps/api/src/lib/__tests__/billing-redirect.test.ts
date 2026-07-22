@@ -16,11 +16,9 @@ describe("billingRedirectAllowed", () => {
     ).toBeTruthy();
   });
 
-  it("rejects the retired WWW onboarding origin", () => {
+  it("rejects a non-App origin", () => {
     expect(
-      billingRedirectAllowed(
-        "https://www.vm7.ai:8443/onboarding?billing=success",
-      ),
+      billingRedirectAllowed("https://example.com/onboarding?billing=success"),
     ).toBeFalsy();
   });
 });
