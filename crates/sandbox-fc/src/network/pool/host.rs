@@ -20,7 +20,8 @@ use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, NS_PREFIX, format_hex_index, generate_veth_ip_pair,
-    make_host_device, make_host_device_iptables_pattern, make_ns_name, parse_netns_name,
+    make_host_device, make_host_device_iptables_pattern, make_ns_name,
+    make_pool_dns_filter_comment, parse_netns_name,
 };
 use super::types::NetnsInfo;
 
@@ -145,27 +146,34 @@ async fn exec_xtables_ignore_errors_with_timeout(
     exec_ignore_errors_with_timeout(program, &args, timeout).await
 }
 
-/// Restrict the runner-managed DNS port to this pool's VM-facing veths.
+/// Observe and restrict the runner-managed DNS port by pool-facing interface.
 ///
 /// dnsmasq's default socket mode avoids per-address listener churn by using
 /// wildcard sockets. These INPUT rules preserve the old kernel-level listener
 /// isolation: public, management, and other runners' interfaces see the port as
-/// unreachable, while REDIRECT traffic arriving on this pool's veths proceeds
-/// to dnsmasq. Both address families are covered because dnsmasq can create
-/// IPv4 and IPv6 wildcard sockets.
+/// unreachable, while REDIRECT traffic arriving on this pool's veths increments
+/// a counter-only rule and continues to dnsmasq under the later INPUT policy.
+/// Both address families are covered because dnsmasq can create IPv4 and IPv6
+/// wildcard sockets.
 pub(super) async fn setup_dns_input_filter(pool_index: u32, dns_port: u16) -> Result<String> {
     let pool_idx = format_hex_index(pool_index);
     let interface = make_host_device_iptables_pattern(&pool_idx);
-    let comment = format!("{NS_PREFIX}{pool_idx}-dns");
+    let comment = make_pool_dns_filter_comment(pool_index);
     let firewall = vec![FirewallRestoreTable {
         table: "filter",
         rules: ["udp", "tcp"]
-            .map(|protocol| {
-                format!(
-                    "-I INPUT 1 ! -i {interface} -p {protocol} --dport {dns_port} -m comment --comment {comment} -j REJECT"
-                )
+            .into_iter()
+            .flat_map(|protocol| {
+                [
+                    format!(
+                        "-I INPUT 1 -i {interface} -p {protocol} --dport {dns_port} -m comment --comment {comment}"
+                    ),
+                    format!(
+                        "-I INPUT 1 ! -i {interface} -p {protocol} --dport {dns_port} -m comment --comment {comment} -j REJECT"
+                    ),
+                ]
             })
-            .into(),
+            .collect(),
     }];
     let (ipv4, ipv6) = tokio::join!(
         apply_firewall_rules_with_restore("iptables-restore", &firewall),

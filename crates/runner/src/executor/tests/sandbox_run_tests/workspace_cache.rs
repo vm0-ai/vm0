@@ -148,7 +148,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-dns-retry", 16).await;
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_new_sandbox(
+    let (outcome, events) = capture_sandbox_run_events(execute_new_sandbox(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -159,9 +159,9 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         &params,
         &mut telemetry,
         tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    ))
+    .await;
+    let outcome = outcome.unwrap();
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_none());
@@ -196,6 +196,91 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
         true,
         None,
     );
+    let completion = captured_events_named(&events, "guest DNS readiness replacement completed");
+    assert_eq!(completion.len(), 1, "events={events:#?}");
+    assert_captured_field(completion[0], "success", "true");
+    assert_captured_field(completion[0], "workspace_fallback", "true");
+}
+
+#[tokio::test]
+async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::GuestDnsReadiness {
+        message: "first attachment failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = minimal_context();
+    let mount_path = format!("{CANONICAL_WORKING_DIR}/data");
+    let manifest = StorageManifest {
+        storages: vec![api_storage(
+            "dns-retry-storage",
+            &mount_path,
+            "v1",
+            "https://storage.example/archive.tar.gz",
+        )],
+        artifacts: Vec::new(),
+    };
+    let storage_fingerprints =
+        crate::storage_fingerprints::StorageFingerprints::from_manifest(&manifest);
+    ctx.storage_manifest = Some(manifest);
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-cache-dns-prepare-failure".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    seed_workspace_image_cache_with_fingerprints(
+        &cache,
+        &runner_paths,
+        "sess-cache-dns-prepare-failure",
+        16,
+        &storage_fingerprints,
+    )
+    .await;
+    tokio::fs::write(config.home.locks_dir(), b"not a directory")
+        .await
+        .unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let (result, events) = capture_sandbox_run_events(execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    ))
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        overrides.create_configs().len(),
+        1,
+        "result={:?}; telemetry={:?}",
+        result.as_ref().err(),
+        telemetry.pending_ops_snapshot(),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_dns_readiness_retry",
+        false,
+        Some("replacement_prepare_failed"),
+    );
+    let completion = captured_events_named(&events, "guest DNS readiness replacement completed");
+    assert_eq!(completion.len(), 1, "events={events:#?}");
+    assert_captured_field(completion[0], "success", "false");
+    assert_captured_field(completion[0], "workspace_fallback", "true");
 }
 
 #[tokio::test]

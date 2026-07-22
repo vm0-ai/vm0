@@ -262,6 +262,8 @@ fi
 
 NAT_RULES=$(sudo iptables-save -t nat) || fail "failed to read nat rules"
 FILTER_RULES=$(sudo iptables-save -t filter) || fail "failed to read filter rules"
+IPV6_FILTER_RULES=$(sudo ip6tables-save -t filter) \
+  || fail "failed to read IPv6 filter rules"
 RAW_RULES=$(sudo iptables-save -t raw) || fail "failed to read raw rules"
 
 PROXY_RULES=$(printf '%s\n' "$NAT_RULES" \
@@ -470,6 +472,61 @@ DNS_FILTER_COMMENT=$(printf '%s\n' "$FILTER_RULES" \
   | sed -nE 's/.*--comment "?([^ " ]+)"?.*/\1/p' \
   | head -n 1)
 [ -n "$DNS_FILTER_COMMENT" ] || fail "DNS INPUT filter comment missing"
+DNS_FILTER_POOL=${DNS_FILTER_COMMENT#vm0-ns-}
+DNS_FILTER_POOL=${DNS_FILTER_POOL%-dns}
+DNS_FILTER_INTERFACE="vm0-ve-${DNS_FILTER_POOL}-+"
+
+assert_dns_input_filter_family() {
+  local family=$1 rules=$2 comment_rules targetless reject protocol
+  comment_rules=$(printf '%s\n' "$rules" \
+    | grep -F -- "--comment ${DNS_FILTER_COMMENT}" || true)
+  [ "$(printf '%s\n' "$comment_rules" | grep -c . || true)" -eq 4 ] \
+    || fail "$family DNS INPUT filter expected four rules: $comment_rules"
+  [ "$(printf '%s\n' "$comment_rules" \
+    | grep -F -c -- "--dport ${DNS_PORT}" || true)" -eq 4 ] \
+    || fail "$family DNS INPUT filter does not consistently use port ${DNS_PORT}"
+  targetless=$(printf '%s\n' "$comment_rules" | grep -Fv -- " -j " || true)
+  reject=$(printf '%s\n' "$comment_rules" | grep -F -- "-j REJECT" || true)
+  [ "$(printf '%s\n' "$targetless" | grep -c . || true)" -eq 2 ] \
+    || fail "$family DNS INPUT filter expected two targetless rules: $comment_rules"
+  [ "$(printf '%s\n' "$reject" | grep -c . || true)" -eq 2 ] \
+    || fail "$family DNS INPUT filter expected two REJECT rules: $comment_rules"
+  if printf '%s\n' "$targetless" | grep -F -- "! -i" >/dev/null; then
+    fail "$family targetless DNS INPUT rule inverted its interface: $targetless"
+  fi
+  [ "$(printf '%s\n' "$targetless" \
+    | grep -F -c -- "-i ${DNS_FILTER_INTERFACE}" || true)" -eq 2 ] \
+    || fail "$family targetless DNS INPUT rules do not all match ${DNS_FILTER_INTERFACE}"
+  [ "$(printf '%s\n' "$reject" \
+    | grep -F -c -- "! -i ${DNS_FILTER_INTERFACE}" || true)" -eq 2 ] \
+    || fail "$family DNS INPUT REJECT rules do not all invert ${DNS_FILTER_INTERFACE}"
+  for protocol in udp tcp; do
+    [ "$(printf '%s\n' "$targetless" | grep -F -c -- "-p ${protocol}" || true)" -eq 1 ] \
+      || fail "$family targetless DNS INPUT ${protocol} rule missing or duplicated"
+    [ "$(printf '%s\n' "$reject" | grep -F -c -- "-p ${protocol}" || true)" -eq 1 ] \
+      || fail "$family DNS INPUT ${protocol} REJECT rule missing or duplicated"
+  done
+}
+
+assert_dns_input_filter_family IPv4 "$FILTER_RULES"
+assert_dns_input_filter_family IPv6 "$IPV6_FILTER_RULES"
+
+DNS_INPUT_UDP_RULE=$(sudo iptables-save -c -t filter \
+  | grep -F -- "--comment ${DNS_FILTER_COMMENT}" \
+  | grep -F -- "-i ${DNS_FILTER_INTERFACE}" \
+  | grep -F -- "-p udp" \
+  | grep -Fv -- " -j " \
+  | head -n 1 || true)
+DNS_INPUT_TCP_RULE=$(sudo iptables-save -c -t filter \
+  | grep -F -- "--comment ${DNS_FILTER_COMMENT}" \
+  | grep -F -- "-i ${DNS_FILTER_INTERFACE}" \
+  | grep -F -- "-p tcp" \
+  | grep -Fv -- " -j " \
+  | head -n 1 || true)
+DNS_INPUT_UDP_BEFORE=$(rule_packet_count "$DNS_INPUT_UDP_RULE")
+DNS_INPUT_TCP_BEFORE=$(rule_packet_count "$DNS_INPUT_TCP_RULE")
+[ -n "$DNS_INPUT_UDP_BEFORE" ] || fail "IPv4 UDP DNS INPUT counter missing"
+[ -n "$DNS_INPUT_TCP_BEFORE" ] || fail "IPv4 TCP DNS INPUT counter missing"
 
 # Submit a long-running job in background (keeps sandbox alive during tests)
 echo "--- Submitting long-running job ---"
@@ -786,6 +843,25 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "$TCP
   || fail "TCP DNS resolution failed: $OUTPUT"
 [ "$OUTPUT" = "TCP_DNS_OK=true" ] || fail "unexpected TCP DNS output: $OUTPUT"
 echo "  tcp: $OUTPUT"
+
+DNS_INPUT_UDP_RULE=$(sudo iptables-save -c -t filter \
+  | grep -F -- "--comment ${DNS_FILTER_COMMENT}" \
+  | grep -F -- "-i ${DNS_FILTER_INTERFACE}" \
+  | grep -F -- "-p udp" \
+  | grep -Fv -- " -j " \
+  | head -n 1 || true)
+DNS_INPUT_TCP_RULE=$(sudo iptables-save -c -t filter \
+  | grep -F -- "--comment ${DNS_FILTER_COMMENT}" \
+  | grep -F -- "-i ${DNS_FILTER_INTERFACE}" \
+  | grep -F -- "-p tcp" \
+  | grep -Fv -- " -j " \
+  | head -n 1 || true)
+DNS_INPUT_UDP_AFTER=$(rule_packet_count "$DNS_INPUT_UDP_RULE")
+DNS_INPUT_TCP_AFTER=$(rule_packet_count "$DNS_INPUT_TCP_RULE")
+[ "$DNS_INPUT_UDP_AFTER" -gt "$DNS_INPUT_UDP_BEFORE" ] \
+  || fail "IPv4 UDP DNS INPUT counter did not increase"
+[ "$DNS_INPUT_TCP_AFTER" -gt "$DNS_INPUT_TCP_BEFORE" ] \
+  || fail "IPv4 TCP DNS INPUT counter did not increase"
 
 
 # Default dnsmasq wildcard sockets must still reject requests that

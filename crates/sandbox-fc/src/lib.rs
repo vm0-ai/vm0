@@ -57,8 +57,8 @@ pub use config::{
 pub use control::FirecrackerControl;
 pub use factory::{PREWARM_SCRIPT, config_hash};
 pub use network::{
-    DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4, NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig,
-    ParsedNetnsName, parse_netns_name,
+    DNS_DIAGNOSTIC_HOSTNAME, DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4, NetnsInfo, NetnsLease,
+    NetnsPool, NetnsPoolConfig, ParsedNetnsName, parse_netns_name,
 };
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,

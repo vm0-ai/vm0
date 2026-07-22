@@ -273,7 +273,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
     });
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_new_sandbox_with_prepared_notifier(
+    let (outcome, events) = capture_sandbox_run_events(execute_new_sandbox_with_prepared_notifier(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -287,9 +287,9 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
             sandbox_prepared: Some(&notifier),
         },
-    )
-    .await
-    .unwrap();
+    ))
+    .await;
+    let outcome = outcome.unwrap();
 
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(overrides.create_configs().len(), 2);
@@ -303,6 +303,17 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         true,
         None,
     );
+    let completion = captured_events_named(&events, "guest DNS readiness replacement completed");
+    assert_eq!(completion.len(), 1, "events={events:#?}");
+    assert_eq!(completion[0].level, Level::WARN);
+    assert_captured_field(completion[0], "success", "true");
+    assert_captured_field(completion[0], "workspace_fallback", "false");
+
+    let observation = captured_events_named(&events, "guest DNS readiness network log observation");
+    assert_eq!(observation.len(), 1, "events={events:#?}");
+    assert_captured_field(observation[0], "dns_drain_status", "not_configured");
+    assert_captured_field(observation[0], "kmsg_drain_status", "not_configured");
+    assert_captured_field(observation[0], "writer_backpressure_observed", "false");
 }
 
 #[tokio::test]
@@ -373,7 +384,7 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let result = execute_new_sandbox(
+    let (result, events) = capture_sandbox_run_events(execute_new_sandbox(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -384,7 +395,7 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
         &default_params(),
         &mut telemetry,
         tokio_util::sync::CancellationToken::new(),
-    )
+    ))
     .await;
 
     let error = result.err().expect("second DNS failure must be returned");
@@ -399,6 +410,10 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
         false,
         Some("replacement_prepare_failed"),
     );
+    let completion = captured_events_named(&events, "guest DNS readiness replacement completed");
+    assert_eq!(completion.len(), 1, "events={events:#?}");
+    assert_captured_field(completion[0], "success", "false");
+    assert_captured_field(completion[0], "workspace_fallback", "false");
 }
 
 #[tokio::test]
@@ -413,7 +428,7 @@ async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let result = execute_new_sandbox(
+    let (result, events) = capture_sandbox_run_events(execute_new_sandbox(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -424,7 +439,7 @@ async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
         &default_params(),
         &mut telemetry,
         tokio_util::sync::CancellationToken::new(),
-    )
+    ))
     .await;
 
     let error = result
@@ -434,6 +449,10 @@ async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
     assert_eq!(overrides.create_configs().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
+    assert!(
+        captured_events_named(&events, "guest DNS readiness replacement completed").is_empty(),
+        "events={events:#?}"
+    );
 }
 
 #[tokio::test]
@@ -447,7 +466,7 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let result = execute_new_sandbox(
+    let (result, events) = capture_sandbox_run_events(execute_new_sandbox(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -458,7 +477,7 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
         &default_params(),
         &mut telemetry,
         tokio_util::sync::CancellationToken::new(),
-    )
+    ))
     .await;
 
     let error = result
@@ -473,6 +492,10 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
         "runner_fresh_sandbox_dns_readiness_retry",
         false,
         Some("cleanup_uncertain"),
+    );
+    assert!(
+        captured_events_named(&events, "guest DNS readiness replacement completed").is_empty(),
+        "events={events:#?}"
     );
 }
 
