@@ -13,7 +13,7 @@ async function elementHeight(locator: Locator): Promise<number> {
   return bounds.height;
 }
 
-test("send a chat message and preserve composer height with a template", async ({
+test("send a chat message, cap long drafts, and preserve template height", async ({
   page,
 }) => {
   // Navigate to chat page (default agent)
@@ -48,6 +48,34 @@ test("send a chat message and preserve composer height with a template", async (
 
   // The completed run leaves us on a chat-thread composer, whose responsive
   // minimum height is compact on mobile and three lines on desktop.
+  await expect.poll(() => elementHeight(composer)).toBe(96);
+
+  const longDraft = Array.from(
+    { length: 40 },
+    (_, index) => `draft line ${index + 1}`,
+  ).join("\n");
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await composer.fill(longDraft);
+  await expect.poll(() => elementHeight(composer)).toBe(320);
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await composer.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() => composer.evaluate((element) => element.scrollTop > 0))
+    .toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 600 });
+  await expect.poll(() => elementHeight(composer)).toBe(240);
+
+  await composer.fill("");
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect.poll(() => elementHeight(composer)).toBe(96);
 
   await page.getByRole("button", { name: "Template", exact: true }).click();
