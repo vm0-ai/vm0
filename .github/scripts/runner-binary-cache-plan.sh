@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE="${SCRIPT_DIR}/runner-binary-cache.sh"
 DIGEST="${SCRIPT_DIR}/runner-binary-build/digest.sh"
 RUNNER_BINARY_RESOLVE_TIMEOUT_SECONDS=60
+RUNNER_BINARY_RESOLVE_KILL_AFTER_SECONDS=5
 
 emit() {
   local key=$1 value=$2
@@ -89,7 +90,8 @@ while IFS= read -r encoded_entry; do
   starts+=("$(date +%s)")
   result_file="${temp_root}/${index}.out"
   error_file="${temp_root}/${index}.err"
-  timeout "${RUNNER_BINARY_RESOLVE_TIMEOUT_SECONDS}s" \
+  timeout --kill-after="${RUNNER_BINARY_RESOLVE_KILL_AFTER_SECONDS}s" \
+    "${RUNNER_BINARY_RESOLVE_TIMEOUT_SECONDS}s" \
     env GITHUB_OUTPUT= \
       EXPECTED_TARGET="$target" \
       EXPECTED_BINARY_INPUT_DIGEST="$digest" \
@@ -116,7 +118,7 @@ for index in "${!targets[@]}"; do
   wait "${pids[$index]}" || status=$?
   duration=$(($(date +%s) - starts[index]))
 
-  if [ "$status" -eq 124 ]; then
+  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
     rm -rf "${RESOLVE_OUTPUT_DIR:?}/${target}"
     outcome=miss
     source=""

@@ -211,6 +211,12 @@ mixed_matrix=$(sed -n 's/^compile-matrix=//p' <<<"$mixed")
 [ -f "${TMPDIR}/mixed/${arm_target}/runner" ] || fail "mixed plan must stage the arm hit"
 [ ! -e "${TMPDIR}/mixed/${x86_target}" ] || fail "mixed plan must not stage a missed target"
 
+all_miss=$(run_plan all-miss "${TMPDIR}/all-miss")
+assert_contains "$all_miss" 'hit-count=0'
+assert_contains "$all_miss" 'miss-count=2'
+all_miss_matrix=$(sed -n 's/^compile-matrix=//p' <<<"$all_miss")
+[ "$(jq 'length' <<<"$all_miss_matrix")" -eq 2 ] || fail "all-miss plan must compile both targets"
+
 : > "${TMPDIR}/gh.log"
 forced=$(RUNNER_BINARY_CACHE_FORCE_MISS=true run_plan all-hit "${TMPDIR}/forced")
 assert_contains "$forced" 'hit-count=0'
@@ -228,7 +234,7 @@ assert_contains "$main" '"reason":"protected-main-full-build"'
 mkdir -p "${TMPDIR}/timeout-bin"
 cat > "${TMPDIR}/timeout-bin/timeout" <<'BASH'
 #!/usr/bin/env bash
-exit 124
+exit "${TIMEOUT_STATUS:-124}"
 BASH
 chmod +x "${TMPDIR}/timeout-bin/timeout"
 timed_out=$(PATH="${TMPDIR}/timeout-bin:${TMPDIR}/bin:${PATH}" \
@@ -245,5 +251,21 @@ timed_out=$(PATH="${TMPDIR}/timeout-bin:${TMPDIR}/bin:${PATH}" \
 assert_contains "$timed_out" 'hit-count=0'
 assert_contains "$timed_out" 'miss-count=2'
 assert_contains "$timed_out" '"reason":"resolve-timeout"'
+
+killed=$(TIMEOUT_STATUS=137 \
+  PATH="${TMPDIR}/timeout-bin:${TMPDIR}/bin:${PATH}" \
+  GH_LOG="${TMPDIR}/gh.log" \
+  RUNNER_HOST_GROUPS_MATRIX="$matrix" \
+  RESOLVE_OUTPUT_DIR="${TMPDIR}/killed" \
+  REPO=vm0-ai/vm0 \
+  CURRENT_RUN_ID=99 \
+  CURRENT_EVENT=pull_request \
+  CURRENT_PR_NUMBER=123 \
+  CURRENT_PR_HEAD_REF=feature \
+  DEFAULT_BRANCH=main \
+  "$PLAN")
+assert_contains "$killed" 'hit-count=0'
+assert_contains "$killed" 'miss-count=2'
+assert_contains "$killed" '"reason":"resolve-timeout"'
 
 echo "runner-binary-cache-plan-test: ok"

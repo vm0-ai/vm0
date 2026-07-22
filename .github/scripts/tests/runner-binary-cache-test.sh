@@ -110,7 +110,7 @@ destination=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --body) body=$2; shift 2 ;;
-    --endpoint-url|--bucket|--key|--content-type|--cache-control|--if-none-match|--output|--range)
+    --endpoint-url|--bucket|--key|--content-type|--cache-control|--if-none-match|--output|--range|--cli-connect-timeout|--cli-read-timeout)
       shift 2
       ;;
     --*) shift ;;
@@ -134,8 +134,10 @@ case "$operation" in
   head-object)
     [ -f "$object" ] || exit 1
     case "${AWS_MODE:-success}" in
+      head-fail) exit 6 ;;
       malformed-head) printf 'not-json\n' ;;
       oversized-head) printf '{"ContentLength":67108865}\n' ;;
+      size-mismatch) printf '{"ContentLength":1}\n' ;;
       *) printf '{"ContentLength":%s}\n' "$(stat -c '%s' "$object")" ;;
     esac
     ;;
@@ -344,6 +346,10 @@ jq --arg sha "$conflict_sha" '
   .runner.sha256 = $sha |
   .object.key = ("runner-binaries/" + .target + "/" + $sha + ".zst")
 ' "$main_manifest" > "${TMPDIR}/conflict-manifest.json"
+jq --arg sha "$conflict_sha" '
+  .runner.sha256 = $sha |
+  .object.key = ("runner-binaries/" + .target + "/" + $sha + ".zst")
+' "$main_manifest" > "${TMPDIR}/content-mismatch-manifest.json"
 guest_conflict_sha=$(printf 'f%.0s' {1..64})
 jq --arg guest "$first_guest" --arg sha "$guest_conflict_sha" \
   '.guests[$guest] = $sha' \
@@ -376,6 +382,15 @@ if [ "$1" = "api" ]; then
         ;;
       empty)
         printf '[{"artifacts":[]}]\n'
+        ;;
+      expired)
+        printf '[{"artifacts":[{"id":120,"name":"%s","expired":true,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
+      oversized-artifact)
+        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1048577,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
+        ;;
+      content-mismatch)
+        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
         ;;
       many-invalid)
         printf '[{"artifacts":['
@@ -413,6 +428,8 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
   mkdir -p "$output_dir"
   if [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "untrusted" ]; then
     cp "${GH_FIXTURES}/untrusted-manifest.json" "${output_dir}/manifest.json"
+  elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "content-mismatch" ]; then
+    cp "${GH_FIXTURES}/content-mismatch-manifest.json" "${output_dir}/manifest.json"
   elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "conflict" ]; then
     cp "${GH_FIXTURES}/conflict-manifest.json" "${output_dir}/manifest.json"
   elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "guest-conflict" ]; then
@@ -568,9 +585,33 @@ api_miss=$(run_active pull_request api-fail "${TMPDIR}/active-api-fail")
 assert_contains "$api_miss" "resolve-outcome=miss"
 assert_contains "$api_miss" "resolve-reason=artifact-api-unavailable"
 
+expired_miss=$(run_active pull_request expired "${TMPDIR}/active-expired")
+assert_contains "$expired_miss" "resolve-reason=no-trusted-candidate"
+
+oversized_artifact_miss=$(run_active pull_request oversized-artifact "${TMPDIR}/active-oversized-artifact")
+assert_contains "$oversized_artifact_miss" "resolve-reason=no-trusted-candidate"
+
 conflict_miss=$(run_active pull_request conflict "${TMPDIR}/active-conflict")
 assert_contains "$conflict_miss" "resolve-outcome=miss"
 assert_contains "$conflict_miss" "resolve-reason=trusted-output-conflict"
+
+head_failure_miss=$(run_active pull_request rank "${TMPDIR}/active-head-failure" head-fail)
+assert_contains "$head_failure_miss" "resolve-reason=r2-head-failed"
+
+malformed_head_miss=$(run_active pull_request rank "${TMPDIR}/active-malformed-head" malformed-head)
+assert_contains "$malformed_head_miss" "resolve-reason=r2-head-malformed"
+
+oversized_head_miss=$(run_active pull_request rank "${TMPDIR}/active-oversized-head" oversized-head)
+assert_contains "$oversized_head_miss" "resolve-reason=r2-size-mismatch"
+
+size_mismatch_miss=$(run_active pull_request rank "${TMPDIR}/active-size-mismatch" size-mismatch)
+assert_contains "$size_mismatch_miss" "resolve-reason=r2-size-mismatch"
+
+get_failure_miss=$(run_active pull_request rank "${TMPDIR}/active-get-failure" get-fail)
+assert_contains "$get_failure_miss" "resolve-reason=r2-get-failed"
+
+content_mismatch_miss=$(run_active pull_request content-mismatch "${TMPDIR}/active-content-mismatch")
+assert_contains "$content_mismatch_miss" "resolve-reason=r2-content-mismatch"
 
 compressed_size=$(stat -c '%s' "${TMPDIR}/store/object.zst")
 dd if=/dev/zero of="${TMPDIR}/store/object.zst" bs="$compressed_size" count=1 status=none
