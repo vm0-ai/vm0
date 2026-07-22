@@ -18,7 +18,6 @@ const clerkVersion$ = state(0);
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding";
-const VM0_ONBOARDING_EXPERIMENT = "491858";
 const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
   /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
@@ -69,7 +68,7 @@ export function deriveServiceOrigin(
   return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
-// The marketing/onboarding (www) origin sibling of the current host.
+// The WWW origin sibling of the current host.
 export function resolveWebOrigin(): string {
   const origin = location.origin;
   if (!origin || origin === "null") {
@@ -219,9 +218,6 @@ function setCurrentLandingContext(params: URLSearchParams): void {
 
 function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   const params = new URLSearchParams(paramsInit);
-  if (!params.has("vm0_experiment")) {
-    params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
-  }
   setCurrentLandingContext(params);
   const url = new URL(VM0_ONBOARDING_PATH, resolveAppOrigin());
   url.search = params.toString();

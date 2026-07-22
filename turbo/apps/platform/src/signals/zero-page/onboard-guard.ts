@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { clerk$, resolveAppAuthUrl } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
-import { detachedNavigateTo$, pathParams$, searchParams$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
@@ -18,19 +18,6 @@ export const redirectToConfiguredOnboarding$ = command(
       searchParams: new URLSearchParams(searchParams ?? get(searchParams$)),
       replace: true,
     });
-  },
-);
-
-export const setupOnboardingRedirectPage$ = command(
-  ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const searchParams = new URLSearchParams(get(searchParams$));
-    const pathParams = get(pathParams$) ?? {};
-    const legacyId = pathParams.legacyId;
-    if (typeof legacyId === "string" && !searchParams.has("vm0_experiment")) {
-      searchParams.set("vm0_experiment", legacyId);
-    }
-    set(redirectToConfiguredOnboarding$, searchParams, signal);
   },
 );
 

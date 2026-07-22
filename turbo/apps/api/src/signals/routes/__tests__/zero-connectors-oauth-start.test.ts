@@ -329,7 +329,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps API-origin OAuth callbacks on the PR API when onboarding uses Omby staging", async () => {
+  it("keeps API-origin OAuth callbacks on the PR API when WWW uses Omby staging", async () => {
     mockAuthenticatedSession();
     mockEnv("VM0_API_BACKEND_URL", "https://pr-19337-api.vm6.ai");
     mockEnv("VM0_WEB_URL", "https://staging-www.omby.ai");

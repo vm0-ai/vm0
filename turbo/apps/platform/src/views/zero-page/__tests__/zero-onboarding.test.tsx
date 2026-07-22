@@ -38,23 +38,15 @@ describe("zero onboarding routing", () => {
     );
   });
 
-  it("keeps legacy onboarding links as internal aliases", async () => {
-    mockOnboardingNeeded();
-
+  it("does not register the retired numeric onboarding path", async () => {
     detachedSetupPage({
       context,
       path: "/onboarding/491858?vm0_source=homepage",
     });
 
     await expect(
-      screen.findByRole("heading", {
-        name: "What do you want to make first",
-      }),
+      screen.findByRole("heading", { name: "Page not found" }),
     ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding");
-    expect(context.store.get(searchParams$).get("vm0_experiment")).toBe(
-      "491858",
-    );
-    expect(context.store.get(searchParams$).get("vm0_source")).toBe("homepage");
+    expect(pathname()).toBe("/onboarding/491858");
   });
 });

@@ -40,7 +40,6 @@ import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
-import { setupOnboardingRedirectPage$ } from "./zero-page/onboard-guard.ts";
 import {
   setupOnboardingImageRunPage$,
   setupOnboardingImageTemplatePage$,
@@ -376,10 +375,6 @@ const ROUTE_CONFIG = [
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
-  {
-    path: "/onboarding/:legacyId",
-    setup: setupAuthPageWrapper(setupOnboardingRedirectPage$),
-  },
 
   {
     // Catch-all: keep unknown paths in place and show the not-found surface.
