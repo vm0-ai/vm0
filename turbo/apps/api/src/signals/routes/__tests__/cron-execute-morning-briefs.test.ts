@@ -308,14 +308,20 @@ async function setupMorningBriefActor(
     [200],
   );
   expect(initial.body.morningBriefEnabled).toBeFalsy();
+  // No schedule exists before opting in, so no next run is exposed.
+  expect(initial.body.morningBriefNextRunAt).toBeNull();
 
-  // Opting in with a timezone schedules the next 7:00 local run.
-  await accept(
+  // Opting in with a timezone schedules the next 7:00 local run, and the
+  // response surfaces that instant for the settings UI.
+  const optedIn = await accept(
     preferencesClient().update({
       headers: actorHeaders(),
       body: { timezone: TIMEZONE, morningBriefEnabled: true },
     }),
     [200],
+  );
+  expect(optedIn.body.morningBriefNextRunAt).toBe(
+    new Date(SEVEN_LOCAL).toISOString(),
   );
 
   return { actor: orgActor, runnerGroup, gmailAfterSeconds };
@@ -595,6 +601,8 @@ describe("cron execute morning briefs", () => {
       [200],
     );
     expect(preferences.body.morningBriefEnabled).toBeFalsy();
+    // Unsubscribing pauses the schedule, so the next run disappears.
+    expect(preferences.body.morningBriefNextRunAt).toBeNull();
 
     // The next day nothing fires for the unsubscribed member.
     mockNow(AFTER_SEVEN_LOCAL + DAY_MS);

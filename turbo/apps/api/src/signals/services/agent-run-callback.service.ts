@@ -60,7 +60,7 @@ interface CallbackRecord {
   readonly id: string;
   readonly url: string | null;
   readonly internalKind: string | null;
-  readonly encryptedSecret: string;
+  readonly encryptedSecret: string | null;
   readonly payload: unknown;
 }
 
@@ -594,6 +594,11 @@ async function dispatchHttpCallback(
   const { db, callback, runId, status, result, error } = input;
   if (!callback.url) {
     const errorMessage = "Callback URL is missing";
+    await markCallbackFailed(db, callback.id, errorMessage);
+    return { callbackId: callback.id, success: false, error: errorMessage };
+  }
+  if (!callback.encryptedSecret) {
+    const errorMessage = "Callback secret is missing";
     await markCallbackFailed(db, callback.id, errorMessage);
     return { callbackId: callback.id, success: false, error: errorMessage };
   }

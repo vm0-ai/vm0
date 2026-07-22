@@ -1,4 +1,5 @@
 import {
+  createHmac,
   createSign,
   generateKeyPairSync,
   randomUUID,
@@ -52,6 +53,7 @@ const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const TEAMS_AAD_GROUP_ID = "22222222-2222-2222-2222-222222222222";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
@@ -236,6 +238,7 @@ function teamsOutboundHandlers(serviceUrl: string): TeamsOutboundRequests {
 
 interface TeamsGraphMessageFixture {
   readonly id: string;
+  readonly replyToId?: string | null;
   readonly text: string;
   readonly createdDateTime: string;
   readonly senderId?: string;
@@ -257,6 +260,7 @@ function teamsGraphMessage(
 ): Record<string, unknown> {
   return {
     id: message.id,
+    replyToId: message.replyToId ?? null,
     createdDateTime: message.createdDateTime,
     messageType: "message",
     from: {
@@ -309,6 +313,9 @@ function teamsGraphUserMap(
 
 function teamsGraphHistoryHandlers(args: {
   readonly tenantId: string;
+  readonly teamsAppId?: string;
+  readonly personalChatId?: string;
+  readonly chatMessages?: readonly TeamsGraphMessageFixture[];
   readonly channelMessages: readonly TeamsGraphMessageFixture[];
   readonly threadRoots: Readonly<Record<string, TeamsGraphMessageFixture>>;
   readonly threadReplies: Readonly<
@@ -316,7 +323,12 @@ function teamsGraphHistoryHandlers(args: {
   >;
 }): string[] {
   const requests: string[] = [];
+  const personalChatId =
+    args.personalChatId ?? "19:personal-chat@unq.gbl.spaces";
+  const personalInstallationId = "personal-app-installation";
+  const teamsAppId = args.teamsAppId ?? "teams-app-test";
   const users = teamsGraphUserMap([
+    ...(args.chatMessages ?? []),
     ...args.channelMessages,
     ...Object.values(args.threadRoots),
     ...Object.values(args.threadReplies).flat(),
@@ -335,11 +347,68 @@ function teamsGraphHistoryHandlers(args: {
       });
     }),
     http.get(
-      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
-      ({ request }) => {
+      "https://graph.microsoft.com/v1.0/users/:userId/teamwork/installedApps",
+      ({ params, request }) => {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        const url = new URL(request.url);
+        expect(url.searchParams.get("$filter")).toBe(
+          `teamsApp/externalId eq '${teamsAppId}'`,
+        );
+        expect(url.searchParams.get("$expand")).toBe("teamsApp");
+        const userId = typeof params.userId === "string" ? params.userId : "";
+        requests.push(`personal-installed-apps:${userId}`);
+        return HttpResponse.json({
+          value: args.chatMessages
+            ? [
+                {
+                  id: personalInstallationId,
+                  teamsApp: { externalId: teamsAppId },
+                },
+              ]
+            : [],
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/users/:userId/teamwork/installedApps/:installationId/chat",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        expect(params.installationId).toBe(personalInstallationId);
+        const userId = typeof params.userId === "string" ? params.userId : "";
+        requests.push(`personal-app-chat:${userId}`);
+        return HttpResponse.json({
+          id: personalChatId,
+          chatType: "oneOnOne",
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/chats/:chatId/messages",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        expect(request.url).toContain("%24top=50");
+        expect(request.url).toContain("%24orderby=createdDateTime+desc");
+        const chatId = typeof params.chatId === "string" ? params.chatId : "";
+        expect(chatId).toBe(personalChatId);
+        requests.push(`chat-messages:${chatId}`);
+        return HttpResponse.json({
+          value: (args.chatMessages ?? []).map(teamsGraphMessage),
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         requests.push("channel-messages");
         return HttpResponse.json({
           value: args.channelMessages.map(teamsGraphMessage),
@@ -352,6 +421,7 @@ function teamsGraphHistoryHandlers(args: {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         const messageId =
           typeof params.messageId === "string" ? params.messageId : "";
         requests.push(`thread-replies:${messageId}`);
@@ -366,6 +436,7 @@ function teamsGraphHistoryHandlers(args: {
         expect(request.headers.get("authorization")).toBe(
           "Bearer teams-graph-token",
         );
+        expect(params.teamId).toBe(TEAMS_AAD_GROUP_ID);
         const messageId =
           typeof params.messageId === "string" ? params.messageId : "";
         requests.push(`thread-root:${messageId}`);
@@ -399,6 +470,14 @@ function teamsGraphHistoryHandlers(args: {
 
 function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function legacyTeamsFileId(payload: Readonly<Record<string, unknown>>): string {
+  const encodedPayload = encodeJwtPart(payload);
+  const signature = createHmac("sha256", "a".repeat(64))
+    .update(encodedPayload)
+    .digest("base64url");
+  return `${encodedPayload}.${signature}`;
 }
 
 function signJwt(args: {
@@ -440,6 +519,7 @@ function teamsToken(
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly runId?: string;
   readonly capabilities?: readonly string[];
 }): string {
   const seconds = Math.floor(now() / 1000);
@@ -447,7 +527,7 @@ function zeroToken(args: {
     scope: "zero",
     userId: args.userId,
     orgId: args.orgId,
-    runId: `run_${randomUUID()}`,
+    runId: args.runId ?? `run_${randomUUID()}`,
     capabilities: (args.capabilities ?? ["teams:write"]) as never,
     iat: seconds,
     exp: seconds + 60,
@@ -470,7 +550,11 @@ function teamsMessageActivity(
     },
     channelData: {
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
+      team: {
+        id: fixture.teamsTeamId,
+        aadGroupId: TEAMS_AAD_GROUP_ID,
+        name: fixture.teamsTeamName,
+      },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
       teamsAppId: "teams-app-test",
     },
@@ -545,6 +629,36 @@ function teamsBotInstalledActivity(
     },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersAdded: [{ id: "28:bot-1", name: "Zero" }],
+  };
+}
+
+function teamsBotInstallationAddedActivity(
+  fixture: TeamsConnectFixture = botFixture(),
+): Record<string, unknown> {
+  return {
+    type: "installationUpdate",
+    action: "add",
+    id: "activity-installation-add-1",
+    timestamp: "2026-06-30T09:15:00.000Z",
+    serviceUrl: fixture.serviceUrl,
+    channelId: "msteams",
+    conversation: {
+      id: "19:thread@thread.tacv2",
+      conversationType: "channel",
+    },
+    channelData: {
+      tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
+      channel: { id: "19:channel@thread.tacv2", name: "General" },
+      teamsAppId: "teams-app-test",
+    },
+    from: {
+      id: fixture.teamsUserId,
+      name: "Ada Lovelace",
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: "ada@example.com",
+    },
+    recipient: { id: "28:bot-1", name: "Zero" },
   };
 }
 
@@ -833,6 +947,7 @@ describe("POST /api/zero/teams/bot", () => {
         conversationId: "19:thread@thread.tacv2",
         conversationType: "channel",
         teamId: "team-1",
+        teamAadGroupId: TEAMS_AAD_GROUP_ID,
         teamName: "Team One",
         channelId: "19:channel@thread.tacv2",
         threadId: "root-activity",
@@ -972,17 +1087,23 @@ describe("POST /api/zero/teams/bot", () => {
     await flushWaitUntilForTest();
   });
 
-  it("sends a welcome message when Teams adds the bot in team scope", async () => {
+  it("sends one team welcome across installation and members-added events", async () => {
     botFrameworkHandlers();
     const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
-    const response = await postTeamsActivity({
+    const installationResponse = await postTeamsActivity({
+      activity: teamsBotInstallationAddedActivity(),
+      token: teamsToken(),
+    });
+    const membersAddedResponse = await postTeamsActivity({
       activity: teamsBotInstalledActivity(),
       token: teamsToken(),
     });
 
-    expect(response.status).toBe(200);
-    await response.json();
+    expect(installationResponse.status).toBe(200);
+    expect(membersAddedResponse.status).toBe(200);
+    await installationResponse.json();
+    await membersAddedResponse.json();
     await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
@@ -1018,7 +1139,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const response = await postTeamsActivity({
       activity: {
-        ...teamsBotInstalledActivity(),
+        ...teamsBotInstallationAddedActivity(),
         id: "activity-install-personal",
         conversation: {
           id: "a:personal-29:user-1",
@@ -1262,7 +1383,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(outboundRequests[0]?.body).not.toHaveProperty("text");
   });
 
-  it("injects Teams file attachments into the run prompt and downloads them", async () => {
+  it("downloads Teams channel reference attachments through Graph", async () => {
     botFrameworkHandlers();
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
@@ -1289,31 +1410,25 @@ describe("POST /api/zero/teams/bot", () => {
     clearTeamsBotAuthCacheForTest();
     botFrameworkHandlers();
     teamsOutboundHandlers(fixture.serviceUrl);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
 
-    const downloadUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
+    const contentUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
-        id: "activity-file-dm",
-        conversation: {
-          id: "a:personal-conversation",
-          conversationType: "personal",
-        },
-        channelData: {
-          tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-          teamsAppId: "teams-app-test",
-        },
+        id: "activity-file-channel",
         text: "please inspect this",
-        entities: [],
         replyToId: null,
         attachments: [
           {
-            contentType: "application/vnd.microsoft.teams.file.download.info",
+            id: "channel-attachment-1",
+            contentType: "reference",
+            contentUrl,
             name: "spec.png",
-            content: {
-              downloadUrl,
-              uniqueId: "drive-item-1",
-              fileType: "png",
-            },
           },
         ],
       }),
@@ -1344,20 +1459,30 @@ describe("POST /api/zero/teams/bot", () => {
     const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
     const fileId = fileIdMatch?.[1];
     expect(fileId).toBeTruthy();
-    expect(fileId).not.toContain(downloadUrl);
+    expect(fileId).not.toContain(contentUrl);
+    expect(fileId).toMatch(/^teams_file_[A-Za-z0-9_-]{22}$/u);
 
     const fileBytes = Buffer.from("teams file bytes");
+    const expectedShareId = `u!${Buffer.from(contentUrl, "utf8").toString(
+      "base64url",
+    )}`;
     server.use(
-      http.get(downloadUrl, ({ request }) => {
-        expect(request.headers.get("authorization")).toBeNull();
-        return new HttpResponse(fileBytes, {
-          status: 200,
-          headers: {
-            "content-type": "image/png",
-            "content-length": String(fileBytes.length),
-          },
-        });
-      }),
+      http.get(
+        "https://graph.microsoft.com/v1.0/shares/:shareId/driveItem/content",
+        ({ params, request }) => {
+          expect(params.shareId).toBe(expectedShareId);
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer teams-graph-token",
+          );
+          return new HttpResponse(fileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "image/png",
+              "content-length": String(fileBytes.length),
+            },
+          });
+        },
+      ),
     );
 
     const app = createAppWithRoutes({
@@ -1373,6 +1498,7 @@ describe("POST /api/zero/teams/bot", () => {
           authorization: `Bearer ${zeroToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
+            runId,
           })}`,
         },
       },
@@ -1384,6 +1510,108 @@ describe("POST /api/zero/teams/bot", () => {
     expect(downloadResponse.headers.get("x-file-name")).toBe("spec.png");
     const receivedBytes = Buffer.from(await downloadResponse.arrayBuffer());
     expect(receivedBytes.equals(fileBytes)).toBeTruthy();
+  });
+
+  it("uses short file ids for Teams personal attachments", async () => {
+    const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
+    const downloadUrl = new URL(
+      "https://contoso.sharepoint.com/_layouts/15/download.aspx",
+    );
+    downloadUrl.searchParams.set("tempauth", "a".repeat(1400));
+    const fileBytes = Buffer.from("teams personal file bytes");
+    server.use(
+      http.get(downloadUrl.origin + downloadUrl.pathname, () => {
+        return new HttpResponse(fileBytes, {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": String(fileBytes.length),
+          },
+        });
+      }),
+    );
+
+    const response = await postTeamsActivity({
+      activity: {
+        ...teamsPersonalMessageActivity({
+          fixture,
+          id: "activity-personal-file",
+          text: "inspect this personal attachment",
+        }),
+        attachments: [
+          {
+            id: "personal-attachment-1",
+            contentType: "application/vnd.microsoft.teams.file.download.info",
+            content: {
+              downloadUrl: downloadUrl.toString(),
+              fileName: "personal.png",
+            },
+          },
+        ],
+      },
+      token: teamsToken(),
+    });
+    expect(response.status).toBe(200);
+    await readTeamsBotResponseAndFlush(response);
+
+    const list = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const run = list.runs.find((item) => {
+      return item.prompt.includes("inspect this personal attachment");
+    });
+    if (!run) {
+      throw new Error("Expected Teams personal file run");
+    }
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    const fileId = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u)?.[1];
+    expect(fileId).toMatch(/^teams_file_[A-Za-z0-9_-]{22}$/u);
+    expect(fileId?.length).toBeLessThan(64);
+
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: ROUTES,
+    });
+    const downloadResponse = await app.request(
+      `/api/zero/integrations/teams/download-file?${new URLSearchParams({
+        file_id: fileId ?? "",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            runId: run.id,
+          })}`,
+        },
+      },
+    );
+
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("x-file-name")).toBe("personal.png");
+    expect(
+      Buffer.from(await downloadResponse.arrayBuffer()).equals(fileBytes),
+    ).toBeTruthy();
+
+    const legacyFileId = legacyTeamsFileId({
+      tenantId: fixture.teamsTenantId,
+      url: downloadUrl.toString(),
+      name: "personal.png",
+      contentType: "image/png",
+    });
+    const legacyDownloadResponse = await app.request(
+      `/api/zero/integrations/teams/download-file?${new URLSearchParams({
+        file_id: legacyFileId,
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+          })}`,
+        },
+      },
+    );
+    expect(legacyDownloadResponse.status).toBe(200);
   });
 
   it("preserves non-bot Teams mentions in message text", async () => {
@@ -2186,6 +2414,89 @@ describe("POST /api/zero/teams/bot", () => {
     expect(graphRequests).toContain("thread-root:root-dispatch");
     expect(graphRequests).toContain("thread-replies:root-dispatch");
     expect(graphRequests).toContain(`user:${fixture.teamsUserId}`);
+  });
+
+  it("includes recent Teams personal messages in the run context", async () => {
+    const { fixture, actor, runnerGroup, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    const personalChatId = "19:personal-test@unq.gbl.spaces";
+    const graphRequests = teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      teamsAppId: BOT_APP_ID,
+      personalChatId,
+      chatMessages: [
+        {
+          id: "activity-personal-thread-current",
+          text: "continue this private task",
+          createdDateTime: "2026-06-30T09:13:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+        {
+          id: "activity-personal-thread-prior-reply",
+          text: "the target is staging",
+          createdDateTime: "2026-06-30T09:12:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+        {
+          id: "activity-unrelated-personal-root",
+          text: "unrelated private task",
+          createdDateTime: "2026-06-30T09:11:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+        {
+          id: "activity-personal-thread-root",
+          text: "remember the private deployment target",
+          createdDateTime: "2026-06-30T09:10:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+      ],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
+    outboundRequests.splice(0, outboundRequests.length);
+
+    const response = await postTeamsActivity({
+      activity: {
+        ...teamsPersonalMessageActivity({
+          fixture,
+          id: "activity-personal-thread-current",
+          text: "continue this private task",
+        }),
+        channelData: {
+          tenant: {
+            id: fixture.teamsTenantId,
+            name: fixture.teamsTenantName,
+          },
+        },
+      },
+      token: teamsToken(),
+    });
+    expect(response.status).toBe(200);
+    const body = await readTeamsBotResponseAndFlush(response);
+    expect(body).not.toHaveProperty("dispatch");
+    const runId = await runIdForPrompt(actor, "continue this private task");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runId);
+    const threadContext = promptSection(
+      claim.appendSystemPrompt ?? "",
+      "# Microsoft Teams Thread Context",
+    );
+
+    expect(claim.prompt).toBe("continue this private task");
+    expect(threadContext).toContain("remember the private deployment target");
+    expect(threadContext).toContain("the target is staging");
+    expect(threadContext).toContain("unrelated private task");
+    expect(threadContext).not.toContain("continue this private task");
+    expect(graphRequests).toContain(
+      `personal-installed-apps:${fixture.teamsAadObjectId}`,
+    );
+    expect(graphRequests).toContain(
+      `personal-app-chat:${fixture.teamsAadObjectId}`,
+    );
+    expect(graphRequests).toContain(`chat-messages:${personalChatId}`);
+
+    await runsApi.requestCancelRun(actor, runId, [200]);
   });
 
   it("includes Teams thread computer use host bindings in queued zero tokens", async () => {

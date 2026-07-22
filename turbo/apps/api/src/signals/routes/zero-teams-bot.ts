@@ -139,7 +139,7 @@ type TeamsDispatchReplySource =
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 type TeamsInstallWelcomeActivity = Extract<
   TeamsInboundActivity,
-  { kind: "conversation_update" | "installation_update" }
+  { kind: "installation_update" }
 >;
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
@@ -177,19 +177,9 @@ function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
 function teamsInstallWelcomeActivity(
   activity: TeamsInboundActivity,
 ): TeamsInstallWelcomeActivity | null {
-  if (activity.kind === "installation_update") {
-    return activity.action === "add" ? activity : null;
-  }
-  if (activity.kind !== "conversation_update") {
-    return null;
-  }
-  if (activity.action !== "members_added") {
-    return null;
-  }
-  const botAdded = activity.membersAdded.some((member) => {
-    return member.id === activity.recipient.id;
-  });
-  return botAdded ? activity : null;
+  return activity.kind === "installation_update" && activity.action === "add"
+    ? activity
+    : null;
 }
 
 function buildTeamsInstallWelcomeMention(

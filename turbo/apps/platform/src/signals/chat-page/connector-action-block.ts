@@ -243,6 +243,7 @@ export function createConnectorSignals(
 
     const connectOptions = {
       connectorLabel: connector.label,
+      connectorIcon: connector.icon,
       agentId: descriptor.agentId,
     };
     const connectionCompleted =

@@ -1,5 +1,29 @@
 # Changelog
 
+## [9.245.7](https://github.com/vm0-ai/vm0/compare/cli-v9.245.6...cli-v9.245.7) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.448.5
+
+## [9.245.6](https://github.com/vm0-ai/vm0/compare/cli-v9.245.5...cli-v9.245.6) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+
 ## [9.245.5](https://github.com/vm0-ai/vm0/compare/cli-v9.245.4...cli-v9.245.5) (2026-07-22)
 
 

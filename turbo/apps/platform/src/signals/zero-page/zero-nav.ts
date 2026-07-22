@@ -9,7 +9,7 @@ import { activeRoute$ } from "../active-route.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
-import { pinnedAgents$ } from "./zero-pinned-agents.ts";
+import { displayedPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { isStandaloneMode } from "./settings/connectors.ts";
 
@@ -100,7 +100,7 @@ export const navigateAdjacentPinnedAgent$ = command(
     const currentAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
     const targetAgentId = adjacentPinnedAgentId(
-      await get(pinnedAgents$),
+      await get(displayedPinnedAgents$),
       currentAgentId,
       direction,
     );
