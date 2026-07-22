@@ -51,6 +51,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       code: `${drizzlePreamble}
         import { gte, sql } from "drizzle-orm";
         const value = 1;
+        const condition = gte(users.id, 1);
         const fragment = sql\`\${users.id} + \${value}\`;
         sql\`SELECT \${users.id} FROM \${users} WHERE \${fragment}\`;
         sql\`\${users.id}::text = \${"1"}\`;
@@ -63,9 +64,16 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`\${gte(users.deletedAt, sql\`\${"2026-01-01"}::timestamp\`)}\`;
         sql\`MAX(\${users.id} + 1) FILTER (WHERE \${users.id} > 0)\`;
         sql\`MAX(\${users.id}) OVER (ORDER BY id)\`;
+        sql\`COUNT(\${users.id}) FILTER (WHERE (\${condition})) OVER (ORDER BY id)\`;
         sql\`MAX(\${fragment})\`;
         sql\`SUM(\${users.id})\`;
-        sql\`SELECT MIN(\${users.id}) FROM \${users}\`;
+        sql\`COUNT(\${users.id})\`;
+        sql\`COUNT(DISTINCT \${users.id})\`;
+        sql\`AVG(\${users.id})\`;
+        sql\`AVG(DISTINCT \${users.id})\`;
+        sql\`SUM(DISTINCT \${users.id})\`;
+        sql\`COUNT(*)\`;
+        sql\`SELECT αcount(*), αsum(\${users.id}) FROM \${users}\`;
         sql\`\${users.id}\`;
       `,
     },
@@ -121,13 +129,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`\${users.id} IN (\${transformedList})\`;
         sql\`\${users.id} IN (\${mutableList})\`;
         sql\`\${users.id} IN (\${listWithArgument(ids)})\`;
-        sql\`\${users.name} NOT LIKE \${"prefix%"}\`;
-        sql\`\${users.name} ILIKE \${"prefix%"}\`;
         sql\`\${users.id} NOT IN (\${mutableList})\`;
         sql\`SELECT \${users.id} DESC\`;
         sql\`ORDER BY \${users.id} DESCENDING\`;
         concrete(sql\`\${condition} AND \${condition}\`);
-        sql\`\${condition} AND NOT \${condition}\`;
         sql\`\${users.name} @> \${sql\`jsonb_build_array('tag')\`}\`;
         sql\`\${condition} @> \${sql\`jsonb_build_array('tag')\`}\`;
         void mutableList;
@@ -239,6 +244,31 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`EXISTS (SELECT 1 FROM \${table} WHERE \${predicate})\`;
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        const tagsSql = sql\`\${users.tags}\`;
+        sql\`\${users} LIKE \${"prefix%"}\`;
+        sql\`\${users.name} NOT LIKE \${1}\`;
+        sql\`\${users.id} BETWEEN \${1} OR \${2}\`;
+        sql\`\${users.id} NOT BETWEEN \${1} OR \${2}\`;
+        sql\`\${users.id} IS NOT \${condition}\`;
+        sql\`1 NOT \${condition}\`;
+        sql\`\${users.id} <@ \${tagsSql}\`;
+        sql\`\${users.tags} && \${["one"]}\`;
+        sql\`SELECT 'COUNT(*)', "COUNT(*)", $$COUNT(*)$$, $body$COUNT(*)$body$\`;
+        sql\`SELECT /* COUNT(*) /* nested COUNT(*) */ */ 1 -- COUNT(*)
+          FROM \${users}\`;
+        sql\`COUNT(*) OVER (PARTITION BY \${users.id})\`;
+        sql\`COUNT(*) FILTER (WHERE (\${condition})) OVER (ORDER BY \${users.id})\`;
+        sql\`SELECT pg_catalog . count(*), pg_catalog.sum(\${users.id}) FROM \${users}\`;
+        sql\`'\${condition} NOT \${condition} COUNT(\${users.id})'\`;
+        sql\`SELECT $body$\${condition} COUNT(*)$body$\`;
+        sql\`SELECT /* \${condition} COUNT(*) */ 1\`;
+        sql\`discount(*)\`;
+      `,
+    },
   ],
   invalid: [
     {
@@ -261,6 +291,108 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "emptyFragment" },
         { messageId: "emptyFragment" },
         { messageId: "emptyFragment" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql as query } from "drizzle-orm";
+        import * as drizzle from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        const nameSql = query\`\${users.name}\`.mapWith(users.name);
+        const aliasedNameSql = nameSql.as("aliased_name");
+        const selected = db.select({ id: users.id }).from(users);
+        const tag = drizzle.sql;
+        query\`NOT \${condition}\`;
+        drizzle.sql\`WHERE NOT \${condition} AND \${condition}\`;
+        tag\`\${users.name} NOT LIKE \${"prefix%"} ESCAPE '\\\\'\`;
+        query\`\${users.name} ILIKE \${"prefix%"}\`;
+        drizzle.sql\`\${users.name} NOT ILIKE \${query\`LOWER(\${"prefix%"})\`}\`;
+        tag\`\${nameSql} ILIKE \${"prefix%"}\`;
+        query\`\${aliasedNameSql} NOT LIKE \${"prefix%"}\`;
+        tag\`\${users.id} BETWEEN \${1} AND \${2}\`;
+        tag\`\${users.deletedAt} BETWEEN \${"2026-01-01"}::timestamp AND \${"2026-01-02"}::timestamp\`;
+        query\`WHERE \${users.id} NOT BETWEEN \${1} AND \${2} ORDER BY 1\`;
+        drizzle.sql\`EXISTS \${selected}\`;
+        tag\`NOT EXISTS \${selected}\`;
+        function pattern<T extends typeof users.name>(left: T) {
+          query\`\${left} NOT ILIKE \${"prefix%"}\`;
+        }
+        void pattern;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "not" } },
+        { messageId: "typedApi", data: { helper: "not" } },
+        { messageId: "typedApi", data: { helper: "notLike" } },
+        { messageId: "typedApi", data: { helper: "ilike" } },
+        { messageId: "typedApi", data: { helper: "notIlike" } },
+        { messageId: "typedApi", data: { helper: "ilike" } },
+        { messageId: "typedApi", data: { helper: "notLike" } },
+        { messageId: "typedApi", data: { helper: "between" } },
+        { messageId: "typedApi", data: { helper: "between" } },
+        { messageId: "typedApi", data: { helper: "notBetween" } },
+        { messageId: "typedApi", data: { helper: "exists" } },
+        { messageId: "typedApi", data: { helper: "notExists" } },
+        { messageId: "typedApi", data: { helper: "notIlike" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
+        const tagsSql = sql\`\${users.tags}\`;
+        const typedTagsSql = sql\`\${users.tags}\`.mapWith(users.tags);
+        const aliasedTagsSql = typedTagsSql.as("aliased_tags");
+        sql\`\${users.tags} <@ \${tagsSql}\`;
+        sql\`\${users.tags} && \${tagsSql}\`;
+        sql\`\${typedTagsSql} @> \${tagsSql}\`;
+        sql\`\${aliasedTagsSql} <@ \${tagsSql}\`;
+        function overlaps<T extends typeof users.tags>(left: T, right: SQLWrapper) {
+          sql\`\${left} && \${right}\`;
+        }
+        function overlapsSql<T extends SQL<string[]>>(left: T, right: SQLWrapper) {
+          sql\`\${left} && \${right}\`;
+        }
+        void overlaps;
+        void overlapsSql;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "arrayContained" } },
+        { messageId: "typedApi", data: { helper: "arrayOverlaps" } },
+        { messageId: "typedApi", data: { helper: "arrayContains" } },
+        { messageId: "typedApi", data: { helper: "arrayContained" } },
+        { messageId: "typedApi", data: { helper: "arrayOverlaps" } },
+        { messageId: "typedApi", data: { helper: "arrayOverlaps" } },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        sql\`SELECT COUNT(*)::int, COUNT(*) FILTER (WHERE \${condition}) FROM \${users}\`;
+        sql\`SELECT SUM(\${users.id}) FROM \${users}\`;
+        sql\`SELECT COUNT(\${users.id}) FROM \${users}\`;
+        sql\`SELECT COUNT(DISTINCT \${users.id}) FROM \${users}\`;
+        sql\`SELECT AVG(\${users.id}) FROM \${users}\`;
+        sql\`SELECT AVG(DISTINCT \${users.id}) FROM \${users}\`;
+        sql\`SELECT SUM(DISTINCT \${users.id}) FROM \${users}\`;
+        sql\`SELECT MIN(\${users.id}) FROM \${users}\`;
+        const fragment = sql\`\${users.id} + 1\`;
+        sql\`COUNT(*)\`.mapWith(Number);
+        sql\`SUM(\${fragment})\`.mapWith(users.id);
+        sql\`MAX(\${fragment})\`.mapWith(users.id);
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "sum" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "countDistinct" } },
+        { messageId: "typedApi", data: { helper: "avg" } },
+        { messageId: "typedApi", data: { helper: "avgDistinct" } },
+        { messageId: "typedApi", data: { helper: "sumDistinct" } },
+        { messageId: "typedApi", data: { helper: "min" } },
+        { messageId: "typedApi", data: { helper: "count" } },
+        { messageId: "typedApi", data: { helper: "sum" } },
+        { messageId: "typedApi", data: { helper: "max" } },
       ],
     },
     {
@@ -521,6 +653,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         sql\`\${users.name} LIKE \${"prefix%"} ESCAPE '\\\\'\`;
         sql\`\${users.name} IN (\${nameList})\`;
         sql\`\${users.name} IN (\${nameSqlList()})\`;
+        sql\`\${users.name} NOT IN (\${nameList})\`;
+        sql\`\${users.name} NOT IN (\${nameSqlList()})\`;
         sql\`ORDER BY \${users.name} ASC, \${users.id} DESC NULLS FIRST\`;
         sql\`COALESCE(SUM(\${users.id}), 0)\`;
         sql\`COUNT(\${users.id}) FILTER (WHERE \${condition})::int\`;
@@ -533,6 +667,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "like" } },
         { messageId: "typedApi", data: { helper: "inArray" } },
         { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "notInArray" } },
+        { messageId: "typedApi", data: { helper: "notInArray" } },
         { messageId: "typedApi", data: { helper: "asc" } },
         { messageId: "typedApi", data: { helper: "desc" } },
         { messageId: "typedApi", data: { helper: "sum" } },
@@ -580,8 +716,25 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           where: (fields, operators) =>
             operators.sql\`\${operators.eq(fields.id, 1)} AND \${operators.isNotNull(fields.name)}\`,
         });
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`NOT \${operators.eq(fields.id, 1)}\`,
+        });
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${fields.name} ILIKE \${"prefix%"}\`,
+        });
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${fields.id} BETWEEN \${1} AND \${2}\`,
+        });
       `,
-      errors: [{ messageId: "typedApi", data: { helper: "like" } }],
+      errors: [
+        { messageId: "typedApi", data: { helper: "like" } },
+        { messageId: "typedApi", data: { helper: "not" } },
+        { messageId: "typedApi", data: { helper: "ilike" } },
+        { messageId: "typedApi", data: { helper: "between" } },
+      ],
     },
   ],
 });
