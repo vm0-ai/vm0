@@ -199,25 +199,205 @@ mkdir -p "${TMPDIR}/bin"
 cat > "${TMPDIR}/bin/ssh" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >> "$SSH_LOG"
+
+remote=$1
+shift
+{
+  printf '%s' "$remote"
+  printf ' %s' "$@"
+  printf '\n'
+} >> "$SSH_LOG"
+
+if [ "$#" -eq 2 ] && [ "$1" = "uname" ] && [ "$2" = "-m" ]; then
+  echo "aarch64"
+  exit 0
+fi
+
+if [ "${1:-}" = "bash" ] && [ "${2:-}" = "-s" ]; then
+  "$@"
+  # Keep this test scoped to remote preparation. A successful preparation
+  # stops at the next SSH boundary instead of emulating binary installation.
+  exit 42
+fi
+
 exit 42
 BASH
-chmod +x "${TMPDIR}/bin/ssh"
-: > "${TMPDIR}/ssh.log"
-if PATH="${TMPDIR}/bin:${PATH}" \
-  SSH_LOG="${TMPDIR}/ssh.log" \
-  JOB_REF=pr-123 \
-  HEAD_SHA=abc \
-  METAL_HOSTS=dev-1 \
-  METAL_USER=ci \
-  TARGET_TRIPLE=aarch64-unknown-linux-musl \
-  EXPECTED_REMOTE_ARCH=aarch64 \
-  RUNNER_PATH="$runner" \
-  FRESH_METADATA_PATH="$metadata" \
-  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  "$PREPARE" >"${TMPDIR}/valid-input.out" 2>"${TMPDIR}/valid-input.err"; then
-  fail "expected mocked SSH boundary to fail"
+cat > "${TMPDIR}/bin/sudo" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+command=$1
+shift
+case "$command" in
+  systemctl)
+    exec systemctl "$@"
+    ;;
+  rm|mkdir|find)
+    {
+      printf 'mutate %s' "$command"
+      printf ' %s' "$@"
+      printf '\n'
+    } >> "$SYSTEMCTL_LOG"
+    ;;
+  *)
+    echo "unexpected sudo command: ${command}" >&2
+    exit 1
+    ;;
+esac
+BASH
+cat > "${TMPDIR}/bin/systemctl" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+command=$1
+shift
+case "$command" in
+  list-units)
+    echo "list-units" >> "$SYSTEMCTL_LOG"
+    if [ -n "${SYSTEMCTL_LIST_FAILURE:-}" ]; then
+      echo "mock list-units failure" >&2
+      exit 1
+    fi
+    for state_path in "${SYSTEMCTL_STATE_DIR}"/*; do
+      [ -f "$state_path" ] || continue
+      unit=${state_path##*/}
+      state=$(< "$state_path")
+      printf '%s loaded %s fixture fixture\n' "$unit" "$state"
+    done
+    ;;
+  stop)
+    {
+      printf 'stop'
+      printf ' %s' "$@"
+      printf '\n'
+    } >> "$SYSTEMCTL_LOG"
+    for unit in "$@"; do
+      if [ "$unit" = "${SYSTEMCTL_STOP_FAILURE_UNIT:-}" ]; then
+        echo "mock stop failure for ${unit}" >&2
+        exit 1
+      fi
+    done
+    for unit in "$@"; do
+      if [ "$unit" != "${SYSTEMCTL_STICKY_UNIT:-}" ]; then
+        printf 'inactive\n' > "${SYSTEMCTL_STATE_DIR}/${unit}"
+      fi
+    done
+    ;;
+  show)
+    unit=${*: -1}
+    echo "show ${unit}" >> "$SYSTEMCTL_LOG"
+    if [ -f "${SYSTEMCTL_STATE_DIR}/${unit}" ]; then
+      cat "${SYSTEMCTL_STATE_DIR}/${unit}"
+    else
+      echo "inactive"
+    fi
+    ;;
+  reset-failed)
+    {
+      printf 'reset-failed'
+      printf ' %s' "$@"
+      printf '\n'
+    } >> "$SYSTEMCTL_LOG"
+    ;;
+  *)
+    echo "unexpected systemctl command: ${command}" >&2
+    exit 1
+    ;;
+esac
+BASH
+chmod +x "${TMPDIR}/bin/ssh" "${TMPDIR}/bin/sudo" "${TMPDIR}/bin/systemctl"
+
+prepare_remote_case() {
+  local case_dir=$1
+  mkdir -p "${case_dir}/state"
+  : > "${case_dir}/ssh.log"
+  : > "${case_dir}/systemctl.log"
+}
+
+set_unit_state() {
+  local case_dir=$1
+  local unit=$2
+  local state=$3
+  printf '%s\n' "$state" > "${case_dir}/state/${unit}"
+}
+
+run_remote_case() {
+  local case_dir=$1
+  local list_failure=${2:-}
+  local stop_failure_unit=${3:-}
+  local sticky_unit=${4:-}
+  if PATH="${TMPDIR}/bin:${PATH}" \
+    SSH_LOG="${case_dir}/ssh.log" \
+    SYSTEMCTL_LOG="${case_dir}/systemctl.log" \
+    SYSTEMCTL_STATE_DIR="${case_dir}/state" \
+    SYSTEMCTL_LIST_FAILURE="$list_failure" \
+    SYSTEMCTL_STOP_FAILURE_UNIT="$stop_failure_unit" \
+    SYSTEMCTL_STICKY_UNIT="$sticky_unit" \
+    JOB_REF=pr-123 \
+    HEAD_SHA=abc \
+    METAL_HOSTS=dev-arm-1 \
+    METAL_USER=ci \
+    TARGET_TRIPLE=aarch64-unknown-linux-musl \
+    EXPECTED_REMOTE_ARCH=aarch64 \
+    RUNNER_PATH="$runner" \
+    FRESH_METADATA_PATH="$metadata" \
+    EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+    "$PREPARE" >"${case_dir}/out" 2>"${case_dir}/err"; then
+    fail "expected mocked post-preparation SSH boundary to fail"
+  fi
+}
+
+success_case="${TMPDIR}/remote-success"
+prepare_remote_case "$success_case"
+set_unit_state "$success_case" "vm0-runner-pr-123-2.service" active
+set_unit_state "$success_case" "vm0-runner-pr-123-7.service" active
+set_unit_state "$success_case" "vm0-runner-pr-123-exec.service" active
+set_unit_state "$success_case" "vm0-runner-pr-123-keepalive.service" active
+set_unit_state "$success_case" "vm0-runner-pr-123-cancel.service" active
+run_remote_case "$success_case"
+grep -q 'ci@dev-arm-1 uname -m' "${success_case}/ssh.log" || fail "valid supplied runner must reach the SSH boundary"
+grep -Eq '^stop .*vm0-runner-pr-123-2\.service([[:space:]]|$)' "${success_case}/systemctl.log" || fail "expected primary runner suffix 2 to stop"
+grep -Eq '^stop .*vm0-runner-pr-123-7\.service([[:space:]]|$)' "${success_case}/systemctl.log" || fail "expected primary runner suffix 7 to stop"
+if grep '^stop ' "${success_case}/systemctl.log" | grep -Eq 'vm0-runner-pr-123-(exec|keepalive|cancel)\.service'; then
+  fail "auxiliary runner services must not stop"
 fi
-grep -q 'ci@dev-1 uname -m' "${TMPDIR}/ssh.log" || fail "valid supplied runner must reach the SSH boundary"
+if grep '^stop ' "${success_case}/systemctl.log" | grep -q 'vm0-runner-pr-123-1\.service'; then
+  fail "architecture-subset index must not determine the stopped service"
+fi
+[ "$(< "${success_case}/state/vm0-runner-pr-123-2.service")" = "inactive" ] || fail "expected primary runner suffix 2 to be inactive"
+[ "$(< "${success_case}/state/vm0-runner-pr-123-7.service")" = "inactive" ] || fail "expected primary runner suffix 7 to be inactive"
+[ "$(< "${success_case}/state/vm0-runner-pr-123-exec.service")" = "active" ] || fail "expected auxiliary runner to remain active"
+last_show_line=$(grep -n '^show ' "${success_case}/systemctl.log" | tail -n1 | cut -d: -f1)
+first_mutation_line=$(grep -n '^mutate ' "${success_case}/systemctl.log" | head -n1 | cut -d: -f1)
+[ -n "$last_show_line" ] || fail "expected post-stop state verification"
+[ -n "$first_mutation_line" ] || fail "expected shared-path mutation after verification"
+[ "$last_show_line" -lt "$first_mutation_line" ] || fail "shared paths must not change before state verification"
+
+discovery_failure_case="${TMPDIR}/remote-discovery-failure"
+prepare_remote_case "$discovery_failure_case"
+set_unit_state "$discovery_failure_case" "vm0-runner-pr-123-2.service" active
+run_remote_case "$discovery_failure_case" 1
+if grep -q '^mutate ' "${discovery_failure_case}/systemctl.log"; then
+  fail "discovery failure must prevent shared-path mutation"
+fi
+grep -q 'mock list-units failure' "${discovery_failure_case}/out" || fail "expected discovery failure output"
+
+stop_failure_case="${TMPDIR}/remote-stop-failure"
+prepare_remote_case "$stop_failure_case"
+set_unit_state "$stop_failure_case" "vm0-runner-pr-123-2.service" active
+run_remote_case "$stop_failure_case" '' "vm0-runner-pr-123-2.service"
+if grep -q '^mutate ' "${stop_failure_case}/systemctl.log"; then
+  fail "stop failure must prevent shared-path mutation"
+fi
+grep -q 'mock stop failure for vm0-runner-pr-123-2.service' "${stop_failure_case}/out" || fail "expected stop failure output"
+
+verification_failure_case="${TMPDIR}/remote-verification-failure"
+prepare_remote_case "$verification_failure_case"
+set_unit_state "$verification_failure_case" "vm0-runner-pr-123-2.service" active
+run_remote_case "$verification_failure_case" '' '' "vm0-runner-pr-123-2.service"
+if grep -q '^mutate ' "${verification_failure_case}/systemctl.log"; then
+  fail "verification failure must prevent shared-path mutation"
+fi
+grep -q 'runner service vm0-runner-pr-123-2.service is active after stop' "${verification_failure_case}/out" || fail "expected verification failure output"
 
 echo "prepare-runner-image-test: ok"
