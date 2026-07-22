@@ -1,6 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
 import {
-  IconArrowRight,
   IconBox,
   IconBriefcase,
   IconChartBar,
@@ -32,6 +31,7 @@ import {
   type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
 import { OnboardingConnectorIcon } from "./onboarding-connectors.tsx";
+import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
   OnboardingDialog,
@@ -88,9 +88,8 @@ export function WorkflowPreview({
   readonly onClose: () => void;
   readonly onSelect: () => void;
 }) {
-  const firstConnector = workflow.connectors[0];
-  const lastConnector = workflow.connectors.at(-1);
-  const steps =
+  const hasDetailSteps = workflow.detailSteps.length > 0;
+  const fallbackSteps =
     workflow.steps.length > 0
       ? workflow.steps
       : ["Zero gathers the context", "The workflow completes the task"];
@@ -119,68 +118,45 @@ export function WorkflowPreview({
       }
     >
       <div className="grid gap-5 sm:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
-        <div className="flex min-h-56 items-center justify-center rounded-lg border border-border bg-muted/20 p-6">
-          <div className="flex w-full max-w-md items-center justify-between gap-3">
-            {firstConnector ? (
-              <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                <OnboardingConnectorIcon
-                  connectorId={firstConnector}
-                  size={32}
-                />
-              </span>
-            ) : null}
-            {firstConnector ? (
-              <IconArrowRight
-                size={20}
-                className="shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            ) : null}
-            <span className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-              <IconSparkles
-                size={25}
-                className="text-primary"
-                aria-hidden="true"
-              />
-              <span className="mt-1 text-xs font-semibold">Zero</span>
-            </span>
-            {lastConnector && lastConnector !== firstConnector ? (
-              <>
-                <IconArrowRight
-                  size={20}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                  <OnboardingConnectorIcon
-                    connectorId={lastConnector}
-                    size={32}
-                  />
-                </span>
-              </>
-            ) : null}
-          </div>
+        <div className="flex min-h-56 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/20 p-6">
+          <WorkflowPreviewDiagram workflow={workflow} />
         </div>
         <div className="space-y-5">
           <section>
             <h3 className="text-sm font-semibold">What it does</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {workflow.description}
+              {workflow.scenario}
             </p>
           </section>
           <section>
             <h3 className="text-sm font-semibold">How it works</h3>
             <ol className="mt-2 space-y-2 text-sm leading-5 text-muted-foreground">
-              {steps.map((step, index) => {
-                return (
-                  <li key={step} className="flex gap-2">
-                    <span className="font-medium text-foreground">
-                      {index + 1}.
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                );
-              })}
+              {hasDetailSteps
+                ? workflow.detailSteps.map((step, index) => {
+                    return (
+                      <li key={step.title} className="flex gap-2">
+                        <span className="font-medium text-foreground">
+                          {index + 1}.
+                        </span>
+                        <span>
+                          <strong className="font-medium text-foreground">
+                            {step.title}:{" "}
+                          </strong>
+                          {step.description}
+                        </span>
+                      </li>
+                    );
+                  })
+                : fallbackSteps.map((step, index) => {
+                    return (
+                      <li key={step} className="flex gap-2">
+                        <span className="font-medium text-foreground">
+                          {index + 1}.
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    );
+                  })}
             </ol>
           </section>
         </div>
