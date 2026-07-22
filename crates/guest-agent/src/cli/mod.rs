@@ -70,6 +70,9 @@ use tokio::time::Sleep;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
+const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
+const ZERO_WEB_SEARCH_FEATURE_KEY: &str = "zeroWebSearch";
+const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///
 /// LF is excluded. A preceding CR counts before CRLF normalization.
@@ -320,6 +323,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     codex_runtime_config: Option<codex_runtime_config::CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
+    zero_web_search_enabled: bool,
     stuck_tool_timeout_secs: u64,
     post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
@@ -339,6 +343,11 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
+        let zero_web_search_enabled = zero_web_search_enabled_for_runtime(
+            config.framework,
+            &config.feature_flags,
+            &config.user_env,
+        )?;
         Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
@@ -366,6 +375,7 @@ impl<'a> CliRuntimeConfig<'a> {
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
                 && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
+            zero_web_search_enabled,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 config.post_result_sigterm_grace,
@@ -386,10 +396,14 @@ impl<'a> CliRuntimeConfig<'a> {
 
     fn codex_startup_config_overrides(&self) -> Vec<String> {
         let codex_home = self.codex_home();
-        codex_runtime_config::startup_config_overrides(
+        let mut overrides = codex_runtime_config::startup_config_overrides(
             self.codex_runtime_config.as_ref(),
             Path::new(&codex_home),
-        )
+        );
+        if self.zero_web_search_enabled {
+            overrides.push(CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string());
+        }
+        overrides
     }
 
     fn codex_model_provider_id(&self) -> Option<&str> {
@@ -420,6 +434,25 @@ fn codex_home_for_home_dir(home_dir: &str) -> String {
 
 fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a str {
     user_env.get(key).map(String::as_str).unwrap_or("")
+}
+
+fn zero_web_search_enabled_for_runtime(
+    framework: env::Framework,
+    feature_flags: &str,
+    user_env: &HashMap<String, String>,
+) -> Result<bool, AgentError> {
+    if !matches!(framework, env::Framework::Codex)
+        || !user_env.contains_key(ZERO_AGENT_ID_ENV_KEY)
+        || feature_flags.is_empty()
+    {
+        return Ok(false);
+    }
+
+    let feature_flags: HashMap<String, bool> = serde_json::from_str(feature_flags)?;
+    Ok(feature_flags
+        .get(ZERO_WEB_SEARCH_FEATURE_KEY)
+        .copied()
+        .unwrap_or(false))
 }
 
 enum ParsedEventAction {
@@ -1505,7 +1538,7 @@ mod tests {
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
         codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        set_cli_current_dir, with_carried_failure_reason, zero_web_search_enabled_for_runtime,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1546,6 +1579,7 @@ mod tests {
             codex_runtime_config: None,
             codex_oauth_mode: false,
             codex_fast_mode: false,
+            zero_web_search_enabled: false,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 Duration::from_secs(constants::POST_RESULT_SIGTERM_GRACE_SECS),
@@ -1558,6 +1592,113 @@ mod tests {
             event_error_flag: Cow::Borrowed("/tmp/event-error"),
             user_env,
         }
+    }
+
+    fn command_config_index(command: &[String], config: &str) -> Option<usize> {
+        command
+            .windows(2)
+            .position(|window| window[0] == "-c" && window[1] == config)
+    }
+
+    #[test]
+    fn zero_web_search_requires_codex_feature_and_zero_marker() {
+        let enabled_flags = r#"{"zeroWebSearch":true}"#;
+        let disabled_flags = r#"{"zeroWebSearch":false}"#;
+        let missing_flags = r#"{"anotherFeature":true}"#;
+        let mut user_env = HashMap::new();
+
+        assert!(
+            !zero_web_search_enabled_for_runtime(env::Framework::Codex, enabled_flags, &user_env,)
+                .unwrap()
+        );
+
+        user_env.insert("ZERO_AGENT_ID".to_string(), "agent-1".to_string());
+
+        assert!(
+            zero_web_search_enabled_for_runtime(env::Framework::Codex, enabled_flags, &user_env,)
+                .unwrap()
+        );
+        assert!(
+            !zero_web_search_enabled_for_runtime(
+                env::Framework::ClaudeCode,
+                enabled_flags,
+                &user_env,
+            )
+            .unwrap()
+        );
+        assert!(
+            !zero_web_search_enabled_for_runtime(env::Framework::Codex, disabled_flags, &user_env,)
+                .unwrap()
+        );
+        assert!(
+            !zero_web_search_enabled_for_runtime(env::Framework::Codex, missing_flags, &user_env,)
+                .unwrap()
+        );
+        assert!(
+            !zero_web_search_enabled_for_runtime(env::Framework::Codex, "", &user_env).unwrap()
+        );
+    }
+
+    #[test]
+    fn zero_web_search_rejects_malformed_flags_only_for_zero_codex() {
+        let mut zero_user_env = HashMap::new();
+        zero_user_env.insert("ZERO_AGENT_ID".to_string(), "agent-1".to_string());
+
+        let error = zero_web_search_enabled_for_runtime(env::Framework::Codex, "{", &zero_user_env)
+            .unwrap_err();
+
+        assert!(error.to_string().starts_with("json:"));
+        assert!(
+            !zero_web_search_enabled_for_runtime(env::Framework::Codex, "{", &HashMap::new(),)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn codex_web_search_override_covers_new_and_resumed_exec() {
+        let user_env = HashMap::new();
+        let mut runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        runtime.zero_web_search_enabled = true;
+
+        let new_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let new_config_index =
+            command_config_index(&new_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG).unwrap();
+        let prompt_separator_index = new_command.iter().position(|arg| arg == "--").unwrap();
+        assert!(new_config_index < prompt_separator_index);
+
+        runtime.resume_session_id = Cow::Borrowed("thread-1");
+        let resumed_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let resumed_config_index =
+            command_config_index(&resumed_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
+                .unwrap();
+        let resume_index = resumed_command
+            .iter()
+            .position(|arg| arg == "resume")
+            .unwrap();
+        assert!(resumed_config_index < resume_index);
+    }
+
+    #[test]
+    fn codex_web_search_override_composes_with_provider_config() {
+        let user_env = HashMap::new();
+        let mut runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", true, &user_env);
+        runtime.zero_web_search_enabled = true;
+        runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
+            provider_id: "minimax".to_string(),
+            name: "MiniMax".to_string(),
+            base_url: "https://api.minimax.io/v1".to_string(),
+            env_key: "OPENAI_API_KEY".to_string(),
+            wire_api: "responses".to_string(),
+            supports_websockets: false,
+            model_catalog: None,
+        });
+
+        let overrides = runtime.codex_startup_config_overrides();
+
+        assert!(overrides.contains(&r#"model_provider="minimax""#.to_string()));
+        assert!(overrides.contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string()));
     }
 
     #[test]

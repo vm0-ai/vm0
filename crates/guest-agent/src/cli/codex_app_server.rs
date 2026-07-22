@@ -1202,6 +1202,7 @@ mod tests {
         let args = app_server_args(&[
             r#"model_provider="minimax""#.to_string(),
             r#"model_providers.minimax.supports_websockets=false"#.to_string(),
+            r#"web_search="disabled""#.to_string(),
         ]);
 
         let expected = [
@@ -1209,6 +1210,8 @@ mod tests {
             r#"model_provider="minimax""#,
             "-c",
             r#"model_providers.minimax.supports_websockets=false"#,
+            "-c",
+            r#"web_search="disabled""#,
             "app-server",
             "--listen",
             "stdio://",
