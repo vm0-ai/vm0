@@ -3,6 +3,30 @@ import ccstatePlugin from "@vm0/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
 
+function firewallImportRestrictions() {
+  return {
+    paths: [
+      {
+        name: "@vm0/connectors/firewalls",
+        message:
+          "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+      },
+      {
+        name: "@vm0/core/firewalls",
+        message:
+          "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+      },
+    ],
+    patterns: [
+      {
+        group: ["@vm0/connectors/firewalls/*", "@vm0/core/firewalls/*"],
+        message:
+          "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
+      },
+    ],
+  };
+}
+
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   ...baseConfig,
@@ -87,6 +111,7 @@ export default [
             "Use now() from src/lib/time instead of Date.now() so tests can control the platform clock.",
         },
       ],
+      "no-restricted-imports": ["error", firewallImportRestrictions()],
     },
   },
   {
@@ -102,24 +127,9 @@ export default [
               message:
                 "Platform production code must render connector icons from public catalog descriptors.",
             },
-            {
-              name: "@vm0/connectors/firewalls",
-              message:
-                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
-            },
-            {
-              name: "@vm0/core/firewalls",
-              message:
-                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
-            },
+            ...firewallImportRestrictions().paths,
           ],
-          patterns: [
-            {
-              group: ["@vm0/connectors/firewalls/*", "@vm0/core/firewalls/*"],
-              message:
-                "Platform frontend code must use @vm0/connectors/firewall-metadata instead of runtime firewall catalogs.",
-            },
-          ],
+          patterns: firewallImportRestrictions().patterns,
         },
       ],
     },
