@@ -18,6 +18,8 @@ jq -e '
   (.jobs.prepare | has("container") | not) and
   .jobs.prepare.permissions.actions == "read" and
   .jobs.prepare.outputs["runner-binary-compile-matrix"] == "${{ steps.binary-plan.outputs.compile-matrix }}" and
+  (.jobs.prepare.outputs | has("runner-binary-hit-count") | not) and
+  (.jobs.prepare.outputs | has("runner-binary-resolution-json") | not) and
   any(.jobs.prepare.steps[];
     .id == "binary-plan" and
     .run == ".github/scripts/runner-binary-cache-plan.sh" and
@@ -26,6 +28,7 @@ jq -e '
   any(.jobs.prepare.steps[];
     .uses == "actions/upload-artifact@v7" and
     .with.name == "runner-binary-hits-${{ github.run_id }}-${{ github.run_attempt }}" and
+    .if == "steps.binary-plan.outputs.hit-count != '\''0'\''" and
     .with["compression-level"] == 1 and
     (. | has("continue-on-error") | not)
   )
@@ -91,6 +94,19 @@ jq -e '
   any(.jobs.asset.steps[];
     .name == "Download compiled runner binary" and
     .with.name == "runner-binary-compiled-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.target }}"
+  ) and
+  any(.jobs.asset.steps[];
+    .name == "Validate fresh runner binary" and
+    (. | has("if") | not) and
+    (. | has("continue-on-error") | not)
+  ) and
+  any(.jobs.asset.steps[];
+    .name == "Resolve reusable candidate in shadow mode" and
+    (. | has("if") | not)
+  ) and
+  any(.jobs.asset.steps[];
+    .name == "Publish runner binary cache object" and
+    (. | has("if") | not)
   )
 ' <<<"$workflow_json" >/dev/null || fail "reusable publication must run only for compiled misses"
 

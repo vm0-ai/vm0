@@ -57,8 +57,14 @@ export function connectorCatalogReleaseArtifactKeys(
   };
 }
 
+// These schema-v1 limits mirror vm0-connectors output. Changing them requires
+// a new connector catalog artifact schema generation in both repositories.
+const CONNECTOR_SKILL_MAX_FILES = 64;
+const CONNECTOR_SKILL_MAX_FILE_BYTES = 512 * 1024;
+export const CONNECTOR_SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
+const CONNECTOR_SKILL_MAX_PATH_BYTES = 512;
 const CONNECTOR_SKILL_STORAGE_NAME_PREFIX = "connector-skill@";
-const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
+export const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
 
 const artifactHeaderShape = Object.freeze({
   artifactSchemaVersion: z.literal(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION),
@@ -102,6 +108,114 @@ const privateSkillArchiveReferenceSchema = artifactReferenceSchema.refine(
 );
 
 const connectorSkillVersionIdSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+
+const connectorSkillFilePathSchema = artifactKeySchema
+  .refine(
+    (filePath) => {
+      return filePath === filePath.normalize("NFC");
+    },
+    {
+      message: "Skill file paths must use NFC normalization",
+    },
+  )
+  .refine(
+    (filePath) => {
+      return !Array.from(filePath).some((character) => {
+        const codePoint = character.codePointAt(0);
+        return (
+          codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
+        );
+      });
+    },
+    { message: "Skill file paths must not contain control characters" },
+  )
+  .refine(
+    (filePath) => {
+      return (
+        Buffer.byteLength(filePath, "utf8") <= CONNECTOR_SKILL_MAX_PATH_BYTES
+      );
+    },
+    {
+      message: `Skill file paths must not exceed ${CONNECTOR_SKILL_MAX_PATH_BYTES} UTF-8 bytes`,
+    },
+  );
+
+export const connectorSkillManifestSchema = z
+  .object({
+    version: z.literal(1),
+    files: z
+      .array(
+        z
+          .object({
+            path: connectorSkillFilePathSchema,
+            hash: z.string().regex(/^[a-f0-9]{64}$/u),
+            size: z
+              .number()
+              .int()
+              .nonnegative()
+              .max(CONNECTOR_SKILL_MAX_FILE_BYTES),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(CONNECTOR_SKILL_MAX_FILES),
+    createdAt: z.literal("1970-01-01T00:00:00.000Z"),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const paths = manifest.files.map((file) => {
+      return file.path;
+    });
+    const sortedPaths = [...paths].sort(compareStrings);
+    if (
+      paths.some((filePath, index) => {
+        return filePath !== sortedPaths[index];
+      })
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Skill manifest files must be alphabetical",
+        path: ["files"],
+      });
+    }
+    if (new Set(paths).size !== paths.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Skill manifest file paths must be unique",
+        path: ["files"],
+      });
+    }
+    if (
+      new Set(
+        paths.map((filePath) => {
+          return filePath.toLowerCase();
+        }),
+      ).size !== paths.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Skill manifest file paths must not collide by case",
+        path: ["files"],
+      });
+    }
+    if (!paths.includes("SKILL.md")) {
+      context.addIssue({
+        code: "custom",
+        message: "Skill manifest requires root SKILL.md",
+        path: ["files"],
+      });
+    }
+    const totalSize = manifest.files.reduce((total, file) => {
+      return total + file.size;
+    }, 0);
+    if (totalSize > CONNECTOR_SKILL_MAX_TOTAL_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message: `Skill manifest files must not exceed ${CONNECTOR_SKILL_MAX_TOTAL_BYTES} total bytes`,
+        path: ["files"],
+      });
+    }
+  });
 
 const connectorSkillFrontmatterSchema = z
   .object({

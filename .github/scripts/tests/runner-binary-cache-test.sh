@@ -17,6 +17,13 @@ assert_contains() {
   grep -qF "$expected" <<<"$output" || fail "expected '${expected}' in: ${output}"
 }
 
+assert_output_keys() {
+  local file=$1 expected=$2 actual
+  actual=$(cut -d= -f1 "$file" | LC_ALL=C sort -u | paste -sd, -)
+  [ "$actual" = "$expected" ] ||
+    fail "expected output keys '${expected}', got '${actual}'"
+}
+
 assert_fails() {
   local name=$1
   shift
@@ -179,9 +186,12 @@ run_publish() {
 }
 
 : > "${TMPDIR}/aws.log"
-publish_out=$(run_publish "${TMPDIR}/published")
+publish_output="${TMPDIR}/publish.output"
+publish_out=$(GITHUB_OUTPUT="$publish_output" run_publish "${TMPDIR}/published")
 assert_contains "$publish_out" "published=true"
 assert_contains "$publish_out" "publish-reason=uploaded"
+assert_output_keys "$publish_output" \
+  "manifest-path,object-key,object-size-bytes,publish-reason,published"
 [ -f "${TMPDIR}/published/manifest.json" ] || fail "expected reusable manifest"
 zstd -q -d -c "${TMPDIR}/store/object.zst" > "${TMPDIR}/stored-runner"
 cmp -s "$runner" "${TMPDIR}/stored-runner" || fail "R2 object must contain the fresh runner"
@@ -493,13 +503,24 @@ run_shadow() {
 }
 
 : > "${TMPDIR}/gh.log"
-pr_shadow=$(run_shadow pull_request rank "${TMPDIR}/shadow-pr")
+shadow_output="${TMPDIR}/shadow.output"
+pr_shadow=$(GITHUB_OUTPUT="$shadow_output" run_shadow pull_request rank "${TMPDIR}/shadow-pr")
 assert_contains "$pr_shadow" "shadow-outcome=hit"
 assert_contains "$pr_shadow" "shadow-source=protected-main"
 assert_contains "$pr_shadow" "shadow-producer-run-id=20"
+assert_output_keys "$shadow_output" \
+  "shadow-outcome,shadow-producer-run-id,shadow-reason,shadow-source"
 if grep -qE 'actions/runs/(99|30)([^0-9]|$)' "${TMPDIR}/gh.log"; then
   fail "shadow resolution queried current or unrelated producer runs"
 fi
+
+if run_shadow unsupported rank "${TMPDIR}/shadow-invalid-context" \
+  > "${TMPDIR}/shadow-invalid-context.out" \
+  2> "${TMPDIR}/shadow-invalid-context.err"; then
+  fail "shadow resolution accepted an unsupported current event"
+fi
+grep -qF 'unsupported current event: unsupported' \
+  "${TMPDIR}/shadow-invalid-context.err" || fail "expected shadow context diagnostic"
 
 merge_shadow=$(run_shadow merge_group rank "${TMPDIR}/shadow-merge")
 assert_contains "$merge_shadow" "shadow-outcome=hit"
@@ -574,10 +595,13 @@ run_active() {
 
 zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
 : > "${TMPDIR}/gh.log"
-active_hit=$(run_active pull_request rank "${TMPDIR}/active-hit")
+active_output="${TMPDIR}/active.output"
+active_hit=$(GITHUB_OUTPUT="$active_output" run_active pull_request rank "${TMPDIR}/active-hit")
 assert_contains "$active_hit" "resolve-outcome=hit"
 assert_contains "$active_hit" "resolve-source=protected-main"
 assert_contains "$active_hit" "resolve-producer-run-id=20"
+assert_output_keys "$active_output" \
+  "candidate-inspections,object-size-bytes,resolve-outcome,resolve-producer-run-id,resolve-reason,resolve-source,runner-size-bytes"
 cmp -s "$runner" "${TMPDIR}/active-hit/runner" || fail "active hit must materialize verified runner bytes"
 FRESH_METADATA_PATH="${TMPDIR}/active-hit/metadata.json" \
 RUNNER_PATH="${TMPDIR}/active-hit/runner" \
@@ -596,6 +620,17 @@ force_miss=$(RUNNER_BINARY_CACHE_FORCE_MISS=true \
   run_active pull_request rank "${TMPDIR}/active-force")
 assert_contains "$force_miss" "resolve-reason=force-miss"
 [ ! -s "${TMPDIR}/gh.log" ] || fail "force miss must bypass candidate lookup"
+
+: > "${TMPDIR}/gh.log"
+if RUNNER_BINARY_CACHE_FORCE_MISS=true \
+  run_active unsupported rank "${TMPDIR}/active-invalid-context" \
+  > "${TMPDIR}/active-invalid-context.out" \
+  2> "${TMPDIR}/active-invalid-context.err"; then
+  fail "active force miss accepted an unsupported current event"
+fi
+grep -qF 'unsupported current event: unsupported' \
+  "${TMPDIR}/active-invalid-context.err" || fail "expected active context diagnostic"
+[ ! -s "${TMPDIR}/gh.log" ] || fail "invalid active context must fail before candidate lookup"
 
 api_miss=$(run_active pull_request api-fail "${TMPDIR}/active-api-fail")
 assert_contains "$api_miss" "resolve-outcome=miss"
