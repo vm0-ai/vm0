@@ -63,8 +63,18 @@ pub(crate) struct NbdRequest {
     /// Byte offset into the device where the operation applies (Read /
     /// Write / Trim). Ignored for Flush and Disconnect.
     pub(crate) offset: u64,
-    /// Payload length in bytes. Requests exceeding the server's
-    /// `MAX_REQUEST_LENGTH` (see `server.rs`) are rejected with `EIO`.
+    /// Command-specific byte count:
+    ///
+    /// - [`Command::Read`]: bytes requested from the device and returned in a
+    ///   successful reply.
+    /// - [`Command::Write`]: payload bytes following the request header.
+    /// - [`Command::Trim`]: bytes in the affected range; no payload follows.
+    ///
+    /// For [`Command::Flush`] and [`Command::Disconnect`], the protocol
+    /// requires this field to be zero and the current dispatcher does not
+    /// inspect it. This server rejects Read and Write lengths above
+    /// `MAX_REQUEST_LENGTH` (see `server.rs`) with `EIO`; it does not apply
+    /// that limit to Trim.
     pub(crate) length: u32,
 }
 
