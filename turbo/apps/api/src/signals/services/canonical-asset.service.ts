@@ -15,7 +15,7 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";
@@ -198,6 +198,62 @@ async function canonicalAssetByIdentity(
   return asset;
 }
 
+function canonicalInputAssetIdentityCondition(assetId: string, userId: string) {
+  return and(
+    eq(runUploadedFiles.id, assetId),
+    eq(runUploadedFiles.userId, userId),
+    eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
+    eq(runUploadedFiles.classification, "input"),
+  );
+}
+
+function canonicalInputObservedStateCondition(asset: CanonicalAssetRow) {
+  return asset.materializationStatus === null
+    ? isNull(runUploadedFiles.materializationStatus)
+    : eq(runUploadedFiles.materializationStatus, asset.materializationStatus);
+}
+
+function canonicalInputTransitionCondition(
+  asset: CanonicalAssetRow,
+  userId: string,
+) {
+  return and(
+    canonicalInputAssetIdentityCondition(asset.id, userId),
+    canonicalInputObservedStateCondition(asset),
+    asset.materializationStatus === "ready" ? sql`false` : undefined,
+  );
+}
+
+async function canonicalInputAssetById(
+  db: Db,
+  args: {
+    readonly assetId: string;
+    readonly userId: string;
+  },
+): Promise<CanonicalAssetRow | undefined> {
+  const [asset] = await db
+    .select(canonicalAssetSelection())
+    .from(runUploadedFiles)
+    .where(canonicalInputAssetIdentityCondition(args.assetId, args.userId))
+    .limit(1);
+  return asset;
+}
+
+async function canonicalInputAssetAfterTransitionConflict(
+  db: Db,
+  asset: CanonicalAssetRow,
+  userId: string,
+): Promise<CanonicalAssetRow> {
+  const current = await canonicalInputAssetById(db, {
+    assetId: asset.id,
+    userId,
+  });
+  if (!current) {
+    throw new Error("Canonical Slack input asset no longer exists");
+  }
+  return current;
+}
+
 async function ensureSlackInputAsset(
   db: Db,
   args: CanonicalSlackInputFileArgs & {
@@ -326,6 +382,9 @@ async function markCanonicalInputFailed(
     readonly error: CanonicalMaterializationError;
   },
 ): Promise<CanonicalAssetRow> {
+  if (args.asset.materializationStatus === "ready") {
+    return args.asset;
+  }
   const [failed] = await db
     .update(runUploadedFiles)
     .set({
@@ -333,14 +392,87 @@ async function markCanonicalInputFailed(
       materializationError: args.error,
       updatedAt: sql`now()`,
     })
-    .where(
-      and(
-        eq(runUploadedFiles.id, args.asset.id),
-        eq(runUploadedFiles.userId, args.userId),
-      ),
-    )
+    .where(canonicalInputTransitionCondition(args.asset, args.userId))
     .returning(canonicalAssetSelection());
-  return failed ?? args.asset;
+  return (
+    failed ??
+    (await canonicalInputAssetAfterTransitionConflict(
+      db,
+      args.asset,
+      args.userId,
+    ))
+  );
+}
+
+async function markCanonicalInputReady(
+  db: Db,
+  args: {
+    readonly asset: CanonicalAssetRow;
+    readonly userId: string;
+    readonly sizeBytes: number;
+    readonly checksumSha256: string;
+  },
+): Promise<CanonicalAssetRow> {
+  let observed = args.asset;
+  while (observed.materializationStatus !== "ready") {
+    const [ready] = await db
+      .update(runUploadedFiles)
+      .set({
+        sizeBytes: args.sizeBytes,
+        checksumSha256: args.checksumSha256,
+        materializationStatus: "ready",
+        materializationError: null,
+        updatedAt: sql`now()`,
+      })
+      .where(canonicalInputTransitionCondition(observed, args.userId))
+      .returning(canonicalAssetSelection());
+    if (ready) {
+      return ready;
+    }
+    observed = await canonicalInputAssetAfterTransitionConflict(
+      db,
+      observed,
+      args.userId,
+    );
+  }
+  return observed;
+}
+
+async function resetCanonicalInputPending(
+  db: Db,
+  args: {
+    readonly asset: CanonicalAssetRow;
+    readonly userId: string;
+  },
+): Promise<CanonicalAssetRow> {
+  let observed = args.asset;
+  while (
+    observed.materializationStatus !== "ready" &&
+    observed.materializationStatus !== "pending" &&
+    !(
+      observed.materializationStatus === "failed" &&
+      observed.materializationError?.retryable === false
+    )
+  ) {
+    const [pending] = await db
+      .update(runUploadedFiles)
+      .set({
+        materializationStatus: "pending",
+        materializationError: null,
+        updatedAt: sql`now()`,
+      })
+      .where(canonicalInputTransitionCondition(observed, args.userId))
+      .returning(canonicalAssetSelection());
+    if (pending) {
+      return pending;
+    }
+    observed = await canonicalInputAssetAfterTransitionConflict(
+      db,
+      observed,
+      args.userId,
+    );
+  }
+  return observed;
 }
 
 const importCanonicalSlackInputFile$ = command(
@@ -410,24 +542,14 @@ const importCanonicalSlackInputFile$ = command(
       signal.throwIfAborted();
       return canonicalSlackInputResult(failed, args.position);
     }
-    const [ready] = await db
-      .update(runUploadedFiles)
-      .set({
-        sizeBytes: imported.value.buffer.length,
-        checksumSha256: imported.value.checksumSha256,
-        materializationStatus: "ready",
-        materializationError: null,
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(runUploadedFiles.id, args.asset.id),
-          eq(runUploadedFiles.userId, args.userId),
-        ),
-      )
-      .returning(canonicalAssetSelection());
+    const ready = await markCanonicalInputReady(db, {
+      asset: args.asset,
+      userId: args.userId,
+      sizeBytes: imported.value.buffer.length,
+      checksumSha256: imported.value.checksumSha256,
+    });
     signal.throwIfAborted();
-    return canonicalSlackInputResult(ready ?? args.asset, args.position);
+    return canonicalSlackInputResult(ready, args.position);
   },
 );
 
@@ -487,15 +609,18 @@ const materializeCanonicalSlackInputFile$ = command(
       throw new Error("Canonical Slack input download URL is missing");
     }
 
-    await db
-      .update(runUploadedFiles)
-      .set({
-        materializationStatus: "pending",
-        materializationError: null,
-        updatedAt: sql`now()`,
-      })
-      .where(eq(runUploadedFiles.id, asset.id));
+    asset = await resetCanonicalInputPending(db, {
+      asset,
+      userId: args.userId,
+    });
     signal.throwIfAborted();
+    if (
+      asset.materializationStatus === "ready" ||
+      (asset.materializationStatus === "failed" &&
+        asset.materializationError?.retryable === false)
+    ) {
+      return canonicalSlackInputResult(asset, args.position);
+    }
 
     return set(
       importCanonicalSlackInputFile$,

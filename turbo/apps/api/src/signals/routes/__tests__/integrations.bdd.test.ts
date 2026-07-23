@@ -4,7 +4,7 @@ import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-inte
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -1173,6 +1173,150 @@ describe("INT-01: Slack integration and Slack app routes", () => {
 });
 
 describe("INT-01: Slack app deep webhook flows", () => {
+  it("keeps ready canonical inputs terminal across concurrent historical reads", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected historical Slack actor to belong to an org");
+    }
+    const featureSwitchActor = {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: "org:admin",
+    } satisfies Parameters<typeof updateFeatureSwitchesForUser>[1];
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackIngress]: true,
+      [FeatureSwitchKey.CanonicalSlackAssets]: false,
+    });
+
+    const channelId = "C_BDD_HISTORICAL_ASSET";
+    const threadTs = "2899.000100";
+    const eventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const fileBody = "historical canonical Slack attachment";
+    const eventBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: eventId,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: `<@${botUserId}> materialize this historical file`,
+        ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+        files: [
+          {
+            id: `F_HISTORICAL_${randomUUID().replace(/-/g, "")}`,
+            name: "source-notes.txt",
+            mimetype: "text/plain",
+            size: fileBody.length,
+            url_private_download:
+              "https://files.slack.com/F_HISTORICAL_CANONICAL_INPUT",
+          },
+        ],
+      },
+    });
+    await integrations.requestSlackEvent(
+      eventBody,
+      integrations.signedSlackIngressHeaders(eventBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(teamId);
+    const chatThreadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!chatThreadId) {
+      throw new Error("Expected historical Slack route to own a chat thread");
+    }
+
+    const firstFetchStarted = createDeferredPromise<void>(context.signal);
+    const secondFetchStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstFetch = createDeferredPromise<void>(context.signal);
+    const releaseStaleFailure = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      for (const deferred of [releaseFirstFetch, releaseStaleFailure]) {
+        if (!deferred.settled()) {
+          deferred.resolve(undefined);
+        }
+      }
+    });
+    let fetchAttempt = 0;
+    context.mocks.slack.fetchFile.mockImplementation(async () => {
+      fetchAttempt += 1;
+      if (fetchAttempt === 1) {
+        firstFetchStarted.resolve(undefined);
+        await releaseFirstFetch.promise;
+        return new Response(fileBody, {
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+      if (fetchAttempt === 2) {
+        secondFetchStarted.resolve(undefined);
+        await releaseStaleFailure.promise;
+        throw new Error("stale concurrent Slack fetch failed");
+      }
+      throw new Error("Unexpected additional Slack file fetch");
+    });
+    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
+      [FeatureSwitchKey.CanonicalSlackAssets]: true,
+      [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
+    });
+
+    const firstRead = chat.listThreadMessages(actor, chatThreadId);
+    await firstFetchStarted.promise;
+    const secondRead = chat.listThreadMessages(actor, chatThreadId);
+    await secondFetchStarted.promise;
+
+    releaseFirstFetch.resolve(undefined);
+    const firstMessages = (await firstRead).messages;
+    const assetId = requireCanonicalSlackInputAssetId(firstMessages);
+    expect(firstMessages).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          attachFiles: [
+            expect.objectContaining({
+              assetRef: expect.objectContaining({
+                id: assetId,
+                materialization: { status: "ready" },
+              }),
+            }),
+          ],
+        }),
+      ]),
+    );
+
+    releaseStaleFailure.resolve(undefined);
+    const secondMessages = (await secondRead).messages;
+    expect(requireCanonicalSlackInputAssetId(secondMessages)).toBe(assetId);
+    expect(secondMessages).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          attachFiles: [
+            expect.objectContaining({
+              assetRef: expect.objectContaining({
+                id: assetId,
+                materialization: { status: "ready" },
+              }),
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(context.mocks.slack.fetchFile).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps canonical ingress sticky and deduplicates Slack retries per event", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();

@@ -40,9 +40,6 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   const body = bodyResult.data;
-  if (body.length > MAX_SLACK_FILE_SIZE_BYTES) {
-    return badRequestMessage("File too large (max 100 MB)");
-  }
 
   const installation = await get(
     zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
@@ -60,6 +57,9 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     (await canonicalSlackAssetsEnabled(get(db$), auth));
   signal.throwIfAborted();
   if (canonicalEnabled && body.canonical && runId) {
+    if (body.length > MAX_SLACK_FILE_SIZE_BYTES) {
+      return badRequestMessage("File too large (max 100 MB)");
+    }
     const contentType =
       body.canonical.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!isAllowedUploadType(contentType)) {
