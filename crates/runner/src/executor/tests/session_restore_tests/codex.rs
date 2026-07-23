@@ -14,11 +14,14 @@ fn restore_session_writes_codex_session() {
     let session = materialized_text_session(CODEX_SESSION_ID, history.clone());
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, CODEX_PERSISTED_ROLLOUT_PATH);
+    assert_eq!(
+        codex_restore_target(&writes[0].path),
+        CODEX_PERSISTED_ROLLOUT_PATH
+    );
     assert_eq!(writes[0].content, session.history_bytes());
     assert_eq!(diagnostics.bytes_in, history.len());
 }
@@ -39,12 +42,12 @@ fn restore_session_writes_codex_zstd_session() {
 
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert_eq!(
-        writes[0].path,
+        codex_restore_target(&writes[0].path),
         format!("{CODEX_PERSISTED_ROLLOUT_PATH}.zst")
     );
     assert_eq!(writes[0].content, compressed);
@@ -107,17 +110,17 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
+    let restore_path = codex_restore_target(&writes[0].path);
     assert!(
-        writes[0].path.starts_with("/home/user/.codex/sessions/"),
+        restore_path.starts_with("/home/user/.codex/sessions/"),
         "codex resume history must be restored under codex sessions, got {}",
-        writes[0].path
+        restore_path
     );
-    let filename = writes[0]
-        .path
+    let filename = restore_path
         .rsplit('/')
         .next()
         .expect("restored codex path should have a filename");
@@ -142,17 +145,17 @@ fn restore_session_writes_invalid_utf8_codex_history_with_fallback_filename() {
 
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
+    let restore_path = codex_restore_target(&writes[0].path);
     assert!(
-        writes[0].path.starts_with("/home/user/.codex/sessions/"),
+        restore_path.starts_with("/home/user/.codex/sessions/"),
         "codex resume history must be restored under codex sessions, got {}",
-        writes[0].path
+        restore_path
     );
-    let filename = writes[0]
-        .path
+    let filename = restore_path
         .rsplit('/')
         .next()
         .expect("restored codex path should have a filename");
@@ -176,16 +179,15 @@ fn restore_session_canonicalizes_codex_session_id() {
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
+    let restore_path = codex_restore_target(&writes[0].path);
     assert!(
-        writes[0]
-            .path
-            .ends_with(CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX),
+        restore_path.ends_with(CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX),
         "codex restore path must use canonical thread id, got {}",
-        writes[0].path
+        restore_path
     );
 }
 
@@ -357,6 +359,39 @@ async fn restore_session_preserves_codex_write_file_error() {
     assert!(
         message.contains(CODEX_CANONICAL_ROLLOUT_PATH),
         "got: {message}"
+    );
+    assert_eq!(sandbox.exec_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn restore_session_fails_when_codex_atomic_commit_fails() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = codex_context();
+    let history = codex_minimal_session_meta_history(CODEX_SESSION_ID);
+    let mut resume_session = resume_ref_for_history(CODEX_SESSION_ID, history.as_bytes());
+    resume_session.codex_rollout_path = Some(CODEX_PERSISTED_ROLLOUT_RELATIVE_PATH.into());
+    ctx.resume_session = Some(resume_session);
+    let session = materialized_text_session(CODEX_SESSION_ID, history);
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        Vec::new(),
+        b"rename failed".to_vec(),
+    )));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("codex session commit failed"),
+        "got: {message}"
+    );
+    assert!(message.contains("rename failed"), "got: {message}");
+    assert_codex_restore_calls(&sandbox);
+    let writes = sandbox.write_file_calls();
+    assert_eq!(
+        codex_restore_target(&writes[0].path),
+        CODEX_PERSISTED_ROLLOUT_PATH
     );
 }
 

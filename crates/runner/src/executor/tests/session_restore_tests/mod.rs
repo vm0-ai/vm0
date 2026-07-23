@@ -135,9 +135,17 @@ fn codex_minimal_session_meta_history(session_id: &str) -> String {
     )
 }
 
-fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
+fn codex_restore_target(staging_path: &str) -> &str {
+    let (target, suffix) = staging_path
+        .rsplit_once(".vm0tmp-")
+        .expect("Codex restore should write through a staging path");
+    assert!(!suffix.is_empty());
+    target
+}
+
+fn assert_codex_restore_calls(sandbox: &MockSandbox) {
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls.len(), 2);
     assert_eq!(
         exec_calls[0].env_keys,
         [
@@ -191,6 +199,21 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(!exec_calls[0].cmd.contains("tr -d"));
     assert!(!exec_calls[0].cmd.contains("-delete"));
     assert!(!exec_calls[0].cmd.contains("for path in \"$dir\"/*"));
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    let staging_path = &writes[0].path;
+    let restore_path = codex_restore_target(staging_path);
+    assert!(exec_calls[1].env_keys.is_empty());
+    assert_eq!(exec_calls[1].timeout, DEFAULT_EXEC_TIMEOUT);
+    assert_eq!(exec_calls[1].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+    assert!(!exec_calls[1].sudo);
+    assert!(exec_calls[1].stdin_bytes.is_none());
+    assert!(exec_calls[1].cmd.contains("mv -fT --"));
+    assert!(exec_calls[1].cmd.contains(staging_path));
+    assert!(exec_calls[1].cmd.contains(restore_path));
+    assert!(exec_calls[1].cmd.contains("rm -f --"));
+    assert!(exec_calls[1].cmd.contains("exit \"$status\""));
 }
 
 fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

@@ -81,6 +81,26 @@ fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     zstd::encode_all(raw, 0).unwrap()
 }
 
+fn assert_codex_atomic_restore_path(sandbox: &sandbox_mock::MockSandbox, expected_target: &str) {
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    let (target, suffix) = writes[0]
+        .path
+        .rsplit_once(".vm0tmp-")
+        .expect("Codex restore should write through a staging path");
+    assert_eq!(target, expected_target);
+    assert!(!suffix.is_empty());
+
+    let commit_calls = sandbox
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("mv -fT --"))
+        .collect::<Vec<_>>();
+    assert_eq!(commit_calls.len(), 1);
+    assert!(commit_calls[0].cmd.contains(&writes[0].path));
+    assert!(commit_calls[0].cmd.contains(expected_target));
+}
+
 fn history_prefix_attribution(history: &[u8]) -> RestoredSessionHistoryPrefixAttribution {
     RestoredSessionHistoryPrefixAttribution::for_test(
         hex::encode(Sha256::digest(history)),
@@ -1669,9 +1689,9 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
     assert!(result.failure.is_none());
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst"
+    assert_codex_atomic_restore_path(
+        &sandbox,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst",
     );
     assert_eq!(writes[0].content, compressed_history);
     history_mock.assert_calls_async(0).await;
@@ -1739,9 +1759,9 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     assert!(result.failure.is_none());
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    assert_codex_atomic_restore_path(
+        &sandbox,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
     );
     assert_eq!(writes[0].content, history);
     history_mock.assert_calls_async(0).await;
@@ -1778,9 +1798,9 @@ async fn run_in_sandbox_restores_inline_codex_history_with_session_timestamp() {
     assert!(result.failure.is_none());
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    assert_codex_atomic_restore_path(
+        &sandbox,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
     );
     assert_eq!(writes[0].content, history.as_bytes());
 }

@@ -87,7 +87,7 @@ pub(super) async fn restore_codex_session(
     )
     .await?;
 
-    write_session_history_file(sandbox, &session_path, session_history).await?;
+    write_codex_session_history_file(sandbox, context, &session_path, session_history).await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
@@ -102,6 +102,55 @@ pub(super) async fn restore_codex_session(
         "restored session history",
     );
     Ok(diagnostics)
+}
+
+async fn write_codex_session_history_file(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session_path: &str,
+    session_history: &[u8],
+) -> RunnerResult<()> {
+    // Small sandbox writes truncate their destination directly. Stage beside
+    // the rollout so a failed write cannot destroy the verified warm copy.
+    let staging_path = format!("{session_path}.vm0tmp-{}", context.run_id);
+    write_session_history_file(sandbox, &staging_path, session_history).await?;
+
+    let commit_cmd = codex_session_commit_command(&staging_path, session_path);
+    let result = sandbox
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &commit_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "codex-session-commit",
+        )
+        .await?;
+    if !helper_exec_succeeded(&result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "codex session commit",
+            &result,
+        )));
+    }
+    Ok(())
+}
+
+fn codex_session_commit_command(staging_path: &str, session_path: &str) -> String {
+    let staging_path = quote_shell_arg(staging_path);
+    let session_path = quote_shell_arg(session_path);
+    format!(
+        "if mv -fT -- {staging_path} {session_path}; then\n\
+           exit 0\n\
+         else\n\
+           status=$?\n\
+           rm -f -- {staging_path}\n\
+           exit \"$status\"\n\
+         fi"
+    )
 }
 
 async fn cleanup_existing_codex_session_files(
@@ -212,6 +261,17 @@ mod tests {
             .unwrap()
     }
 
+    fn run_commit(staging_path: &Path, session_path: &Path) -> Output {
+        Command::new("sh")
+            .arg("-c")
+            .arg(codex_session_commit_command(
+                staging_path.to_str().expect("test path should be utf-8"),
+                session_path.to_str().expect("test path should be utf-8"),
+            ))
+            .output()
+            .unwrap()
+    }
+
     fn cleanup_command(
         codex_home: &Path,
         restore_path: &Path,
@@ -272,6 +332,41 @@ mod tests {
         assert!(command.contains("xargs -0"));
         assert!(!command.contains("-delete"));
         assert!(!command.contains("for path in \"$dir\"/*"));
+    }
+
+    #[test]
+    fn commit_command_replaces_existing_target_and_removes_staging_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let session_path = restore_path(&temp.path().join("codex home with ' quote"));
+        let staging_path = PathBuf::from(format!("{}.vm0tmp-run", session_path.display()));
+        create_file(&session_path);
+        fs::write(&session_path, "original history").unwrap();
+        create_file(&staging_path);
+        fs::write(&staging_path, "replacement history").unwrap();
+
+        let output = run_commit(&staging_path, &session_path);
+
+        assert_success(&output);
+        assert_eq!(
+            fs::read_to_string(&session_path).unwrap(),
+            "replacement history"
+        );
+        assert!(!staging_path.exists());
+    }
+
+    #[test]
+    fn commit_command_removes_staging_file_when_rename_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let session_path = restore_path(&temp.path().join(".codex"));
+        fs::create_dir_all(&session_path).unwrap();
+        let staging_path = PathBuf::from(format!("{}.vm0tmp-run", session_path.display()));
+        create_file(&staging_path);
+
+        let output = run_commit(&staging_path, &session_path);
+
+        assert!(!output.status.success());
+        assert!(session_path.is_dir());
+        assert!(!staging_path.exists());
     }
 
     #[test]
