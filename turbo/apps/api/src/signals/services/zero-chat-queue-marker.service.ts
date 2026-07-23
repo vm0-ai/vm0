@@ -23,11 +23,6 @@ export interface QueueMarkerRevokeNotification {
   readonly userId: string;
 }
 
-type QueuedRunMarkerAppendResult =
-  | { readonly kind: "not-queued" }
-  | { readonly kind: "existing" }
-  | { readonly kind: "appended"; readonly markerId: string };
-
 export async function appendQueuedRunAssistantMarker(
   tx: DbTransaction,
   args: {
@@ -36,14 +31,14 @@ export async function appendQueuedRunAssistantMarker(
     readonly runGroupId?: string;
     readonly createdAfter?: Date;
   },
-): Promise<QueuedRunMarkerAppendResult> {
+): Promise<void> {
   const [run] = await tx
     .select({ status: agentRuns.status })
     .from(agentRuns)
     .where(eq(agentRuns.id, args.runId))
     .for("update");
   if (run?.status !== "queued") {
-    return { kind: "not-queued" };
+    return;
   }
 
   const [existing] = await tx
@@ -58,10 +53,10 @@ export async function appendQueuedRunAssistantMarker(
     )
     .limit(1);
   if (existing) {
-    return { kind: "existing" };
+    return;
   }
 
-  const marker = await insertChatMessage(tx, {
+  await insertChatMessage(tx, {
     chatThreadId: args.chatThreadId,
     role: "assistant",
     content: QUEUED_RUN_ASSISTANT_MESSAGE,
@@ -72,10 +67,6 @@ export async function appendQueuedRunAssistantMarker(
       ? { createdAt: new Date(args.createdAfter.getTime() + 1) }
       : {}),
   });
-  if (!marker) {
-    return { kind: "existing" };
-  }
-  return { kind: "appended", markerId: marker.id };
 }
 
 export async function revokeQueuedRunAssistantMarkers(

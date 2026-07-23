@@ -143,26 +143,14 @@ export async function publishChatThreadDetailChangedSafely(
  * message data source subscribes to this topic and refetches, so derived state
  * (e.g. the composer's folded goal state) updates live.
  *
- * `syncThroughMessageId` is an optional cache watermark: the ID of the row
- * that sorts last, in server list order (createdAt, sequenceNumber), among the
- * rows appended by the mutation that triggered this publish. Clients that
- * already hold that row locally skip the refetch. Only pass it when that
- * "last of the batch" identity is certain; omitting it keeps the client on
- * the unconditional-refetch path.
- *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
 export async function publishChatThreadMessageCreatedSafely(
   userId: string,
   threadId: string,
-  syncThroughMessageId?: string,
 ): Promise<void> {
   await tapError(
-    publishUserSignal(
-      [userId],
-      `chatThreadMessageCreated:${threadId}`,
-      syncThroughMessageId ? { syncThroughMessageId } : null,
-    ),
+    publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
         threadId,

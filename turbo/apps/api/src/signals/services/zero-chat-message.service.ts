@@ -13,12 +13,6 @@ interface ChatMessageCommandResult {
   readonly createdAt: Date;
 }
 
-interface ChatMessageBatchCommandResult {
-  readonly id: string;
-  readonly createdAt: Date;
-  readonly sequenceNumber: number | null;
-}
-
 type InsertChatMessageConflict = "none" | "any" | "id" | "run-lifecycle";
 
 type InsertChatMessagesConflict = "any" | "run-sequence";
@@ -76,7 +70,7 @@ export async function insertChatMessages(
   tx: ChatMessageWriteDb,
   values: readonly NewChatMessage[],
   conflict: InsertChatMessagesConflict,
-): Promise<readonly ChatMessageBatchCommandResult[]> {
+): Promise<readonly ChatMessageCommandResult[]> {
   if (values.length === 0) {
     return [];
   }
@@ -86,7 +80,6 @@ export async function insertChatMessages(
     return await query.onConflictDoNothing().returning({
       id: chatMessages.id,
       createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
     });
   }
   return await query
@@ -96,7 +89,6 @@ export async function insertChatMessages(
     .returning({
       id: chatMessages.id,
       createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
     });
 }
 
