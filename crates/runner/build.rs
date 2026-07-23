@@ -28,7 +28,7 @@ fn main() {
     // but CI artifact caches may not — explicit rerun-if-changed ensures correctness).
     println!("cargo::rerun-if-changed=scripts/agent-abnormal-exit-diagnostics.sh");
     println!("cargo::rerun-if-changed=scripts/build-template.sh");
-    println!("cargo::rerun-if-changed=scripts/codex-session-cleanup.sh");
+    println!("cargo::rerun-if-changed=scripts/codex-session-restore.sh");
     println!("cargo::rerun-if-changed=scripts/customize-rootfs.sh");
     println!("cargo::rerun-if-changed=scripts/freeze-workspace-drive.sh");
     println!("cargo::rerun-if-changed=scripts/mount-workspace-drive.sh");

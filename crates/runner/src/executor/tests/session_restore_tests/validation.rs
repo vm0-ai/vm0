@@ -1,5 +1,4 @@
 use super::super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::super::super::session_restore::restore_session;
 use super::*;
 
 #[test]

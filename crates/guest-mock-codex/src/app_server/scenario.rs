@@ -37,6 +37,13 @@ pub(super) enum Scenario {
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     ThreadStartInvalidThreadId,
+    ThreadReadMalformedResult,
+    ThreadReadNotFound,
+    ThreadReadNullPath,
+    ThreadReadRpcError,
+    ThreadReadWrongErrorCode,
+    ThreadReadWrongThread,
+    HangOnThreadRead,
     UnexpectedThreadTurnCompleted,
 }
 
@@ -89,6 +96,13 @@ impl Scenario {
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),
+                "thread-read-malformed-result" => Ok(Self::ThreadReadMalformedResult),
+                "thread-read-not-found" => Ok(Self::ThreadReadNotFound),
+                "thread-read-null-path" => Ok(Self::ThreadReadNullPath),
+                "thread-read-rpc-error" => Ok(Self::ThreadReadRpcError),
+                "thread-read-wrong-error-code" => Ok(Self::ThreadReadWrongErrorCode),
+                "thread-read-wrong-thread" => Ok(Self::ThreadReadWrongThread),
+                "hang-on-thread-read" => Ok(Self::HangOnThreadRead),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,

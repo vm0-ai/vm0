@@ -13,7 +13,7 @@ use super::env::validate_resume_session_id;
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 impl RestoredSessionIdentity {
@@ -140,6 +140,7 @@ pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
+    reuse_result: SandboxReuseResult,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
@@ -161,7 +162,7 @@ pub(super) async fn restore_session(
             restore_claude_session(sandbox, context, session).await
         }
         EffectiveCliFramework::Codex => {
-            codex::restore_codex_session(sandbox, context, session).await
+            codex::restore_codex_session(sandbox, context, session, reuse_result).await
         }
     }
 }

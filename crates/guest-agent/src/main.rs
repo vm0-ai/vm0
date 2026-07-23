@@ -19,6 +19,11 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use guest_contracts::codex_thread_id::CodexThreadId;
+use guest_contracts::codex_thread_path::{
+    CODEX_THREAD_PATH_LOOKUP_EXIT_FAILURE, CODEX_THREAD_PATH_LOOKUP_EXIT_INVALID_ARGS,
+    CODEX_THREAD_PATH_LOOKUP_EXIT_SUCCESS, CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES,
+};
 use guest_contracts::diagnostics::{CliTerminationReason, FailureClass, FailureDiagnostic};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -34,7 +39,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[tokio::main]
 async fn main() {
-    if let Some(exit_code) = helper_exit_code_from_args() {
+    if let Some(exit_code) = helper_exit_code_from_args().await {
         std::process::exit(exit_code);
     }
     let runtime = match GuestRuntime::from_process_env() {
@@ -49,7 +54,7 @@ async fn main() {
     std::process::exit(exit_code);
 }
 
-fn helper_exit_code_from_args() -> Option<i32> {
+async fn helper_exit_code_from_args() -> Option<i32> {
     let mut args = std::env::args_os();
     let _program = args.next()?;
     let command = args.next()?;
@@ -120,6 +125,32 @@ fn helper_exit_code_from_args() -> Option<i32> {
                     error.exit_code()
                 }
             })
+        }
+        "resolve-codex-rollout-path" => {
+            let Some(thread_id) = args.next() else {
+                return Some(CODEX_THREAD_PATH_LOOKUP_EXIT_INVALID_ARGS);
+            };
+            if args.next().is_some() {
+                return Some(CODEX_THREAD_PATH_LOOKUP_EXIT_INVALID_ARGS);
+            }
+            let Some(thread_id) = thread_id.to_str().and_then(CodexThreadId::parse) else {
+                return Some(CODEX_THREAD_PATH_LOOKUP_EXIT_INVALID_ARGS);
+            };
+            Some(
+                match guest_agent::codex_thread_path::resolve_codex_thread_path(&thread_id).await {
+                    Ok(report) => match serde_json::to_string(&report) {
+                        Ok(json) if json.len() <= CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES => {
+                            println!("{json}");
+                            CODEX_THREAD_PATH_LOOKUP_EXIT_SUCCESS
+                        }
+                        Ok(_) | Err(_) => CODEX_THREAD_PATH_LOOKUP_EXIT_FAILURE,
+                    },
+                    Err(error) => {
+                        eprintln!("{error}");
+                        CODEX_THREAD_PATH_LOOKUP_EXIT_FAILURE
+                    }
+                },
+            )
         }
         _ => None,
     }

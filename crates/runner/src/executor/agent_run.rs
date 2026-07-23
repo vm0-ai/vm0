@@ -1276,7 +1276,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if let Some(sidecar) = local_session_history_sidecar {
         let restore_started = Instant::now();
         match materialize_session_history_sidecar(context, &sidecar, config, &cancel).await {
-            Ok(session) => match restore_session(sandbox, context, &session).await {
+            Ok(session) => match restore_session(
+                sandbox,
+                context,
+                &session,
+                start.reuse_result,
+            )
+            .await
+            {
                 Ok(diagnostics) => {
                     telemetry.record(
                         "session_history_workspace_cache_restore",
@@ -1438,7 +1445,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
         if let Some(session) = resume_session {
             let t = Instant::now();
-            let result = restore_session(sandbox, context, &session).await;
+            let result =
+                restore_session(sandbox, context, &session, start.reuse_result).await;
             let err = result.as_ref().err().map(|e| e.to_string());
             telemetry.record(
                 "session_restore",

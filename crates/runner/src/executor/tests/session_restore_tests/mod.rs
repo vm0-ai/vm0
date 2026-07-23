@@ -3,19 +3,19 @@ mod codex;
 mod identity;
 mod validation;
 
-use sandbox::EXEC_OUTPUT_LIMIT_64_KIB;
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, Sandbox};
 use sandbox_mock::MockSandbox;
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tracing_subscriber::prelude::*;
 
-use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_history_cpu::codex_timestamp_for_test;
-use super::super::session_restore::MaterializedResumeSession;
+use super::super::session_restore::{MaterializedResumeSession, SessionRestoreDiagnostics};
+use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerResult};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context};
 use crate::types::{
     ExecutionContext, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef,
-    ResumeSessionHistoryRefKind,
+    ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
@@ -28,6 +28,34 @@ const CODEX_CANONICAL_ROLLOUT_PATH: &str = "/home/user/.codex/sessions/2026/06/0
 const CODEX_CANONICAL_ROLLOUT_SUFFIX: &str =
     "/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
 const CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX: &str = "-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+
+async fn restore_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> RunnerResult<SessionRestoreDiagnostics> {
+    super::super::session_restore::restore_session(
+        sandbox,
+        context,
+        session,
+        SandboxReuseResult::PoolMiss,
+    )
+    .await
+}
+
+async fn restore_reused_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> RunnerResult<SessionRestoreDiagnostics> {
+    super::super::session_restore::restore_session(
+        sandbox,
+        context,
+        session,
+        SandboxReuseResult::Reused,
+    )
+    .await
+}
 
 fn materialized_text_session(
     session_id: impl Into<String>,
@@ -133,62 +161,51 @@ fn codex_minimal_session_meta_history(session_id: &str) -> String {
     )
 }
 
-fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
+fn assert_codex_restore_calls(sandbox: &MockSandbox) {
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    assert_eq!(
-        exec_calls[0].env_keys,
-        [
-            "VM0_CODEX_RESTORE_SESSION_ID".to_string(),
-            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
-            "VM0_CODEX_RESTORE_SESSION_PATH".to_string()
-        ]
-    );
-    assert_eq!(exec_calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
-    assert_eq!(exec_calls[0].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
-    assert!(!exec_calls[0].sudo);
-    assert!(exec_calls[0].stdin_bytes.is_none());
-    assert!(exec_calls[0].cmd.contains("codex_home='/home/user/.codex'"));
-    assert!(exec_calls[0].cmd.contains("root=\"$codex_home/sessions\""));
-    assert!(exec_calls[0].cmd.contains("check_restore_dir_component"));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("check_restore_dir_component \"$codex_home\"")
-    );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("codex restore directory is a symlink")
-    );
-    assert!(exec_calls[0].cmd.contains("scan_budget="));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("collect_matching_session_entries")
-    );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("find \"$root\" -mindepth 1 -print0")
-    );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("delete_matching_session_entries")
-    );
-    assert!(exec_calls[0].cmd.contains("xargs -0"));
-    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.zst"));
-    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.vm0tmp-"));
-    assert!(exec_calls[0].cmd.contains("id_no_dashes"));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY")
-    );
-    assert!(!exec_calls[0].cmd.contains("tr -d"));
-    assert!(!exec_calls[0].cmd.contains("-delete"));
-    assert!(!exec_calls[0].cmd.contains("for path in \"$dir\"/*"));
+    assert_eq!(exec_calls.len(), 2);
+    for call in &exec_calls {
+        assert_eq!(
+            call.env_keys,
+            [
+                "VM0_CODEX_RESTORE_MODE".to_string(),
+                "VM0_CODEX_RESTORE_SESSION_ID".to_string(),
+                "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
+                "VM0_CODEX_RESTORE_SESSION_PATH".to_string(),
+                "VM0_CODEX_RESTORE_STAGING_PATH".to_string(),
+            ]
+        );
+        assert_eq!(call.timeout, DEFAULT_EXEC_TIMEOUT);
+        assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+        assert!(!call.sudo);
+        assert!(call.stdin_bytes.is_none());
+        assert!(call.cmd.contains("codex_home='/home/user/.codex'"));
+        assert!(call.cmd.contains("root=\"$codex_home/sessions\""));
+        assert!(call.cmd.contains("check_restore_dir_component"));
+        assert!(
+            call.cmd
+                .contains("check_restore_dir_component \"$codex_home\"")
+        );
+        assert!(call.cmd.contains("codex restore directory is a symlink"));
+        assert!(call.cmd.contains("scan_budget="));
+        assert!(call.cmd.contains("find \"$root\" -mindepth 1 -print0"));
+        assert!(call.cmd.contains("xargs -0"));
+        assert!(call.cmd.contains("\\\\.jsonl\\\\.zst"));
+        assert!(call.cmd.contains("\\\\.jsonl\\\\.vm0tmp-"));
+        assert!(call.cmd.contains("id_no_dashes"));
+        assert!(call.cmd.contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY"));
+        assert!(call.cmd.contains("mv -fT"));
+        assert!(!call.cmd.contains("tr -d"));
+        assert!(!call.cmd.contains("-delete"));
+        assert!(!call.cmd.contains("for path in \"$dir\"/*"));
+    }
+}
+
+fn codex_restore_target(staging_path: &str) -> &str {
+    staging_path
+        .rsplit_once(".vm0tmp-")
+        .map(|(target, _)| target)
+        .expect("Codex session history must be written to a staging path")
 }
 
 fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

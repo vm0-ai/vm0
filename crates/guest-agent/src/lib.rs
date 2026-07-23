@@ -15,6 +15,7 @@ mod artifact;
 pub mod checkpoint;
 pub mod cli;
 mod codex_auth;
+pub mod codex_thread_path;
 pub mod complete;
 mod constants;
 mod content_hash;

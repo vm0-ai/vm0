@@ -1,7 +1,217 @@
-use super::super::super::session_restore::restore_session;
 use super::super::support::sandbox_write_file_error;
 use super::*;
+use guest_contracts::codex_thread_path::{
+    CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES, CodexThreadPathLookupReport,
+};
 use sandbox::{ExecResult, ExecTermination};
+
+#[test]
+fn restore_reused_session_uses_codex_reported_rollout_path() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let session = materialized_text_session(
+        CODEX_SESSION_ID,
+        codex_minimal_session_meta_history(CODEX_SESSION_ID),
+    );
+    let reported_path = format!(
+        "/home/user/.codex/sessions/2026/06/05/rollout-2026-06-05T15-18-08-{CODEX_SESSION_ID}.jsonl"
+    );
+    let report = CodexThreadPathLookupReport::Found {
+        path: reported_path.clone(),
+    };
+    let mut report_bytes = serde_json::to_vec(&report).unwrap();
+    report_bytes.push(b'\n');
+    sandbox.push_exec_result(Ok(ExecResult::new(0, report_bytes, Vec::new())));
+
+    let (result, events) = capture_restore_events(restore_reused_session(&sandbox, &ctx, &session));
+    result.unwrap();
+
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 3);
+    assert!(exec_calls[0].cmd.contains("resolve-codex-rollout-path"));
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(codex_restore_target(&writes[0].path), reported_path);
+    assert_eq!(
+        captured_event(&events, "restored session history")
+            .fields
+            .get("destination_source")
+            .map(String::as_str),
+        Some("codex-index")
+    );
+}
+
+#[test]
+fn restore_reused_zstd_session_uses_codex_reported_logical_path() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-04T07:18:08.000Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let session = materialized_codex_zstd_session(CODEX_SESSION_ID, b"compressed", timestamp);
+    let reported_path = format!(
+        "/home/user/.codex/sessions/2026/06/05/rollout-2026-06-05T15-18-08-{CODEX_SESSION_ID}.jsonl"
+    );
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&CodexThreadPathLookupReport::Found {
+            path: reported_path.clone(),
+        })
+        .unwrap(),
+        Vec::new(),
+    )));
+
+    run_restore_session(restore_reused_session(&sandbox, &ctx, &session)).unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        codex_restore_target(&writes[0].path),
+        format!("{reported_path}.zst")
+    );
+}
+
+#[test]
+fn restore_reused_session_falls_back_when_codex_does_not_know_thread() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let session = materialized_text_session(
+        CODEX_SESSION_ID,
+        codex_minimal_session_meta_history(CODEX_SESSION_ID),
+    );
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&CodexThreadPathLookupReport::NotFound {}).unwrap(),
+        Vec::new(),
+    )));
+
+    let (result, events) = capture_restore_events(restore_reused_session(&sandbox, &ctx, &session));
+    result.unwrap();
+
+    assert_eq!(sandbox.exec_calls().len(), 3);
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert!(codex_restore_target(&writes[0].path).ends_with(CODEX_CANONICAL_ROLLOUT_SUFFIX));
+    assert_eq!(
+        captured_event(&events, "restored session history")
+            .fields
+            .get("destination_source")
+            .map(String::as_str),
+        Some("reused-fallback")
+    );
+}
+
+#[test]
+fn restore_reused_session_rejects_untrusted_codex_paths_and_reports() {
+    let other_thread_id = "019e9154-c304-70f0-adde-36efb1be1702";
+    let invalid_reports = [
+        b"{".to_vec(),
+        br#"{"status":"notFound","path":"/tmp/injected"}"#.to_vec(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID}.jsonl","extra":true}}"#
+        )
+        .into_bytes(),
+        format!(r#"{{"status":"found","path":"/tmp/rollout-{CODEX_SESSION_ID}.jsonl"}}"#)
+            .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID_NO_DASHES}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID}.jsonl.zst"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/extra/rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/../rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/05/rollout-2026-06-04T07-18-08-{CODEX_SESSION_ID}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/02/29/rollout-2026-02-29T07-18-08-{CODEX_SESSION_ID}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T24-18-08-{CODEX_SESSION_ID}.jsonl"}}"#
+        )
+        .into_bytes(),
+        format!(
+            r#"{{"status":"found","path":"/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-{other_thread_id}.jsonl"}}"#
+        )
+        .into_bytes(),
+    ];
+
+    for report in invalid_reports {
+        let sandbox = MockSandbox::new("test");
+        let ctx = codex_context();
+        let session = materialized_text_session(
+            CODEX_SESSION_ID,
+            codex_minimal_session_meta_history(CODEX_SESSION_ID),
+        );
+        sandbox.push_exec_result(Ok(ExecResult::new(0, report, Vec::new())));
+
+        let error =
+            run_restore_session(restore_reused_session(&sandbox, &ctx, &session)).unwrap_err();
+
+        assert!(
+            error.to_string().contains("codex"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(sandbox.exec_calls().len(), 1);
+        assert!(sandbox.write_file_calls().is_empty());
+    }
+}
+
+#[test]
+fn restore_reused_session_rejects_failed_or_oversized_lookup() {
+    let oversized = vec![b'a'; CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES + 1];
+    let failures = [
+        ExecResult::new(1, Vec::new(), b"lookup failed".to_vec()),
+        ExecResult {
+            termination: ExecTermination::WaitFailed,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        },
+        ExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            stdout: b"{\"status\":\"notFound\"}".to_vec(),
+            stderr: Vec::new(),
+            diagnostic: String::new(),
+            stdout_truncated: true,
+            stderr_truncated: false,
+        },
+        ExecResult::new(0, oversized, Vec::new()),
+    ];
+
+    for failure in failures {
+        let sandbox = MockSandbox::new("test");
+        let ctx = codex_context();
+        let session = materialized_text_session(
+            CODEX_SESSION_ID,
+            codex_minimal_session_meta_history(CODEX_SESSION_ID),
+        );
+        sandbox.push_exec_result(Ok(failure));
+
+        let error =
+            run_restore_session(restore_reused_session(&sandbox, &ctx, &session)).unwrap_err();
+
+        assert!(
+            error.to_string().contains("codex thread path lookup"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(sandbox.exec_calls().len(), 1);
+        assert!(sandbox.write_file_calls().is_empty());
+    }
+}
 
 #[test]
 fn restore_session_writes_codex_session() {
@@ -12,12 +222,12 @@ fn restore_session_writes_codex_session() {
     let session = materialized_text_session(CODEX_SESSION_ID, history.clone());
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert!(
-        writes[0].path.ends_with(CODEX_CANONICAL_ROLLOUT_SUFFIX),
+        codex_restore_target(&writes[0].path).ends_with(CODEX_CANONICAL_ROLLOUT_SUFFIX),
         "codex resume history must be restored as a canonical rollout jsonl, got {}",
         writes[0].path
     );
@@ -38,13 +248,12 @@ fn restore_session_writes_codex_zstd_session() {
 
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert!(
-        writes[0]
-            .path
+        codex_restore_target(&writes[0].path)
             .ends_with(&format!("{CODEX_CANONICAL_ROLLOUT_SUFFIX}.zst")),
         "codex zstd resume history must be restored as canonical rollout jsonl.zst, got {}",
         writes[0].path
@@ -74,6 +283,13 @@ fn restore_session_logs_codex_session_id() {
         restore_event.fields.get("session_id").map(String::as_str),
         Some(CODEX_SESSION_ID)
     );
+    assert_eq!(
+        restore_event
+            .fields
+            .get("destination_source")
+            .map(String::as_str),
+        Some("non-reused-fallback")
+    );
     assert!(
         !restore_event.fields.contains_key("path"),
         "restore diagnostic must not include a path embedding the session id: {restore_event:#?}"
@@ -91,17 +307,17 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
+    let target = codex_restore_target(&writes[0].path);
     assert!(
-        writes[0].path.starts_with("/home/user/.codex/sessions/"),
+        target.starts_with("/home/user/.codex/sessions/"),
         "codex resume history must be restored under codex sessions, got {}",
         writes[0].path
     );
-    let filename = writes[0]
-        .path
+    let filename = target
         .rsplit('/')
         .next()
         .expect("restored codex path should have a filename");
@@ -126,17 +342,17 @@ fn restore_session_writes_invalid_utf8_codex_history_with_fallback_filename() {
 
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
+    let target = codex_restore_target(&writes[0].path);
     assert!(
-        writes[0].path.starts_with("/home/user/.codex/sessions/"),
+        target.starts_with("/home/user/.codex/sessions/"),
         "codex resume history must be restored under codex sessions, got {}",
         writes[0].path
     );
-    let filename = writes[0]
-        .path
+    let filename = target
         .rsplit('/')
         .next()
         .expect("restored codex path should have a filename");
@@ -160,14 +376,12 @@ fn restore_session_canonicalizes_codex_session_id() {
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
-    assert_codex_cleanup_call(&sandbox);
+    assert_codex_restore_calls(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert!(
-        writes[0]
-            .path
-            .ends_with(CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX),
+        codex_restore_target(&writes[0].path).ends_with(CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX),
         "codex restore path must use canonical thread id, got {}",
         writes[0].path
     );
@@ -215,7 +429,7 @@ async fn restore_session_rejects_decorated_codex_session_id_without_cleanup() {
 }
 
 #[tokio::test]
-async fn restore_session_fails_when_codex_cleanup_fails() {
+async fn restore_session_fails_before_write_when_codex_prepare_fails() {
     let sandbox = MockSandbox::new("test");
     let ctx = codex_context();
     let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
@@ -229,7 +443,7 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
 
     let message = err.to_string();
     assert!(
-        message.contains("codex session cleanup failed"),
+        message.contains("codex session restore prepare failed"),
         "got: {message}"
     );
     assert!(message.contains("cleanup failed"), "got: {message}");
@@ -241,6 +455,7 @@ async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
     let sandbox = MockSandbox::new("test");
     let ctx = codex_context();
     let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
@@ -250,9 +465,9 @@ async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("codex session cleanup failed"));
+    assert!(message.contains("codex session restore commit failed"));
     assert!(message.contains("codex session cleanup exceeded scan budget"));
-    assert!(sandbox.write_file_calls().is_empty());
+    assert_eq!(sandbox.write_file_calls().len(), 1);
 }
 
 #[tokio::test]
@@ -263,6 +478,7 @@ async fn restore_session_preserves_codex_cleanup_failure_output() {
         CODEX_SESSION_ID,
         codex_minimal_session_meta_history(CODEX_SESSION_ID),
     );
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         format!("stdout includes {CODEX_SESSION_ID_NO_DASHES}").into_bytes(),
@@ -272,7 +488,7 @@ async fn restore_session_preserves_codex_cleanup_failure_output() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("codex session cleanup failed"));
+    assert!(message.contains("codex session restore commit failed"));
     assert!(message.contains(CODEX_SESSION_ID), "got: {message}");
     assert!(
         message.contains(CODEX_SESSION_ID_NO_DASHES),
@@ -282,7 +498,7 @@ async fn restore_session_preserves_codex_cleanup_failure_output() {
         message.contains(CODEX_CANONICAL_ROLLOUT_PATH),
         "got: {message}"
     );
-    assert!(sandbox.write_file_calls().is_empty());
+    assert_eq!(sandbox.write_file_calls().len(), 1);
 }
 
 #[tokio::test]
@@ -293,6 +509,7 @@ async fn restore_session_preserves_non_exited_codex_cleanup_failure_output() {
         CODEX_SESSION_ID,
         codex_minimal_session_meta_history(CODEX_SESSION_ID),
     );
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::WaitFailed,
         stdout: format!("stdout includes {CODEX_SESSION_ID_NO_DASHES}").into_bytes(),
@@ -305,7 +522,7 @@ async fn restore_session_preserves_non_exited_codex_cleanup_failure_output() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(message.contains("codex session cleanup failed (wait failed)"));
+    assert!(message.contains("codex session restore commit failed (wait failed)"));
     assert!(message.contains(CODEX_SESSION_ID), "got: {message}");
     assert!(
         message.contains(CODEX_SESSION_ID_NO_DASHES),
@@ -315,7 +532,7 @@ async fn restore_session_preserves_non_exited_codex_cleanup_failure_output() {
         message.contains(CODEX_CANONICAL_ROLLOUT_PATH),
         "got: {message}"
     );
-    assert!(sandbox.write_file_calls().is_empty());
+    assert_eq!(sandbox.write_file_calls().len(), 1);
 }
 
 #[tokio::test]

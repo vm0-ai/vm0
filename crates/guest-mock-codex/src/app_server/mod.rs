@@ -160,6 +160,7 @@ impl AppServerState {
             "initialize" => self.handle_initialize(id, params, output),
             "thread/start" => self.handle_thread_start(id, params, output),
             "thread/resume" => self.handle_thread_resume(id, params, output),
+            "thread/read" => self.handle_thread_read(id, params, output),
             "turn/start" => self.handle_turn_start(id, params, output),
             "turn/steer" => self.handle_turn_steer(id, params, output),
             "mock/inputs" => self.handle_mock_inputs(id, output),

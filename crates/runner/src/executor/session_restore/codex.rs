@@ -1,30 +1,138 @@
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use std::time::Duration;
+
+use guest_contracts::codex_thread_id::CodexThreadId;
+use guest_contracts::codex_thread_path::{
+    CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES, CodexThreadPathLookupReport,
+};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::types::ExecutionContext;
+use crate::paths::guest;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
-use guest_contracts::codex_thread_id::CodexThreadId;
 
 const CODEX_HOME: &str = "/home/user/.codex";
-const CODEX_SESSION_CLEANUP_SCRIPT: &str =
-    include_str!("../../../scripts/codex-session-cleanup.sh");
+const CODEX_SESSIONS_ROOT: &str = "/home/user/.codex/sessions";
+const CODEX_SESSION_RESTORE_SCRIPT: &str =
+    include_str!("../../../scripts/codex-session-restore.sh");
+const CODEX_THREAD_PATH_LOOKUP_TIMEOUT: Duration = Duration::from_secs(20);
+const CODEX_THREAD_PATH_LOOKUP_OUTPUT_LIMITS: ExecOutputLimits = ExecOutputLimits::separate(
+    CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES as u32 + 1,
+    8 * 1024,
+);
+const ROLLOUT_PREFIX: &str = "rollout-";
+const LOGICAL_EXTENSION: &str = ".jsonl";
+const TIMESTAMP_LEN: usize = 19;
 
-fn codex_restore_rollout_path(
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CodexRolloutPath {
+    logical: String,
+}
+
+impl CodexRolloutPath {
+    fn parse(raw: &str, thread_id: &CodexThreadId) -> Option<Self> {
+        let relative = raw.strip_prefix(&format!("{CODEX_SESSIONS_ROOT}/"))?;
+        let [year, month, day, file_name] = exact_path_components(relative)?;
+        if raw != format!("{CODEX_SESSIONS_ROOT}/{year}/{month}/{day}/{file_name}") {
+            return None;
+        }
+
+        let timestamp_and_thread = file_name
+            .strip_prefix(ROLLOUT_PREFIX)?
+            .strip_suffix(LOGICAL_EXTENSION)?;
+        let expected_thread_suffix = format!("-{}", thread_id.as_str());
+        let timestamp = timestamp_and_thread.strip_suffix(&expected_thread_suffix)?;
+        if timestamp.len() != TIMESTAMP_LEN
+            || !valid_timestamp(timestamp)
+            || timestamp.get(..10)? != format!("{year}-{month}-{day}")
+        {
+            return None;
+        }
+
+        Some(Self {
+            logical: raw.to_string(),
+        })
+    }
+
+    fn physical_path(&self, zstd: bool) -> String {
+        if zstd {
+            format!("{}.zst", self.logical)
+        } else {
+            self.logical.clone()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CodexRolloutPathSource {
+    CodexIndex,
+    ReusedFallback,
+    NonReusedFallback,
+}
+
+impl CodexRolloutPathSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CodexIndex => "codex-index",
+            Self::ReusedFallback => "reused-fallback",
+            Self::NonReusedFallback => "non-reused-fallback",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CodexRestorePhase {
+    Prepare,
+    Commit,
+}
+
+impl CodexRestorePhase {
+    fn mode(self) -> &'static str {
+        match self {
+            Self::Prepare => "prepare",
+            Self::Commit => "commit",
+        }
+    }
+
+    fn diagnostic_label(self) -> &'static str {
+        match self {
+            Self::Prepare => "codex-session-restore-prepare",
+            Self::Commit => "codex-session-restore-commit",
+        }
+    }
+
+    fn operation(self) -> &'static str {
+        match self {
+            Self::Prepare => "codex session restore prepare",
+            Self::Commit => "codex session restore commit",
+        }
+    }
+}
+
+struct CodexRestoreRequest<'a> {
+    session_id: &'a str,
+    session_filename_key: &'a str,
+    session_path: &'a str,
+    staging_path: &'a str,
+}
+
+fn codex_fallback_rollout_path(
     session_id: &str,
     timestamp: chrono::DateTime<chrono::Utc>,
-    extension: &str,
-) -> String {
-    format!(
-        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}{extension}",
-        timestamp.format("%Y"),
-        timestamp.format("%m"),
-        timestamp.format("%d"),
-        timestamp.format("%Y-%m-%dT%H-%M-%S"),
-    )
+) -> CodexRolloutPath {
+    CodexRolloutPath {
+        logical: format!(
+            "{CODEX_SESSIONS_ROOT}/{}/{}/{}/rollout-{}-{session_id}.jsonl",
+            timestamp.format("%Y"),
+            timestamp.format("%m"),
+            timestamp.format("%d"),
+            timestamp.format("%Y-%m-%dT%H-%M-%S"),
+        ),
+    }
 }
 
 fn codex_restore_rollout_timestamp(
@@ -34,16 +142,17 @@ fn codex_restore_rollout_timestamp(
     session.codex_timestamp().unwrap_or(fallback_timestamp)
 }
 
-/// Write a Codex session history file as canonical JSONL or zstd-compressed
-/// JSONL under
-/// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]`.
+/// Restore Codex history at Codex's indexed logical rollout path in a reused
+/// sandbox, or at a canonical timestamp-derived path when no local Codex index
+/// entry exists. Native zstd history uses the logical path's `.zst` sibling.
 ///
-/// Codex 0.137 filters filesystem resume candidates through its canonical
+/// Codex filters filesystem resume candidates through its canonical
 /// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
+    reuse_result: SandboxReuseResult,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
@@ -52,23 +161,35 @@ pub(super) async fn restore_codex_session(
     let session_filename_key = thread_id.filename_key();
 
     let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
-    let (session_history, extension) = if let Some(bytes) = session.codex_zstd_history() {
-        (bytes, ".jsonl.zst")
+    let fallback_path = codex_fallback_rollout_path(session_id, timestamp);
+    let (rollout_path, path_source) = if reuse_result == SandboxReuseResult::Reused {
+        match lookup_codex_rollout_path(sandbox, &thread_id).await? {
+            Some(path) => (path, CodexRolloutPathSource::CodexIndex),
+            None => (fallback_path, CodexRolloutPathSource::ReusedFallback),
+        }
     } else {
-        (session.history_bytes(), ".jsonl")
+        (fallback_path, CodexRolloutPathSource::NonReusedFallback)
     };
-    let session_path = codex_restore_rollout_path(session_id, timestamp, extension);
 
-    cleanup_existing_codex_session_files(
-        sandbox,
-        context,
+    let (session_history, zstd) = if let Some(bytes) = session.codex_zstd_history() {
+        (bytes, true)
+    } else {
+        (session.history_bytes(), false)
+    };
+    let session_path = rollout_path.physical_path(zstd);
+    let staging_path = format!("{session_path}.vm0tmp-{}", context.run_id);
+    let restore = CodexRestoreRequest {
         session_id,
-        &session_filename_key,
-        &session_path,
-    )
-    .await?;
+        session_filename_key: &session_filename_key,
+        session_path: &session_path,
+        staging_path: &staging_path,
+    };
 
-    write_session_history_file(sandbox, &session_path, session_history).await?;
+    run_codex_restore_script(sandbox, CodexRestorePhase::Prepare, &restore).await?;
+
+    write_session_history_file(sandbox, &staging_path, session_history).await?;
+
+    run_codex_restore_script(sandbox, CodexRestorePhase::Commit, &restore).await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
@@ -80,31 +201,80 @@ pub(super) async fn restore_codex_session(
         framework = diagnostics.framework,
         session_id = %diagnostics.session_id,
         bytes_in = diagnostics.bytes_in,
+        destination_source = path_source.as_str(),
         "restored session history",
     );
     Ok(diagnostics)
 }
 
-async fn cleanup_existing_codex_session_files(
+async fn lookup_codex_rollout_path(
     sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
-    session_id: &str,
-    session_filename_key: &str,
-    session_path: &str,
+    thread_id: &CodexThreadId,
+) -> RunnerResult<Option<CodexRolloutPath>> {
+    let command = [
+        quote_shell_arg(guest::RUN_AGENT),
+        "resolve-codex-rollout-path".to_string(),
+        quote_shell_arg(thread_id.as_str()),
+    ]
+    .join(" ");
+    let result = sandbox
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &command,
+                timeout: CODEX_THREAD_PATH_LOOKUP_TIMEOUT,
+                env: &[],
+                sudo: false,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                output_limits: CODEX_THREAD_PATH_LOOKUP_OUTPUT_LIMITS,
+            },
+            "codex-thread-path-lookup",
+        )
+        .await?;
+    if !helper_exec_succeeded(&result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "codex thread path lookup",
+            &result,
+        )));
+    }
+    let report_bytes = result.stdout.strip_suffix(b"\n").unwrap_or(&result.stdout);
+    if result.stdout_truncated || report_bytes.len() > CODEX_THREAD_PATH_LOOKUP_REPORT_MAX_BYTES {
+        return Err(RunnerError::Internal(
+            "codex thread path lookup returned an oversized report".into(),
+        ));
+    }
+    let report =
+        serde_json::from_slice::<CodexThreadPathLookupReport>(report_bytes).map_err(|_| {
+            RunnerError::Internal("codex thread path lookup returned an invalid report".into())
+        })?;
+    match report {
+        CodexThreadPathLookupReport::Found { path } => CodexRolloutPath::parse(&path, thread_id)
+            .map(Some)
+            .ok_or_else(|| RunnerError::Internal("invalid codex rollout path".into())),
+        CodexThreadPathLookupReport::NotFound {} => Ok(None),
+    }
+}
+
+async fn run_codex_restore_script(
+    sandbox: &dyn Sandbox,
+    phase: CodexRestorePhase,
+    restore: &CodexRestoreRequest<'_>,
 ) -> RunnerResult<()> {
-    let cleanup_cmd = codex_session_cleanup_command(CODEX_HOME);
+    let command = codex_session_restore_command(CODEX_HOME);
     let env = [
-        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("VM0_CODEX_RESTORE_MODE", phase.mode()),
+        ("VM0_CODEX_RESTORE_SESSION_ID", restore.session_id),
         (
             "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
-            session_filename_key,
+            restore.session_filename_key,
         ),
-        ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
+        ("VM0_CODEX_RESTORE_SESSION_PATH", restore.session_path),
+        ("VM0_CODEX_RESTORE_STAGING_PATH", restore.staging_path),
     ];
     let result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
-                cmd: &cleanup_cmd,
+                cmd: &command,
                 timeout: DEFAULT_EXEC_TIMEOUT,
                 env: &env,
                 sudo: false,
@@ -112,26 +282,43 @@ async fn cleanup_existing_codex_session_files(
                 stdin_bytes: None,
                 output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
             },
-            "codex-session-cleanup",
+            phase.diagnostic_label(),
         )
         .await?;
     if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(format_helper_exec_failure(
-            "codex session cleanup",
+            phase.operation(),
             &result,
         )));
     }
-    info!(
-        run_id = %context.run_id,
-        session_id = %session_id,
-        "cleaned up existing codex session files before restore",
-    );
     Ok(())
 }
 
-fn codex_session_cleanup_command(codex_home: &str) -> String {
+fn codex_session_restore_command(codex_home: &str) -> String {
     let codex_home = quote_shell_arg(codex_home);
-    format!("codex_home={codex_home}\n{CODEX_SESSION_CLEANUP_SCRIPT}")
+    format!("codex_home={codex_home}\n{CODEX_SESSION_RESTORE_SCRIPT}")
+}
+
+fn exact_path_components(raw: &str) -> Option<[&str; 4]> {
+    let mut components = raw.split('/');
+    let parsed = [
+        components.next()?,
+        components.next()?,
+        components.next()?,
+        components.next()?,
+    ];
+    if components.next().is_some()
+        || parsed
+            .iter()
+            .any(|component| component.is_empty() || matches!(*component, "." | ".."))
+    {
+        return None;
+    }
+    Some(parsed)
+}
+
+fn valid_timestamp(timestamp: &str) -> bool {
+    chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H-%M-%S").is_ok()
 }
 
 #[cfg(test)]
@@ -155,6 +342,10 @@ mod tests {
     fn create_file(path: &Path) {
         fs::create_dir_all(path.parent().expect("test path should have parent")).unwrap();
         fs::write(path, "test").unwrap();
+    }
+
+    fn staging_path(restore_path: &Path) -> PathBuf {
+        PathBuf::from(format!("{}.vm0tmp-test", restore_path.display()))
     }
 
     fn run_cleanup(codex_home: &Path, restore_path: &Path) -> Output {
@@ -181,12 +372,17 @@ mod tests {
         session_id: &str,
         session_filename_key: &str,
     ) -> Output {
+        let staging_path = staging_path(restore_path);
+        if staging_path.parent().is_some_and(Path::is_dir) {
+            fs::write(&staging_path, "replacement").unwrap();
+        }
         cleanup_command(codex_home, restore_path, session_id, session_filename_key)
             .output()
             .unwrap()
     }
 
     fn run_cleanup_with_budget(codex_home: &Path, restore_path: &Path, budget: &str) -> Output {
+        fs::write(staging_path(restore_path), "replacement").unwrap();
         cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
             .env("VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
             .output()
@@ -200,11 +396,13 @@ mod tests {
         session_filename_key: &str,
     ) -> Command {
         let mut command = Command::new("sh");
+        let staging_path = staging_path(restore_path);
         command
             .arg("-c")
-            .arg(codex_session_cleanup_command(
+            .arg(codex_session_restore_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
+            .env("VM0_CODEX_RESTORE_MODE", "commit")
             .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
             .env(
                 "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
@@ -213,7 +411,18 @@ mod tests {
             .env(
                 "VM0_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
+            )
+            .env(
+                "VM0_CODEX_RESTORE_STAGING_PATH",
+                staging_path.to_str().expect("test path should be utf-8"),
             );
+        command
+    }
+
+    fn prepare_command(codex_home: &Path, restore_path: &Path) -> Command {
+        let mut command =
+            cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES);
+        command.env("VM0_CODEX_RESTORE_MODE", "prepare");
         command
     }
 
@@ -242,17 +451,75 @@ mod tests {
 
     #[test]
     fn cleanup_command_uses_fixed_codex_home_prelude() {
-        let command = codex_session_cleanup_command(CODEX_HOME);
+        let command = codex_session_restore_command(CODEX_HOME);
 
         assert!(command.contains("codex_home='/home/user/.codex'"));
         assert!(command.contains("root=\"$codex_home/sessions\""));
         assert!(command.contains("scan_budget="));
-        assert!(command.contains("collect_matching_session_entries"));
         assert!(command.contains("find \"$root\" -mindepth 1 -print0"));
-        assert!(command.contains("delete_matching_session_entries"));
         assert!(command.contains("xargs -0"));
+        assert!(command.contains("prepare|commit"));
+        assert!(command.contains("mv -fT"));
         assert!(!command.contains("-delete"));
         assert!(!command.contains("for path in \"$dir\"/*"));
+    }
+
+    #[test]
+    fn restore_prepare_rejects_existing_staging_without_touching_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let staging_path = staging_path(&restore_path);
+        create_file(&restore_path);
+        fs::write(&restore_path, "original").unwrap();
+        create_file(&staging_path);
+
+        let output = prepare_command(&codex_home, &restore_path)
+            .output()
+            .unwrap();
+
+        assert_failure_contains(&output, "codex restore staging path already exists");
+        assert_eq!(fs::read_to_string(&restore_path).unwrap(), "original");
+        assert!(staging_path.is_file());
+    }
+
+    #[test]
+    fn restore_prepare_rejects_symlink_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let unrelated = temp.path().join("unrelated");
+        create_file(&unrelated);
+        fs::create_dir_all(restore_path.parent().unwrap()).unwrap();
+        symlink(&unrelated, &restore_path).unwrap();
+
+        let output = prepare_command(&codex_home, &restore_path)
+            .output()
+            .unwrap();
+
+        assert_failure_contains(&output, "codex restore target is a symlink");
+        assert_eq!(fs::read_to_string(&unrelated).unwrap(), "test");
+    }
+
+    #[test]
+    fn restore_commit_rejects_symlink_staging_without_touching_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let staging_path = staging_path(&restore_path);
+        let unrelated = temp.path().join("unrelated");
+        create_file(&restore_path);
+        fs::write(&restore_path, "original").unwrap();
+        create_file(&unrelated);
+        symlink(&unrelated, &staging_path).unwrap();
+
+        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .output()
+            .unwrap();
+
+        assert_failure_contains(&output, "codex restore staging path is a symlink");
+        assert_eq!(fs::read_to_string(&restore_path).unwrap(), "original");
+        assert_eq!(fs::read_to_string(&unrelated).unwrap(), "test");
     }
 
     #[test]
@@ -299,6 +566,7 @@ mod tests {
         assert!(!matching_symlink.exists());
         assert!(matching_directory.exists());
         assert!(unrelated.exists());
+        assert_eq!(fs::read_to_string(&restore_path).unwrap(), "replacement");
     }
 
     #[test]
@@ -309,12 +577,15 @@ mod tests {
         let restore_dir = restore_path.parent().unwrap();
         fs::create_dir_all(restore_dir).unwrap();
         let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        fs::write(&restore_path, "original").unwrap();
         create_file(&matching_jsonl);
 
         let output = run_cleanup_with_budget(&codex_home, &restore_path, "1");
 
         assert_failure_contains(&output, "codex session cleanup exceeded scan budget");
         assert!(matching_jsonl.exists());
+        assert_eq!(fs::read_to_string(&restore_path).unwrap(), "original");
+        assert!(staging_path(&restore_path).is_file());
     }
 
     #[test]
@@ -364,6 +635,7 @@ mod tests {
         fs::create_dir_all(restore_dir).unwrap();
         let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
         create_file(&matching_jsonl);
+        create_file(&staging_path(&restore_path));
 
         let fake_bin = temp.path().join("fake-bin");
         fs::create_dir(&fake_bin).unwrap();
@@ -432,12 +704,13 @@ mod tests {
         fs::create_dir_all(&codex_home).unwrap();
         let restore_path = restore_path(&codex_home);
 
-        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+        let output = prepare_command(&codex_home, &restore_path)
             .env("TMPDIR", temp.path().join("missing-tmp"))
             .output()
             .unwrap();
 
         assert_success(&output);
+        assert!(restore_path.parent().unwrap().is_dir());
     }
 
     #[test]
@@ -449,6 +722,19 @@ mod tests {
         let shallow_restore_path = root.join(format!("rollout-{SESSION_ID}.jsonl"));
 
         let output = run_cleanup(&codex_home, &shallow_restore_path);
+
+        assert_failure_contains(&output, "invalid codex restore directory");
+    }
+
+    #[test]
+    fn cleanup_script_rejects_restore_path_with_extra_date_depth() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = codex_home
+            .join("sessions/2026/06/04/extra")
+            .join(format!("rollout-2026-06-04T07-18-08-{SESSION_ID}.jsonl"));
+
+        let output = run_cleanup(&codex_home, &restore_path);
 
         assert_failure_contains(&output, "invalid codex restore directory");
     }

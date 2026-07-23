@@ -200,6 +200,77 @@ impl AppServerState {
         Ok(ServerAction::Continue)
     }
 
+    pub(super) fn handle_thread_read<W: Write>(
+        &mut self,
+        id: Value,
+        params: &Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if !self.initialized {
+            write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
+            return Ok(ServerAction::Continue);
+        }
+        let Some(thread_id) = non_empty_string_param(params, "threadId") else {
+            write_error(output, id, INVALID_REQUEST, "missing threadId")?;
+            return Ok(ServerAction::Continue);
+        };
+        if params.get("includeTurns").and_then(Value::as_bool) != Some(false) {
+            write_error(output, id, INVALID_REQUEST, "includeTurns must be false")?;
+            return Ok(ServerAction::Continue);
+        }
+
+        match self.scenario {
+            Scenario::HangOnThreadRead => loop {
+                thread::park();
+            },
+            Scenario::ThreadReadNotFound => {
+                write_error(
+                    output,
+                    id,
+                    INVALID_REQUEST,
+                    &format!("thread not loaded: {thread_id}"),
+                )?;
+            }
+            Scenario::ThreadReadRpcError => {
+                write_error(output, id, INVALID_REQUEST, "thread read failed")?;
+            }
+            Scenario::ThreadReadWrongErrorCode => {
+                write_error(
+                    output,
+                    id,
+                    -32603,
+                    &format!("thread not loaded: {thread_id}"),
+                )?;
+            }
+            Scenario::ThreadReadMalformedResult => {
+                write_success(output, id, json!({ "thread": "malformed" }))?;
+            }
+            Scenario::ThreadReadNullPath => {
+                write_success(
+                    output,
+                    id,
+                    json!({
+                        "thread": {
+                            "id": thread_id,
+                            "path": null,
+                        }
+                    }),
+                )?;
+            }
+            Scenario::ThreadReadWrongThread => {
+                write_success(
+                    output,
+                    id,
+                    thread_read_response("0193abcd-ef01-7234-89ab-cdef01234568"),
+                )?;
+            }
+            _ => {
+                write_success(output, id, thread_read_response(thread_id))?;
+            }
+        }
+        Ok(ServerAction::Continue)
+    }
+
     pub(super) fn handle_turn_start<W: Write>(
         &mut self,
         id: Value,
@@ -525,4 +596,16 @@ fn text_inputs(params: &Value) -> Result<Vec<String>, String> {
         inputs.push(text.to_string());
     }
     Ok(inputs)
+}
+
+fn thread_read_response(thread_id: &str) -> Value {
+    json!({
+        "thread": {
+            "id": thread_id,
+            "path": format!(
+                "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T04-01-04-{thread_id}.jsonl"
+            ),
+            "preview": "guest-mock-codex thread read",
+        }
+    })
 }
