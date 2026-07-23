@@ -2976,6 +2976,54 @@ function createOnSubscribedCommand({
   });
 }
 
+function createOnMessageCreatedCommand({
+  threadId,
+  mergeNewIndexedDbMessages$,
+  persistentChatMessageIds$,
+  syncRemoteMessages$,
+  markThreadReadIfNeeded$,
+  autoScroll$,
+}: Pick<
+  RunTrackingDeps,
+  | "threadId"
+  | "mergeNewIndexedDbMessages$"
+  | "persistentChatMessageIds$"
+  | "syncRemoteMessages$"
+  | "autoScroll$"
+> & {
+  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
+}): Command<Promise<boolean>, [unknown, AbortSignal]> {
+  return command(async ({ get, set }, payload: unknown, sig: AbortSignal) => {
+    L.debug("onMessageCreated$ fired", { threadId });
+    await set(mergeNewIndexedDbMessages$, sig);
+    sig.throwIfAborted();
+    const syncThroughMessageId =
+      messageCreatedPayloadSyncThroughMessageId(payload);
+    if (
+      syncThroughMessageId !== null &&
+      get(persistentChatMessageIds$).has(syncThroughMessageId)
+    ) {
+      // The event's watermark row is already local (background sync or an
+      // earlier fetch), so every row of this publish is present too.
+      L.debug("onMessageCreated$ skipped sync: watermark already local", {
+        threadId,
+        syncThroughMessageId,
+      });
+    } else {
+      await set(syncRemoteMessages$, sig);
+      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
+    }
+    await set(markThreadReadIfNeeded$, sig);
+    animationFrame(
+      () => {
+        set(autoScroll$);
+      },
+      { signal: sig },
+    );
+    return false;
+  });
+}
+
 function createRunTracking({
   threadId,
   reloadThread$,
@@ -3016,6 +3064,15 @@ function createRunTracking({
     markThreadReadIfNeeded$,
   });
 
+  const onMessageCreated$ = createOnMessageCreatedCommand({
+    threadId,
+    mergeNewIndexedDbMessages$,
+    persistentChatMessageIds$,
+    syncRemoteMessages$,
+    markThreadReadIfNeeded$,
+    autoScroll$,
+  });
+
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbMessages$, signal);
@@ -3026,38 +3083,6 @@ function createRunTracking({
       set(reloadThread$);
       return false;
     });
-
-    const onMessageCreated$ = command(
-      async ({ get, set }, payload: unknown, sig: AbortSignal) => {
-        L.debug("onMessageCreated$ fired", { threadId });
-        await set(mergeNewIndexedDbMessages$, sig);
-        sig.throwIfAborted();
-        const syncThroughMessageId =
-          messageCreatedPayloadSyncThroughMessageId(payload);
-        if (
-          syncThroughMessageId !== null &&
-          get(persistentChatMessageIds$).has(syncThroughMessageId)
-        ) {
-          // The event's watermark row is already local (background sync or an
-          // earlier fetch), so every row of this publish is present too.
-          L.debug("onMessageCreated$ skipped sync: watermark already local", {
-            threadId,
-            syncThroughMessageId,
-          });
-        } else {
-          await set(syncRemoteMessages$, sig);
-          L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
-        }
-        await set(markThreadReadIfNeeded$, sig);
-        animationFrame(
-          () => {
-            set(autoScroll$);
-          },
-          { signal: sig },
-        );
-        return false;
-      },
-    );
 
     const onMessageUpdated$ = command(
       async ({ set }, payload: unknown, sig: AbortSignal) => {
