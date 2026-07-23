@@ -14,6 +14,10 @@ const SLIDE_SELECTORS = [
   ".slide",
   "section",
 ] as const;
+export const PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES = [
+  "active",
+  "is-active",
+] as const;
 const FALLBACK_EDITABLE_SELECTOR =
   "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,td,th,span,div";
 const UNSAFE_PREVIEW_URL_PROTOCOLS = [
@@ -58,12 +62,6 @@ interface DeckMetadata {
   readonly editProtocolVersion?: number;
   readonly kind?: string;
   readonly slides?: Record<string, DeckMetadataSlide>;
-}
-
-interface MutableDeckMetadata {
-  editProtocolVersion?: number;
-  kind?: string;
-  slides?: Record<string, { speakerNotes?: string }>;
 }
 
 type PresentationPalette = readonly [
@@ -117,6 +115,15 @@ function parseDeckMetadata(doc: Document): DeckMetadata {
   };
 }
 
+function parseMutableDeckMetadata(doc: Document): Record<string, unknown> {
+  const script = deckMetadataScript(doc);
+  const parsed: unknown = JSON.parse(script.textContent);
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid presentation deck metadata");
+  }
+  return { ...parsed };
+}
+
 function serializeDoc(doc: Document): string {
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }
@@ -165,6 +172,91 @@ function selectSlideElements(doc: Document): Element[] {
     }
   }
   return doc.body ? [doc.body] : [];
+}
+
+function matchesPresentationSlideSelector(element: Element): boolean {
+  return SLIDE_SELECTORS.some((selector) => {
+    return element.matches(selector);
+  });
+}
+
+function presentationSlideWrapperHierarchy(slide: Element): Element[] {
+  const ancestors: Element[] = [];
+  let ancestor = slide.parentElement;
+  let hierarchyLength = 0;
+  while (ancestor && ancestor !== slide.ownerDocument.body) {
+    ancestors.push(ancestor);
+    if (matchesPresentationSlideSelector(ancestor)) {
+      hierarchyLength = ancestors.length;
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return ancestors.slice(0, hierarchyLength);
+}
+
+function observedActiveSlideClassNames(
+  slides: readonly Element[],
+): readonly string[] {
+  const slideElements = slides.flatMap((slide) => {
+    return [
+      slide,
+      ...presentationSlideWrapperHierarchy(slide).filter((ancestor) => {
+        return matchesPresentationSlideSelector(ancestor);
+      }),
+    ];
+  });
+  return PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES.filter((className) => {
+    return slideElements.some((element) => {
+      return element.classList.contains(className);
+    });
+  });
+}
+
+function activatePresentationSlide(
+  slide: Element,
+  activeClassNames: readonly string[],
+): void {
+  for (const className of activeClassNames) {
+    slide.classList.add(className);
+  }
+  slide.removeAttribute("hidden");
+  slide.removeAttribute("inert");
+  slide.setAttribute("aria-hidden", "false");
+  if (
+    slide instanceof HTMLElement &&
+    slide.style.getPropertyValue("display").trim().toLowerCase() === "none"
+  ) {
+    slide.style.removeProperty("display");
+  }
+}
+
+interface PresentationSlidePreviewClone {
+  readonly root: Element;
+  readonly slide: Element;
+}
+
+function clonePresentationSlideForPreview(
+  slide: Element,
+  activeClassNames: readonly string[],
+): PresentationSlidePreviewClone | null {
+  const slideClone = slide.cloneNode(true);
+  if (!(slideClone instanceof Element)) {
+    return null;
+  }
+  activatePresentationSlide(slideClone, activeClassNames);
+  let root = slideClone;
+  for (const ancestor of presentationSlideWrapperHierarchy(slide)) {
+    const ancestorClone = ancestor.cloneNode(false);
+    if (!(ancestorClone instanceof Element)) {
+      continue;
+    }
+    if (matchesPresentationSlideSelector(ancestorClone)) {
+      activatePresentationSlide(ancestorClone, activeClassNames);
+    }
+    ancestorClone.append(root);
+    root = ancestorClone;
+  }
+  return { root, slide: slideClone };
 }
 
 function hasUsefulText(element: Element): boolean {
@@ -240,6 +332,19 @@ function findEditable(slide: Element, editId: string): Element | null {
   );
 }
 
+function isTransientPresentationEditorAttribute(name: string): boolean {
+  switch (name) {
+    case "data-vm0-editor-edit-id":
+    case "data-vm0-editor-slide-id":
+    case "data-vm0-editor-stage": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
 function sanitizePreviewTree(root: ParentNode): void {
   for (const element of Array.from(
     root.querySelectorAll("script,noscript,iframe,object,embed"),
@@ -247,7 +352,8 @@ function sanitizePreviewTree(root: ParentNode): void {
     element.remove();
   }
   for (const meta of Array.from(root.querySelectorAll("meta[http-equiv]"))) {
-    if (meta.getAttribute("http-equiv")?.toLowerCase() === "refresh") {
+    const httpEquiv = meta.getAttribute("http-equiv")?.toLowerCase();
+    if (httpEquiv === "refresh" || httpEquiv === "content-security-policy") {
       meta.remove();
     }
   }
@@ -256,6 +362,7 @@ function sanitizePreviewTree(root: ParentNode): void {
       const name = attribute.name.toLowerCase();
       const value = attribute.value.trim();
       if (
+        isTransientPresentationEditorAttribute(name) ||
         name.startsWith("on") ||
         ((name === "href" ||
           name === "src" ||
@@ -676,16 +783,25 @@ export function patchPresentationHtml(params: {
     }
   }
 
-  const metadata = parseDeckMetadata(doc) as MutableDeckMetadata;
+  const metadata = parseMutableDeckMetadata(doc);
+  const existingVersion =
+    typeof metadata.editProtocolVersion === "number" &&
+    Number.isFinite(metadata.editProtocolVersion)
+      ? metadata.editProtocolVersion
+      : undefined;
   metadata.kind = "presentation-html";
-  metadata.editProtocolVersion = metadata.editProtocolVersion ?? 1;
-  metadata.slides = metadata.slides ?? {};
+  metadata.editProtocolVersion = existingVersion ?? 1;
+  const metadataSlides = isRecord(metadata.slides)
+    ? { ...metadata.slides }
+    : {};
   for (const slide of params.slides) {
-    metadata.slides[slide.id] = {
-      ...metadata.slides[slide.id],
+    const existingSlide = metadataSlides[slide.id];
+    metadataSlides[slide.id] = {
+      ...(isRecord(existingSlide) ? existingSlide : {}),
       speakerNotes: slide.notes,
     };
   }
+  metadata.slides = metadataSlides;
   deckMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
   return serializeDoc(doc);
 }
@@ -742,7 +858,6 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       overflow: hidden !important;
     }
     [data-vm0-editor-stage] > * {
-      display: block !important;
       visibility: visible !important;
       opacity: 1 !important;
       max-width: 100% !important;
@@ -828,6 +943,21 @@ function appendAdditionalHeadStyle(
   previewDoc.head.append(style);
 }
 
+function annotatePresentationEditableElements(
+  slide: Element,
+  slideId: string,
+): void {
+  for (const [editableIndex, editable] of selectEditableElements(
+    slide,
+  ).entries()) {
+    if (editable instanceof HTMLElement) {
+      editable.dataset.vm0EditorSlideId = slideId;
+      editable.dataset.vm0EditorEditId =
+        editIdForElement(editable, editableIndex) ?? "";
+    }
+  }
+}
+
 export function previewPresentationHtml(params: {
   readonly activeSlideId: string;
   readonly additionalHeadStyle?: string;
@@ -845,30 +975,32 @@ export function previewPresentationHtml(params: {
   }
   applyPresentationPreviewBase(previewDoc, params.sourceUrl);
   const stage = previewDoc.createElement("div");
-  stage.dataset.vm0EditorStage = "true";
   previewDoc.body.append(stage);
-  for (const [index, slide] of selectSlideElements(doc).entries()) {
+  let activeSlideClone: Element | null = null;
+  let activeSlideId = "";
+  const slides = selectSlideElements(doc);
+  const activeClassNames = observedActiveSlideClassNames(slides);
+  for (const [index, slide] of slides.entries()) {
     if (slideIdForElement(slide, index) === params.activeSlideId) {
-      const slideId = slideIdForElement(slide, index);
-      for (const [editableIndex, editable] of selectEditableElements(
+      const previewClone = clonePresentationSlideForPreview(
         slide,
-      ).entries()) {
-        if (editable instanceof HTMLElement) {
-          editable.dataset.vm0EditorSlideId = slideId;
-          editable.dataset.vm0EditorEditId =
-            editIdForElement(editable, editableIndex) ?? "";
-        }
+        activeClassNames,
+      );
+      if (previewClone) {
+        sanitizePreviewTree(previewClone.root);
+        activeSlideClone = previewClone.slide;
+        activeSlideId = slideIdForElement(slide, index);
+        stage.append(previewClone.root);
       }
-      const slideClone = slide.cloneNode(true);
-      if (slideClone instanceof Element) {
-        sanitizePreviewTree(slideClone);
-      }
-      stage.append(slideClone);
       break;
     }
   }
+  sanitizePreviewDocument(previewDoc);
+  stage.dataset.vm0EditorStage = "true";
+  if (activeSlideClone) {
+    annotatePresentationEditableElements(activeSlideClone, activeSlideId);
+  }
   appendPresentationPreviewStyle(previewDoc);
   appendAdditionalHeadStyle(previewDoc, params.additionalHeadStyle);
-  sanitizePreviewDocument(previewDoc);
   return serializeDoc(previewDoc);
 }

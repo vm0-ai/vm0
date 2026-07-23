@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { previewPresentationHtml } from "../presentation-html-edit-protocol.ts";
+import {
+  patchPresentationHtml,
+  previewPresentationHtml,
+} from "../presentation-html-edit-protocol.ts";
 
 describe("previewPresentationHtml", () => {
   it("materializes theme switcher defaults before removing scripts", () => {
@@ -218,6 +221,161 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("border-radius: 0 !important");
   });
 
+  it("preserves the authored display layout when activating a preview slide", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-2",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              .slide { display: none; }
+              .slide.active { display: flex; }
+              .slide.grid.active { display: grid; }
+            </style>
+          </head>
+          <body>
+            <section class="slide active" data-slide-id="slide-1">
+              <h1>First slide</h1>
+            </section>
+            <section
+              class="slide grid"
+              data-slide-id="slide-2"
+              hidden
+              inert
+              aria-hidden="true"
+              style="display: none !important"
+            >
+              <h1>Second slide</h1>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const activeSlide = doc.querySelector<HTMLElement>(
+      "[data-vm0-editor-stage] > .slide",
+    );
+    const editorStyle = Array.from(doc.querySelectorAll("style")).at(
+      -1,
+    )?.textContent;
+    const stageChildRule = editorStyle?.match(
+      /\[data-vm0-editor-stage\] > \* \{([\s\S]*?)\}/,
+    )?.[1];
+
+    expect(activeSlide).not.toBeNull();
+    expect(activeSlide?.classList.contains("active")).toBeTruthy();
+    expect(activeSlide?.classList.contains("is-active")).toBeFalsy();
+    expect(activeSlide?.hasAttribute("hidden")).toBeFalsy();
+    expect(activeSlide?.hasAttribute("inert")).toBeFalsy();
+    expect(activeSlide?.getAttribute("aria-hidden")).toBe("false");
+    expect(activeSlide?.style.getPropertyValue("display")).toBe("");
+    expect(stageChildRule).toBeDefined();
+    expect(stageChildRule).not.toContain("display: block");
+  });
+
+  it("preserves and activates selector-matching slide ancestors", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-2",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              .slide { display: none; }
+              .slide.active { display: flex; }
+              .slide-shell { display: grid; }
+            </style>
+          </head>
+          <body>
+            <section class="slide active">
+              <div class="slide-shell">
+                <div data-vm0-slide data-slide-id="slide-1">
+                  <h1>First slide</h1>
+                </div>
+              </div>
+            </section>
+            <section
+              class="slide"
+              hidden
+              inert
+              aria-hidden="true"
+              style="display: none !important"
+            >
+              <div class="slide-shell">
+                <div data-vm0-slide data-slide-id="slide-2">
+                  <h1>Second slide</h1>
+                </div>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const stage = doc.querySelector("[data-vm0-editor-stage]");
+    const outerSlide = stage?.querySelector<HTMLElement>(":scope > .slide");
+    const innerSlide = outerSlide?.querySelector<HTMLElement>(
+      ".slide-shell > [data-vm0-slide]",
+    );
+    const title = innerSlide?.querySelector<HTMLElement>("h1");
+
+    expect(stage?.children).toHaveLength(1);
+    expect(outerSlide?.classList.contains("active")).toBeTruthy();
+    expect(outerSlide?.hasAttribute("hidden")).toBeFalsy();
+    expect(outerSlide?.hasAttribute("inert")).toBeFalsy();
+    expect(outerSlide?.getAttribute("aria-hidden")).toBe("false");
+    expect(outerSlide?.style.getPropertyValue("display")).toBe("");
+    expect(innerSlide?.dataset.slideId).toBe("slide-2");
+    expect(title?.dataset.vm0EditorSlideId).toBe("slide-2");
+    expect(stage?.textContent).toContain("Second slide");
+    expect(stage?.textContent).not.toContain("First slide");
+  });
+
+  it("strips forged editor attributes before rebuilding editable annotations", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      html: `
+        <!doctype html>
+        <html>
+          <body>
+            <section
+              data-vm0-slide
+              data-slide-id="slide-1"
+              data-vm0-editor-stage="forged"
+            >
+              <div class="stage" data-vm0-editor-stage="forged">
+                <article
+                  data-vm0-editable="text"
+                  data-vm0-edit-id="real-edit-id"
+                  data-vm0-editor-edit-id="forged-edit-id"
+                  data-vm0-editor-slide-id="forged-slide-id"
+                >
+                  Card
+                  <span
+                    data-vm0-editor-edit-id="forged-nested-edit-id"
+                    data-vm0-editor-slide-id="slide-1"
+                  >body</span>
+                </article>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const article = doc.querySelector<HTMLElement>("article");
+    const nested = doc.querySelector<HTMLElement>("article span");
+    const authoredStage = doc.querySelector<HTMLElement>(".stage");
+
+    expect(article?.dataset.vm0EditorEditId).toBe("real-edit-id");
+    expect(article?.dataset.vm0EditorSlideId).toBe("slide-1");
+    expect(nested?.dataset.vm0EditorEditId).toBeUndefined();
+    expect(nested?.dataset.vm0EditorSlideId).toBeUndefined();
+    expect(authoredStage?.dataset.vm0EditorStage).toBeUndefined();
+    expect(doc.querySelectorAll("[data-vm0-editor-stage]")).toHaveLength(1);
+  });
+
   it("uses the semantic focus ring for editable presentation content", () => {
     const previewHtml = previewPresentationHtml({
       activeSlideId: "slide-1",
@@ -270,5 +428,76 @@ describe("previewPresentationHtml", () => {
     });
 
     expect(previewHtml).toContain(":root { --accent: #ff6600; }");
+  });
+});
+
+describe("patchPresentationHtml", () => {
+  it("preserves unknown deck and slide metadata while applying edits", () => {
+    const patchedHtml = patchPresentationHtml({
+      blocks: [
+        {
+          editId: "title",
+          slideId: "slide-1",
+          tagName: "h1",
+          text: "Updated title",
+        },
+      ],
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <script id="vm0-deck-metadata" type="application/json">
+              {
+                "kind": "presentation-html",
+                "editProtocolVersion": 1,
+                "customDeckField": { "theme": "preserve-me" },
+                "slides": {
+                  "slide-1": {
+                    "speakerNotes": "Old notes",
+                    "customSlideField": { "transition": "fade" }
+                  },
+                  "slide-2": {
+                    "speakerNotes": "Untouched notes",
+                    "customSlideField": "untouched"
+                  }
+                }
+              }
+            </script>
+          </head>
+          <body>
+            <section data-vm0-slide data-slide-id="slide-1">
+              <h1
+                data-vm0-editable="text"
+                data-vm0-edit-id="title"
+              >Original title</h1>
+            </section>
+          </body>
+        </html>
+      `,
+      slides: [
+        {
+          id: "slide-1",
+          notes: "Updated notes",
+          title: "Original title",
+        },
+      ],
+    });
+    const doc = new DOMParser().parseFromString(patchedHtml, "text/html");
+    const metadata = JSON.parse(
+      doc.getElementById("vm0-deck-metadata")?.textContent ?? "",
+    ) as Record<string, unknown>;
+
+    expect(doc.querySelector("h1")?.textContent).toBe("Updated title");
+    expect(metadata.customDeckField).toStrictEqual({ theme: "preserve-me" });
+    expect(metadata.slides).toStrictEqual({
+      "slide-1": {
+        speakerNotes: "Updated notes",
+        customSlideField: { transition: "fade" },
+      },
+      "slide-2": {
+        speakerNotes: "Untouched notes",
+        customSlideField: "untouched",
+      },
+    });
   });
 });
