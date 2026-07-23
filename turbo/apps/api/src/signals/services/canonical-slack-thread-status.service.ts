@@ -225,12 +225,31 @@ export async function clearCanonicalSlackThreadStatusIfIdle(
     featureContext,
   );
   signal.throwIfAborted();
-  await setThreadStatus(
-    createSlackClient(botToken),
-    target.channelId,
-    target.threadTs,
-    "",
-  );
-  signal.throwIfAborted();
-  return true;
+  const client = createSlackClient(botToken);
+  let appliedStatus = "";
+  while (true) {
+    await setThreadStatus(
+      client,
+      target.channelId,
+      target.threadTs,
+      appliedStatus,
+    );
+    signal.throwIfAborted();
+
+    // Work can start while a Slack status request is in flight. Reconcile
+    // until the persisted lifecycle agrees with the last status we applied;
+    // later lifecycle transitions schedule their own reconciliation.
+    const desiredStatus = (await canonicalSlackThreadHasOutstandingWork(
+      db,
+      target,
+      binding.workspaceId,
+    ))
+      ? "is thinking..."
+      : "";
+    signal.throwIfAborted();
+    if (desiredStatus === appliedStatus) {
+      return appliedStatus === "";
+    }
+    appliedStatus = desiredStatus;
+  }
 }

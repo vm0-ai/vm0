@@ -12,6 +12,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -1508,13 +1509,32 @@ describe("INT-01: Slack app deep webhook flows", () => {
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
       new DOMException("Slack delivery aborted", "AbortError"),
     );
+    const terminalStatusClearStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseTerminalStatusClear = createDeferredPromise<void>(
+      context.signal,
+    );
+    const overlappingThinkingStatusSet = createDeferredPromise<void>(
+      context.signal,
+    );
+    context.mocks.slack.assistant.threads.setStatus
+      .mockImplementationOnce(async () => {
+        terminalStatusClearStarted.resolve(undefined);
+        await releaseTerminalStatusClear.promise;
+        return { ok: true };
+      })
+      .mockImplementationOnce(() => {
+        overlappingThinkingStatusSet.resolve(undefined);
+        return Promise.resolve({ ok: true });
+      });
     await completeSlackTriggeredRun({
       runId: run2Id,
       sandboxToken: claim2.sandboxToken,
       cliAgentType: claim2.cliAgentType,
       assistantText: "Canonical Slack answer two",
     });
-    await flushWaitUntilForTest();
+    await terminalStatusClearStarted.promise;
     await expect
       .poll(async () => {
         const callbacks = await callbackStore.set(
@@ -1550,23 +1570,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       lastError: "Slack delivery aborted",
     });
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
-    expect(
-      context.mocks.slack.assistant.threads.setStatus.mock.calls.map(
-        ([input]) => {
-          if (!isRecord(input)) {
-            throw new Error("Expected Slack thread status request");
-          }
-          return readStringField(input, "status");
-        },
-      ),
-    ).toStrictEqual(["is thinking...", "is thinking...", ""]);
-    expect(
-      context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenLastCalledWith({
-      channel_id: channelId,
-      thread_ts: threadTs,
-      status: "",
-    });
     const cancelledEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
     const cancelledBody = JSON.stringify({
       type: "event_callback",
@@ -1584,10 +1587,22 @@ describe("INT-01: Slack app deep webhook flows", () => {
       integrations.signedSlackIngressHeaders(cancelledBody),
       [200],
     );
+    await overlappingThinkingStatusSet.promise;
+    expect(
+      context.mocks.slack.assistant.threads.setStatus.mock.calls.map(
+        ([input]) => {
+          if (!isRecord(input)) {
+            throw new Error("Expected Slack thread status request");
+          }
+          return readStringField(input, "status");
+        },
+      ),
+    ).toStrictEqual(["is thinking...", "is thinking...", "", "is thinking..."]);
+    releaseTerminalStatusClear.resolve(undefined);
     await flushWaitUntilForTest();
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledTimes(4);
+    ).toHaveBeenCalledTimes(5);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenLastCalledWith({
@@ -1605,7 +1620,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await flushWaitUntilForTest();
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledTimes(5);
+    ).toHaveBeenCalledTimes(6);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenLastCalledWith({
