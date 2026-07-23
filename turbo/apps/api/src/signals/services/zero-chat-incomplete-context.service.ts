@@ -1,11 +1,13 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
+import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -20,6 +22,7 @@ interface IncompleteRoundSelection {
 interface IncompleteRoundMessage {
   readonly role: "user" | "assistant";
   readonly content: string | null;
+  readonly structuredPrompt: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
 }
 
@@ -168,6 +171,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
@@ -209,6 +213,7 @@ async function loadSelectedIncompleteRounds(
     round.messages.push({
       role: row.role,
       content: row.content,
+      structuredPrompt: row.structuredPrompt,
       attachFiles: row.attachFiles,
     });
   }
@@ -236,7 +241,20 @@ function truncateIncomplete(value: string): string {
   return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatIncompleteMessage(message: IncompleteRoundMessage): string {
+function formatIncompleteMessage(
+  message: IncompleteRoundMessage,
+  structuredPromptEnabled: boolean,
+): string {
+  if (
+    message.role === "user" &&
+    structuredPromptEnabled &&
+    message.structuredPrompt
+  ) {
+    const prompt = projectStructuredUserMessage(
+      message.structuredPrompt,
+    ).agentPrompt;
+    return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;
+  }
   const attach = formatAttachFileIds(message.attachFiles);
   if (message.role === "user") {
     const body =
@@ -253,6 +271,7 @@ function formatIncompleteMessage(message: IncompleteRoundMessage): string {
 
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
+  structuredPromptEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
     return "";
@@ -260,7 +279,9 @@ function buildWebChatIncompleteContext(
   const total = rounds.length;
   const blocks = rounds.map((round, index) => {
     const relativeIndex = index - total + 1;
-    const rendered = round.messages.map(formatIncompleteMessage);
+    const rendered = round.messages.map((message) => {
+      return formatIncompleteMessage(message, structuredPromptEnabled);
+    });
     const hasAssistant = round.messages.some((message) => {
       return message.role === "assistant";
     });
@@ -293,8 +314,9 @@ function buildWebChatIncompleteContext(
 export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
+  structuredPromptEnabled: boolean,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
-  return buildWebChatIncompleteContext(rounds);
+  return buildWebChatIncompleteContext(rounds, structuredPromptEnabled);
 }
