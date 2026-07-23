@@ -23,13 +23,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
   const readLatestImpl = (_threadId: string, _signal?: AbortSignal) => {
     return Promise.resolve(cachedMessages);
   };
-  const readFromImpl = (
-    _threadId: string,
-    _message: unknown,
-    _signal?: AbortSignal,
-  ) => {
-    return Promise.resolve(cachedMessages);
-  };
   const upsertMessagesImpl = (_threadId: string, messages: unknown[]) => {
     for (const message of messages) {
       if (
@@ -56,12 +49,10 @@ const idbMessageStoreMock = vi.hoisted(() => {
     return Promise.resolve();
   };
   const readLatest = vi.fn(readLatestImpl);
-  const readFrom = vi.fn(readFromImpl);
   const upsertMessages = vi.fn(upsertMessagesImpl);
 
   return {
     readLatest,
-    readFrom,
     upsertMessages,
     setMessages(messages: unknown[]) {
       cachedMessages = messages;
@@ -70,8 +61,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
       cachedMessages = [];
       readLatest.mockReset();
       readLatest.mockImplementation(readLatestImpl);
-      readFrom.mockReset();
-      readFrom.mockImplementation(readFromImpl);
       upsertMessages.mockReset();
       upsertMessages.mockImplementation(upsertMessagesImpl);
     },
@@ -146,7 +135,6 @@ vi.mock("../../../signals/external/idb-message-store.ts", () => {
       return {
         readStore: {
           readLatest: idbMessageStoreMock.readLatest,
-          readFrom: idbMessageStoreMock.readFrom,
         },
         writeStore: {
           upsertMessages: idbMessageStoreMock.upsertMessages,
