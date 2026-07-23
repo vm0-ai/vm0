@@ -18,7 +18,7 @@ const context = testContext();
 
 function mockThread(content: string): void {
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId) {
+    if (query.sinceSeqId) {
       return respond(200, { messages: [] });
     }
 

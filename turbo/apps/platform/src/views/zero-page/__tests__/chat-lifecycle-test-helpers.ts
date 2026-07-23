@@ -379,7 +379,7 @@ export function mockKeyboardNavigationThreads({
   context.mocks.api(
     chatThreadMessagesContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { messages: [] });
       }
       const thread = byId.get(params.threadId);
@@ -571,7 +571,7 @@ export function mockServerQueuedThreadStories(): void {
   context.mocks.api(
     chatThreadMessagesContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceId || query.beforeId) {
+      if (query.sinceSeqId || query.beforeSeqId) {
         return respond(200, { messages: [] });
       }
       return respond(200, {

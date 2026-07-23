@@ -797,7 +797,7 @@ describe("team page navigation", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {

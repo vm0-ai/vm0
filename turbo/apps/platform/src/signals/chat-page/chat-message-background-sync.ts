@@ -33,12 +33,12 @@ const syncChatThreadMessagesToIndexedDb$ = command(
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
 
-    let sinceId = bounds.last?.id;
+    let sinceSeqId = bounds.last?.seqId;
 
     async function syncMessagesAfter(): Promise<void> {
       const result = await set(
         listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceSeqId },
         signal,
       );
       signal.throwIfAborted();
@@ -49,7 +49,12 @@ const syncChatThreadMessagesToIndexedDb$ = command(
 
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
+      sinceSeqId = result.messages.at(-1)?.seqId;
+      if (sinceSeqId === undefined) {
+        // A briefly overlapping old backend can omit seqId. Keep the messages
+        // in memory, but do not repeat an unanchored page request.
+        return;
+      }
       await syncMessagesAfter();
     }
 

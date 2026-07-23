@@ -1218,16 +1218,22 @@ describe("chat lifecycle", () => {
   it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
     const threadId = "catchup-thread";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
-      return makeMessage(`base-${index}`, `Baseline ${index}`);
+      return {
+        ...makeMessage(`base-${index}`, `Baseline ${index}`),
+        seqId: index + 1,
+      };
     });
     const burstMessages = Array.from({ length: 120 }, (_, index) => {
-      return makeMessage(`burst-${index}`, `Burst ${index}`);
+      return {
+        ...makeMessage(`burst-${index}`, `Burst ${index}`),
+        seqId: baselineMessages.length + index + 1,
+      };
     });
     const terminalPageGate = context.mocks.deferred<void>();
     let burstEnabled = false;
     let page = 0;
     let terminalForwardPageRequested = false;
-    const sinceIds: string[] = [];
+    const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -1240,13 +1246,13 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       async ({ query, respond }) => {
-        if (!query.sinceId) {
+        if (!query.sinceSeqId) {
           return respond(200, {
             messages: baselineMessages,
             hasHistoryBefore: false,
           });
         }
-        sinceIds.push(query.sinceId);
+        sinceSeqIds.push(query.sinceSeqId);
         if (!burstEnabled) {
           return respond(200, { messages: [] });
         }
@@ -1278,7 +1284,7 @@ describe("chat lifecycle", () => {
           ),
         ).toBeTruthy();
       });
-      sinceIds.length = 0;
+      sinceSeqIds.length = 0;
       burstEnabled = true;
       context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
 
@@ -1296,11 +1302,11 @@ describe("chat lifecycle", () => {
         terminalPageGate.resolve();
       }
     }
-    expect(sinceIds).toStrictEqual([
-      baselineMessages.at(-1)!.id,
-      burstMessages[49]!.id,
-      burstMessages[99]!.id,
-      burstMessages.at(-1)!.id,
+    expect(sinceSeqIds).toStrictEqual([
+      baselineMessages.at(-1)!.seqId,
+      burstMessages[49]!.seqId,
+      burstMessages[99]!.seqId,
+      burstMessages.at(-1)!.seqId,
     ]);
   });
 });

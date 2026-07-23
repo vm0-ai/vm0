@@ -1,6 +1,6 @@
 import type { IDBPDatabase } from "idb";
 
-const CHAT_IDB_SEQ_ID_RESET_VERSION = 17;
+const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
 const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_SEQ_ID_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
@@ -23,7 +23,9 @@ export const ARTIFACT_ITEMS_RUN_FILE_INDEX = "byRunFile";
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
   store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
-  store.createIndex(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId", "id"]);
+  store.createIndex(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
+    unique: true,
+  });
 }
 
 function createChatThreadSnapshotStore(db: IDBPDatabase): void {

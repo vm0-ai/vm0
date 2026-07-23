@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
 import {
   agentComposes,
@@ -438,7 +438,7 @@ async function seedTargetThreadRuns(
   await db
     .update(chatThreads)
     .set({ lastChatMessageSeqId: messageRows.length })
-    .where(sql`${chatThreads.id} = ${fixture.threadId}`);
+    .where(eq(chatThreads.id, fixture.threadId));
 }
 
 async function seedSideEffectFreeGetData(

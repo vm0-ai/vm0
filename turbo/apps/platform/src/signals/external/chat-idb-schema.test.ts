@@ -69,11 +69,9 @@ function expectChatMessagesStoreCreated(
   ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
   expect(
     createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
-    "threadId",
-    "seqId",
-    "id",
-  ]);
+  ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
+    unique: true,
+  });
 }
 
 function expectThreadEventStoresCreated(
@@ -213,6 +211,27 @@ describe("upgradeChatIdb local cache resets", () => {
     ]);
 
     upgradeChatIdb(db, 15);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(6);
+    expectAllLocalCacheStoresDeleted(deleteObjectStore);
+    expect(createObjectStore).toHaveBeenCalledTimes(6);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+    expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
+  it("replaces the obsolete v17 message ordering index", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 17);
 
     expect(deleteObjectStore).toHaveBeenCalledTimes(6);
     expectAllLocalCacheStoresDeleted(deleteObjectStore);

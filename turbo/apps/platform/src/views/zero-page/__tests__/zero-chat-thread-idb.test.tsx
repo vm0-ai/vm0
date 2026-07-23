@@ -318,7 +318,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     let messageListRequests = 0;
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       messageListRequests += 1;
-      if (query.sinceId) {
+      if (query.sinceSeqId) {
         return respond(200, { messages: [] });
       }
       return respond(200, {

@@ -60,7 +60,6 @@ import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
@@ -1281,6 +1280,10 @@ interface RegisteredChatMessage {
   readonly blocks: BodyRenderBlock[];
 }
 
+type SequencedRegisteredChatMessage = RegisteredChatMessage & {
+  readonly message: PagedChatMessage & { readonly seqId: number };
+};
+
 type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
 
 type BodyBlocksRenderer = (
@@ -1309,31 +1312,6 @@ function compareCreatedAt(left: string, right: string): number {
   return leftTime - rightTime;
 }
 
-function compareServerMessageOrder(
-  left: PagedChatMessage,
-  right: PagedChatMessage,
-): number {
-  if (left.seqId !== undefined && right.seqId !== undefined) {
-    return left.seqId - right.seqId;
-  }
-
-  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
-  if (createdAtOrder !== 0) {
-    return createdAtOrder;
-  }
-
-  const leftSequence = chatMessageOrderSequence(left);
-  const rightSequence = chatMessageOrderSequence(right);
-  if (leftSequence !== rightSequence) {
-    return leftSequence - rightSequence;
-  }
-
-  // The API exposes createdAt at millisecond precision, so messages that are
-  // distinct on the server can appear tied here. Preserve their stable source
-  // order instead of inventing an ID order that can reverse queued messages.
-  return 0;
-}
-
 function mergeRegisteredMessages(
   messageSets: readonly (readonly RegisteredChatMessage[])[],
 ): RegisteredChatMessage[] {
@@ -1343,9 +1321,18 @@ function mergeRegisteredMessages(
       byId.set(entry.message.id, entry);
     }
   }
-  return Array.from(byId.values()).sort((left, right) => {
-    return compareServerMessageOrder(left.message, right.message);
+  const merged = Array.from(byId.values());
+  const sequenced = merged
+    .filter((entry): entry is SequencedRegisteredChatMessage => {
+      return entry.message.seqId !== undefined;
+    })
+    .sort((left, right) => {
+      return left.message.seqId - right.message.seqId;
+    });
+  const unsequenced = merged.filter((entry) => {
+    return entry.message.seqId === undefined;
   });
+  return [...sequenced, ...unsequenced];
 }
 
 function skipsMessageBodyRendering(message: PagedChatMessage): boolean {
@@ -1445,6 +1432,8 @@ function projectRawMessages({
   const optimistic = optimisticEntries.filter((entry) => {
     return !serverIds.has(entry.message.id);
   });
+  // Optimistic messages do not have a server sequence yet. Keep their array
+  // order and append them after every persistent message.
   return [
     ...persistentMessages.map((entry) => {
       return { ...entry, source: "server" as const };
@@ -2143,23 +2132,24 @@ function createSyncRemoteMessagesCommand({
   return command(async ({ get, set }, signal: AbortSignal) => {
     const persistentMessages = get(persistentMessages$);
     const accumulatedMessages: PagedChatMessage[] = [];
-    let sinceId = persistentMessages.at(-1)?.message.id;
-    const startedWithoutCursor = sinceId === undefined;
-    let initialPageOldestMessageId: string | undefined;
+    const latestPersistentMessage = persistentMessages.at(-1);
+    let sinceSeqId = latestPersistentMessage?.message.seqId;
+    const startedWithoutCursor = latestPersistentMessage === undefined;
+    let initialPageOldestMessage: PagedChatMessage | undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = sinceId;
-      const isInitialPage = requestedSinceId === undefined;
+      const requestedSinceSeqId = sinceSeqId;
+      const isInitialPage = requestedSinceSeqId === undefined;
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId: requestedSinceId },
+        { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: requestedSinceId ?? null,
+        sinceSeqId: requestedSinceSeqId ?? null,
         gotCount: result.messages.length,
       });
 
@@ -2174,12 +2164,12 @@ function createSyncRemoteMessagesCommand({
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
       if (isInitialPage) {
-        initialPageOldestMessageId = result.messages[0]!.id;
+        initialPageOldestMessage = result.messages[0]!;
         set(mergePersistentMessages$, result.messages);
       } else {
         accumulatedMessages.push(...result.messages);
       }
-      sinceId = result.messages.at(-1)!.id;
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
 
       return syncMessagesAfter();
     }
@@ -2187,27 +2177,29 @@ function createSyncRemoteMessagesCommand({
     signal.throwIfAborted();
 
     if (!get(hasReachedOldestMessage$)) {
-      const oldestMessageId =
-        persistentMessages[0]?.message.id ??
-        initialPageOldestMessageId ??
-        accumulatedMessages[0]?.id;
+      const oldestMessage =
+        persistentMessages[0]?.message ??
+        initialPageOldestMessage ??
+        accumulatedMessages[0];
       if (
         (startedWithoutCursor && initialHasHistoryBefore === false) ||
-        oldestMessageId === undefined
+        oldestMessage === undefined
       ) {
-        set(hasReachedOldestMessage$, true);
+        if (initialHasHistoryBefore === false) {
+          set(hasReachedOldestMessage$, true);
+        }
       } else {
-        let beforeId = oldestMessageId;
+        let beforeSeqId = oldestMessage.seqId;
         async function syncMessagesBefore(): Promise<void> {
           const result = await set(
             dataSource.listMessagesBefore$,
-            { threadId, beforeId },
+            { threadId, beforeSeqId },
             signal,
           );
           signal.throwIfAborted();
           L.debug("syncRemoteMessages$ listMessagesBefore result", {
             threadId,
-            beforeId,
+            beforeSeqId,
             gotCount: result.messages.length,
             hasHistoryBefore: result.hasHistoryBefore,
           });
@@ -2228,7 +2220,7 @@ function createSyncRemoteMessagesCommand({
             return;
           }
 
-          beforeId = result.messages[0]!.id;
+          beforeSeqId = result.messages[0]!.seqId;
 
           return syncMessagesBefore();
         }
@@ -2957,9 +2949,9 @@ function createOnSubscribedCommand({
     signal.throwIfAborted();
     if (latestMessageId) {
       // In-place message updates, such as completed marker followups, are not
-      // returned by a sinceId fetch. Refresh the latest loaded row after the
-      // realtime callbacks are registered so update events racing with this
-      // fetch are queued instead of missed.
+      // returned by a sequence-cursor fetch. Refresh the latest loaded row
+      // after the realtime callbacks are registered so update events racing
+      // with this fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, signal);
     }
     await set(markThreadReadIfNeeded$, signal);

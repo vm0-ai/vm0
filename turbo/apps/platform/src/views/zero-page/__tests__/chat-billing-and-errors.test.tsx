@@ -491,7 +491,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { messages: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {

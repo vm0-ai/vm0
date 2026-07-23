@@ -18,6 +18,7 @@ const L = logger("ChatMessageIndexedDb");
 
 type StoredPagedChatMessage = PagedChatMessage & {
   readonly threadId: string;
+  readonly seqId: number;
 };
 
 interface ChatMessageReadStore {
@@ -74,7 +75,7 @@ function validateMessage(raw: unknown): PagedChatMessage {
 
 function storedMessage(
   threadId: string,
-  message: PagedChatMessage,
+  message: PagedChatMessage & { readonly seqId: number },
 ): StoredPagedChatMessage {
   return {
     ...message,
@@ -162,21 +163,29 @@ function createMessageWriteStore(
 ): ChatMessageWriteStore {
   return {
     async upsertMessages(threadId, messages, signal) {
+      const sequencedMessages = messages.filter(
+        (message): message is PagedChatMessage & { readonly seqId: number } => {
+          return message.seqId !== undefined;
+        },
+      );
       L.debug("upsertMessages:start", {
         threadId,
-        count: messages.length,
+        count: sequencedMessages.length,
+        skippedUnsequencedCount: messages.length - sequencedMessages.length,
       });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readwrite");
-      const requests = messages.map((message) => {
+      const requests = sequencedMessages.map((message) => {
         signal?.throwIfAborted();
-        // Stitch local ordering fields onto the stored value. PagedChatMessage
-        // from the API has no threadId and keeps sequenceNumber optional.
+        // Stitch the owning thread onto the server-sequenced cached value.
         return tx.store.put(storedMessage(threadId, message));
       });
       await Promise.all([...requests, tx.done]);
-      L.debug("upsertMessages:done", { threadId, count: messages.length });
+      L.debug("upsertMessages:done", {
+        threadId,
+        count: sequencedMessages.length,
+      });
     },
   };
 }

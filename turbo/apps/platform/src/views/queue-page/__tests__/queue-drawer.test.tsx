@@ -85,7 +85,7 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 
 function mockQueuedThread(): void {
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceId) {
+    if (query.sinceSeqId) {
       return respond(200, { messages: [] });
     }
 

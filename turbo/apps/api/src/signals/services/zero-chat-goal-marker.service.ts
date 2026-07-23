@@ -16,7 +16,7 @@ import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normaliz
  * them.
  */
 export async function appendGoalEventMarker(
-  tx: Pick<Db, "insert">,
+  tx: Pick<Db, "insert" | "update">,
   args: {
     readonly chatThreadId: string;
     readonly event: ChatMessageGoalEvent;

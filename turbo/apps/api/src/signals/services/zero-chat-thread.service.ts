@@ -1729,6 +1729,9 @@ export function zeroChatSearch(args: {
 export function zeroChatThreadMessagesPage(args: {
   readonly threadId: string;
   readonly userId: string;
+  readonly sinceSeqId: number | undefined;
+  readonly beforeSeqId: number | undefined;
+  /** Previous-frontend compatibility; remove after UUID cursors are drained. */
   readonly sinceId: string | undefined;
   readonly beforeId: string | undefined;
   readonly limit: number;
@@ -1754,15 +1757,24 @@ export function zeroChatThreadMessagesPage(args: {
       return null;
     }
 
-    if (args.sinceId !== undefined && args.beforeId !== undefined) {
-      throw new Error("sinceId and beforeId are mutually exclusive");
+    const afterCursorCount =
+      Number(args.sinceSeqId !== undefined) +
+      Number(args.sinceId !== undefined);
+    const beforeCursorCount =
+      Number(args.beforeSeqId !== undefined) +
+      Number(args.beforeId !== undefined);
+    if (afterCursorCount > 1 || beforeCursorCount > 1) {
+      throw new Error("only one chat message cursor may be provided");
+    }
+    if (afterCursorCount > 0 && beforeCursorCount > 0) {
+      throw new Error("after and before cursors are mutually exclusive");
     }
 
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
-    if (args.sinceId === undefined && args.beforeId === undefined) {
+    if (afterCursorCount === 0 && beforeCursorCount === 0) {
       const latestRows = await selectChatMessagesWithMetadata(db)
         .where(threadFilter)
         .orderBy(desc(chatMessages.seqId))
@@ -1770,31 +1782,36 @@ export function zeroChatThreadMessagesPage(args: {
       hasHistoryBefore = latestRows.length > args.limit;
       rows = latestRows.slice(0, args.limit).reverse();
     } else {
-      const cursorId = args.sinceId ?? args.beforeId;
-      if (cursorId === undefined) {
-        throw new Error("message cursor is required");
+      let cursorSeqId = args.sinceSeqId ?? args.beforeSeqId;
+      const legacyCursorId = args.sinceId ?? args.beforeId;
+      if (cursorSeqId === undefined && legacyCursorId !== undefined) {
+        const [legacyCursor] = await db
+          .select({ seqId: chatMessages.seqId })
+          .from(chatMessages)
+          .where(
+            and(
+              eq(chatMessages.id, legacyCursorId),
+              eq(chatMessages.chatThreadId, args.threadId),
+            ),
+          )
+          .limit(1);
+        if (!legacyCursor) {
+          return { messages: [], hasHistoryBefore: false };
+        }
+        cursorSeqId = legacyCursor.seqId;
       }
-      const cursorAfterCondition = sql`${chatMessages.seqId} > (
-        SELECT ${chatMessages.seqId}
-        FROM ${chatMessages}
-        WHERE ${eq(chatMessages.id, cursorId)}
-          AND ${eq(chatMessages.chatThreadId, args.threadId)}
-      )`;
-      const cursorBeforeCondition = sql`${chatMessages.seqId} < (
-        SELECT ${chatMessages.seqId}
-        FROM ${chatMessages}
-        WHERE ${eq(chatMessages.id, cursorId)}
-          AND ${eq(chatMessages.chatThreadId, args.threadId)}
-      )`;
+      if (cursorSeqId === undefined) {
+        throw new Error("chat message sequence cursor is required");
+      }
 
-      if (args.sinceId !== undefined) {
+      if (afterCursorCount > 0) {
         rows = await selectChatMessagesWithMetadata(db)
-          .where(and(threadFilter, cursorAfterCondition))
+          .where(and(threadFilter, gt(chatMessages.seqId, cursorSeqId)))
           .orderBy(asc(chatMessages.seqId))
           .limit(args.limit);
       } else {
         const previousRows = await selectChatMessagesWithMetadata(db)
-          .where(and(threadFilter, cursorBeforeCondition))
+          .where(and(threadFilter, lt(chatMessages.seqId, cursorSeqId)))
           .orderBy(desc(chatMessages.seqId))
           .limit(args.limit + 1);
         hasHistoryBefore = previousRows.length > args.limit;

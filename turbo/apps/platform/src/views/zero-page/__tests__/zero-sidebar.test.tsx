@@ -766,7 +766,7 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadMessagesContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceId || query.beforeId) {
+        if (query.sinceSeqId || query.beforeSeqId) {
           return respond(200, { messages: [] });
         }
         return respond(200, {

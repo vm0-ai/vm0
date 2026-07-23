@@ -1403,6 +1403,16 @@ describe("CHAT-01 chat thread read state", () => {
       ["user", "cursor round two"],
       ["assistant", expect.stringContaining("Insufficient credits")],
     ]);
+    const seqIds = full.messages.flatMap((message) => {
+      return message.seqId === undefined ? [] : [message.seqId];
+    });
+    expect(seqIds).toHaveLength(full.messages.length);
+    expect(seqIds).toStrictEqual(
+      [...seqIds].sort((left, right) => {
+        return left - right;
+      }),
+    );
+    expect(new Set(seqIds).size).toBe(seqIds.length);
     const ids = full.messages.map((message) => {
       return message.id;
     });
@@ -1423,6 +1433,16 @@ describe("CHAT-01 chat thread read state", () => {
       !secondAssistant
     ) {
       throw new Error("Expected six messages across the two sends");
+    }
+    const firstAssistantSeqId = full.messages[2]?.seqId;
+    const secondQueuedUserSeqId = full.messages[3]?.seqId;
+    const secondAssistantSeqId = full.messages[5]?.seqId;
+    if (
+      firstAssistantSeqId === undefined ||
+      secondQueuedUserSeqId === undefined ||
+      secondAssistantSeqId === undefined
+    ) {
+      throw new Error("Expected every paged message to have a seqId");
     }
     expect(full.messages[0]?.error).toBeUndefined();
     expect(full.messages[1]).toMatchObject({
@@ -1448,7 +1468,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     // Forward pagination strictly after the cursor.
     const since = await chat.listThreadMessages(owner, threadId, {
-      sinceId: firstAssistant,
+      sinceSeqId: firstAssistantSeqId,
     });
     expect(
       since.messages.map((message) => {
@@ -1458,7 +1478,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     // Backward pagination strictly before the cursor.
     const before = await chat.listThreadMessages(owner, threadId, {
-      beforeId: secondQueuedUser,
+      beforeSeqId: secondQueuedUserSeqId,
       limit: 3,
     });
     expect(
@@ -1469,7 +1489,7 @@ describe("CHAT-01 chat thread read state", () => {
     expect(before.hasHistoryBefore).toBeFalsy();
 
     const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
-      beforeId: secondAssistant,
+      beforeSeqId: secondAssistantSeqId,
       limit: 2,
     });
     expect(
@@ -1478,6 +1498,16 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
+
+    // Previous browser tabs can keep using the UUID cursor during rollout.
+    const legacySince = await chat.listThreadMessages(owner, threadId, {
+      sinceId: firstAssistant,
+    });
+    expect(
+      legacySince.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
   }, 30_000);
 });
 

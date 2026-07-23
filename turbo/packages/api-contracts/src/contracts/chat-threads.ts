@@ -1074,11 +1074,11 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId / beforeId.
+ * Cursor-based pagination using the thread-scoped message sequence.
  *
  * Query params (mutually exclusive):
- *   sinceId  — forward pagination: messages strictly after this cursor
- *   beforeId — backward pagination: messages strictly before this cursor
+ *   sinceSeqId  — forward pagination: messages strictly after this cursor
+ *   beforeSeqId — backward pagination: messages strictly before this cursor
  *   (neither) — initial load anchored at the last user message
  *
  * Response includes `hasMore` for initial load and backward pagination so the
@@ -1091,6 +1091,10 @@ export const chatThreadMessagesContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      beforeSeqId: z.coerce.number().int().positive().optional(),
+      // Compatibility for browser tabs loaded before sequence cursors shipped.
+      // Remove after the previous frontend version can no longer be active.
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
