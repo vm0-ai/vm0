@@ -1264,7 +1264,14 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledOnce();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledWith({
+      channel_id: channelId,
+      thread_ts: threadTs,
+      status: "is thinking...",
+    });
     const run1Id = await pollSlackRun(runnerGroup);
     const claim1 = await runs.claimRunnerJob(run1Id);
 
@@ -1543,6 +1550,69 @@ describe("INT-01: Slack app deep webhook flows", () => {
       lastError: "Slack delivery aborted",
     });
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus.mock.calls.map(
+        ([input]) => {
+          if (!isRecord(input)) {
+            throw new Error("Expected Slack thread status request");
+          }
+          return readStringField(input, "status");
+        },
+      ),
+    ).toStrictEqual(["is thinking...", "is thinking...", ""]);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: channelId,
+      thread_ts: threadTs,
+      status: "",
+    });
+    const cancelledEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const cancelledBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: cancelledEventId,
+      event: {
+        ...event,
+        text: "cancel this canonical Slack run",
+        ts: "2900.000300",
+        thread_ts: threadTs,
+      },
+    });
+    await integrations.requestSlackEvent(
+      cancelledBody,
+      integrations.signedSlackIngressHeaders(cancelledBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(4);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: channelId,
+      thread_ts: threadTs,
+      status: "is thinking...",
+    });
+    const cancelledRunId = await pollSlackRun(runnerGroup);
+    await runs.requestCancelRun(actor, cancelledRunId, [200]);
+    await expect
+      .poll(async () => {
+        return (await runs.readRun(actor, cancelledRunId)).status;
+      })
+      .toBe("cancelled");
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(5);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: channelId,
+      thread_ts: threadTs,
+      status: "",
+    });
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackWebVisibility]: true,
     });

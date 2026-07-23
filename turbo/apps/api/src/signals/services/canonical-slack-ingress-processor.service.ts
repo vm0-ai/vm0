@@ -22,9 +22,14 @@ import {
   createSlackClient,
   createSlackUserInfoResolver,
   getMessagePermalink,
+  setThreadStatus,
 } from "../external/slack-message-client";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import {
+  canonicalSlackThreadStatusTargetForIngress,
+  clearCanonicalSlackThreadStatusIfIdle,
+} from "./canonical-slack-thread-status.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -234,6 +239,42 @@ async function markIngressFailed(
 interface PersistedCanonicalSlackIngress {
   readonly userId: string;
   readonly chatThreadId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+}
+
+function persistedCanonicalSlackIngress(
+  ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+  chatThreadId: string,
+): PersistedCanonicalSlackIngress {
+  return {
+    userId: ingress.userId,
+    chatThreadId,
+    channelId: ingress.channelId,
+    threadTs: ingress.threadTs,
+  };
+}
+
+async function setCanonicalSlackThinkingStatus(args: {
+  readonly client: ReturnType<typeof createSlackClient>;
+  readonly ingressId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+}): Promise<void> {
+  await tapError(
+    setThreadStatus(
+      args.client,
+      args.channelId,
+      args.threadTs,
+      "is thinking...",
+    ),
+    (error) => {
+      L.warn("Failed to set canonical Slack thinking status", {
+        ingressId: args.ingressId,
+        error,
+      });
+    },
+  );
 }
 
 async function persistClaimedCanonicalSlackIngress(
@@ -261,6 +302,13 @@ async function persistClaimedCanonicalSlackIngress(
   );
   signal.throwIfAborted();
   const client = createSlackClient(botToken);
+  await setCanonicalSlackThinkingStatus({
+    client,
+    ingressId,
+    channelId: ingress.channelId,
+    threadTs: ingress.threadTs,
+  });
+  signal.throwIfAborted();
   const userInfoResolver = createSlackUserInfoResolver(client);
   const messageContent = stripBotMention(event.text, ingress.botUserId);
   const [enriched, context, permalinkResult] = await Promise.all([
@@ -357,7 +405,7 @@ async function persistClaimedCanonicalSlackIngress(
     signal.throwIfAborted();
   });
   signal.throwIfAborted();
-  return { userId: ingress.userId, chatThreadId };
+  return persistedCanonicalSlackIngress(ingress, chatThreadId);
 }
 
 export const processCanonicalSlackIngress$ = command(
@@ -397,6 +445,24 @@ export const processCanonicalSlackIngress$ = command(
           signal,
         );
         signal.throwIfAborted();
+        await tapError(
+          clearCanonicalSlackThreadStatusIfIdle(
+            db,
+            {
+              chatThreadId: ingress.chatThreadId,
+              channelId: ingress.channelId,
+              threadTs: ingress.threadTs,
+            },
+            signal,
+          ),
+          (error) => {
+            L.warn("Failed to reconcile canonical Slack thread status", {
+              ingressId: args.ingressId,
+              error,
+            });
+          },
+        );
+        signal.throwIfAborted();
         return true;
       })(),
       signal,
@@ -407,6 +473,25 @@ export const processCanonicalSlackIngress$ = command(
     }
 
     await markIngressFailed(db, args.ingressId, result.error);
+    signal.throwIfAborted();
+    await tapError(
+      (async () => {
+        const target = await canonicalSlackThreadStatusTargetForIngress(
+          db,
+          args.ingressId,
+        );
+        signal.throwIfAborted();
+        if (target) {
+          await clearCanonicalSlackThreadStatusIfIdle(db, target, signal);
+        }
+      })(),
+      (error) => {
+        L.warn("Failed to clear canonical Slack status after ingress failure", {
+          ingressId: args.ingressId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
     L.error("Failed to process canonical Slack ingress", {
       ingressId: args.ingressId,
