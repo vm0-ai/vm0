@@ -18,7 +18,6 @@ const L = logger("ChatMessageIndexedDb");
 
 type StoredPagedChatMessage = PagedChatMessage & {
   readonly threadId: string;
-  readonly seqId: number;
 };
 
 interface ChatMessageReadStore {
@@ -75,7 +74,7 @@ function validateMessage(raw: unknown): PagedChatMessage {
 
 function storedMessage(
   threadId: string,
-  message: PagedChatMessage & { readonly seqId: number },
+  message: PagedChatMessage,
 ): StoredPagedChatMessage {
   return {
     ...message,
@@ -91,7 +90,7 @@ function threadOrderRangeFrom(
   threadId: string,
   message: PagedChatMessage,
 ): IDBKeyRange {
-  return IDBKeyRange.bound([threadId, message.seqId ?? 0], [threadId, []]);
+  return IDBKeyRange.bound([threadId, message.seqId], [threadId, []]);
 }
 
 type GetDb = () => Promise<IDBPDatabase>;
@@ -163,20 +162,14 @@ function createMessageWriteStore(
 ): ChatMessageWriteStore {
   return {
     async upsertMessages(threadId, messages, signal) {
-      const sequencedMessages = messages.filter(
-        (message): message is PagedChatMessage & { readonly seqId: number } => {
-          return message.seqId !== undefined;
-        },
-      );
       L.debug("upsertMessages:start", {
         threadId,
-        count: sequencedMessages.length,
-        skippedUnsequencedCount: messages.length - sequencedMessages.length,
+        count: messages.length,
       });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readwrite");
-      const requests = sequencedMessages.map((message) => {
+      const requests = messages.map((message) => {
         signal?.throwIfAborted();
         // Stitch the owning thread onto the server-sequenced cached value.
         return tx.store.put(storedMessage(threadId, message));
@@ -184,7 +177,7 @@ function createMessageWriteStore(
       await Promise.all([...requests, tx.done]);
       L.debug("upsertMessages:done", {
         threadId,
-        count: sequencedMessages.length,
+        count: messages.length,
       });
     },
   };

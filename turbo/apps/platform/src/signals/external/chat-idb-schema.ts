@@ -22,7 +22,6 @@ export const ARTIFACT_ITEMS_RUN_FILE_INDEX = "byRunFile";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
-  store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
   store.createIndex(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
     unique: true,
   });

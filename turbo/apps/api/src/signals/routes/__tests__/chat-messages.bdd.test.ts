@@ -1622,9 +1622,6 @@ describe("CHAT-02: admission without spendable credits", () => {
     }
     expect(guidance.content).toContain("Buy more credits");
     expect(guidance.error).toBe("insufficient_credits");
-    if (queuedUser.seqId === undefined) {
-      throw new Error("Expected queued user message to have a seqId");
-    }
 
     const appended = await chat.listThreadMessages(actor, sent.body.threadId, {
       sinceSeqId: queuedUser.seqId,
@@ -5190,9 +5187,6 @@ describe("CHAT-02: shared user message queue", () => {
     expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
       Date.parse(original.createdAt),
     );
-    if (original.seqId === undefined) {
-      throw new Error("Expected queued message to have a seqId");
-    }
     const appended = await chat.listThreadMessages(actor, anchor.threadId, {
       sinceSeqId: original.seqId,
     });

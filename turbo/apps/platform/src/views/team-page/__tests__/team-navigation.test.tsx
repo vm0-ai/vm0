@@ -808,6 +808,7 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     role: "user",
                     content: "First shortcut thread message",
+                    seqId: 1,
                     createdAt: "2026-06-01T00:02:00Z",
                   },
                 ]
@@ -825,6 +826,7 @@ describe("team page navigation", () => {
           id: firstMessageId,
           role: "user",
           content: "First shortcut thread message",
+          seqId: 1,
           createdAt: "2026-06-01T00:02:00Z",
         });
       }

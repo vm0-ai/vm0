@@ -6002,7 +6002,7 @@ function workflowMessageBody(
 }
 
 function resolveAttachments(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ) {
   const source =
@@ -6040,7 +6040,7 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: PagedChatMessage,
+  message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
   const source =

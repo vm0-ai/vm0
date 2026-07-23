@@ -36,6 +36,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       role: "user",
       content: "Run the workflow",
+      seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       automationId: "legacy-automation-id",
       automationTitle: "Legacy automation",
@@ -49,11 +50,23 @@ describe("chat message response contract", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("rejects API messages without a sequence ID", () => {
+    const parsed = pagedChatMessageSchema.safeParse({
+      id: "message-1",
+      role: "user",
+      content: "Run the workflow",
+      createdAt: "2026-07-13T00:00:00.000Z",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts a canonical-only workflow Automation identifier", () => {
     const parsed = pagedChatMessageSchema.safeParse({
       id: "message-1",
       role: "user",
       content: "Run the workflow",
+      seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       workflowSnapshot: { ...workflowSnapshot, automationId },
     });

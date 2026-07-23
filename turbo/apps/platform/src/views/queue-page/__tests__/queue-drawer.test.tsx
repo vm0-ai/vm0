@@ -96,6 +96,7 @@ function mockQueuedThread(): void {
           role: "user",
           content: "Previous prompt",
           runId: "run-completed",
+          seqId: 1,
           createdAt: "2026-01-01T00:00:00Z",
         },
         {
@@ -104,6 +105,7 @@ function mockQueuedThread(): void {
           content: "Previous answer",
           runId: "run-completed",
           runLifecycleEvent: "completed",
+          seqId: 2,
           createdAt: "2026-01-01T00:00:01Z",
         },
         {
@@ -112,6 +114,7 @@ function mockQueuedThread(): void {
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
+          seqId: 3,
           createdAt: "2026-01-01T00:00:02Z",
         },
       ],

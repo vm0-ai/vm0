@@ -409,6 +409,7 @@ describe("chat lifecycle", () => {
           content: `Render window reply ${index}`,
           runId: `render-window-run-${index}`,
           runLifecycleEvent: "completed",
+          seqId: index + 1,
           createdAt: `2026-06-09T10:${String(index).padStart(2, "0")}:00Z`,
         };
       },

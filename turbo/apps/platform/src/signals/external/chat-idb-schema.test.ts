@@ -66,9 +66,6 @@ function expectChatMessagesStoreCreated(
   });
   expect(
     createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-  ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
-  expect(
-    createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
   ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
     unique: true,
   });

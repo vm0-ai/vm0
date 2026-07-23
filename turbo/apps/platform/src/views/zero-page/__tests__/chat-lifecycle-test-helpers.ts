@@ -62,6 +62,10 @@ export const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
   "b0000000-0000-4000-a000-000000000718";
 export const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+type ChatMessageSeed =
+  | Omit<Extract<PagedChatMessage, { role: "user" }>, "seqId">
+  | Omit<Extract<PagedChatMessage, { role: "assistant" }>, "seqId">;
+
 export function replaceNavigatorProperty(
   property: string,
   value: unknown,
@@ -241,7 +245,7 @@ export function makeRunGroupMessages(params: {
   readonly count: number;
   readonly runGroupId: string;
   readonly startMinute: number;
-}): PagedChatMessage[] {
+}): ChatMessageSeed[] {
   return Array.from({ length: params.count }, (_, index) => {
     const itemNumber = index + 1;
     const runId = `${params.runGroupId}-run-${itemNumber}`;
@@ -284,7 +288,7 @@ export function expectTextBefore(
   ).toBeTruthy();
 }
 
-export function makeMessage(id: string, text: string): PagedChatMessage {
+export function makeMessage(id: string, text: string): ChatMessageSeed {
   return {
     id,
     role: "user",
@@ -390,6 +394,7 @@ export function mockKeyboardNavigationThreads({
                 id: `${thread.id}-message`,
                 role: "user",
                 content: thread.message,
+                seqId: 1,
                 createdAt: "2026-06-01T00:00:00Z",
               },
             ]
@@ -471,6 +476,7 @@ export function mockServerQueuedThreadStories(): void {
           role: "user" as const,
           content: "Start queued deployment",
           runId: "run-server-queued-visible",
+          seqId: 1,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -479,6 +485,7 @@ export function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-visible",
           runEventId: "queue:queued",
+          seqId: 2,
           createdAt: "2026-06-09T10:00:01Z",
         },
       ] satisfies PagedChatMessage[],
@@ -493,6 +500,7 @@ export function mockServerQueuedThreadStories(): void {
           role: "user" as const,
           content: "Watch queued deployment resolve",
           runId: "run-server-queued-resolved",
+          seqId: 1,
           createdAt: "2026-06-09T10:05:00Z",
         },
         {
@@ -501,6 +509,7 @@ export function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-resolved",
           runEventId: "queue:queued",
+          seqId: 2,
           createdAt: "2026-06-09T10:05:01Z",
         },
         {
@@ -508,6 +517,7 @@ export function mockServerQueuedThreadStories(): void {
           role: "assistant" as const,
           content: "Queued deployment is running now.",
           runId: "run-server-queued-resolved",
+          seqId: 3,
           createdAt: "2026-06-09T10:05:02Z",
         },
         {
@@ -516,6 +526,7 @@ export function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-resolved",
           runLifecycleEvent: "completed" as const,
+          seqId: 4,
           createdAt: "2026-06-09T10:05:03Z",
         },
       ] satisfies PagedChatMessage[],

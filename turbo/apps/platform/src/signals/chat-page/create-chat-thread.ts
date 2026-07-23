@@ -41,6 +41,7 @@ import {
   type OptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
+import type { ChatMessage } from "./chat-message-types.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
@@ -162,7 +163,7 @@ function createChatThreadScrollSignals(threadId: string) {
   });
 }
 
-function isRecallControlMessage(msg: PagedChatMessage): boolean {
+function isRecallControlMessage(msg: ChatMessage): boolean {
   return (
     ((msg.role === "user" && msg.runId === undefined && msg.content === null) ||
       (msg.role === "assistant" && msg.content === null)) &&
@@ -170,7 +171,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
+function isQueueMarkerMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "assistant" &&
     msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
@@ -178,7 +179,7 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
+function isGoalMarkerMessage(msg: ChatMessage): boolean {
   return msg.role === "assistant" && msg.goalEvent !== undefined;
 }
 
@@ -187,7 +188,7 @@ function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
  * composer. Goal markers are chronological and last-write-wins: active shows
  * the cached objective brief; paused, blocked, complete, and cleared hide it.
  */
-function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
+function foldActiveGoal(messages: readonly ChatMessage[]): string | null {
   let objective: string | null = null;
   for (const message of messages) {
     const goalEvent =
@@ -209,16 +210,16 @@ function foldActiveGoal(messages: readonly PagedChatMessage[]): string | null {
   return trimmed || null;
 }
 
-function isUsageMessage(msg: PagedChatMessage): msg is Extract<
-  PagedChatMessage,
+function isUsageMessage(msg: ChatMessage): msg is Extract<
+  ChatMessage,
   { role: "assistant" }
 > & {
-  usage: NonNullable<PagedChatMessage["usage"]>;
+  usage: NonNullable<ChatMessage["usage"]>;
 } {
   return msg.role === "assistant" && msg.usage !== undefined;
 }
 
-function isInterruptControlMessage(msg: PagedChatMessage): boolean {
+function isInterruptControlMessage(msg: ChatMessage): boolean {
   return (
     msg.role === "user" &&
     msg.runId === undefined &&
@@ -227,9 +228,9 @@ function isInterruptControlMessage(msg: PagedChatMessage): boolean {
 }
 
 function createInterruptedAssistantProjection(
-  message: PagedChatMessage,
+  message: ChatMessage,
   runId: string,
-): PagedChatMessage {
+): ChatMessage {
   return {
     ...message,
     role: "assistant" as const,
@@ -258,7 +259,7 @@ function completedRunIdsFromMessages(
 }
 
 function isInterruptedAssistantCancellation(
-  message: PagedChatMessage,
+  message: ChatMessage,
   interruptedRunIds: Set<string>,
 ): boolean {
   const runId = message.runId;
@@ -333,7 +334,7 @@ const DONE_PHRASES = [
   },
 ] as const;
 
-function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+function formatDonePhrase(lastMsg: ChatMessage | undefined): string {
   const time = lastMsg
     ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
         month: "short",
@@ -391,10 +392,7 @@ function terminatedRunIdsFromRawMessages(
 
 type RunIndicatorState = "running" | "queued" | null;
 
-type AssistantPagedChatMessage = Extract<
-  PagedChatMessage,
-  { role: "assistant" }
->;
+type AssistantChatMessage = Extract<ChatMessage, { role: "assistant" }>;
 
 function runActivityIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
@@ -408,7 +406,7 @@ function runActivityIndicatorState(
 
 function assistantRunIndicatorState(
   terminatedRunIds: ReadonlySet<string>,
-  message: AssistantPagedChatMessage,
+  message: AssistantChatMessage,
 ): RunIndicatorState | undefined {
   const runId = message.runId;
   if (isQueueMarkerMessage(message)) {
@@ -1280,10 +1278,6 @@ interface RegisteredChatMessage {
   readonly blocks: BodyRenderBlock[];
 }
 
-type SequencedRegisteredChatMessage = RegisteredChatMessage & {
-  readonly message: PagedChatMessage & { readonly seqId: number };
-};
-
 type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
 
 type BodyBlocksRenderer = (
@@ -1321,18 +1315,9 @@ function mergeRegisteredMessages(
       byId.set(entry.message.id, entry);
     }
   }
-  const merged = Array.from(byId.values());
-  const sequenced = merged
-    .filter((entry): entry is SequencedRegisteredChatMessage => {
-      return entry.message.seqId !== undefined;
-    })
-    .sort((left, right) => {
-      return left.message.seqId - right.message.seqId;
-    });
-  const unsequenced = merged.filter((entry) => {
-    return entry.message.seqId === undefined;
+  return Array.from(byId.values()).sort((left, right) => {
+    return left.message.seqId - right.message.seqId;
   });
-  return [...sequenced, ...unsequenced];
 }
 
 function skipsMessageBodyRendering(message: PagedChatMessage): boolean {
@@ -1408,12 +1393,23 @@ function createWritePersistentMessages(
   );
 }
 
-interface ChatMessageProjectionEntry {
+interface ServerChatMessageProjectionEntry {
   message: PagedChatMessage;
-  source: "server" | "optimistic";
+  source: "server";
+  blocks: BodyRenderBlock[];
+  optimisticUserMessageAssociation?: never;
+}
+
+interface OptimisticChatMessageProjectionEntry {
+  message: OptimisticChatMessageEntry["message"];
+  source: "optimistic";
   blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
+
+type ChatMessageProjectionEntry =
+  | ServerChatMessageProjectionEntry
+  | OptimisticChatMessageProjectionEntry;
 
 function projectRawMessages({
   persistentMessages,
@@ -1497,7 +1493,7 @@ function createTranscriptMessagesComputed(
 }
 
 interface SemanticChatMessage {
-  readonly message: PagedChatMessage;
+  readonly message: ChatMessage;
   readonly blocks: BodyRenderBlock[];
   readonly isQueued: boolean;
   readonly isOptimisticRun: boolean;
@@ -1679,7 +1675,7 @@ function groupSemanticChatMessages(
 
 function queuedMessagesFromSemanticMessages(
   semanticMessages: readonly SemanticChatMessage[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return semanticMessages.flatMap((entry) => {
     const { message } = entry;
     return message.role === "user" && entry.isQueued ? [message] : [];
@@ -1688,7 +1684,7 @@ function queuedMessagesFromSemanticMessages(
 
 function queuedMessagesFromRaw(
   raw: readonly ChatMessageProjectionEntry[],
-): PagedChatMessage[] {
+): ChatMessage[] {
   return queuedMessagesFromSemanticMessages(
     semanticTranscriptMessagesFromRaw(raw),
   );
@@ -1897,7 +1893,7 @@ function createMessageSemanticSignals(
   const semanticGroups$ = computed((get): SemanticChatGroups => {
     return groupSemanticChatMessages(get(semanticMessages$));
   });
-  const queuedMessages$ = computed((get): PagedChatMessage[] => {
+  const queuedMessages$ = computed((get): ChatMessage[] => {
     return queuedMessagesFromSemanticMessages(get(semanticMessages$));
   });
   const thinkingIndicatorProjection$ = computed(

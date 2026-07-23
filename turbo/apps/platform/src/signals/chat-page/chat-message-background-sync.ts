@@ -49,12 +49,7 @@ const syncChatThreadMessagesToIndexedDb$ = command(
 
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
-      sinceSeqId = result.messages.at(-1)?.seqId;
-      if (sinceSeqId === undefined) {
-        // A briefly overlapping old backend can omit seqId. Keep the messages
-        // in memory, but do not repeat an unanchored page request.
-        return;
-      }
+      sinceSeqId = result.messages[result.messages.length - 1]!.seqId;
       await syncMessagesAfter();
     }
 

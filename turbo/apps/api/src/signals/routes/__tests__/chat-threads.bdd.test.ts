@@ -1403,47 +1403,42 @@ describe("CHAT-01 chat thread read state", () => {
       ["user", "cursor round two"],
       ["assistant", expect.stringContaining("Insufficient credits")],
     ]);
-    const seqIds = full.messages.flatMap((message) => {
-      return message.seqId === undefined ? [] : [message.seqId];
+    const seqIds = full.messages.map((message) => {
+      return message.seqId;
     });
-    expect(seqIds).toHaveLength(full.messages.length);
     expect(seqIds).toStrictEqual(
       [...seqIds].sort((left, right) => {
         return left - right;
       }),
     );
     expect(new Set(seqIds).size).toBe(seqIds.length);
-    const ids = full.messages.map((message) => {
-      return message.id;
-    });
     const [
-      firstQueuedUser,
-      firstReplacement,
-      firstAssistant,
-      secondQueuedUser,
-      secondReplacement,
-      secondAssistant,
-    ] = ids;
+      firstQueuedUserMessage,
+      firstReplacementMessage,
+      firstAssistantMessage,
+      secondQueuedUserMessage,
+      secondReplacementMessage,
+      secondAssistantMessage,
+    ] = full.messages;
     if (
-      !firstQueuedUser ||
-      !firstReplacement ||
-      !firstAssistant ||
-      !secondQueuedUser ||
-      !secondReplacement ||
-      !secondAssistant
+      !firstQueuedUserMessage ||
+      !firstReplacementMessage ||
+      !firstAssistantMessage ||
+      !secondQueuedUserMessage ||
+      !secondReplacementMessage ||
+      !secondAssistantMessage
     ) {
       throw new Error("Expected six messages across the two sends");
     }
-    const firstAssistantSeqId = full.messages[2]?.seqId;
-    const secondQueuedUserSeqId = full.messages[3]?.seqId;
-    const secondAssistantSeqId = full.messages[5]?.seqId;
-    if (
-      firstAssistantSeqId === undefined ||
-      secondQueuedUserSeqId === undefined ||
-      secondAssistantSeqId === undefined
-    ) {
-      throw new Error("Expected every paged message to have a seqId");
-    }
+    const firstQueuedUser = firstQueuedUserMessage.id;
+    const firstReplacement = firstReplacementMessage.id;
+    const firstAssistant = firstAssistantMessage.id;
+    const secondQueuedUser = secondQueuedUserMessage.id;
+    const secondReplacement = secondReplacementMessage.id;
+    const secondAssistant = secondAssistantMessage.id;
+    const firstAssistantSeqId = firstAssistantMessage.seqId;
+    const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
+    const secondAssistantSeqId = secondAssistantMessage.seqId;
     expect(full.messages[0]?.error).toBeUndefined();
     expect(full.messages[1]).toMatchObject({
       error: "insufficient_credits",

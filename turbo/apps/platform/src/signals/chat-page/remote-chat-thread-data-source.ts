@@ -162,7 +162,7 @@ const appendQueuedMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -183,15 +183,16 @@ const appendQueuedMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content,
-      attachFiles: attachments ?? undefined,
-      generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
+    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
+    const messageResult = await accept(
+      messageClient.get({
+        params: { threadId, messageId: clientMessageId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return messageResult.body;
   },
 );
 
@@ -202,7 +203,7 @@ const recallMessage$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
+    await accept(
       client.send({
         body: {
           agentId,
@@ -215,13 +216,16 @@ const recallMessage$ = command(
       [201],
     );
     signal.throwIfAborted();
-    return {
-      id: clientMessageId,
-      role: "user" as const,
-      content: null,
-      revokesMessageId,
-      createdAt: result.body.createdAt ?? nowDate().toISOString(),
-    };
+    const messageClient = get(zeroClient$)(chatThreadMessagesContract);
+    const messageResult = await accept(
+      messageClient.get({
+        params: { threadId, messageId: clientMessageId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return messageResult.body;
   },
 );
 

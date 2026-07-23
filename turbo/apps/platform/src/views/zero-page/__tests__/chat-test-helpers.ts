@@ -252,16 +252,14 @@ interface MockLifecycleControl {
 }
 
 type MockPagedMessage =
-  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id" | "seqId"> & {
       id?: string;
     })
-  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id"> & {
+  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id" | "seqId"> & {
       id?: string;
     });
 
-function cloneMockPagedMessage<T extends MockPagedMessage & { id: string }>(
-  message: T,
-): T {
+function cloneMockPagedMessage<T extends PagedChatMessage>(message: T): T {
   return structuredClone(message);
 }
 
@@ -597,7 +595,7 @@ export function mockChatLifecycle(
     ];
   };
 
-  const buildPagedMessages = () => {
+  const buildPagedMessages = (): PagedChatMessage[] => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
     const historicalMessages = historyMessages.map((message, i) => {
       return {

@@ -373,7 +373,7 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   /** Server-assigned strict position within the chat thread. */
-  seqId: z.number().int().positive().optional(),
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),

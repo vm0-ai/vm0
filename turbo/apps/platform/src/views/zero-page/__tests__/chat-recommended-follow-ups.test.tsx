@@ -168,6 +168,7 @@ describe("chat lifecycle", () => {
       content: null,
       runId: "run-followup",
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-06-09T10:01:01Z",
     };
     const fetchedMessageIds: string[] = [];
@@ -235,6 +236,7 @@ describe("chat lifecycle", () => {
       content: null,
       runId: "run-followup-subscribe-gap",
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-06-09T10:01:01Z",
     };
     const fetchedMessageIds: string[] = [];
@@ -343,6 +345,7 @@ describe("chat lifecycle", () => {
       content: null,
       runId: "run-followup-old",
       runLifecycleEvent: "completed",
+      seqId: 3,
       createdAt: "2026-06-09T10:01:01Z",
     };
     const fetchedMessageIds: string[] = [];

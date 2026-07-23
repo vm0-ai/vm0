@@ -778,6 +778,7 @@ describe("zero sidebar", () => {
                     role: "assistant",
                     content: "Incident update",
                     runLifecycleEvent: "completed",
+                    seqId: 1,
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]
