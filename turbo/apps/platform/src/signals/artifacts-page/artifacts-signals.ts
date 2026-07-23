@@ -21,7 +21,7 @@ import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRef, onRejection, resetSignal } from "../utils.ts";
+import { onRef, onRejection, resetSignal, settle } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -428,45 +428,70 @@ export const syncArtifacts$ = command(
     }
 
     const client = get(zeroClient$)(artifactsContract);
-    let artifacts = [...initial.artifacts];
-    let cursor = initial.nextCursor ?? undefined;
-    let syncUntil = initial.syncUntil;
-    set(internalRemoteArtifactsProgress$, {
-      artifacts,
-      mergeCachedArtifacts: initial.mergeCachedArtifacts,
-      reload: initial.reload,
-    });
-
-    for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
-      const result = await accept(
-        client.list({
-          query: {
-            limit: ARTIFACTS_PAGE_SIZE,
-            cursor,
-            updatedAfter: initial.updatedAfter,
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      syncUntil ??= result.body.syncUntil;
-      artifacts = mergeArtifactItems(
-        artifacts,
-        result.body.artifacts.map((item) => {
-          return artifactItemSchema.parse(item);
-        }),
-      );
-      if (get(internalArtifactsReload$) !== initial.reload) {
-        return;
-      }
+    const fetchRemainingArtifactPages = async (
+      initialArtifacts: readonly ArtifactItem[],
+      initialCursor: string | undefined,
+      updatedAfter: string | undefined,
+      initialSyncUntil: string | undefined,
+      mergeCachedArtifacts: boolean,
+    ): Promise<{
+      readonly artifacts: ArtifactItem[];
+      readonly syncUntil: string | undefined;
+    } | null> => {
+      let artifacts = [...initialArtifacts];
+      let cursor = initialCursor;
+      let syncUntil = initialSyncUntil;
       set(internalRemoteArtifactsProgress$, {
         artifacts,
-        mergeCachedArtifacts: initial.mergeCachedArtifacts,
+        mergeCachedArtifacts,
         reload: initial.reload,
       });
-      cursor = result.body.nextCursor ?? undefined;
+
+      for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
+        const result = await accept(
+          client.list({
+            query: {
+              limit: ARTIFACTS_PAGE_SIZE,
+              cursor,
+              updatedAfter,
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+        syncUntil ??= result.body.syncUntil;
+        artifacts = mergeArtifactItems(
+          artifacts,
+          result.body.artifacts.map((item) => {
+            return artifactItemSchema.parse(item);
+          }),
+        );
+        if (get(internalArtifactsReload$) !== initial.reload) {
+          return null;
+        }
+        set(internalRemoteArtifactsProgress$, {
+          artifacts,
+          mergeCachedArtifacts,
+          reload: initial.reload,
+        });
+        cursor = result.body.nextCursor ?? undefined;
+      }
+
+      return { artifacts, syncUntil };
+    };
+
+    const incrementalSnapshot = await fetchRemainingArtifactPages(
+      initial.artifacts,
+      initial.nextCursor ?? undefined,
+      initial.updatedAfter,
+      initial.syncUntil,
+      initial.mergeCachedArtifacts,
+    );
+    if (!incrementalSnapshot) {
+      return;
     }
+    let { artifacts, syncUntil } = incrementalSnapshot;
 
     signal.throwIfAborted();
     if (get(internalArtifactsReload$) !== initial.reload) {
@@ -475,14 +500,51 @@ export const syncArtifacts$ = command(
 
     const stores = artifactItemCacheStores(get(chatIdb$));
     if (initial.mergeCachedArtifacts) {
-      const cachedArtifacts = await stores.readStore.readRecent(
-        { limit: ARTIFACTS_FULL_CACHE_READ_LIMIT },
+      const cachedArtifactsResult = await settle(
+        stores.readStore.readRecent(
+          { limit: ARTIFACTS_FULL_CACHE_READ_LIMIT },
+          signal,
+        ),
         signal,
       );
       if (get(internalArtifactsReload$) !== initial.reload) {
         return;
       }
-      artifacts = mergeArtifactItems(cachedArtifacts, artifacts);
+      if (cachedArtifactsResult.ok) {
+        artifacts = mergeArtifactItems(cachedArtifactsResult.value, artifacts);
+      } else {
+        // An incremental response is incomplete without the full local
+        // snapshot. If IndexedDB cannot provide it within its strict deadline,
+        // recover with an authoritative server snapshot instead of silently
+        // leaving the view capped at its 60-item first-paint window.
+        const result = await accept(
+          client.list({
+            query: { limit: ARTIFACTS_PAGE_SIZE },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+        if (get(internalArtifactsReload$) !== initial.reload) {
+          return;
+        }
+        const fullSnapshot = await fetchRemainingArtifactPages(
+          mergeArtifactItems(
+            [],
+            result.body.artifacts.map((item) => {
+              return artifactItemSchema.parse(item);
+            }),
+          ),
+          result.body.nextCursor ?? undefined,
+          undefined,
+          result.body.syncUntil,
+          false,
+        );
+        if (!fullSnapshot) {
+          return;
+        }
+        ({ artifacts, syncUntil } = fullSnapshot);
+      }
     }
     set(internalRemoteArtifactsProgress$, {
       artifacts,

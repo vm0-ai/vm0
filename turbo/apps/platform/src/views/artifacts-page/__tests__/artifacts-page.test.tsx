@@ -39,6 +39,7 @@ const artifactIdbMock = vi.hoisted(() => {
     readonly released: PromiseWithResolvers<void>;
   } | null = null;
   let artifactReadGate: {
+    readonly afterItems: number;
     readonly started: PromiseWithResolvers<void>;
     readonly released: PromiseWithResolvers<void>;
   } | null = null;
@@ -56,7 +57,7 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     async continue(): Promise<MemoryCursor | null> {
-      if (this.position === 0 && this.readGate) {
+      if (this.readGate && this.position === this.readGate.afterItems - 1) {
         this.readGate.started.resolve();
         await this.readGate.released.promise;
       }
@@ -354,13 +355,13 @@ const artifactIdbMock = vi.hoisted(() => {
   const dbs = new Map<string, MemoryDb>();
 
   return {
-    blockArtifactCursorContinuation(): {
+    blockArtifactCursorContinuation(afterItems = 1): {
       readonly started: Promise<void>;
       release(): void;
     } {
       const started = Promise.withResolvers<void>();
       const released = Promise.withResolvers<void>();
-      const gate = { started, released };
+      const gate = { afterItems, started, released };
       artifactReadGate = gate;
       return {
         started: started.promise,
@@ -1686,6 +1687,69 @@ describe("artifacts page", () => {
       );
       expect(screen.queryByText("No artifacts found")).not.toBeInTheDocument();
       expect(requestedUpdatedAfter).toBe(lastSyncedAt);
+    } finally {
+      blockedRead.release();
+    }
+  });
+
+  it("refetches a full snapshot when the background cache merge times out", async () => {
+    setupTeam();
+    const scope = testAuthScope("incremental-full-cache-timeout");
+    const lastSyncedAt = "2026-01-03T00:00:00.000Z";
+    const cachedArtifacts = Array.from({ length: 61 }, (_, index) => {
+      const sequence = String(index).padStart(2, "0");
+      const createdAt = new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
+      return createArtifact({
+        artifactItemId: `cached-${sequence}:file-1`,
+        runId: `cached-${sequence}`,
+        filename: `cached-${sequence}.html`,
+        createdAt,
+        updatedAt: createdAt,
+      });
+    });
+    const changedArtifact = createArtifact({
+      artifactItemId: "changed:file-1",
+      runId: "changed",
+      filename: "changed.html",
+      createdAt: "2026-01-04T00:00:00.000Z",
+      updatedAt: "2026-01-04T00:00:00.000Z",
+    });
+    await seedCachedArtifacts(scope, cachedArtifacts, lastSyncedAt);
+    // The first-paint read stops at 60 without continuing. Only the background
+    // full-cache read reaches this gate while requesting the 61st item.
+    const blockedRead = artifactIdbMock.blockArtifactCursorContinuation(60);
+    let fullSnapshotRequests = 0;
+    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
+      if (query.updatedAfter) {
+        return respond(200, {
+          artifacts: [changedArtifact],
+          truncated: false,
+          nextCursor: null,
+          syncUntil: "2026-01-05T00:00:00.000Z",
+        });
+      }
+      fullSnapshotRequests += 1;
+      return respond(200, {
+        artifacts: [changedArtifact, ...cachedArtifacts],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: "2026-01-05T00:00:00.000Z",
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await blockedRead.started;
+    try {
+      await fill(
+        screen.getByPlaceholderText("Search artifacts..."),
+        "cached-00.html",
+      );
+      await expect(
+        screen.findByText("cached-00.html"),
+      ).resolves.toBeInTheDocument();
+      expect(fullSnapshotRequests).toBe(1);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     } finally {
       blockedRead.release();
     }
