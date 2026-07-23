@@ -33,6 +33,22 @@ export async function clearApiStartFixture(runId: string): Promise<void> {
     .where(eq(zeroRuns.id, runId));
 }
 
+/**
+ * Simulates a queued message written before durable API timing was added.
+ */
+export async function clearQueuedApiStartFixture(
+  chatMessageId: string,
+): Promise<void> {
+  const [cleared] = await db()
+    .update(chatMessageQueue)
+    .set({ apiStartedAt: null })
+    .where(eq(chatMessageQueue.chatMessageId, chatMessageId))
+    .returning({ id: chatMessageQueue.id });
+  if (!cleared) {
+    throw new Error("Expected a queued chat message fixture");
+  }
+}
+
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {
