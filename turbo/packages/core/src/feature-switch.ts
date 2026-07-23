@@ -121,6 +121,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Google Forms connector",
     enabled: false,
   },
+  [FeatureSwitchKey.JoggAiConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the JoggAI video generation connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",

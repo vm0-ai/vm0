@@ -29,6 +29,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
