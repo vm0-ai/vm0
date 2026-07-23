@@ -206,8 +206,6 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
       userId: auth.userId,
       sinceSeqId: query.sinceSeqId,
       beforeSeqId: query.beforeSeqId,
-      sinceId: query.sinceId,
-      beforeId: query.beforeId,
       limit: query.limit,
     }),
   );

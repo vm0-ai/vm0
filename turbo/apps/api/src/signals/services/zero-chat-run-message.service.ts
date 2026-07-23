@@ -100,37 +100,28 @@ export async function postRunUserMessage(params: {
         ),
       }
     : undefined;
-  const syncThroughMessageId = await params.db.transaction(
-    async (tx): Promise<string | undefined> => {
-      const inserted = await insertChatMessage(tx, {
-        chatThreadId: params.threadId,
-        role: "user",
-        content: params.prompt,
-        runId: params.runId,
-        runGroupId: params.runGroupId,
-        goalSnapshot,
-      });
-      if (!params.appendQueueMarker) {
-        return inserted?.id;
-      }
-      const marker = await appendQueuedRunAssistantMarker(tx, {
-        chatThreadId: params.threadId,
-        runId: params.runId,
-        runGroupId: params.runGroupId,
-        createdAfter: inserted?.createdAt ?? nowDate(),
-      });
-      if (marker.kind === "appended") {
-        return marker.markerId;
-      }
-      // An existing marker's sort position relative to this user message is
-      // unknown, so no safe watermark exists for the batch.
-      return marker.kind === "not-queued" ? inserted?.id : undefined;
-    },
-  );
+  await params.db.transaction(async (tx): Promise<void> => {
+    const inserted = await insertChatMessage(tx, {
+      chatThreadId: params.threadId,
+      role: "user",
+      content: params.prompt,
+      runId: params.runId,
+      runGroupId: params.runGroupId,
+      goalSnapshot,
+    });
+    if (!params.appendQueueMarker) {
+      return;
+    }
+    await appendQueuedRunAssistantMarker(tx, {
+      chatThreadId: params.threadId,
+      runId: params.runId,
+      runGroupId: params.runGroupId,
+      createdAfter: inserted?.createdAt ?? nowDate(),
+    });
+  });
   await publishUserSignal(
     [params.userId],
     `chatThreadMessageCreated:${params.threadId}`,
-    syncThroughMessageId ? { syncThroughMessageId } : null,
   );
   await publishUserSignal(
     [params.userId],

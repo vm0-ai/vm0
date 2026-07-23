@@ -255,20 +255,12 @@ export async function insertAssistantEventMessages(
         );
   signal.throwIfAborted();
 
-  const insertedRows = [...deterministicRows, ...legacyRows];
-  const insertedRowCount = insertedRows.length;
+  const insertedRowCount = deterministicRows.length + legacyRows.length;
 
   if (insertedRowCount > 0) {
-    // The watermark must be the batch row that sorts last in server list
-    // order (seqId) so older clients that still consume the watermark can
-    // treat it as proof that every earlier row from this publish is present.
-    const watermark = insertedRows.reduce((last, row) => {
-      return row.seqId > last.seqId ? row : last;
-    });
     await publishUserSignal(
       [args.userId],
       `chatThreadMessageCreated:${args.threadId}`,
-      { syncThroughMessageId: watermark.id },
     );
     signal.throwIfAborted();
 

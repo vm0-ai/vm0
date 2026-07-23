@@ -1493,16 +1493,6 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
-
-    // Previous browser tabs can keep using the UUID cursor during rollout.
-    const legacySince = await chat.listThreadMessages(owner, threadId, {
-      sinceId: firstAssistant,
-    });
-    expect(
-      legacySince.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
   }, 30_000);
 });
 

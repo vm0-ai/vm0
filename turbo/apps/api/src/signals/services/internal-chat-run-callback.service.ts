@@ -936,7 +936,7 @@ async function insertAssistantErrorMessage(args: {
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
-    return { slackDeliveryCallbackId, messageId: message.id };
+    return { slackDeliveryCallbackId };
   });
   if (!inserted) {
     return { inserted: false };
@@ -945,7 +945,6 @@ async function insertAssistantErrorMessage(args: {
   await publishUserSignal(
     [args.userId],
     `chatThreadMessageCreated:${args.threadId}`,
-    { syncThroughMessageId: inserted.messageId },
   );
   await publishThreadListChanged(args.userId);
   return {
@@ -1054,11 +1053,7 @@ async function insertRecommendedFollowupsMessage(args: {
     return false;
   }
 
-  await publishChatThreadMessageCreatedSafely(
-    args.userId,
-    args.threadId,
-    inserted.id,
-  );
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   return true;
 }
 

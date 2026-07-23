@@ -1093,10 +1093,6 @@ export const chatThreadMessagesContract = c.router({
     query: z.object({
       sinceSeqId: z.coerce.number().int().positive().optional(),
       beforeSeqId: z.coerce.number().int().positive().optional(),
-      // Compatibility for browser tabs loaded before sequence cursors shipped.
-      // Remove after the previous frontend version can no longer be active.
-      sinceId: z.string().uuid().optional(),
-      beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {

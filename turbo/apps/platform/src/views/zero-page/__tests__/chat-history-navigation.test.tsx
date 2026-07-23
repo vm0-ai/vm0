@@ -244,9 +244,7 @@ describe("chat lifecycle", () => {
     });
 
     exposeNewMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {
-      syncThroughMessageId: newMessage.id,
-    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
