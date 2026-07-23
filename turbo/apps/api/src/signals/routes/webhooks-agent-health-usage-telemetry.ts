@@ -14,7 +14,7 @@ import {
 } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import {
   isSupportedRunModel,
@@ -140,9 +140,36 @@ async function claimCompactModelUsageLegacyKeys(
   if (values.length === 0) {
     return new Set();
   }
+
+  const historicalRows = await tx
+    .select({
+      idempotencyKey: modelUsageObservation.idempotencyKey,
+    })
+    .from(modelUsageObservation)
+    .where(
+      inArray(
+        modelUsageObservation.idempotencyKey,
+        values.map((value) => {
+          return value.idempotencyKey;
+        }),
+      ),
+    );
+  signal.throwIfAborted();
+  const historicalKeys = new Set(
+    historicalRows.map((row) => {
+      return row.idempotencyKey;
+    }),
+  );
+  const claimValues = values.filter((value) => {
+    return !historicalKeys.has(value.idempotencyKey);
+  });
+  if (claimValues.length === 0) {
+    return new Set();
+  }
+
   const claimedRows = await tx
     .insert(modelUsageObservationLegacyKey)
-    .values(values)
+    .values(claimValues)
     .onConflictDoNothing({
       target: [modelUsageObservationLegacyKey.idempotencyKey],
     })

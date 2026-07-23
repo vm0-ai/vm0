@@ -16,6 +16,7 @@ import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import { removeModelUsageObservationLegacyClaimFixture } from "../../../test-fixtures/model-usage-observation";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -632,6 +633,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       sandboxHeaders,
       [200],
     );
+    await removeModelUsageObservationLegacyClaimFixture(legacyFirstInputKey);
     await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
