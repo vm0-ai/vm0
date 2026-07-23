@@ -1196,6 +1196,7 @@ def _release_terminal_flow_state(
         terminal_usage.release_model_websocket_terminal_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
+    flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     connector_diagnostics.release_flow_state(flow)

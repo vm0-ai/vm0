@@ -287,8 +287,16 @@ def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_requ
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
+@pytest.mark.parametrize(
+    "auth_error",
+    [
+        auth_client.ConnectorNotConfiguredError("not linked"),
+        RuntimeError("auth backend unavailable"),
+    ],
+    ids=["connector-not-configured", "generic-auth-error"],
+)
 async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
-    tmp_path, real_flow, mitm_ctx, headers
+    tmp_path, real_flow, mitm_ctx, headers, auth_error
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -305,7 +313,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    get_headers = AsyncMock(side_effect=auth_client.ConnectorNotConfiguredError("not linked"))
+    get_headers = AsyncMock(side_effect=auth_error)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -320,10 +328,18 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
 
         await mitm_addon.request(flow)
 
-    assert get_headers.await_count == 2
+    assert get_headers.await_count == 1
     assert flow.response is not None
-    assert flow.response.status_code == 424
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
+    expected_status = (
+        424 if isinstance(auth_error, auth_client.ConnectorNotConfiguredError) else 502
+    )
+    assert flow.response.status_code == expected_status
+    expected_error = (
+        "connector_not_configured"
+        if isinstance(auth_error, auth_client.ConnectorNotConfiguredError)
+        else "auth_failed"
+    )
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
