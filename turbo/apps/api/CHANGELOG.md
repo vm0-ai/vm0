@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.304.0](https://github.com/vm0-ai/vm0/compare/api-v1.303.0...api-v1.304.0) (2026-07-23)
+
+
+### Features
+
+* **storage:** persist canonical mounts for capable runners ([#22594](https://github.com/vm0-ai/vm0/issues/22594)) ([ea2d220](https://github.com/vm0-ai/vm0/commit/ea2d2207727441e9435fe3f53184f768c758a891))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.0
+    * @vm0/core bumped to 8.452.1
+    * @vm0/db bumped to 1.128.0
+
 ## [1.303.0](https://github.com/vm0-ai/vm0/compare/api-v1.302.0...api-v1.303.0) (2026-07-22)
 
 
