@@ -16,9 +16,10 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
     let tmp = tempfile::tempdir()?;
     let resume_thread_id = "0193ABCDEF01723489ABCDEF01234567";
     let canonical_resume_thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let resume_path = "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-0193abcd-ef01-7234-89ab-cdef01234567.jsonl";
 
     unsafe {
-        common::setup_codex_app_server_env(
+        common::setup_codex_app_server_env_with_resume_path(
             &mock,
             tmp.path(),
             common::CodexAppServerEnvConfig {
@@ -27,6 +28,7 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
                 scenario: Some("runtime-turn-complete"),
                 resume_session_id: Some(resume_thread_id),
             },
+            resume_path,
         )?;
     }
     let runtime = common::guest_runtime_from_process_env()?;
@@ -57,6 +59,16 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
     assert_eq!(stored_id, canonical_resume_thread_id);
     let marker = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
     assert!(marker.ends_with(&format!(":{canonical_resume_thread_id}")));
+    let input_event = common::read_codex_session_history_events_for_paths(&runtime.paths)?
+        .into_iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
+        .ok_or("missing mock app-server input event")?;
+    assert_eq!(
+        input_event
+            .get("thread_request_path")
+            .and_then(Value::as_str),
+        Some(resume_path)
+    );
 
     Ok(())
 }

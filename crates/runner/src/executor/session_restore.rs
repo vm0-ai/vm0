@@ -2,7 +2,7 @@
 
 mod codex;
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use sandbox::Sandbox;
@@ -136,11 +136,43 @@ pub(super) struct SessionRestoreDiagnostics {
     pub(super) bytes_in: usize,
 }
 
+pub(super) struct SessionRestoreOutcome {
+    pub(super) diagnostics: SessionRestoreDiagnostics,
+    codex_resume_path: Option<String>,
+}
+
+impl SessionRestoreOutcome {
+    fn new(diagnostics: SessionRestoreDiagnostics, codex_resume_path: Option<String>) -> Self {
+        Self {
+            diagnostics,
+            codex_resume_path,
+        }
+    }
+
+    pub(super) fn into_parts(self) -> (SessionRestoreDiagnostics, Option<String>) {
+        (self.diagnostics, self.codex_resume_path)
+    }
+
+    #[cfg(test)]
+    pub(super) fn codex_resume_path(&self) -> Option<&str> {
+        self.codex_resume_path.as_deref()
+    }
+}
+
+impl fmt::Debug for SessionRestoreOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionRestoreOutcome")
+            .field("diagnostics", &self.diagnostics)
+            .finish()
+    }
+}
+
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
-) -> RunnerResult<SessionRestoreDiagnostics> {
+) -> RunnerResult<SessionRestoreOutcome> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
@@ -171,7 +203,7 @@ pub(super) async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
-) -> RunnerResult<SessionRestoreDiagnostics> {
+) -> RunnerResult<SessionRestoreOutcome> {
     let session_history = session.history_bytes();
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
@@ -193,7 +225,7 @@ pub(super) async fn restore_claude_session(
         bytes_in = diagnostics.bytes_in,
         "restored session history"
     );
-    Ok(diagnostics)
+    Ok(SessionRestoreOutcome::new(diagnostics, None))
 }
 
 async fn write_session_history_file(

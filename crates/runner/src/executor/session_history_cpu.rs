@@ -10,6 +10,7 @@ use std::sync::{Condvar, Mutex};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use flate2::read::MultiGzDecoder;
+use guest_contracts::codex_thread_id::CodexThreadId;
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -22,6 +23,12 @@ use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 const CPU_CHUNK_BYTES: usize = 64 * 1024;
 const DECODER_BUFFER_BYTES: usize = 8 * 1024;
 const CPU_CANCELLED: &str = "session history materialization cancelled";
+const INVALID_CODEX_SESSION_HISTORY_IDENTITY: &str = "invalid Codex session history identity";
+
+struct CodexSessionMetadata {
+    thread_id: CodexThreadId,
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+}
 
 #[derive(Clone)]
 pub(crate) struct SessionHistoryCpuPool {
@@ -92,6 +99,14 @@ struct RawSessionHistoryJob {
     expected_raw_size: u64,
     expected_hash: String,
     framework: EffectiveCliFramework,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
+}
+
+struct CodexZstdVerification<'a> {
+    encoded_bytes: &'a [u8],
+    expected_raw_size: u64,
+    expected_hash: &'a str,
+    cli_agent_session_id: &'a str,
     prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
 }
 
@@ -478,20 +493,20 @@ fn materialize_blocking(
             cli_agent_session_id,
             history,
         } => {
-            let result = scan_valid_utf8_history(&history, cancel, hooks).map(|timestamp| {
-                SessionHistoryCpuMaterialization {
-                    session: MaterializedResumeSession::new_shared(
-                        cli_agent_session_id,
-                        history,
-                        timestamp,
-                    ),
-                    prefix_outcome: None,
-                }
+            let mut timings = SessionHistoryCpuTimings::default();
+            let validation_started = Instant::now();
+            let validation =
+                scan_valid_utf8_history(&history, &cli_agent_session_id, cancel, hooks);
+            timings.record_validation(validation_started.elapsed(), validation.is_ok());
+            let result = validation.map(|timestamp| SessionHistoryCpuMaterialization {
+                session: MaterializedResumeSession::new_shared(
+                    cli_agent_session_id,
+                    history,
+                    timestamp,
+                ),
+                prefix_outcome: None,
             });
-            SessionHistoryCpuOutcome {
-                timings: SessionHistoryCpuTimings::default(),
-                result,
-            }
+            SessionHistoryCpuOutcome { timings, result }
         }
     }
 }
@@ -520,7 +535,10 @@ fn materialize_raw(
             cancel,
         )?;
         let timestamp = if framework == EffectiveCliFramework::Codex {
-            scan_raw_codex_history(&bytes, cancel, hooks)?
+            let validation_started = Instant::now();
+            let validation = scan_raw_codex_history(&bytes, &cli_agent_session_id, cancel, hooks);
+            timings.record_validation(validation_started.elapsed(), validation.is_ok());
+            validation?
         } else {
             None
         };
@@ -577,7 +595,10 @@ fn materialize_compressed(
             cancel,
         )?;
         let timestamp = if framework == EffectiveCliFramework::Codex {
-            scan_raw_codex_history(&bytes, cancel, hooks)?
+            let validation_started = Instant::now();
+            let validation = scan_raw_codex_history(&bytes, &cli_agent_session_id, cancel, hooks);
+            timings.record_validation(validation_started.elapsed(), validation.is_ok());
+            validation?
         } else {
             None
         };
@@ -602,10 +623,13 @@ fn materialize_codex_zstd(
     let result = (|| {
         validate_compressed_raw_size(expected_raw_size, "zstd", &mut timings)?;
         let (timestamp, prefix_outcome) = verify_codex_zstd(
-            &encoded_bytes,
-            expected_raw_size,
-            expected_hash,
-            prefix_attribution,
+            CodexZstdVerification {
+                encoded_bytes: &encoded_bytes,
+                expected_raw_size,
+                expected_hash,
+                cli_agent_session_id: &cli_agent_session_id,
+                prefix_attribution,
+            },
             &mut timings,
             cancel,
             hooks,
@@ -847,10 +871,7 @@ fn read_compressed_history(
 }
 
 fn verify_codex_zstd(
-    encoded_bytes: &[u8],
-    expected_raw_size: u64,
-    expected_hash: &str,
-    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
+    verification: CodexZstdVerification<'_>,
     timings: &mut SessionHistoryCpuTimings,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
@@ -858,6 +879,13 @@ fn verify_codex_zstd(
     Option<chrono::DateTime<chrono::Utc>>,
     Option<SessionHistoryPrefixOutcome>,
 )> {
+    let CodexZstdVerification {
+        encoded_bytes,
+        expected_raw_size,
+        expected_hash,
+        cli_agent_session_id,
+        prefix_attribution,
+    } = verification;
     let decompression_started = Instant::now();
     let input = CancellationReader::new(encoded_bytes, cancel.clone(), hooks.clone());
     let decoder = match zstd::stream::read::Decoder::new(input) {
@@ -874,7 +902,8 @@ fn verify_codex_zstd(
     let mut reader = BufReader::with_capacity(DECODER_BUFFER_BYTES, output);
     let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
     let mut decoded_bytes = 0u64;
-    let mut timestamp = None;
+    let mut metadata = None;
+    let mut metadata_invalid = false;
     let mut line = Vec::new();
 
     loop {
@@ -904,8 +933,15 @@ fn verify_codex_zstd(
             )));
         }
         observer.update(&line, cancel)?;
-        if timestamp.is_none() {
-            timestamp = parse_codex_timestamp_line(strip_jsonl_line_ending(&line), cancel, hooks)?;
+        if metadata.is_none() && !metadata_invalid {
+            match parse_codex_session_metadata_line(strip_jsonl_line_ending(&line), cancel, hooks) {
+                Ok(parsed) => metadata = parsed,
+                Err(RunnerError::Cancelled) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(RunnerError::Cancelled);
+                }
+                Err(_) => metadata_invalid = true,
+            }
         }
     }
     timings.record_decompression(decompression_started.elapsed(), true);
@@ -926,65 +962,80 @@ fn verify_codex_zstd(
     let hash_result = observer.finish(expected_hash);
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
     let prefix_outcome = hash_result?;
+    let identity_started = Instant::now();
+    let identity_result = if metadata_invalid {
+        Err(invalid_codex_session_history_identity())
+    } else {
+        validate_codex_session_metadata(metadata, cli_agent_session_id)
+    };
+    timings.record_validation(identity_started.elapsed(), identity_result.is_ok());
+    let timestamp = identity_result?;
     Ok((timestamp, prefix_outcome))
 }
 
 fn scan_raw_codex_history(
     history: &[u8],
+    cli_agent_session_id: &str,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
 ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
     if !validate_utf8(history, cancel)? {
-        return Ok(None);
+        return Err(invalid_codex_session_history_identity());
     }
     // SAFETY: the complete byte slice was validated immediately above.
     let history = unsafe { std::str::from_utf8_unchecked(history) };
-    scan_valid_utf8_history(history, cancel, hooks)
+    scan_valid_utf8_history(history, cli_agent_session_id, cancel, hooks)
 }
 
 #[cfg(test)]
-pub(super) fn codex_timestamp_for_test(history: &[u8]) -> Option<chrono::DateTime<chrono::Utc>> {
+pub(super) fn codex_timestamp_for_test(
+    history: &[u8],
+    cli_agent_session_id: &str,
+) -> Option<chrono::DateTime<chrono::Utc>> {
     scan_raw_codex_history(
         history,
+        cli_agent_session_id,
         &CancellationToken::new(),
         &SessionHistoryCpuHooks::default(),
     )
-    .unwrap()
+    .ok()
+    .flatten()
 }
 
 fn scan_valid_utf8_history(
     history: &str,
+    cli_agent_session_id: &str,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
 ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
     for line in history.split('\n') {
         check_cancelled(cancel)?;
         let line = line.strip_suffix('\r').unwrap_or(line);
-        if let Some(timestamp) = parse_valid_utf8_codex_timestamp_line(line, cancel, hooks)? {
-            return Ok(Some(timestamp));
+        if let Some(metadata) = parse_valid_utf8_codex_session_metadata_line(line, cancel, hooks)? {
+            return validate_codex_session_metadata(Some(metadata), cli_agent_session_id);
         }
     }
-    Ok(None)
+    Err(invalid_codex_session_history_identity())
 }
 
-fn parse_codex_timestamp_line(
+fn parse_codex_session_metadata_line(
     line: &[u8],
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
-) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+) -> RunnerResult<Option<CodexSessionMetadata>> {
     if !validate_utf8(line, cancel)? {
-        return Ok(None);
+        return Err(invalid_codex_session_history_identity());
     }
     // SAFETY: the complete byte slice was validated immediately above.
     let line = unsafe { std::str::from_utf8_unchecked(line) };
-    parse_valid_utf8_codex_timestamp_line(line, cancel, hooks)
+    parse_valid_utf8_codex_session_metadata_line(line, cancel, hooks)
 }
 
-fn parse_valid_utf8_codex_timestamp_line(
+fn parse_valid_utf8_codex_session_metadata_line(
     line: &str,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
-) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+) -> RunnerResult<Option<CodexSessionMetadata>> {
     let line = trim_unicode_whitespace(line, cancel)?;
     if line.is_empty() {
         return Ok(None);
@@ -995,16 +1046,23 @@ fn parse_valid_utf8_codex_timestamp_line(
     let value = match serde_json::from_reader::<_, serde_json::Value>(reader) {
         Ok(value) => value,
         Err(_) if cancel.is_cancelled() => return Err(cpu_cancelled_error()),
-        Err(_) => return Ok(None),
+        Err(_) => return Err(invalid_codex_session_history_identity()),
     };
     check_cancelled(cancel)?;
     if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
-        return Ok(None);
+        return Err(invalid_codex_session_history_identity());
     }
 
-    Ok(value
+    let payload = value
         .get("payload")
-        .and_then(|payload| payload.get("timestamp"))
+        .ok_or_else(invalid_codex_session_history_identity)?;
+    let thread_id = payload
+        .get("id")
+        .and_then(|id| id.as_str())
+        .and_then(CodexThreadId::parse)
+        .ok_or_else(invalid_codex_session_history_identity)?;
+    let timestamp = payload
+        .get("timestamp")
         .and_then(|timestamp| timestamp.as_str())
         .and_then(parse_codex_rollout_timestamp)
         .or_else(|| {
@@ -1012,7 +1070,29 @@ fn parse_valid_utf8_codex_timestamp_line(
                 .get("timestamp")
                 .and_then(|timestamp| timestamp.as_str())
                 .and_then(parse_codex_rollout_timestamp)
-        }))
+        });
+
+    Ok(Some(CodexSessionMetadata {
+        thread_id,
+        timestamp,
+    }))
+}
+
+fn validate_codex_session_metadata(
+    metadata: Option<CodexSessionMetadata>,
+    cli_agent_session_id: &str,
+) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let metadata = metadata.ok_or_else(invalid_codex_session_history_identity)?;
+    let expected_thread_id = CodexThreadId::parse(cli_agent_session_id)
+        .ok_or_else(invalid_codex_session_history_identity)?;
+    if metadata.thread_id != expected_thread_id {
+        return Err(invalid_codex_session_history_identity());
+    }
+    Ok(metadata.timestamp)
+}
+
+fn invalid_codex_session_history_identity() -> RunnerError {
+    RunnerError::Internal(INVALID_CODEX_SESSION_HISTORY_IDENTITY.to_string())
 }
 
 fn trim_unicode_whitespace<'a>(line: &'a str, cancel: &CancellationToken) -> RunnerResult<&'a str> {
@@ -1287,19 +1367,38 @@ impl<R: Read> Read for CancellationReader<R> {
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::io::Write as _;
 
+    use flate2::{Compression, write::GzEncoder};
     use tokio::sync::oneshot;
 
     use super::*;
 
+    const CODEX_SESSION_ID: &str = "019e9154-c304-70f0-adde-36efb1be1701";
+
     fn raw_job(history: Vec<u8>, framework: EffectiveCliFramework) -> SessionHistoryCpuJob {
+        raw_job_with_session_id(CODEX_SESSION_ID, history, framework)
+    }
+
+    fn raw_job_with_session_id(
+        session_id: &str,
+        history: Vec<u8>,
+        framework: EffectiveCliFramework,
+    ) -> SessionHistoryCpuJob {
         SessionHistoryCpuJob::raw(
-            "sess-123".into(),
+            session_id.into(),
             history.clone(),
             history.len() as u64,
             hex::encode(Sha256::digest(&history)),
             framework,
         )
+    }
+
+    fn codex_history(session_id: &str) -> Vec<u8> {
+        format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{session_id}\",\"timestamp\":\"2026-07-13T01:02:03Z\"}}}}\n"
+        )
+        .into_bytes()
     }
 
     async fn wait_for<T>(future: impl Future<Output = T>) -> T {
@@ -1461,11 +1560,11 @@ mod tests {
 
     #[tokio::test]
     async fn raw_codex_timestamp_scan_handles_utf8_across_chunk_boundary() {
-        let mut history = "x".repeat(CPU_CHUNK_BYTES - 1).into_bytes();
-        history.extend_from_slice("é\n".as_bytes());
-        history.extend_from_slice(
-            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z"}}"#,
+        let prefix = format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{CODEX_SESSION_ID}\",\"timestamp\":\"2026-07-13T01:02:03Z\",\"padding\":\""
         );
+        let padding = "x".repeat(CPU_CHUNK_BYTES - prefix.len() - 1);
+        let history = format!("{prefix}{padding}é\"}}}}\n").into_bytes();
         let outcome = SessionHistoryCpuPool::with_capacity(1)
             .materialize(
                 raw_job(history, EffectiveCliFramework::Codex),
@@ -1486,9 +1585,7 @@ mod tests {
 
     #[tokio::test]
     async fn raw_codex_timestamp_scan_preserves_whole_payload_utf8_requirement() {
-        let mut history =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n"
-                .to_vec();
+        let mut history = codex_history(CODEX_SESSION_ID);
         history.push(0xff);
         let outcome = SessionHistoryCpuPool::with_capacity(1)
             .materialize(
@@ -1497,7 +1594,154 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(outcome.result.unwrap().session.codex_timestamp().is_none());
+        let error = outcome.result.unwrap_err().to_string();
+        assert_eq!(
+            error,
+            format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
+        );
+        assert!(!error.contains(CODEX_SESSION_ID));
+    }
+
+    #[tokio::test]
+    async fn raw_codex_history_requires_matching_first_session_metadata() {
+        let other_session_id = "019e9154-c304-70f0-adde-36efb1be1702";
+        let forged_later = [
+            codex_history(other_session_id),
+            codex_history(CODEX_SESSION_ID),
+        ]
+        .concat();
+        for history in [
+            br#"{"type":"session_meta","payload":{"timestamp":"2026-07-13T01:02:03Z"}}"#
+                .to_vec(),
+            br#"{"type":"session_meta","payload":{"id":"invalid","timestamp":"2026-07-13T01:02:03Z"}}"#
+                .to_vec(),
+            codex_history(other_session_id),
+            [
+                br#"{"type":"response_item","payload":{}}"#.as_slice(),
+                b"\n",
+                codex_history(CODEX_SESSION_ID).as_slice(),
+            ]
+            .concat(),
+            forged_later,
+        ] {
+            let outcome = SessionHistoryCpuPool::with_capacity(1)
+                .materialize(
+                    raw_job(history, EffectiveCliFramework::Codex),
+                    &CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+
+            let error = outcome.result.unwrap_err().to_string();
+            assert_eq!(
+                error,
+                format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
+            );
+            assert!(!error.contains(CODEX_SESSION_ID));
+            assert!(!error.contains(other_session_id));
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_codex_history_canonicalizes_requested_and_embedded_ids() {
+        let history = codex_history("019E9154C30470F0ADDE36EFB1BE1701");
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                raw_job_with_session_id(
+                    "019E9154-C304-70F0-ADDE-36EFB1BE1701",
+                    history,
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome
+                .result
+                .unwrap()
+                .session
+                .codex_timestamp()
+                .map(|timestamp| timestamp.to_rfc3339())
+                .as_deref(),
+            Some("2026-07-13T01:02:03+00:00")
+        );
+    }
+
+    #[tokio::test]
+    async fn retained_zstd_codex_history_validates_identity_in_streaming_pass() {
+        let history = codex_history(CODEX_SESSION_ID);
+        let encoded = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                SessionHistoryCpuJob::zstd(
+                    CODEX_SESSION_ID.into(),
+                    encoded,
+                    history.len() as u64,
+                    hex::encode(Sha256::digest(&history)),
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let session = outcome.result.unwrap().session;
+        assert!(session.codex_zstd_history().is_some());
+        assert_eq!(
+            session
+                .codex_timestamp()
+                .map(|timestamp| timestamp.to_rfc3339())
+                .as_deref(),
+            Some("2026-07-13T01:02:03+00:00")
+        );
+
+        let mismatched_history = codex_history("019e9154-c304-70f0-adde-36efb1be1702");
+        let encoded = zstd::encode_all(mismatched_history.as_slice(), 0).unwrap();
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                SessionHistoryCpuJob::zstd(
+                    CODEX_SESSION_ID.into(),
+                    encoded,
+                    mismatched_history.len() as u64,
+                    hex::encode(Sha256::digest(&mismatched_history)),
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.result.unwrap_err().to_string(),
+            format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
+        );
+    }
+
+    #[tokio::test]
+    async fn decoded_gzip_codex_history_validates_identity() {
+        let history = codex_history("019e9154-c304-70f0-adde-36efb1be1702");
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&history).unwrap();
+        let encoded = encoder.finish().unwrap();
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                SessionHistoryCpuJob::gzip(
+                    CODEX_SESSION_ID.into(),
+                    encoded,
+                    history.len() as u64,
+                    hex::encode(Sha256::digest(&history)),
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome.result.unwrap_err().to_string(),
+            format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
+        );
     }
 
     #[tokio::test]

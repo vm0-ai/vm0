@@ -1247,6 +1247,8 @@ mod tests {
         ResumeSessionHistoryRefKind,
     };
 
+    const CODEX_SESSION_ID: &str = "019e9154-c304-70f0-adde-36efb1be1701";
+
     fn http_client() -> HttpClient {
         HttpClient::new(HttpClientConfig {
             api_url: "http://api.test".to_string(),
@@ -1258,7 +1260,7 @@ mod tests {
 
     fn ref_session(url: String, hash: String, raw_size: u64, encoded_size: u64) -> ResumeSession {
         ResumeSession {
-            cli_agent_session_id: "sess-123".to_string(),
+            cli_agent_session_id: CODEX_SESSION_ID.to_string(),
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -1311,7 +1313,7 @@ mod tests {
         encoding: ResumeSessionHistoryEncoding,
     ) -> ResumeSession {
         ResumeSession {
-            cli_agent_session_id: "sess-123".to_string(),
+            cli_agent_session_id: CODEX_SESSION_ID.to_string(),
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -1680,7 +1682,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -1755,8 +1757,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_identity_materializer_extracts_raw_timestamp() {
-        let body =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n";
+        let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n";
         let hash = hex::encode(Sha256::digest(body));
         let server = serve_once("200 OK", body, Some(body.len() as u64)).await;
         let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
@@ -2076,7 +2077,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -2097,8 +2098,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_gzip_materializer_extracts_raw_timestamp() {
-        let body =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-13T02:03:04Z\"}}\n";
+        let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-13T02:03:04Z\"}}\n";
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
@@ -2141,7 +2141,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -2203,8 +2203,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_materializer_preserves_verified_zstd_history() {
-        let body =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
@@ -2219,7 +2218,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
                 assert_eq!(session.history_bytes(), compressed);
                 session
                     .codex_zstd_history()
@@ -2248,7 +2247,7 @@ mod tests {
 
         let padding = "x".repeat(PREFIX_BOUNDARY + 256);
         let body = format!(
-            "{{\"type\":\"session_meta\",\"payload\":{{\"timestamp\":\"2026-07-02T10:00:00Z\",\"padding\":\"{padding}\"}}}}\n{{\"type\":\"response\"}}\n"
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{CODEX_SESSION_ID}\",\"timestamp\":\"2026-07-02T10:00:00Z\",\"padding\":\"{padding}\"}}}}\n{{\"type\":\"response\"}}\n"
         );
         let body = body.as_bytes();
         let local_size = PREFIX_BOUNDARY;
@@ -2297,8 +2296,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_materializer_rejects_zstd_hash_mismatch() {
-        let body =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let server = serve_once("200 OK", compressed, None).await;
@@ -2335,8 +2333,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_materializer_rejects_zstd_body_over_declared_raw_size() {
-        let body =
-            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));

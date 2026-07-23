@@ -148,6 +148,11 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Logical run-payload field name for API-owned Codex runtime metadata.
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
+/// Logical run-payload field name for the restored Codex rollout path.
+///
+/// The runner emits an empty string when no checkpoint history was restored.
+pub const CODEX_RESUME_PATH_ENV: &str = "VM0_CODEX_RESUME_PATH";
+
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
 ///
@@ -181,6 +186,9 @@ pub struct RunPayload {
     /// JSON object describing API-owned Codex provider/runtime metadata.
     #[serde(default)]
     pub codex_runtime_config: String,
+    /// Logical Codex rollout path restored for this invocation.
+    #[serde(default)]
+    pub codex_resume_path: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -194,7 +202,7 @@ pub struct RunPayloadField<'a> {
 
 impl RunPayload {
     /// Return all logical string fields carried by this run payload.
-    pub fn fields(&self) -> [RunPayloadField<'_>; 9] {
+    pub fn fields(&self) -> [RunPayloadField<'_>; 10] {
         let Self {
             prompt,
             append_system_prompt,
@@ -205,6 +213,7 @@ impl RunPayload {
             artifacts,
             feature_flags,
             codex_runtime_config,
+            codex_resume_path,
         } = self;
 
         [
@@ -243,6 +252,10 @@ impl RunPayload {
             RunPayloadField {
                 name: CODEX_RUNTIME_CONFIG_ENV,
                 value: codex_runtime_config,
+            },
+            RunPayloadField {
+                name: CODEX_RESUME_PATH_ENV,
+                value: codex_resume_path,
             },
         ]
     }
@@ -430,6 +443,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_resume_path: "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl".to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -440,6 +454,18 @@ mod tests {
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
         assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
+        assert_eq!(
+            json["codexResumePath"],
+            "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+        );
+    }
+
+    #[test]
+    fn run_payload_defaults_resume_path_for_previous_wire_shape() {
+        let payload: RunPayload = serde_json::from_str(r#"{"prompt":"hello"}"#).unwrap();
+
+        assert_eq!(payload.prompt, "hello");
+        assert!(payload.codex_resume_path.is_empty());
     }
 
     #[test]
@@ -454,6 +480,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_resume_path: "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl".to_string(),
         };
 
         let fields = payload.fields();
@@ -497,6 +524,10 @@ mod tests {
                     name: CODEX_RUNTIME_CONFIG_ENV,
                     value: r#"{"providerId":"minimax"}"#
                 },
+                RunPayloadField {
+                    name: CODEX_RESUME_PATH_ENV,
+                    value: "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+                },
             ]
         );
     }
@@ -509,6 +540,12 @@ mod tests {
         };
 
         assert_eq!(payload.first_nul_field(), Some(SETTINGS_ENV));
+
+        let payload = RunPayload {
+            codex_resume_path: "bad\0path".to_string(),
+            ..RunPayload::default()
+        };
+        assert_eq!(payload.first_nul_field(), Some(CODEX_RESUME_PATH_ENV));
     }
 
     #[test]
@@ -523,6 +560,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_resume_path: "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl".to_string(),
         };
 
         assert_eq!(payload.first_nul_field(), None);

@@ -126,7 +126,13 @@ async fn run_codex_app_server(
         )
         .await?;
         let thread_response = race_with_heartbeat(
-            start_or_resume_thread(&mut client, resume_thread_id.as_deref(), runtime),
+            async {
+                start_or_resume_thread(&mut client, resume_thread_id.as_deref(), runtime)
+                    .await
+                    .map_err(|error| {
+                        thread_request_error(error, runtime.codex_resume_path.is_some())
+                    })
+            },
             heartbeat_monitor,
             &mut heartbeat_done,
             masker,
@@ -361,6 +367,9 @@ async fn start_or_resume_thread(
                 "threadId".to_string(),
                 Value::String(resume_thread_id.to_string()),
             );
+            if let Some(path) = &runtime.codex_resume_path {
+                params.insert("path".to_string(), Value::String(path.to_string()));
+            }
             client
                 .request_value("thread/resume", Value::Object(params))
                 .await
@@ -576,12 +585,15 @@ fn turn_steer_params(thread_id: &str, turn_id: &str, frame: &ActiveInputFrame) -
     })
 }
 
-async fn race_with_heartbeat<T>(
-    app_server_wait: impl Future<Output = Result<T, CodexAppServerError>>,
+async fn race_with_heartbeat<T, E>(
+    app_server_wait: impl Future<Output = Result<T, E>>,
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
-) -> Result<T, AgentError> {
+) -> Result<T, AgentError>
+where
+    E: std::fmt::Display,
+{
     // If heartbeat wins, the caller exits the run and shuts the app-server
     // down. We intentionally do not try to reuse a possibly half-read JSON-RPC
     // stream after cancelling `app_server_wait`.
@@ -659,6 +671,18 @@ async fn ingest_run_notification(
 
 fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
     AgentError::Execution(masker.mask_string(&error.to_string()))
+}
+
+fn thread_request_error(error: CodexAppServerError, explicit_resume_path: bool) -> String {
+    if explicit_resume_path
+        && matches!(
+            &error,
+            CodexAppServerError::Rpc { method, .. } if method == "thread/resume"
+        )
+    {
+        return "codex app-server thread resume failed".to_string();
+    }
+    error.to_string()
 }
 
 async fn wait_for_heartbeat(

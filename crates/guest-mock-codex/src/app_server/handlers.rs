@@ -87,6 +87,7 @@ impl AppServerState {
         self.set_current_thread(
             thread_id.clone(),
             params.get("runtimeWorkspaceRoots").is_some(),
+            string_param(params, "path").map(str::to_string),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
         );
@@ -177,17 +178,17 @@ impl AppServerState {
             return Ok(ServerAction::Continue);
         };
         if self.scenario == Scenario::ResumeRpcErrorWithThreadId {
-            write_error(
-                output,
-                id,
-                INVALID_REQUEST,
-                &format!("resume failed for {thread_id}"),
-            )?;
+            let message = match string_param(params, "path") {
+                Some(path) => format!("resume failed for {thread_id} at {path}"),
+                None => format!("resume failed for {thread_id}"),
+            };
+            write_error(output, id, INVALID_REQUEST, &message)?;
             return Ok(ServerAction::Continue);
         }
         self.set_current_thread(
             thread_id.to_string(),
             params.get("runtimeWorkspaceRoots").is_some(),
+            string_param(params, "path").map(str::to_string),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
         );
@@ -238,6 +239,7 @@ impl AppServerState {
         let artifact_thread_id = current_thread.artifact_thread_id.clone();
         let thread_request_has_runtime_workspace_roots =
             current_thread.thread_request_has_runtime_workspace_roots;
+        let thread_request_path = current_thread.thread_request_path.clone();
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
         let inputs = match text_inputs(params) {
@@ -264,6 +266,7 @@ impl AppServerState {
                 turn_id: &turn_id,
                 kind: "initial",
                 thread_request_has_runtime_workspace_roots,
+                thread_request_path: thread_request_path.as_deref(),
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
                 turn_params: params,
@@ -368,6 +371,7 @@ impl AppServerState {
         let artifact_thread_id = current_thread.artifact_thread_id.clone();
         let thread_request_has_runtime_workspace_roots =
             current_thread.thread_request_has_runtime_workspace_roots;
+        let thread_request_path = current_thread.thread_request_path.clone();
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
         let inputs = match text_inputs(params) {
@@ -385,6 +389,7 @@ impl AppServerState {
                 turn_id: &active_turn_id,
                 kind: "steered",
                 thread_request_has_runtime_workspace_roots,
+                thread_request_path: thread_request_path.as_deref(),
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
                 turn_params: params,

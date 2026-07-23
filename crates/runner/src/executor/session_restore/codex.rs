@@ -2,7 +2,10 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
-use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
+use super::{
+    MaterializedResumeSession, SessionRestoreDiagnostics, SessionRestoreOutcome,
+    write_session_history_file,
+};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::types::ExecutionContext;
 
@@ -38,13 +41,13 @@ fn codex_restore_rollout_timestamp(
 /// JSONL under
 /// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]`.
 ///
-/// Codex 0.137 filters filesystem resume candidates through its canonical
-/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
+/// The pinned Codex CLI filters filesystem resume candidates through its
+/// canonical rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
-) -> RunnerResult<SessionRestoreDiagnostics> {
+) -> RunnerResult<SessionRestoreOutcome> {
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
@@ -52,23 +55,25 @@ pub(super) async fn restore_codex_session(
     let session_filename_key = thread_id.filename_key();
 
     let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
-    let (session_history, extension) = if let Some(bytes) = session.codex_zstd_history() {
+    let (session_history, physical_extension) = if let Some(bytes) = session.codex_zstd_history() {
         (bytes, ".jsonl.zst")
     } else {
         (session.history_bytes(), ".jsonl")
     };
-    let session_path = codex_restore_rollout_path(session_id, timestamp, extension);
+    let logical_session_path = codex_restore_rollout_path(session_id, timestamp, ".jsonl");
+    let physical_session_path =
+        codex_restore_rollout_path(session_id, timestamp, physical_extension);
 
     cleanup_existing_codex_session_files(
         sandbox,
         context,
         session_id,
         &session_filename_key,
-        &session_path,
+        &physical_session_path,
     )
     .await?;
 
-    write_session_history_file(sandbox, &session_path, session_history).await?;
+    write_session_history_file(sandbox, &physical_session_path, session_history).await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
@@ -82,7 +87,10 @@ pub(super) async fn restore_codex_session(
         bytes_in = diagnostics.bytes_in,
         "restored session history",
     );
-    Ok(diagnostics)
+    Ok(SessionRestoreOutcome::new(
+        diagnostics,
+        Some(logical_session_path),
+    ))
 }
 
 async fn cleanup_existing_codex_session_files(

@@ -671,6 +671,30 @@ pub unsafe fn setup_codex_app_server_env(
     home: &Path,
     config: CodexAppServerEnvConfig<'_>,
 ) -> Result<(), String> {
+    unsafe { setup_codex_app_server_env_inner(mock_path, home, config, None) }
+}
+
+/// Configure the app-server integration boundary with an explicit restored
+/// Codex rollout path in the private runner payload.
+///
+/// # Safety
+/// Callers must use this from a single-test integration binary before any other
+/// thread reads the process environment.
+pub unsafe fn setup_codex_app_server_env_with_resume_path(
+    mock_path: &Path,
+    home: &Path,
+    config: CodexAppServerEnvConfig<'_>,
+    codex_resume_path: &str,
+) -> Result<(), String> {
+    unsafe { setup_codex_app_server_env_inner(mock_path, home, config, Some(codex_resume_path)) }
+}
+
+unsafe fn setup_codex_app_server_env_inner(
+    mock_path: &Path,
+    home: &Path,
+    config: CodexAppServerEnvConfig<'_>,
+    codex_resume_path: Option<&str>,
+) -> Result<(), String> {
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
@@ -694,6 +718,7 @@ pub unsafe fn setup_codex_app_server_env(
             &runtime_dir,
             &guest_contracts::env::RunPayload {
                 prompt: config.prompt.to_string(),
+                codex_resume_path: codex_resume_path.unwrap_or_default().to_string(),
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;

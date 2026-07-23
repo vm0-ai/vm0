@@ -14,7 +14,8 @@ fn restore_session_writes_history() {
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(diagnostics.bytes_in, history.len());
+    assert_eq!(diagnostics.diagnostics.bytes_in, history.len());
+    assert!(diagnostics.codex_resume_path().is_none());
 }
 
 #[test]
@@ -27,9 +28,12 @@ fn restore_session_logs_claude_session_id() {
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
     let diagnostics = result.unwrap();
-    assert_eq!(diagnostics.framework, "claude-code");
-    assert_eq!(diagnostics.session_id, raw_session_id);
-    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+    assert_eq!(diagnostics.diagnostics.framework, "claude-code");
+    assert_eq!(diagnostics.diagnostics.session_id, raw_session_id);
+    assert_eq!(
+        diagnostics.diagnostics.bytes_in,
+        session.history_bytes().len()
+    );
     let event = captured_event(&events, "restored session history");
     assert_eq!(
         event.fields.get("framework").map(String::as_str),
@@ -89,7 +93,7 @@ fn restore_session_writes_invalid_utf8_claude_history_bytes() {
         "/home/user/.claude/projects/-home-user-workspace/sess-non-utf8-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
-    assert_eq!(diagnostics.bytes_in, history.len());
+    assert_eq!(diagnostics.diagnostics.bytes_in, history.len());
 }
 
 #[tokio::test]

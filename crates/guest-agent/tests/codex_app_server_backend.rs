@@ -107,6 +107,11 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             .and_then(Value::as_bool),
         Some(false)
     );
+    assert!(
+        input_event
+            .get("thread_request_path")
+            .is_some_and(Value::is_null)
+    );
     assert_eq!(
         input_event
             .get("thread_request_model")

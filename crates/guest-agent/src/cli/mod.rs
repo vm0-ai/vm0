@@ -73,6 +73,8 @@ const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const ZERO_WEB_SEARCH_FEATURE_KEY: &str = "zeroWebSearch";
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
+const CODEX_RESTORE_SESSIONS_ROOT: &str = "/home/user/.codex/sessions";
+const INVALID_CODEX_RESUME_PATH: &str = "invalid Codex resume path";
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///
 /// LF is excluded. A preceding CR counts before CRLF normalization.
@@ -305,6 +307,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     run_id: Cow<'a, str>,
     prompt: Cow<'a, str>,
     resume_session_id: Cow<'a, str>,
+    codex_resume_path: Option<Cow<'a, str>>,
     append_system_prompt: Cow<'a, str>,
     disallowed_tools: Cow<'a, str>,
     tools: Cow<'a, str>,
@@ -348,11 +351,13 @@ impl<'a> CliRuntimeConfig<'a> {
             &config.feature_flags,
             &config.user_env,
         )?;
+        let codex_resume_path = codex_resume_path_from_config(config)?;
         Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
             prompt: Cow::Borrowed(&config.prompt),
             resume_session_id: Cow::Borrowed(&config.resume_session_id),
+            codex_resume_path,
             append_system_prompt: Cow::Borrowed(&config.append_system_prompt),
             disallowed_tools: Cow::Borrowed(&config.disallowed_tools),
             tools: Cow::Borrowed(&config.tools),
@@ -424,6 +429,83 @@ impl<'a> CliRuntimeConfig<'a> {
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
     }
+}
+
+fn codex_resume_path_from_config<'a>(
+    config: &'a env::GuestConfig,
+) -> Result<Option<Cow<'a, str>>, AgentError> {
+    validate_codex_resume_path(
+        config.framework,
+        &config.resume_session_id,
+        &config.codex_resume_path,
+    )
+}
+
+fn validate_codex_resume_path<'a>(
+    framework: env::Framework,
+    resume_session_id: &str,
+    raw_path: &'a str,
+) -> Result<Option<Cow<'a, str>>, AgentError> {
+    if raw_path.is_empty() {
+        return Ok(None);
+    }
+    if !matches!(framework, env::Framework::Codex) {
+        return Err(invalid_codex_resume_path());
+    }
+
+    let expected_thread_id =
+        guest_contracts::codex_thread_id::CodexThreadId::parse(resume_session_id)
+            .ok_or_else(invalid_codex_resume_path)?;
+    let relative_path = raw_path
+        .strip_prefix(CODEX_RESTORE_SESSIONS_ROOT)
+        .and_then(|relative| relative.strip_prefix('/'))
+        .ok_or_else(invalid_codex_resume_path)?;
+    let mut components = relative_path.split('/');
+    let year = components.next().ok_or_else(invalid_codex_resume_path)?;
+    let month = components.next().ok_or_else(invalid_codex_resume_path)?;
+    let day = components.next().ok_or_else(invalid_codex_resume_path)?;
+    let filename = components.next().ok_or_else(invalid_codex_resume_path)?;
+    if components.next().is_some()
+        || !fixed_ascii_digits(year, 4)
+        || !fixed_ascii_digits(month, 2)
+        || !fixed_ascii_digits(day, 2)
+    {
+        return Err(invalid_codex_resume_path());
+    }
+
+    let filename_suffix = format!("-{}.jsonl", expected_thread_id.as_str());
+    let timestamp = filename
+        .strip_prefix("rollout-")
+        .and_then(|value| value.strip_suffix(&filename_suffix))
+        .filter(|value| value.len() == 19)
+        .ok_or_else(invalid_codex_resume_path)?;
+    let timestamp = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H-%M-%S")
+        .map_err(|_| invalid_codex_resume_path())?;
+    if timestamp.format("%Y").to_string() != year
+        || timestamp.format("%m").to_string() != month
+        || timestamp.format("%d").to_string() != day
+    {
+        return Err(invalid_codex_resume_path());
+    }
+
+    let canonical_path = format!(
+        "{CODEX_RESTORE_SESSIONS_ROOT}/{year}/{month}/{day}/rollout-{}-{thread_id}.jsonl",
+        timestamp.format("%Y-%m-%dT%H-%M-%S"),
+        thread_id = expected_thread_id.as_str(),
+    );
+    if raw_path != canonical_path {
+        return Err(invalid_codex_resume_path());
+    }
+
+    Ok(Some(Cow::Borrowed(raw_path)))
+}
+
+fn fixed_ascii_digits(value: &str, length: usize) -> bool {
+    value.len() == length && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn invalid_codex_resume_path() -> AgentError {
+    AgentError::Execution(INVALID_CODEX_RESUME_PATH.to_string())
 }
 
 fn codex_home_for_home_dir(home_dir: &str) -> String {
@@ -1535,10 +1617,11 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
-        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
-        claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason, zero_web_search_enabled_for_runtime,
+        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, INVALID_CODEX_RESUME_PATH,
+        child_env, claude_initial_prompt_frame, cli_exit_summary_from_status,
+        codex_home_for_home_dir, codex_runtime_config, command, exec_boundary, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, validate_codex_resume_path,
+        with_carried_failure_reason, zero_web_search_enabled_for_runtime,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1561,6 +1644,7 @@ mod tests {
             run_id: Cow::Borrowed("run-exec-boundary-test"),
             prompt: Cow::Borrowed(prompt),
             resume_session_id: Cow::Borrowed(""),
+            codex_resume_path: None,
             append_system_prompt: Cow::Borrowed(append_system_prompt),
             disallowed_tools: Cow::Borrowed(""),
             tools: Cow::Borrowed(""),
@@ -1598,6 +1682,62 @@ mod tests {
         command
             .windows(2)
             .position(|window| window[0] == "-c" && window[1] == config)
+    }
+
+    #[test]
+    fn codex_resume_path_validation_accepts_only_canonical_runner_rollouts() {
+        let path = "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
+
+        let validated = validate_codex_resume_path(
+            env::Framework::Codex,
+            "019E9154C30470F0ADDE36EFB1BE1701",
+            path,
+        )
+        .unwrap();
+
+        assert_eq!(validated.as_deref(), Some(path));
+        assert!(
+            validate_codex_resume_path(env::Framework::ClaudeCode, "", "")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn codex_resume_path_validation_rejects_unsafe_or_mismatched_values_without_disclosure() {
+        let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let invalid_paths = [
+            "/tmp/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+            "/home/user/.codex/sessions/2026/07/23/../../rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+            "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst",
+            "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1702.jsonl",
+            "/home/user/.codex/sessions/2026/07/22/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+            "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T25-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+            "/home/user/.codex/sessions/2026/07/23/extra/rollout-2026-07-23T01-02-03-019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+        ];
+
+        for path in invalid_paths {
+            let error =
+                validate_codex_resume_path(env::Framework::Codex, session_id, path).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!("execution: {INVALID_CODEX_RESUME_PATH}")
+            );
+            assert!(!error.to_string().contains(path));
+        }
+
+        for (framework, resume_session_id) in [
+            (env::Framework::ClaudeCode, session_id),
+            (env::Framework::Codex, ""),
+        ] {
+            let path = invalid_paths[0];
+            let error = validate_codex_resume_path(framework, resume_session_id, path).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!("execution: {INVALID_CODEX_RESUME_PATH}")
+            );
+            assert!(!error.to_string().contains(path));
+        }
     }
 
     #[test]

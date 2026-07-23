@@ -22,7 +22,12 @@ fn restore_session_writes_codex_session() {
         writes[0].path
     );
     assert_eq!(writes[0].content, session.history_bytes());
-    assert_eq!(diagnostics.bytes_in, history.len());
+    assert_eq!(diagnostics.diagnostics.bytes_in, history.len());
+    assert_eq!(
+        diagnostics.codex_resume_path(),
+        Some(CODEX_CANONICAL_ROLLOUT_PATH)
+    );
+    assert!(!format!("{diagnostics:?}").contains(CODEX_CANONICAL_ROLLOUT_PATH));
 }
 
 #[test]
@@ -50,7 +55,14 @@ fn restore_session_writes_codex_zstd_session() {
         writes[0].path
     );
     assert_eq!(writes[0].content, compressed);
-    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+    assert_eq!(
+        diagnostics.diagnostics.bytes_in,
+        session.history_bytes().len()
+    );
+    assert_eq!(
+        diagnostics.codex_resume_path(),
+        Some(CODEX_CANONICAL_ROLLOUT_PATH)
+    );
 }
 
 #[test]
@@ -62,9 +74,12 @@ fn restore_session_logs_codex_session_id() {
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
     let diagnostics = result.unwrap();
-    assert_eq!(diagnostics.framework, "codex");
-    assert_eq!(diagnostics.session_id, CODEX_SESSION_ID);
-    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+    assert_eq!(diagnostics.diagnostics.framework, "codex");
+    assert_eq!(diagnostics.diagnostics.session_id, CODEX_SESSION_ID);
+    assert_eq!(
+        diagnostics.diagnostics.bytes_in,
+        session.history_bytes().len()
+    );
     let restore_event = captured_event(&events, "restored session history");
     assert_eq!(
         restore_event.fields.get("framework").map(String::as_str),
@@ -149,7 +164,7 @@ fn restore_session_writes_invalid_utf8_codex_history_with_fallback_filename() {
         "codex resume history filename must include the thread id, got {filename}"
     );
     assert_eq!(writes[0].content, history);
-    assert_eq!(diagnostics.bytes_in, history.len());
+    assert_eq!(diagnostics.diagnostics.bytes_in, history.len());
 }
 
 #[test]

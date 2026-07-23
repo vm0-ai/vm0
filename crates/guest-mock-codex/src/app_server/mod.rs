@@ -79,6 +79,7 @@ struct AppServerThread {
     artifact_thread_id: String,
     active_turn_id: Option<String>,
     thread_request_has_runtime_workspace_roots: bool,
+    thread_request_path: Option<String>,
     thread_request_model: Option<String>,
     thread_request_model_provider: Option<String>,
 }
@@ -232,6 +233,7 @@ impl AppServerState {
         &mut self,
         thread_id: String,
         thread_request_has_runtime_workspace_roots: bool,
+        thread_request_path: Option<String>,
         thread_request_model: Option<String>,
         thread_request_model_provider: Option<String>,
     ) {
@@ -245,6 +247,7 @@ impl AppServerState {
             artifact_thread_id,
             active_turn_id: None,
             thread_request_has_runtime_workspace_roots,
+            thread_request_path,
             thread_request_model,
             thread_request_model_provider,
         });

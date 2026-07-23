@@ -1206,6 +1206,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let deferred_background_fill = deferred_background_fill;
 
     let mut session_restore_diagnostics = None;
+    let mut codex_resume_path = None;
     let mut pre_run_restored_session_identity = None;
     let mut local_session_history_sidecar = None;
     let mut session_history_materializer = match session_history_restore_plan {
@@ -1277,7 +1278,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let restore_started = Instant::now();
         match materialize_session_history_sidecar(context, &sidecar, config, &cancel).await {
             Ok(session) => match restore_session(sandbox, context, &session).await {
-                Ok(diagnostics) => {
+                Ok(outcome) => {
                     telemetry.record(
                         "session_history_workspace_cache_restore",
                         restore_started.elapsed(),
@@ -1285,7 +1286,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     );
                     telemetry.record("session_restore", restore_started.elapsed(), true, None);
+                    let (diagnostics, restored_codex_path) = outcome.into_parts();
                     session_restore_diagnostics = Some(diagnostics);
+                    codex_resume_path = restored_codex_path;
                 }
                 Err(error) => {
                     if cancel.is_cancelled() {
@@ -1446,8 +1449,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 result.is_ok(),
                 err.as_deref(),
             );
-            let diagnostics = result?;
+            let outcome = result?;
+            let (diagnostics, restored_codex_path) = outcome.into_parts();
             session_restore_diagnostics = Some(diagnostics);
+            codex_resume_path = restored_codex_path;
         }
     }
 
@@ -1477,7 +1482,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
     let env_build_started = Instant::now();
-    let run_payload = match build_run_payload_for_run(context) {
+    let mut run_payload = match build_run_payload_for_run(context) {
         Ok(run_payload) => run_payload,
         Err(error) => {
             telemetry.record(
@@ -1489,6 +1494,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Err(error);
         }
     };
+    run_payload.codex_resume_path = codex_resume_path.unwrap_or_default();
     info!(
         run_id = %context.run_id,
         prompt_bytes = run_payload.prompt.len(),

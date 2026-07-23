@@ -81,6 +81,17 @@ fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     zstd::encode_all(raw, 0).unwrap()
 }
 
+fn run_payload_from_sandbox(
+    sandbox: &sandbox_mock::MockSandbox,
+) -> guest_contracts::env::RunPayload {
+    let writes = sandbox.private_write_file_calls();
+    let write = writes
+        .iter()
+        .find(|write| write.path.ends_with("/run-payload/payload.json"))
+        .expect("run payload should be written");
+    serde_json::from_slice(&write.content).expect("run payload should be valid")
+}
+
 fn history_prefix_attribution(history: &[u8]) -> RestoredSessionHistoryPrefixAttribution {
     RestoredSessionHistoryPrefixAttribution::for_test(
         hex::encode(Sha256::digest(history)),
@@ -1691,7 +1702,7 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let history = br#"{"type":"session_meta","payload":{"timestamp":"2026-06-04T07:18:08Z"}}"#;
+    let history = br#"{"type":"session_meta","payload":{"id":"019e9154-c304-70f0-adde-36efb1be1701","timestamp":"2026-06-04T07:18:08Z"}}"#;
     let mut history = history.to_vec();
     history.push(b'\n');
     let compressed_history = zstd_bytes(&history);
@@ -1755,6 +1766,10 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst"
     );
     assert_eq!(writes[0].content, compressed_history);
+    assert_eq!(
+        run_payload_from_sandbox(&sandbox).codex_resume_path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
     history_mock.assert_calls_async(0).await;
 }
 
@@ -1764,8 +1779,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let history =
-        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let history = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
     let sidecar_path = dir.path().join("session-history.jsonl");
     tokio::fs::write(&sidecar_path, history).await.unwrap();
     let server = MockServer::start_async().await;
@@ -1824,6 +1838,10 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
     );
     assert_eq!(writes[0].content, history);
+    assert_eq!(
+        run_payload_from_sandbox(&sandbox).codex_resume_path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
     history_mock.assert_calls_async(0).await;
 }
 
@@ -1833,8 +1851,7 @@ async fn run_in_sandbox_restores_inline_codex_history_with_session_timestamp() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let history =
-        "{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let history = "{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession::inline(session_id.into(), history.into()));
@@ -1863,6 +1880,10 @@ async fn run_in_sandbox_restores_inline_codex_history_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
     );
     assert_eq!(writes[0].content, history.as_bytes());
+    assert_eq!(
+        run_payload_from_sandbox(&sandbox).codex_resume_path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
 }
 
 #[tokio::test]
@@ -3506,6 +3527,14 @@ async fn run_in_sandbox_sets_codex_app_server_backend_for_active_input_source() 
             .unwrap(),
         "1"
     );
+    let run_payload_write = overrides
+        .private_write_file_calls()
+        .into_iter()
+        .find(|write| write.path.ends_with("/run-payload/payload.json"))
+        .expect("run payload should be written");
+    let run_payload: guest_contracts::env::RunPayload =
+        serde_json::from_slice(&run_payload_write.content).unwrap();
+    assert!(run_payload.codex_resume_path.is_empty());
 }
 
 #[tokio::test]

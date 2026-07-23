@@ -34,18 +34,20 @@ fn materialized_text_session(
     history: impl Into<String>,
 ) -> MaterializedResumeSession {
     let history = history.into().into_bytes();
-    let timestamp = codex_timestamp_for_test(&history);
-    MaterializedResumeSession::new(session_id.into(), history, timestamp)
+    let session_id = session_id.into();
+    let timestamp = codex_timestamp_for_test(&history, &session_id);
+    MaterializedResumeSession::new(session_id, history, timestamp)
 }
 
 fn materialized_bytes_session(
     session_id: impl Into<String>,
     history: &[u8],
 ) -> MaterializedResumeSession {
+    let session_id = session_id.into();
     MaterializedResumeSession::new(
-        session_id.into(),
+        session_id.clone(),
         history.to_vec(),
-        codex_timestamp_for_test(history),
+        codex_timestamp_for_test(history, &session_id),
     )
 }
 
