@@ -7,13 +7,11 @@ import JSZip from "jszip";
 import { HttpResponse } from "msw";
 
 import {
-  artifactsContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
-  type ImageArtifactEditSnapshotState,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -1450,6 +1448,7 @@ describe("zero artifact sidebar", () => {
     const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
 
     expect(zoomLevel).toHaveTextContent("100%");
+    expect(screen.queryByLabelText("Edit image")).not.toBeInTheDocument();
     await user.click(zoomIn);
     await waitFor(() => {
       expect(zoomLevel).toHaveTextContent("115%");
@@ -1630,193 +1629,6 @@ describe("zero artifact sidebar", () => {
         "alt",
         "first.png",
       );
-    });
-  });
-
-  it("persists and restores image edit canvases during arrow-key navigation", async () => {
-    const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-edit-navigation/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-edit-navigation/second.png";
-    const snapshots = new Map<string, ImageArtifactEditSnapshotState>([
-      [
-        firstImageUrl,
-        {
-          items: [{ url: firstImageUrl, x: 250, y: 180, zIndex: 1 }],
-          version: 1,
-        },
-      ],
-      [
-        secondImageUrl,
-        {
-          items: [{ url: secondImageUrl, x: 250, y: 180, zIndex: 1 }],
-          version: 1,
-        },
-      ],
-    ]);
-    const firstImageSnapshotSaveStarted = createDeferredPromise<void>(
-      context.signal,
-    );
-    const firstImageSnapshotSaveReady = createDeferredPromise<void>(
-      context.signal,
-    );
-    let firstImageSnapshotLoads = 0;
-    const savedSnapshots: {
-      readonly snapshot: ImageArtifactEditSnapshotState;
-      readonly url: string;
-    }[] = [];
-    context.mocks.api(
-      artifactsContract.getImageEditSnapshot,
-      ({ query, respond }) => {
-        if (query.url === firstImageUrl) {
-          firstImageSnapshotLoads += 1;
-        }
-        const snapshot = snapshots.get(query.url) ?? null;
-        return respond(200, {
-          snapshot: snapshot
-            ? {
-                artifactUrl: query.url,
-                snapshot,
-                updatedAt: "2026-03-10T00:00:03.000Z",
-              }
-            : null,
-        });
-      },
-    );
-    context.mocks.api(
-      artifactsContract.upsertImageEditSnapshot,
-      async ({ body, respond }) => {
-        if (body.url === firstImageUrl) {
-          firstImageSnapshotSaveStarted.resolve();
-          await firstImageSnapshotSaveReady.promise;
-        }
-        snapshots.set(body.url, body.snapshot);
-        savedSnapshots.push(body);
-        return respond(200, {
-          artifactUrl: body.url,
-          snapshot: body.snapshot,
-          updatedAt: "2026-03-10T00:00:03.000Z",
-        });
-      },
-    );
-    context.mocks.api(
-      artifactsContract.deleteImageEditSnapshot,
-      ({ query, respond }) => {
-        snapshots.delete(query.url);
-        return respond(204);
-      },
-    );
-    setupChatThread({
-      artifactFiles: [
-        artifactFile(firstImageUrl, {
-          id: "artifact-edit-navigation-first",
-          filename: "first.png",
-          contentType: "image/png",
-          size: 128,
-        }),
-        artifactFile(secondImageUrl, {
-          id: "artifact-edit-navigation-second",
-          filename: "second.png",
-          contentType: "image/png",
-          size: 128,
-        }),
-      ],
-      attachFiles: [
-        {
-          id: "artifact-edit-navigation-first",
-          filename: "first.png",
-          contentType: "image/png",
-          size: 128,
-          url: firstImageUrl,
-        },
-        {
-          id: "artifact-edit-navigation-second",
-          filename: "second.png",
-          contentType: "image/png",
-          size: 128,
-          url: secondImageUrl,
-        },
-      ],
-      content: "Image artifacts are ready.",
-      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
-      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
-        "src",
-        firstImageUrl,
-      );
-    });
-    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
-    await screen.findByTestId("artifact-sidebar-image-edit-canvas");
-
-    const firstImage = screen.getByTestId("artifact-sidebar-body-image");
-    await waitFor(() => {
-      expect(firstImage).toHaveStyle({ left: "250px", top: "180px" });
-    });
-    fireEvent.pointerDown(firstImage, {
-      button: 0,
-      clientX: 100,
-      clientY: 100,
-    });
-    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
-    fireEvent.pointerUp(window);
-    expect(firstImage).toHaveStyle({ left: "280px", top: "220px" });
-
-    fireEvent.keyDown(document, { key: "ArrowRight" });
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
-        "src",
-        secondImageUrl,
-      );
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveStyle({
-        left: "250px",
-        top: "180px",
-      });
-    });
-    await firstImageSnapshotSaveStarted.promise;
-
-    const secondImage = screen.getByTestId("artifact-sidebar-body-image");
-    fireEvent.pointerDown(secondImage, {
-      button: 0,
-      clientX: 100,
-      clientY: 100,
-    });
-    fireEvent.pointerMove(window, { clientX: 120, clientY: 130 });
-    fireEvent.pointerUp(window);
-    expect(secondImage).toHaveStyle({ left: "270px", top: "210px" });
-
-    fireEvent.keyDown(document, { key: "ArrowLeft" });
-    await waitFor(() => {
-      expect(firstImageSnapshotLoads).toBeGreaterThanOrEqual(2);
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
-        "src",
-        firstImageUrl,
-      );
-      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveStyle({
-        left: "280px",
-        top: "220px",
-      });
-    });
-
-    firstImageSnapshotSaveReady.resolve();
-    await waitFor(() => {
-      expect(savedSnapshots).toContainEqual({
-        snapshot: {
-          items: [{ url: firstImageUrl, x: 280, y: 220, zIndex: 1 }],
-          version: 1,
-        },
-        url: firstImageUrl,
-      });
-      expect(savedSnapshots).toContainEqual({
-        snapshot: {
-          items: [{ url: secondImageUrl, x: 270, y: 210, zIndex: 1 }],
-          version: 1,
-        },
-        url: secondImageUrl,
-      });
     });
   });
 
