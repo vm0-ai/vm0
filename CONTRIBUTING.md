@@ -32,11 +32,11 @@ left empty.
 
 ### Getting Started
 
-1. Fork and clone the repository
-2. Open VS Code and run `Dev Containers: Open Workspace in Container` from the command palette
-3. Select the `vm0.code-workspace` file in the project root
-4. The container will build and set up the development environment automatically
-5. Initialize git hooks: `lefthook install`
+1. Fork and clone the repository.
+2. Open VS Code and run `Dev Containers: Open Workspace in Container` from the command palette.
+3. Select the `vm0.code-workspace` file in the project root.
+4. The container will build and set up the development environment automatically.
+5. Initialize git hooks: `lefthook install`.
 
 ### Environment Variables
 
