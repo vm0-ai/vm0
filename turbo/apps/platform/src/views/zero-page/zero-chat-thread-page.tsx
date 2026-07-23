@@ -92,7 +92,10 @@ import type {
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
+import {
+  messageDocumentToPrompt,
+  type EditorDocumentSnapshot,
+} from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -6053,6 +6056,24 @@ function clipboardAttachmentsFromMessage(
   });
 }
 
+function clipboardAttachmentsFromStructuredPrompt(
+  document: UserMessageDocument,
+  attachments: readonly ChatClipboardAttachment[],
+): ChatClipboardAttachment[] {
+  const attachmentById = new Map(
+    attachments.flatMap((attachment) => {
+      return attachment.id ? [[attachment.id, attachment] as const] : [];
+    }),
+  );
+  return document.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+    const attachment = attachmentById.get(part.fileId);
+    return attachment ? [attachment] : [];
+  });
+}
+
 function UserMessageAttachments({
   attachments,
   onImageClick,
@@ -6626,12 +6647,15 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const copyText =
+  const legacyCopyText =
     message.attachFiles &&
     message.attachFiles.length > 0 &&
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
+  const copyText = structuredPrompt
+    ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+    : legacyCopyText;
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6642,8 +6666,20 @@ function PagedUserMessage({
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
   const allAttachments = resolveAttachments(message, parsed);
-  const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
-  const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
+  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
+    message,
+    parsed,
+  );
+  const clipboardAttachments = structuredPrompt
+    ? clipboardAttachmentsFromStructuredPrompt(
+        structuredPrompt,
+        legacyClipboardAttachments,
+      )
+    : legacyClipboardAttachments;
+  const canCopy =
+    structuredPrompt !== undefined ||
+    copyText.trim().length > 0 ||
+    clipboardAttachments.length > 0;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -6652,7 +6688,11 @@ function PagedUserMessage({
     detach(
       copyMessage(
         message.id,
-        { text: copyText, attachments: clipboardAttachments },
+        {
+          text: copyText,
+          attachments: clipboardAttachments,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
+        },
         pageSignal,
       ),
       Reason.DomCallback,

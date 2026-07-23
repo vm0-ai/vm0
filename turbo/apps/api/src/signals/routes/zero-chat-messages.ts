@@ -1388,6 +1388,7 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
+  readonly structuredPromptEnabled: boolean;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
     if (!params.explicitRunConfiguration) {
@@ -1462,7 +1463,11 @@ async function resolveThread(params: {
 
   const [latestSession, incompleteContext] = await Promise.all([
     latestSessionForThread(params.db, thread.id),
-    loadWebChatIncompleteContext(params.db, thread.id),
+    loadWebChatIncompleteContext(
+      params.db,
+      thread.id,
+      params.structuredPromptEnabled,
+    ),
   ]);
   const startNewSession = shouldStartNewChatSession({
     latestModel: latestSession?.selectedModel,
@@ -2178,6 +2183,7 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+        structuredPromptEnabled: featureSwitches.structuredPromptEnabled,
       });
     },
   );

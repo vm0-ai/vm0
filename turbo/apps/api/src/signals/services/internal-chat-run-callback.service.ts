@@ -1872,18 +1872,28 @@ function loadQueuedMessageSessionState(args: CreateQueuedChatRunInputArgs) {
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
     "nested",
-    () => {
-      return Promise.all([
+    async () => {
+      const [latestSession, featureSwitchContext] = await Promise.all([
         latestSessionForThreadFromDb(
           args.db,
           args.threadId,
           args.queuedMessage.triggerSource,
         ),
-        args.queuedMessage.triggerSource === "web"
-          ? loadWebChatIncompleteContext(args.db, args.threadId)
-          : Promise.resolve(""),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
+      const structuredPromptEnabled = isFeatureEnabled(
+        FeatureSwitchKey.StructuredPrompt,
+        featureSwitchContext,
+      );
+      const incompleteContext =
+        args.queuedMessage.triggerSource === "web"
+          ? await loadWebChatIncompleteContext(
+              args.db,
+              args.threadId,
+              structuredPromptEnabled,
+            )
+          : "";
+      return [latestSession, incompleteContext, featureSwitchContext] as const;
     },
   );
 }
