@@ -15,7 +15,8 @@
 pub use api_contracts::generated::constants::runners::paths::{
     CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
 };
-use std::io;
+#[doc(inline)]
+pub use guest_contracts::runtime_paths::{ensure_parent_dir, write_private};
 use std::path::{Path, PathBuf};
 
 /// Immutable run-scoped guest paths derived from one runtime directory.
@@ -192,14 +193,6 @@ fn resolve_run_dir_from_captured_env(
 
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
-}
-
-pub fn ensure_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
-    guest_contracts::runtime_paths::ensure_parent_dir(path)
-}
-
-pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
-    guest_contracts::runtime_paths::write_private(path, bytes)
 }
 
 #[cfg(test)]

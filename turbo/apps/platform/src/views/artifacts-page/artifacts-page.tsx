@@ -27,6 +27,7 @@ import {
   useLastLoadable,
   useLastResolved,
   useSet,
+  type LoadableState,
 } from "ccstate-react";
 import {
   Button,
@@ -56,6 +57,7 @@ import {
   filterArtifacts,
   getArtifactFocusTarget,
   growArtifactsWindow$,
+  mergeArtifactSources,
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
@@ -69,6 +71,7 @@ import {
   setSelectedArtifactsAgentId$,
   setSelectedArtifactsCategory$,
   startArtifactChat$,
+  syncArtifacts$,
   syncArtifactsScrollMetrics$,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
@@ -85,7 +88,7 @@ import {
   openVideoLightbox$,
   type AttachmentArtifactMetadata,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, tapError } from "../../signals/utils.ts";
 import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
 import {
   FilePreviewIcon,
@@ -113,6 +116,37 @@ const ARTIFACT_CARD_IMAGE_HEIGHT = 400;
 const ARTIFACT_CARD_PREVIEW_ASPECT_RATIO = 16 / 10;
 const ARTIFACT_CARD_DETAILS_HEIGHT_PX = 64;
 const ARTIFACT_CARD_BORDER_WIDTH_PX = 1;
+
+function getArtifactsPageLoadState({
+  cacheState,
+  hasSourceArtifacts,
+  mergeCachedArtifacts,
+  remoteState,
+}: {
+  cacheState: LoadableState;
+  hasSourceArtifacts: boolean;
+  mergeCachedArtifacts: boolean;
+  remoteState: LoadableState;
+}): {
+  error: boolean;
+  loading: boolean;
+} {
+  const remotePending = remoteState === "loading";
+  const remoteStillNeedsCache =
+    remotePending || remoteState === "hasError" || mergeCachedArtifacts;
+  const noSourceArtifacts = !hasSourceArtifacts;
+
+  return {
+    error:
+      noSourceArtifacts &&
+      (remoteState === "hasError" ||
+        (cacheState === "hasError" && remoteStillNeedsCache)),
+    loading:
+      noSourceArtifacts &&
+      (remotePending || (cacheState === "loading" && remoteStillNeedsCache)),
+  };
+}
+
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -237,13 +271,18 @@ function artifactLightboxMetadata(
 
 function useOpenArtifactPreview(): (item: ArtifactItem) => void {
   const reloadArtifacts = useSet(reloadArtifacts$);
+  const syncArtifacts = useSet(syncArtifacts$);
+  const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openImageLightbox$);
   const openDocumentLightbox = useSet(openDocumentLightbox$);
   const openVideoLightbox = useSet(openVideoLightbox$);
   const openAudioLightbox = useSet(openAudioLightbox$);
 
   return (item: ArtifactItem) => {
-    const artifact = artifactLightboxMetadata(item, reloadArtifacts);
+    const artifact = artifactLightboxMetadata(item, () => {
+      reloadArtifacts();
+      detach(tapError(syncArtifacts(pageSignal)), Reason.DomCallback);
+    });
     const base = {
       artifact,
       editAvailable: false,
@@ -1217,11 +1256,13 @@ export function ArtifactsPage() {
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
     cachedLoadable.state === "hasData" ? cachedLoadable.data : null;
-  // Cache-first paint, then let the successful remote bulk response become the
-  // authoritative set. Cached fallback is only used before remote data loads or
-  // when the refresh errors.
-  const sourceData = remoteData ?? cachedData;
-  const sourceArtifacts = sourceData?.artifacts ?? [];
+  // Keep the bounded cache visible while incremental pages arrive. A full
+  // remote snapshot replaces it; an incremental response merges into it until
+  // the background sync has rebuilt the complete local snapshot.
+  const sourceArtifacts = mergeArtifactSources(
+    cachedData?.artifacts ?? [],
+    remoteData,
+  );
   const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,
@@ -1229,11 +1270,12 @@ export function ArtifactsPage() {
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
-  const nothingCached = sourceArtifacts.length === 0;
-  const loading =
-    nothingCached &&
-    (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
-  const error = nothingCached && remoteLoadable.state === "hasError";
+  const { error, loading } = getArtifactsPageLoadState({
+    cacheState: cachedLoadable.state,
+    hasSourceArtifacts: sourceArtifacts.length > 0,
+    mergeCachedArtifacts: remoteData?.mergeCachedArtifacts === true,
+    remoteState: remoteLoadable.state,
+  });
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);

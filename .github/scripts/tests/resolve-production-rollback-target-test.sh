@@ -207,8 +207,7 @@ ruby -e '
   raise "rollback resolver must wait for queue" unless rollback.fetch("resolve-target").fetch("needs") == "queue-production-deploy"
   raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
-  api_needs = rollback.fetch("rollback-api").fetch("needs")
-  raise "API must wait for App and Runner" unless ["resolve-target", "rollback-app", "rollback-runner"].all? { |job| api_needs.include?(job) }
+  raise "API must wait for resolver" unless rollback.fetch("rollback-api").fetch("needs") == "resolve-target"
   raise "release must wait for production queue" unless release.fetch("release-please").fetch("needs") == "queue-production-deploy"
 ' "${repo_root}/.github/workflows/rollback-production.yml" "${repo_root}/.github/workflows/release-please.yml"
 

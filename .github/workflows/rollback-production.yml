@@ -352,7 +352,7 @@ jobs:
 
   rollback-api:
     name: Roll back API
-    needs: [resolve-target, rollback-app, rollback-runner]
+    needs: resolve-target
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
