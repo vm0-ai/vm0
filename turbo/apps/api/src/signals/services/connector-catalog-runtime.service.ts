@@ -80,8 +80,6 @@ export interface ConnectorRuntimeMethod {
   readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly availableForNewActions: boolean;
-  readonly compatible: boolean;
   readonly executable: boolean;
   readonly registration: ConnectorAuthProviderRegistrationCapability | null;
 }
@@ -468,8 +466,6 @@ function runtimeMethodEntry(args: {
   readonly connectorRef: ConnectorRef;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly availableForNewActions: boolean;
-  readonly compatible: boolean;
 }): ConnectorRuntimeMethod {
   const registration = providerRegistrationFor(
     args.connectorRef,
@@ -480,12 +476,11 @@ function runtimeMethodEntry(args: {
     authMethodId: args.catalogMethod.id,
     catalogMethod: args.catalogMethod,
     method: args.method,
-    availableForNewActions: args.availableForNewActions,
-    compatible: args.compatible,
     registration,
-    executable:
-      args.compatible &&
-      registrationSupportsMethod({ method: args.method, registration }),
+    executable: registrationSupportsMethod({
+      method: args.method,
+      registration,
+    }),
   };
 }
 
@@ -499,6 +494,7 @@ const staticRuntimeSnapshot = singleton(() => {
         throw new Error(`Static connector catalog is missing ${connectorRef}`);
       }
       const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
+      const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
       for (const catalogMethod of catalogConnector.authMethods) {
         const method = getConnectorAuthMethod(connectorRef, catalogMethod.id);
         if (method === undefined) {
@@ -512,23 +508,17 @@ const staticRuntimeSnapshot = singleton(() => {
             connectorRef,
             catalogMethod,
             method,
-            availableForNewActions: method.visible !== false,
-            compatible: true,
           }),
         );
+        if (method.visible !== false) {
+          authoredVisibleMethodIds.add(catalogMethod.id);
+        }
       }
       connectors.set(connectorRef, {
         connectorRef,
         catalogConnector,
         methods,
-        authoredVisibleMethodIds: new Set(
-          catalogConnector.authMethods.flatMap((method) => {
-            const runtimeMethod = methods.get(method.id);
-            return runtimeMethod?.availableForNewActions === true
-              ? [method.id]
-              : [];
-          }),
-        ),
+        authoredVisibleMethodIds,
         skill: null,
       });
     }
@@ -587,8 +577,6 @@ function externalRuntimeSnapshot(
           connectorRef: connector.connectorRef,
           catalogMethod,
           method: runtimeMethod(method),
-          availableForNewActions: method.visible,
-          compatible: true,
         }),
       );
     }
@@ -680,7 +668,9 @@ function runtimeShadowMethods(
           grantKind: method.method.grant.kind,
           accessKind: method.method.access.kind,
           revokeKind: method.method.revoke.kind,
-          availableForNewActions: method.availableForNewActions,
+          availableForNewActions: connector.authoredVisibleMethodIds.has(
+            method.authMethodId,
+          ),
           executable: method.executable,
         };
       });

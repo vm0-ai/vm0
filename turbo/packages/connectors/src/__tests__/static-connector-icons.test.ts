@@ -99,6 +99,9 @@ describe("static connector icons", () => {
     expect(() => {
       staticConnectorIconPublicPathUrl("connector-icons/gmail.html");
     }).toThrow("Invalid static connector icon public path");
+    expect(() => {
+      staticConnectorIconPublicPathUrl(`${"a/".repeat(512)}icon.svg`);
+    }).toThrow("Invalid static connector icon public path");
   });
 
   it.each([

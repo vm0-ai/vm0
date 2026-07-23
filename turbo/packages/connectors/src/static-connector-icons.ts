@@ -1,6 +1,7 @@
 import { CONNECTOR_TYPE_KEYS, type ConnectorType } from "./connectors";
 
 const STATIC_CONNECTOR_ICON_BASE_URL = "https://static.vm0.io/";
+const STATIC_CONNECTOR_ICON_PUBLIC_PATH_MAX_LENGTH = 1024;
 const STATIC_CONNECTOR_ICON_PATH_PATTERN =
   /^views\/zero-page\/components\/settings\/icons\/[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{12}\.(?:png|svg)$/u;
 const STATIC_CONNECTOR_ICON_PUBLIC_PATH_PATTERN =
@@ -751,7 +752,10 @@ export function staticConnectorIconPublicPathUrl(publicPath: string): string {
 }
 
 export function isStaticConnectorIconPublicPath(publicPath: string): boolean {
-  return STATIC_CONNECTOR_ICON_PUBLIC_PATH_PATTERN.test(publicPath);
+  return (
+    publicPath.length <= STATIC_CONNECTOR_ICON_PUBLIC_PATH_MAX_LENGTH &&
+    STATIC_CONNECTOR_ICON_PUBLIC_PATH_PATTERN.test(publicPath)
+  );
 }
 
 export function connectorIconAssetUrl(key: ConnectorIconAssetKey): string {

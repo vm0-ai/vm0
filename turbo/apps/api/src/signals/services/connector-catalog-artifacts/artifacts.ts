@@ -233,7 +233,7 @@ export const connectorCatalogArtifactConnectorSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "Connector skill storage version prefix must match its connector and version",
+          "Connector skill storage version prefix must match its storage name and version",
         path: ["skill", "storageVersionPrefix"],
       });
     }
