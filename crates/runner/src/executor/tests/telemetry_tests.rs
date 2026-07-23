@@ -920,7 +920,6 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         "runner_agent_env_build",
         "runner_agent_start_process",
         "sandbox_reuse_hit",
-        "workspace_drive_mount",
         "agent_execute",
     ] {
         assert_has_action(&telemetry, action);
@@ -934,6 +933,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_proxy_register");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
+    assert_lacks_action(&telemetry, "workspace_drive_mount");
 }
 
 #[tokio::test]
