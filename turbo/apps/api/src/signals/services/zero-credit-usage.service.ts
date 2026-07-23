@@ -18,7 +18,6 @@ import {
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
-import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 
 const L = logger("CreditUsage");
 
@@ -131,7 +130,6 @@ async function deductFromExpiresRecords(
 
 interface ProcessOrgUsageEventsResult {
   readonly billableCredits: number;
-  readonly allowanceCreditsApplied: number;
   readonly runIds: readonly string[];
   readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
 }
@@ -279,7 +277,6 @@ async function processOrgUsageEventsInTransaction(
   if (pendingRecords.length === 0) {
     return {
       billableCredits: 0,
-      allowanceCreditsApplied: 0,
       runIds: [],
       lowBalanceAlert: null,
     };
@@ -312,11 +309,9 @@ async function processOrgUsageEventsInTransaction(
       }),
     });
   let billableCredits = 0;
-  let allowanceCreditsApplied = 0;
   const settlementOutcomes = pricedEvents.map((event) => {
     const allowanceUnits = allowanceByUsageEvent.get(event.record.id) ?? 0;
     const creditsCharged = event.grossCredits - allowanceUnits;
-    allowanceCreditsApplied += allowanceUnits;
     billableCredits += creditsCharged;
     return {
       usageEventId: event.record.id,
@@ -348,7 +343,7 @@ async function processOrgUsageEventsInTransaction(
     }
   }
   signal.throwIfAborted();
-  return { billableCredits, allowanceCreditsApplied, runIds, lowBalanceAlert };
+  return { billableCredits, runIds, lowBalanceAlert };
 }
 
 /**
@@ -377,14 +372,10 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    const {
-      billableCredits,
-      allowanceCreditsApplied,
-      runIds,
-      lowBalanceAlert,
-    } = await writeDb.transaction((tx) => {
-      return processOrgUsageEventsInTransaction(tx, orgId, signal);
-    });
+    const { billableCredits, runIds, lowBalanceAlert } =
+      await writeDb.transaction((tx) => {
+        return processOrgUsageEventsInTransaction(tx, orgId, signal);
+      });
     signal.throwIfAborted();
 
     if (billableCredits > 0) {
@@ -393,11 +384,6 @@ export const processOrgUsageEvents$ = command(
       // its own errors (clearPendingFlag in catch); the await here is
       // bounded by the route handler's outer waitUntil envelope.
       await set(triggerAutoRecharge$, orgId, signal);
-      signal.throwIfAborted();
-    }
-
-    if (billableCredits > 0 || allowanceCreditsApplied > 0) {
-      await publishBillingChangedForOrg(writeDb, orgId);
       signal.throwIfAborted();
     }
 

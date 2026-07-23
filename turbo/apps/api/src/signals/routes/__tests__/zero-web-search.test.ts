@@ -296,6 +296,7 @@ describe("zero web-search route", () => {
         return HttpResponse.json(providerResponse());
       }),
     );
+    context.mocks.ably.publish.mockClear();
 
     const response = await accept(
       client()(zeroWebSearchContract).search({
@@ -330,6 +331,10 @@ describe("zero web-search route", () => {
     expect(usage.body.runs).toHaveLength(1);
     expect(usage.body.runs[0]?.runId).toBe(run.runId);
     expect(usage.body.runs[0]?.creditsCharged).toBe(5);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "billing:changed",
+      null,
+    );
   });
 
   it("rejects invalid filters before calling Perplexity", async () => {
