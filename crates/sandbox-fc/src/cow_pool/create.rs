@@ -1,19 +1,73 @@
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
-use super::{CowPoolConfig, CowPoolError, PrewarmedSlot, SlotSpawner};
+use tracing::info;
+
+use super::{
+    CowPoolConfig, CowPoolError, PreparedCowSlot, PrewarmedSlot, SlotSpawner, destroy_slot_async,
+};
+use crate::duration::duration_ms;
+
+#[derive(Clone)]
+pub(super) struct CowFileConfig {
+    pub(super) workspaces_dir: PathBuf,
+    pub(super) base_size: u64,
+    pub(super) golden_cow: Option<PathBuf>,
+}
+
+impl From<&CowPoolConfig> for CowFileConfig {
+    fn from(config: &CowPoolConfig) -> Self {
+        Self {
+            workspaces_dir: config.workspaces_dir.clone(),
+            base_size: config.base_size,
+            golden_cow: config.golden_cow.clone(),
+        }
+    }
+}
 
 pub(super) fn default_slot_spawner() -> SlotSpawner {
-    Arc::new(|config| tokio::task::spawn_blocking(move || create_slot(&config)))
+    Arc::new(|config| tokio::spawn(prepare_slot(config)))
 }
 
 // ---------------------------------------------------------------------------
 // Slot creation and teardown helpers
 // ---------------------------------------------------------------------------
 
+async fn prepare_slot(config: CowPoolConfig) -> Result<PreparedCowSlot, CowPoolError> {
+    let file_started = Instant::now();
+    let create_config = CowFileConfig::from(&config);
+    let slot = tokio::task::spawn_blocking(move || create_slot(&create_config))
+        .await
+        .map_err(|error| CowPoolError::CowFileCreation(format!("join: {error}")))??;
+    let file_elapsed_ms = duration_ms(file_started.elapsed());
+
+    let nbd_started = Instant::now();
+    let device_result = config
+        .device_pool
+        .create_cow_device(&config.base_image, &slot.cow_file(), config.base_size)
+        .await;
+    let nbd_elapsed_ms = duration_ms(nbd_started.elapsed());
+    info!(
+        file_elapsed_ms,
+        nbd_elapsed_ms,
+        success = device_result.is_ok(),
+        "prepared COW slot resources"
+    );
+
+    let device = match device_result {
+        Ok(device) => device,
+        Err(error) => {
+            destroy_slot_async(slot).await;
+            return Err(CowPoolError::CowDeviceCreation(error.to_string()));
+        }
+    };
+    Ok(PreparedCowSlot::new(slot, device))
+}
+
 /// Create a pre-warmed slot: workspace directory + COW file.
-pub(super) fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
+pub(super) fn create_slot(config: &CowFileConfig) -> Result<PrewarmedSlot, CowPoolError> {
     let id = uuid::Uuid::new_v4().to_string();
     let workspace = config.workspaces_dir.join(&id);
     let cow_file = workspace.join("cow.img");
@@ -29,7 +83,7 @@ pub(super) fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPo
 
 /// Create the COW file: sparse-copy from golden image or allocate fresh.
 fn create_cow_file(
-    config: &CowPoolConfig,
+    config: &CowFileConfig,
     workspace: &Path,
     cow_file: &Path,
 ) -> Result<(), CowPoolError> {

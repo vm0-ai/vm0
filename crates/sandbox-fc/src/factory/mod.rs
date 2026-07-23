@@ -1,11 +1,10 @@
 mod cleanup_group;
-mod cow_cleanup;
 mod create_timing;
 mod create_transaction;
 mod invariant;
 mod leak_cleaner;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -16,10 +15,9 @@ use sandbox::{
 use tracing::{info, warn};
 
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
-use crate::cow_cleanup::CowCleanupOutcome;
+use crate::cow_cleanup::{CowCleanupOutcome, destroy_cow_device_with_retries};
 use crate::duration::duration_ms;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
-use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::factory::create_timing::SandboxCreateTiming;
 use crate::factory::create_transaction::{
     FactoryCreateRollbackCleanup, SandboxCreateResources, SandboxCreateTransaction,
@@ -40,8 +38,6 @@ pub(crate) struct FirecrackerFactory {
     config: FirecrackerConfig,
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
-    /// Shared NBD device pool for pre-validated device indices.
-    device_pool: nbd_cow::pool::DevicePoolHandle,
     cleanup_group: FactoryCleanupGroup,
     resources: Option<StartedFactoryResources>,
     /// Best-effort release authority for sandboxes destroyed after shutdown.
@@ -51,7 +47,6 @@ pub(crate) struct FirecrackerFactory {
 struct StartedFactoryResources {
     netns_pool: NetnsPoolHandle,
     netns_ownership: NetnsPoolOwnership,
-    base_image: BaseImageInfo,
     /// Bounded producer for one-shot COW slots.
     cow_pool: crate::cow_pool::CowPoolHandle,
     /// Owns the channel/task that drains leaked sandbox resources from Drop.
@@ -62,11 +57,6 @@ struct StartedFactoryResources {
 enum NetnsPoolOwnership {
     Owned,
     Shared,
-}
-
-struct BaseImageInfo {
-    path: PathBuf,
-    size: u64,
 }
 
 impl FirecrackerFactory {
@@ -148,8 +138,10 @@ impl FirecrackerFactory {
 
         let cow_pool_config = crate::cow_pool::CowPoolConfig {
             workspaces_dir: factory_paths.workspaces(),
+            base_image: rootfs,
             base_size,
             golden_cow: config.snapshot.as_ref().map(|s| s.cow_path.clone()),
+            device_pool,
         };
         let cow_pool = crate::cow_pool::CowPoolHandle::new(cow_pool_config);
         cow_pool.warmup().await;
@@ -169,15 +161,10 @@ impl FirecrackerFactory {
             config,
             factory_paths,
             runtime_paths,
-            device_pool,
             cleanup_group,
             resources: Some(StartedFactoryResources {
                 netns_pool,
                 netns_ownership,
-                base_image: BaseImageInfo {
-                    path: rootfs,
-                    size: base_size,
-                },
                 cow_pool,
                 leak_cleaner,
             }),
@@ -233,58 +220,20 @@ impl FirecrackerFactory {
 
         let create_result: sandbox::Result<SandboxCreateResources> =
             async {
-                // Acquire a pre-warmed COW slot from the pool.
-                // The slot provides: workspace dir (already created) and cow file.
-                let stage_started = Instant::now();
-                let slot = match resources.cow_pool.acquire().await.map_err(|e| {
+                // Prepare the stable sandbox workspace before acquiring a
+                // connected COW pair. This keeps all await points before
+                // checkout and makes the final pair transfer cancellation-safe.
+                let target_workspace = self.factory_paths.workspace(&id);
+                clean_stale_workspace_dir(&id, &target_workspace)?;
+                tx.track_workspace(target_workspace.clone())?;
+                std::fs::create_dir_all(&target_workspace).map_err(|error| {
                     SandboxError::Initialization {
                         phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("acquire COW slot: {e}"),
+                        message: format!("create target workspace: {error}"),
                     }
-                }) {
-                    Ok(slot) => slot,
-                    Err(e) => {
-                        return timing.record_stage_result(
-                            SandboxCreateStage::CowPoolAcquire,
-                            stage_started,
-                            Err(e),
-                        );
-                    }
-                };
-                timing.record_stage_result(
-                    SandboxCreateStage::CowPoolAcquire,
-                    stage_started,
-                    tx.track_slot(slot),
-                )?;
+                })?;
+                let sandbox_paths = SandboxPaths::new(target_workspace);
 
-                // The slot workspace is {workspaces_dir}/{slot_uuid}/.
-                // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
-                let stage_started = Instant::now();
-                let rename_result = (|| {
-                    let target_workspace = self.factory_paths.workspace(&id);
-                    clean_stale_workspace_dir(&id, &target_workspace)?;
-                    let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
-                    // Keep rename cancellation-safe: tokio::fs::rename may keep
-                    // running on the blocking pool after its future is dropped.
-                    if let Err(e) = std::fs::rename(&slot_workspace, &target_workspace) {
-                        tx.abort_workspace_rename_after_error()?;
-                        return Err(SandboxError::Initialization {
-                            phase: SandboxInitializationPhase::SandboxAllocation,
-                            message: format!("rename workspace: {e}"),
-                        });
-                    }
-                    tx.finish_workspace_rename()?;
-                    let cow_file = target_workspace.join("cow.img");
-                    let sandbox_paths = SandboxPaths::new(target_workspace);
-                    Ok((cow_file, sandbox_paths))
-                })();
-                let (cow_file, sandbox_paths) = timing.record_stage_result(
-                    SandboxCreateStage::WorkspaceDirRename,
-                    stage_started,
-                    rename_result,
-                )?;
-
-                // Recompute cow_file path after rename (the slot path no longer exists).
                 if let Some(workspace_drive) = config.workspace_drive.as_ref() {
                     let stage_started = Instant::now();
                     let prepare_result = prepare_workspace_drive_image(
@@ -335,35 +284,57 @@ impl FirecrackerFactory {
                 )?;
                 tx.track_network(network);
 
-                // Create the NBD COW device. Observed runner creates report
-                // fixed child stages beneath the stable parent timing below.
+                // Acquire a complete file + connected-device pair only after
+                // all asynchronous sandbox preparation has finished.
                 let stage_started = Instant::now();
-                let create_cow_result = if timing.has_observer() {
-                    self.device_pool
-                        .create_cow_device_with_observer(
-                            &resources.base_image.path,
-                            &cow_file,
-                            resources.base_image.size,
-                            &mut timing,
-                        )
-                        .await
-                } else {
-                    self.device_pool
-                        .create_cow_device(
-                            &resources.base_image.path,
-                            &cow_file,
-                            resources.base_image.size,
-                        )
-                        .await
-                };
-                let cow_device = timing.record_stage_result(
-                    SandboxCreateStage::NbdCowCreate,
+                let slot = timing.record_stage_result(
+                    SandboxCreateStage::CowPoolAcquire,
                     stage_started,
-                    create_cow_result.map_err(|e| SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("create NBD COW device: {e}"),
+                    resources.cow_pool.acquire().await.map_err(|error| {
+                        SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("acquire prepared COW slot: {error}"),
+                        }
                     }),
                 )?;
+
+                // Checkout is entirely synchronous. Once it succeeds there are
+                // no await points before the transaction owns the device and
+                // commits all resources.
+                let stage_started = Instant::now();
+                let prepared_device = match slot.checkout_to(sandbox_paths.workspace()) {
+                    Ok(device) => timing.record_stage_result(
+                        SandboxCreateStage::WorkspaceDirRename,
+                        stage_started,
+                        Ok::<_, SandboxError>(device),
+                    )?,
+                    Err(error) => {
+                        let message = error.to_string();
+                        let checkout_result: sandbox::Result<SandboxCreateResources> = timing
+                            .record_stage_result(
+                                SandboxCreateStage::WorkspaceDirRename,
+                                stage_started,
+                                Err(SandboxError::Initialization {
+                                    phase: SandboxInitializationPhase::SandboxAllocation,
+                                    message: format!("checkout prepared COW slot: {message}"),
+                                }),
+                            );
+                        tx.preserve_workspace_on_leak_cleanup();
+                        let cleanup_outcome =
+                            crate::cow_pool::destroy_prepared_slot_async(error.into_slot()).await;
+                        if cleanup_outcome.backing_files_safe_to_delete() {
+                            tx.allow_workspace_delete_on_leak_cleanup();
+                        }
+                        return checkout_result;
+                    }
+                };
+                let cow_device =
+                    prepared_device
+                        .into_real()
+                        .map_err(|error| SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("use prepared COW device: {error}"),
+                        })?;
                 tx.track_cow_device(cow_device);
 
                 tx.commit()
@@ -654,9 +625,6 @@ mod tests {
             config: test_config(PathBuf::from("/tmp/factory-test-base")),
             factory_paths: FactoryPaths::new(PathBuf::from("/tmp/factory-test")),
             runtime_paths: RuntimePaths::new(),
-            device_pool: nbd_cow::pool::DevicePoolHandle::new(
-                nbd_cow::pool::DevicePoolConfig::default(),
-            ),
             cleanup_group: FactoryCleanupGroup::new(),
             resources: None,
             shutdown_netns_pool: None,
@@ -676,10 +644,14 @@ mod tests {
         leak_cleaner: LeakCleaner,
     ) -> FirecrackerFactory {
         let factory_paths = FactoryPaths::new(PathBuf::from("/tmp/factory-test"));
+        let device_pool =
+            nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
         let cow_pool = crate::cow_pool::CowPoolHandle::new(crate::cow_pool::CowPoolConfig {
             workspaces_dir: factory_paths.workspaces(),
+            base_image: PathBuf::from("/tmp/rootfs.ext4"),
             base_size: 0,
             golden_cow: None,
+            device_pool,
         });
         let cleanup_group = FactoryCleanupGroup::new();
         cleanup_group.start_accepting();
@@ -687,17 +659,10 @@ mod tests {
             config: test_config(PathBuf::from("/tmp/factory-test-base")),
             factory_paths,
             runtime_paths: RuntimePaths::new(),
-            device_pool: nbd_cow::pool::DevicePoolHandle::new(
-                nbd_cow::pool::DevicePoolConfig::default(),
-            ),
             cleanup_group,
             resources: Some(StartedFactoryResources {
                 netns_pool,
                 netns_ownership,
-                base_image: BaseImageInfo {
-                    path: PathBuf::from("/tmp/rootfs.ext4"),
-                    size: 0,
-                },
                 cow_pool,
                 leak_cleaner,
             }),

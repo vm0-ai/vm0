@@ -236,6 +236,21 @@ impl PooledNbdCowDevice {
         self.device.cow_file()
     }
 
+    /// Update the recorded COW path after its backing file has been renamed.
+    ///
+    /// The caller must move the same backing file within one filesystem before
+    /// calling this method. This updates only path metadata used by bitmap
+    /// persistence and cleanup; it does not reopen, reset, or rebind the COW
+    /// layer or NBD device.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a COW I/O operation is active while the path is
+    /// being retargeted.
+    pub fn relocate_cow_file_after_rename(&mut self, cow_file: PathBuf) -> Result<()> {
+        self.device.relocate_cow_file_after_rename(cow_file)
+    }
+
     /// Log COW device status for debugging.
     pub async fn log_status(&self) {
         self.device.log_status().await;
@@ -700,6 +715,67 @@ mod tests {
         assert_eq!(kept.bitmap_file, bitmap_file);
         assert!(kept.cow_file.exists());
         assert!(kept.bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn relocated_cow_path_controls_keep_cow_bitmap_persistence() {
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            mut device,
+            ..
+        } = PooledDestroyHarness::new();
+        let relocated_cow = cow_file.with_file_name("relocated-cow.img");
+        let relocated_bitmap = cow::bitmap_path_for(&relocated_cow);
+        std::fs::rename(&cow_file, &relocated_cow).expect("relocate cow file");
+
+        device
+            .relocate_cow_file_after_rename(relocated_cow.clone())
+            .expect("record relocated COW path");
+        let kept = device
+            .destroy_keep_cow_with_retries(zero_attempt_destroy_policy())
+            .await
+            .expect("destroy keep relocated cow");
+
+        assert_eq!(kept.cow_file, relocated_cow);
+        assert_eq!(kept.bitmap_file, relocated_bitmap);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        assert!(!cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn relocated_cow_path_controls_destroy_cleanup() {
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            mut device,
+            ..
+        } = PooledDestroyHarness::new();
+        let relocated_cow = cow_file.with_file_name("relocated-cow.img");
+        let relocated_bitmap = cow::bitmap_path_for(&relocated_cow);
+        std::fs::rename(&cow_file, &relocated_cow).expect("relocate cow file");
+        std::fs::write(&relocated_bitmap, b"bitmap").expect("write relocated bitmap");
+
+        device
+            .relocate_cow_file_after_rename(relocated_cow.clone())
+            .expect("record relocated COW path");
+        device
+            .destroy_with_retries(zero_attempt_destroy_policy())
+            .await
+            .expect("destroy relocated cow");
+
+        assert!(!relocated_cow.exists());
+        assert!(!relocated_bitmap.exists());
+        assert!(!cow_file.exists());
+        assert!(!bitmap_file.exists());
         pool.cleanup().await;
     }
 

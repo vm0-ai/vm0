@@ -6,7 +6,7 @@ use tokio::time::Instant as TokioInstant;
 #[cfg(test)]
 use super::CowPoolSnapshot;
 use super::state::CowPool;
-use super::{AcquireResult, CowPoolConfig, CowPoolError, PrewarmedSlot};
+use super::{AcquireResult, CowPoolConfig, CowPoolError, PreparedCowSlot};
 
 /// Cloneable handle to the COW slot producer.
 #[derive(Clone)]
@@ -67,7 +67,7 @@ impl CowPoolHandle {
     }
 
     /// Acquire a one-shot pre-warmed COW slot.
-    pub(crate) async fn acquire(&self) -> Result<PrewarmedSlot, CowPoolError> {
+    pub(crate) async fn acquire(&self) -> Result<PreparedCowSlot, CowPoolError> {
         let (respond_to, response) = oneshot::channel();
         if self
             .commands

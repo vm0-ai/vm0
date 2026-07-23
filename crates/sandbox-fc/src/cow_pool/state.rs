@@ -12,7 +12,7 @@ use super::CowPoolSnapshot;
 use super::create::default_slot_spawner;
 use super::{
     AcquireResult, BUFFER_SIZE, CowPoolConfig, CowPoolError, MAX_CONCURRENT_SLOT_CREATIONS,
-    MAX_SLOTS, PrewarmedSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_slot_async,
+    MAX_SLOTS, PreparedCowSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_prepared_slot_async,
 };
 use crate::duration::duration_ms;
 
@@ -25,18 +25,19 @@ enum CreationPurpose {
 pub(super) struct SlotCreationOutcome {
     purpose: CreationPurpose,
     elapsed: Duration,
-    result: Result<PrewarmedSlot, CowPoolError>,
+    result: Result<PreparedCowSlot, CowPoolError>,
 }
 
 struct AcquireWaiter {
     requested_at: StdInstant,
+    ready_hit: bool,
     respond_to: oneshot::Sender<AcquireResult>,
 }
 
 /// Single-owner state for the bounded one-shot COW slot producer.
 pub(super) struct CowPool {
     active: bool,
-    ready: VecDeque<PrewarmedSlot>,
+    ready: VecDeque<PreparedCowSlot>,
     pub(super) pending: JoinSet<SlotCreationOutcome>,
     waiters: VecDeque<AcquireWaiter>,
     warmup_waiters: Vec<oneshot::Sender<()>>,
@@ -108,6 +109,7 @@ impl CowPool {
 
         self.waiters.push_back(AcquireWaiter {
             requested_at,
+            ready_hit: !self.ready.is_empty(),
             respond_to,
         });
         self.pump();
@@ -176,15 +178,17 @@ impl CowPool {
         }
     }
 
-    fn assign_slot_to_waiter(&mut self, mut slot: PrewarmedSlot) -> AssignOutcome {
+    fn assign_slot_to_waiter(&mut self, mut slot: PreparedCowSlot) -> AssignOutcome {
         while let Some(waiter) = self.waiters.pop_front() {
             let waited_ms = duration_ms(waiter.requested_at.elapsed());
+            let ready_hit = waiter.ready_hit;
             let slot_id = slot.id().to_owned();
             match waiter.respond_to.send(Ok(slot)) {
                 Ok(()) => {
                     info!(
                         id = %slot_id,
                         waited_ms,
+                        ready_hit,
                         ready = self.ready.len(),
                         pending = self.pending.len(),
                         waiters = self.waiters.len(),
@@ -272,7 +276,7 @@ impl CowPool {
                 if self.active {
                     self.ready.push_back(slot);
                 } else {
-                    destroy_slot_async(slot).await;
+                    destroy_prepared_slot_async(slot).await;
                 }
                 info!(
                     id = %slot_id,
@@ -359,7 +363,7 @@ impl CowPool {
         self.finish_warmup_waiters();
 
         while let Some(slot) = self.ready.pop_front() {
-            destroy_slot_async(slot).await;
+            destroy_prepared_slot_async(slot).await;
         }
 
         while let Some(completion) = self.pending.join_next().await {
@@ -402,7 +406,7 @@ impl CowPool {
                     elapsed_ms = duration_ms(elapsed),
                     "dropping late COW slot during cleanup"
                 );
-                destroy_slot_async(slot).await;
+                destroy_prepared_slot_async(slot).await;
             }
             Ok(SlotCreationOutcome {
                 result: Err(e),
@@ -435,7 +439,7 @@ impl CowPool {
 
 enum AssignOutcome {
     Assigned,
-    NoWaiter(PrewarmedSlot),
+    NoWaiter(PreparedCowSlot),
 }
 
 impl Drop for CowPool {
