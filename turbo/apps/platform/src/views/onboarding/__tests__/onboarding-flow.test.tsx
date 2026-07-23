@@ -297,14 +297,27 @@ describe("onboarding flow", () => {
     expect(screen.getByText(/to run this workflow/u)).toBeInTheDocument();
   });
 
-  it("does not gate Run now for a workflow that requires no connectors", async () => {
+  it("does not gate Run now once the required connectors are connected", async () => {
     mockOnboardingNeeded();
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-      return respond(200, { connectors: [] });
-    });
+    context.mocks.data.connectors([
+      {
+        id: "11111111-1111-4111-8111-111111111112",
+        type: "notion",
+        authMethod: "oauth",
+        externalId: "notion-user-1",
+        externalUsername: "notion-user",
+        externalEmail: null,
+        oauthScopes: ["read", "write"],
+        connectionStatus: "connected",
+        reconnectReason: null,
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
     detachedSetupPage({
       context,
-      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=auto-merge-github-prs",
+      path: "/onboarding/workflow-run?choice=workflow&category=product&workflow=summarize-user-feedback-notion",
     });
 
     await expect(
@@ -313,7 +326,9 @@ describe("onboarding flow", () => {
       }),
     ).resolves.toBeInTheDocument();
 
-    expect(buttonByText("Run now")).not.toBeDisabled();
+    await waitFor(() => {
+      expect(buttonByText("Run now")).not.toBeDisabled();
+    });
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
 
