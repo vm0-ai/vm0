@@ -33,14 +33,90 @@ case "$context_root" in
     ;;
 esac
 
+materialize_temp_dir=""
+cleanup_materialize() {
+  if [ -n "$materialize_temp_dir" ]; then
+    rm -rf "$materialize_temp_dir"
+  fi
+}
+
 materialize() {
+  local temp_parent temp_dir expected_inventory actual_inventory index_file
+  temp_parent="${RUNNER_TEMP:-${cargo_target_dir}}"
+  mkdir -p "$temp_parent"
+  temp_dir=$(mktemp -d "${temp_parent}/runner-binary-materialize.XXXXXX")
+  expected_inventory="${temp_dir}/expected.inventory"
+  actual_inventory="${temp_dir}/actual.inventory"
+  index_file="${temp_dir}/index"
+  materialize_temp_dir=$temp_dir
+  trap cleanup_materialize EXIT
+
+  "${SCRIPT_DIR}/context.sh" inventory "$REPO_ROOT" "$revision" > "$expected_inventory"
+  GIT_INDEX_FILE="$index_file" git -C "$REPO_ROOT" read-tree --empty
+  GIT_INDEX_FILE="$index_file" git -C "$REPO_ROOT" update-index \
+    -z --index-info < "$expected_inventory"
+  while IFS= read -r -d '' record; do
+    local metadata path mode object stage extra
+    [[ "$record" == *$'\t'* ]] || {
+      echo "malformed alternate-index entry" >&2
+      exit 1
+    }
+    metadata=${record%%$'\t'*}
+    path=${record#*$'\t'}
+    extra=""
+    IFS=' ' read -r mode object stage extra <<<"$metadata"
+    [[ -z "$extra" && "$stage" == "0" ]] || {
+      echo "unexpected alternate-index stage for ${path}" >&2
+      exit 1
+    }
+    printf '%s blob %s\t%s\0' "$mode" "$object" "$path"
+  done < <(
+    GIT_INDEX_FILE="$index_file" git -C "$REPO_ROOT" ls-files --stage -z
+  ) > "$actual_inventory"
+  if ! cmp "$expected_inventory" "$actual_inventory"; then
+    echo "alternate index does not match the runner binary inventory" >&2
+    return 1
+  fi
+
   rm -rf "$context_root"
-  mkdir -p "${context_root}/crates" "${context_root}/.github/scripts/runner-binary-build"
-  git -C "$REPO_ROOT" archive "${revision}:crates" \
-    | tar -xf - -C "${context_root}/crates"
-  git -C "$REPO_ROOT" archive "${revision}:.github/scripts/runner-binary-build" \
-    | tar -xf - -C "${context_root}/.github/scripts/runner-binary-build"
+  mkdir -p "$context_root"
+  GIT_INDEX_FILE="$index_file" git -C "$REPO_ROOT" checkout-index \
+    --all \
+    --force \
+    --prefix="${context_root}/"
+  if ! GIT_INDEX_FILE="$index_file" git \
+    -c core.fileMode=true \
+    -C "$REPO_ROOT" \
+    --work-tree="$context_root" \
+    update-index \
+    --refresh \
+    --; then
+    echo "materialized runner binary context cannot refresh its index" >&2
+    return 1
+  fi
+  if ! GIT_INDEX_FILE="$index_file" git \
+    -c core.fileMode=true \
+    -C "$REPO_ROOT" \
+    --work-tree="$context_root" \
+    diff-files \
+    --quiet \
+    --; then
+    echo "materialized runner binary context does not match its index" >&2
+    GIT_INDEX_FILE="$index_file" git \
+      -c core.fileMode=true \
+      -C "$REPO_ROOT" \
+      --work-tree="$context_root" \
+      diff-files \
+      --raw \
+      --no-abbrev \
+      -- >&2
+    return 1
+  fi
+
   emit "context-root" "$context_root"
+  trap - EXIT
+  cleanup_materialize
+  materialize_temp_dir=""
 }
 
 build() {
@@ -69,6 +145,8 @@ build() {
   fi
 
   materialize
+  "${context_root}/.github/scripts/runner-binary-build/context.sh" \
+    validate-workspace "$context_root"
   TARGET_TRIPLE="$target" \
   CARGO_TARGET_DIR="$cargo_target_dir" \
   RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE="$actual_toolchain_image" \
