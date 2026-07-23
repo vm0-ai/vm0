@@ -1,4 +1,4 @@
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
@@ -10,8 +10,10 @@ use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::codex_thread_id::CodexThreadId;
 
 const CODEX_HOME: &str = "/home/user/.codex";
+const CODEX_SESSIONS_ROOT: &str = "/home/user/.codex/sessions";
 const CODEX_SESSION_CLEANUP_SCRIPT: &str =
     include_str!("../../../scripts/codex-session-cleanup.sh");
+const INVALID_CODEX_CLEANUP_OUTPUT: &str = "invalid codex session cleanup output";
 
 fn codex_restore_rollout_path(
     session_id: &str,
@@ -52,21 +54,23 @@ pub(super) async fn restore_codex_session(
     let session_filename_key = thread_id.filename_key();
 
     let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
-    let (session_history, extension) = if let Some(bytes) = session.codex_zstd_history() {
-        (bytes, ".jsonl.zst")
+    let (session_history, physical_suffix) = if let Some(bytes) = session.codex_zstd_history() {
+        (bytes, ".zst")
     } else {
-        (session.history_bytes(), ".jsonl")
+        (session.history_bytes(), "")
     };
-    let session_path = codex_restore_rollout_path(session_id, timestamp, extension);
+    let fallback_logical_path = codex_restore_rollout_path(session_id, timestamp, ".jsonl");
 
-    cleanup_existing_codex_session_files(
+    let logical_path = cleanup_existing_codex_session_files(
         sandbox,
         context,
         session_id,
         &session_filename_key,
-        &session_path,
+        &fallback_logical_path,
     )
-    .await?;
+    .await?
+    .unwrap_or(fallback_logical_path);
+    let session_path = format!("{logical_path}{physical_suffix}");
 
     write_session_history_file(sandbox, &session_path, session_history).await?;
 
@@ -91,7 +95,7 @@ async fn cleanup_existing_codex_session_files(
     session_id: &str,
     session_filename_key: &str,
     session_path: &str,
-) -> RunnerResult<()> {
+) -> RunnerResult<Option<String>> {
     let cleanup_cmd = codex_session_cleanup_command(CODEX_HOME);
     let env = [
         ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
@@ -126,7 +130,98 @@ async fn cleanup_existing_codex_session_files(
         session_id = %session_id,
         "cleaned up existing codex session files before restore",
     );
-    Ok(())
+    parse_codex_cleanup_output(&result, session_id)
+}
+
+fn parse_codex_cleanup_output(
+    result: &ExecResult,
+    session_id: &str,
+) -> RunnerResult<Option<String>> {
+    if result.stdout_truncated {
+        return Err(RunnerError::Internal(INVALID_CODEX_CLEANUP_OUTPUT.into()));
+    }
+    if result.stdout.is_empty() {
+        return Ok(None);
+    }
+    let output = std::str::from_utf8(&result.stdout)
+        .map_err(|_| RunnerError::Internal(INVALID_CODEX_CLEANUP_OUTPUT.into()))?;
+    let path = output
+        .strip_suffix('\n')
+        .filter(|path| !path.is_empty() && !path.contains(['\r', '\n']))
+        .filter(|path| is_canonical_codex_logical_path(path, session_id))
+        .ok_or_else(|| RunnerError::Internal(INVALID_CODEX_CLEANUP_OUTPUT.into()))?;
+    Ok(Some(path.to_string()))
+}
+
+fn is_canonical_codex_logical_path(path: &str, session_id: &str) -> bool {
+    let Some(relative) = path
+        .strip_prefix(CODEX_SESSIONS_ROOT)
+        .and_then(|path| path.strip_prefix('/'))
+    else {
+        return false;
+    };
+    let mut components = relative.split('/');
+    let (Some(year), Some(month), Some(day), Some(filename), None) = (
+        components.next(),
+        components.next(),
+        components.next(),
+        components.next(),
+        components.next(),
+    ) else {
+        return false;
+    };
+    if !fixed_ascii_digits(year, 4) || !fixed_ascii_digits(month, 2) || !fixed_ascii_digits(day, 2)
+    {
+        return false;
+    }
+    let (Ok(year_number), Ok(month_number), Ok(day_number)) = (
+        year.parse::<i32>(),
+        month.parse::<u32>(),
+        day.parse::<u32>(),
+    ) else {
+        return false;
+    };
+    if year_number < 1
+        || chrono::NaiveDate::from_ymd_opt(year_number, month_number, day_number).is_none()
+    {
+        return false;
+    }
+
+    let prefix = format!("rollout-{year}-{month}-{day}T");
+    let suffix = format!("-{session_id}.jsonl");
+    let Some(time) = filename
+        .strip_prefix(&prefix)
+        .and_then(|filename| filename.strip_suffix(&suffix))
+    else {
+        return false;
+    };
+    let mut time_components = time.split('-');
+    let (Some(hour), Some(minute), Some(second), None) = (
+        time_components.next(),
+        time_components.next(),
+        time_components.next(),
+        time_components.next(),
+    ) else {
+        return false;
+    };
+    if !fixed_ascii_digits(hour, 2)
+        || !fixed_ascii_digits(minute, 2)
+        || !fixed_ascii_digits(second, 2)
+    {
+        return false;
+    }
+    let (Ok(hour), Ok(minute), Ok(second)) = (
+        hour.parse::<u32>(),
+        minute.parse::<u32>(),
+        second.parse::<u32>(),
+    ) else {
+        return false;
+    };
+    hour <= 23 && minute <= 59 && second <= 59
+}
+
+fn fixed_ascii_digits(value: &str, length: usize) -> bool {
+    value.len() == length && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn codex_session_cleanup_command(codex_home: &str) -> String {
@@ -155,6 +250,17 @@ mod tests {
     fn create_file(path: &Path) {
         fs::create_dir_all(path.parent().expect("test path should have parent")).unwrap();
         fs::write(path, "test").unwrap();
+    }
+
+    fn canonical_path(codex_home: &Path, date: &str, time: &str) -> PathBuf {
+        let mut date_components = date.split('-');
+        let year = date_components.next().unwrap();
+        let month = date_components.next().unwrap();
+        let day = date_components.next().unwrap();
+        assert!(date_components.next().is_none());
+        codex_home.join(format!(
+            "sessions/{year}/{month}/{day}/rollout-{date}T{time}-{SESSION_ID}.jsonl"
+        ))
     }
 
     fn run_cleanup(codex_home: &Path, restore_path: &Path) -> Output {
@@ -248,7 +354,9 @@ mod tests {
         assert!(command.contains("root=\"$codex_home/sessions\""));
         assert!(command.contains("scan_budget="));
         assert!(command.contains("collect_matching_session_entries"));
-        assert!(command.contains("find \"$root\" -mindepth 1 -print0"));
+        assert!(command.contains("find \"$root\" -mindepth 1 -printf '%y%p\\0'"));
+        assert!(command.contains("canonical_logical_path"));
+        assert!(command.contains("candidate_ambiguous"));
         assert!(command.contains("delete_matching_session_entries"));
         assert!(command.contains("xargs -0"));
         assert!(!command.contains("-delete"));
@@ -290,6 +398,7 @@ mod tests {
         let output = run_cleanup(&codex_home, &restore_path);
 
         assert_success(&output);
+        assert!(output.stdout.is_empty());
         assert!(!matching_jsonl.exists());
         assert!(!matching_zst.exists());
         assert!(!matching_tmp.exists());
@@ -299,6 +408,126 @@ mod tests {
         assert!(!matching_symlink.exists());
         assert!(matching_directory.exists());
         assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn cleanup_script_returns_existing_canonical_logical_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let existing_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        create_file(&existing_path);
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{}\n", existing_path.display())
+        );
+        assert!(!existing_path.exists());
+    }
+
+    #[test]
+    fn cleanup_script_normalizes_existing_zstd_path_to_logical_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let logical_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        let compressed_path = PathBuf::from(format!("{}.zst", logical_path.display()));
+        create_file(&compressed_path);
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{}\n", logical_path.display())
+        );
+        assert!(!compressed_path.exists());
+    }
+
+    #[test]
+    fn cleanup_script_treats_raw_and_zstd_siblings_as_one_logical_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let logical_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        let compressed_path = PathBuf::from(format!("{}.zst", logical_path.display()));
+        create_file(&logical_path);
+        create_file(&compressed_path);
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{}\n", logical_path.display())
+        );
+        assert!(!logical_path.exists());
+        assert!(!compressed_path.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_distinct_canonical_paths_without_deleting_them() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let first_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        let second_path = canonical_path(&codex_home, "2026-07-24", "05-02-05");
+        create_file(&first_path);
+        create_file(&second_path);
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_failure_contains(&output, "ambiguous codex session restore path");
+        assert!(output.stdout.is_empty());
+        assert!(first_path.exists());
+        assert!(second_path.exists());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(!stderr.contains(first_path.to_str().unwrap()));
+        assert!(!stderr.contains(second_path.to_str().unwrap()));
+    }
+
+    #[test]
+    fn cleanup_script_does_not_select_noncanonical_date_or_time() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let invalid_date = canonical_path(&codex_home, "2026-02-31", "04-01-04");
+        let invalid_time = canonical_path(&codex_home, "2026-07-23", "24-01-04");
+        create_file(&invalid_date);
+        create_file(&invalid_time);
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        assert!(!invalid_date.exists());
+        assert!(!invalid_time.exists());
+    }
+
+    #[test]
+    fn cleanup_script_does_not_follow_symlinked_date_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let external_root = temp.path().join("external");
+        let external_path = canonical_path(&external_root, "2026-07-23", "04-01-04");
+        create_file(&external_path);
+        let sessions_year = codex_home.join("sessions/2026");
+        fs::create_dir_all(&sessions_year).unwrap();
+        symlink(
+            external_root.join("sessions/2026/07"),
+            sessions_year.join("07"),
+        )
+        .unwrap();
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        assert!(external_path.exists());
     }
 
     #[test]
