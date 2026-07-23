@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.457.1](https://github.com/vm0-ai/vm0/compare/core-v8.457.0...core-v8.457.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **chat:** preserve structured prompt templates ([#22753](https://github.com/vm0-ai/vm0/issues/22753)) ([c1fe3a0](https://github.com/vm0-ai/vm0/commit/c1fe3a006d545712686087f0e4c61206844a79da))
+
 ## [8.457.0](https://github.com/vm0-ai/vm0/compare/core-v8.456.0...core-v8.457.0) (2026-07-23)
 
 

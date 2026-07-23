@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.247.1](https://github.com/vm0-ai/vm0/compare/cli-v9.247.0...cli-v9.247.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* use app url for connector action links ([#22748](https://github.com/vm0-ai/vm0/issues/22748)) ([0121552](https://github.com/vm0-ai/vm0/commit/01215521ae72717b37e746480c84e9bbc7fca3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.457.1
+
 ## [9.247.0](https://github.com/vm0-ai/vm0/compare/cli-v9.246.10...cli-v9.247.0) (2026-07-23)
 
 
