@@ -9587,6 +9587,121 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     ).toHaveLength(1);
   });
 
+  it("records one metric when assistant publications acknowledge concurrently", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    failIfChatCallbackRouteIsFetched();
+    const apiStartedAt = Date.parse("2026-07-23T08:30:00.000Z");
+    const acknowledgedAt = apiStartedAt + 5000;
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd concurrent assistant acknowledgements",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+
+    const bothAssistantPublishesStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseAssistantPublishes = createDeferredPromise<void>(
+      context.signal,
+    );
+    let assistantPublishCount = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === `chatThreadMessageCreated:${threadId}`) {
+        assistantPublishCount++;
+        if (assistantPublishCount === 2) {
+          bothAssistantPublishesStarted.resolve(undefined);
+        }
+        return releaseAssistantPublishes.promise;
+      }
+      return Promise.resolve(undefined);
+    });
+    mockNow(acknowledgedAt);
+
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    const publications = [
+      webhooks.requestAgentEvents(
+        {
+          runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 0,
+              message: {
+                id: "msg_bdd_concurrent_first",
+                content: [{ type: "text", text: "Concurrent answer one" }],
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+      webhooks.requestAgentEvents(
+        {
+          runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 1,
+              message: {
+                id: "msg_bdd_concurrent_second",
+                content: [{ type: "text", text: "Concurrent answer two" }],
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+    ];
+    await bothAssistantPublishesStarted.promise;
+    releaseAssistantPublishes.resolve(undefined);
+    await Promise.all(publications);
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadMessages(actor, threadId);
+    const assistantContents = messages.messages.flatMap((message) => {
+      return message.role === "assistant" &&
+        message.runId === runId &&
+        message.content !== null
+        ? [message.content]
+        : [];
+    });
+    expect(assistantContents).toStrictEqual(
+      expect.arrayContaining([
+        "Concurrent answer one",
+        "Concurrent answer two",
+      ]),
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        runId,
+        "api_to_first_assistant_message",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        _time: new Date(acknowledgedAt).toISOString(),
+        duration_ms: acknowledgedAt - apiStartedAt,
+        run_id: runId,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, runId, [200]);
+  });
+
   it("records a Codex agent message as the first real assistant output", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
