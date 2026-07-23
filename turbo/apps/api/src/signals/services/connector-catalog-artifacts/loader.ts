@@ -58,7 +58,6 @@ export interface ValidatedConnectorCatalogCandidate {
 
 interface DecodedConnectorCatalogSnapshot {
   readonly artifact: ConnectorCatalogArtifact;
-  readonly rawBytes: Buffer;
 }
 
 export interface ConnectorCatalogArtifactReader {
@@ -260,6 +259,5 @@ export function decodeConnectorCatalogSnapshot(args: {
       bytes: rawBytes,
       catalogVersion: args.catalogVersion,
     }),
-    rawBytes,
   };
 }
