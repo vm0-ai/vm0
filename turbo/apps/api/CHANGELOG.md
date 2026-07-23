@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.308.3](https://github.com/vm0-ai/vm0/compare/api-v1.308.2...api-v1.308.3) (2026-07-23)
+
+
+### Refactoring
+
+* **api:** consume canonical connector catalog snapshot ([#22721](https://github.com/vm0-ai/vm0/issues/22721)) ([4c92cfa](https://github.com/vm0-ai/vm0/commit/4c92cfa5e96b61351cd42ba7ca55a252b88d37cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.1
+    * @vm0/connectors bumped to 1.186.1
+    * @vm0/core bumped to 8.457.3
+    * @vm0/db bumped to 1.130.3
+
 ## [1.308.2](https://github.com/vm0-ai/vm0/compare/api-v1.308.1...api-v1.308.2) (2026-07-23)
 
 
