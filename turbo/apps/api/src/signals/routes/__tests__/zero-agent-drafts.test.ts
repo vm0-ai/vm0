@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -53,6 +54,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     expect(response.body).toStrictEqual({
       draftContent: null,
+      draftStructuredPrompt: null,
       draftAttachments: null,
     });
   });
@@ -68,6 +70,18 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       contentType: "text/plain",
       size: 123,
     };
+    const draftStructuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "file",
+          fileId: attachment.id,
+          filenameSnapshot: attachment.filename,
+          contentType: attachment.contentType,
+        },
+        { type: "text", text: "draft text" },
+      ],
+    };
 
     await accept(
       draftsClient().patch({
@@ -75,6 +89,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftContent: "draft text",
+          draftStructuredPrompt,
           draftAttachments: [attachment],
         },
       }),
@@ -90,6 +105,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(saved.body).toStrictEqual({
       draftContent: "draft text",
+      draftStructuredPrompt,
       draftAttachments: [attachment],
     });
 
@@ -99,6 +115,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftContent: null,
+          draftStructuredPrompt: null,
           draftAttachments: null,
         },
       }),
@@ -114,6 +131,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(cleared.body).toStrictEqual({
       draftContent: null,
+      draftStructuredPrompt: null,
       draftAttachments: null,
     });
   });
@@ -146,6 +164,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(peerDraft.body).toStrictEqual({
       draftContent: null,
+      draftStructuredPrompt: null,
       draftAttachments: null,
     });
   });

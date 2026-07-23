@@ -40,6 +40,7 @@ const getAgentDraftInner$ = computed(async (get) => {
   const [draft] = await get(db$)
     .select({
       draftContent: zeroAgentDrafts.draftContent,
+      draftStructuredPrompt: zeroAgentDrafts.draftStructuredPrompt,
       draftAttachments: zeroAgentDrafts.draftAttachments,
     })
     .from(zeroAgentDrafts)
@@ -56,6 +57,7 @@ const getAgentDraftInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       draftContent: draft?.draftContent ?? null,
+      draftStructuredPrompt: draft?.draftStructuredPrompt ?? null,
       draftAttachments: draft?.draftAttachments ?? null,
     },
   };
@@ -85,10 +87,15 @@ const patchAgentDraftInner$ = command(
     }
 
     const draftContent = bodyResult.data.draftContent ?? null;
+    const draftStructuredPrompt = bodyResult.data.draftStructuredPrompt ?? null;
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const writeDb = set(writeDb$);
 
-    if (!draftContent && !(draftAttachments && draftAttachments.length > 0)) {
+    if (
+      !draftContent &&
+      !draftStructuredPrompt &&
+      !(draftAttachments && draftAttachments.length > 0)
+    ) {
       await writeDb
         .delete(zeroAgentDrafts)
         .where(
@@ -110,6 +117,7 @@ const patchAgentDraftInner$ = command(
         orgId: auth.orgId,
         agentId: params.id,
         draftContent,
+        draftStructuredPrompt,
         draftAttachments,
         updatedAt,
       })
@@ -121,6 +129,7 @@ const patchAgentDraftInner$ = command(
         ],
         set: {
           draftContent,
+          draftStructuredPrompt,
           draftAttachments,
           updatedAt,
         },

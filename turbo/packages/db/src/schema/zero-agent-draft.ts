@@ -7,7 +7,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
-import type { ZeroAgentDraftAttachments } from "@vm0/db/jsonb-contracts/zero-agent-draft";
+import type {
+  ZeroAgentDraftAttachments,
+  ZeroAgentDraftStructuredPrompt,
+} from "@vm0/db/jsonb-contracts/zero-agent-draft";
 
 export const zeroAgentDrafts = pgTable(
   "zero_agent_drafts",
@@ -23,6 +26,9 @@ export const zeroAgentDrafts = pgTable(
         { onDelete: "cascade" },
       ),
     draftContent: text("draft_content"),
+    draftStructuredPrompt: jsonb(
+      "draft_structured_prompt",
+    ).$type<ZeroAgentDraftStructuredPrompt>(),
     draftAttachments:
       jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
