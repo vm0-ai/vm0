@@ -1,7 +1,9 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   artifactsContract,
+  chatThreadArtifactsContract,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -17,10 +19,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  reloadArtifacts$,
-  syncArtifacts$,
-} from "../../../signals/artifacts-page/artifacts-signals.ts";
 import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../../../signals/external/idb-artifact-item-store.ts";
 
@@ -40,19 +38,30 @@ const artifactIdbMock = vi.hoisted(() => {
     readonly started: PromiseWithResolvers<void>;
     readonly released: PromiseWithResolvers<void>;
   } | null = null;
+  let artifactReadGate: {
+    readonly started: PromiseWithResolvers<void>;
+    readonly released: PromiseWithResolvers<void>;
+  } | null = null;
 
   class MemoryCursor {
     private position = 0;
 
-    constructor(private readonly values: readonly Record<string, unknown>[]) {}
+    constructor(
+      private readonly values: readonly Record<string, unknown>[],
+      private readonly readGate: typeof artifactReadGate,
+    ) {}
 
     get value(): unknown {
       return this.values[this.position];
     }
 
-    continue(): Promise<MemoryCursor | null> {
+    async continue(): Promise<MemoryCursor | null> {
+      if (this.position === 0 && this.readGate) {
+        this.readGate.started.resolve();
+        await this.readGate.released.promise;
+      }
       this.position += 1;
-      return Promise.resolve(this.position < this.values.length ? this : null);
+      return this.position < this.values.length ? this : null;
     }
   }
 
@@ -227,6 +236,7 @@ const artifactIdbMock = vi.hoisted(() => {
               rows.map((row) => {
                 return row.value;
               }),
+              this.store.keyPath === "artifactItemId" ? artifactReadGate : null,
             ),
           );
         },
@@ -344,6 +354,25 @@ const artifactIdbMock = vi.hoisted(() => {
   const dbs = new Map<string, MemoryDb>();
 
   return {
+    blockArtifactCursorContinuation(): {
+      readonly started: Promise<void>;
+      release(): void;
+    } {
+      const started = Promise.withResolvers<void>();
+      const released = Promise.withResolvers<void>();
+      const gate = { started, released };
+      artifactReadGate = gate;
+      return {
+        started: started.promise,
+        release: () => {
+          if (artifactReadGate === gate) {
+            artifactReadGate = null;
+          }
+          released.resolve();
+        },
+      };
+    },
+
     blockArtifactReplacement(): {
       readonly completed: Promise<void>;
       readonly started: Promise<void>;
@@ -420,6 +449,23 @@ function createAgent(id: string, displayName: string | null): TeamComposeItem {
     avatarUrl: null,
     visibility: "public",
     headVersionId: "version_1",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
+
+function googleDriveConnector(): ConnectorResponse {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    type: "google-drive",
+    authMethod: "oauth",
+    externalId: "google-drive-external-id",
+    externalUsername: "drive-user",
+    externalEmail: "drive-user@example.com",
+    oauthScopes: ["drive.file"],
+    connectionStatus: "connected",
+    reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
 }
@@ -566,10 +612,14 @@ async function withChatIdb<T>(
 async function seedCachedArtifacts(
   scope: TestAuthScope,
   artifacts: readonly ArtifactItem[],
+  lastSyncedAt?: string,
 ): Promise<void> {
   await withChatIdb(scope, async (db) => {
     const stores = createArtifactItemCacheStores(resolvedChatIdb(db));
     await stores.writeStore.replaceItems(artifacts);
+    if (lastSyncedAt) {
+      await stores.writeStore.setLastSyncedAt(lastSyncedAt);
+    }
     const seeded = await stores.readStore.readRecent({ limit: 10_000 });
     if (seeded.length !== artifacts.length) {
       throw new Error("Expected artifact cache seed to be readable");
@@ -1599,6 +1649,48 @@ describe("artifacts page", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("shows an error when an incremental response needs a timed-out cache", async () => {
+    setupTeam();
+    const scope = testAuthScope("incremental-cache-timeout");
+    const lastSyncedAt = "2026-01-02T00:00:00.000Z";
+    await seedCachedArtifacts(
+      scope,
+      [
+        createArtifact({
+          artifactItemId: "cached-timeout-run:file-1",
+          runId: "cached-timeout-run",
+          filename: "cached-timeout.html",
+          createdAt: lastSyncedAt,
+        }),
+      ],
+      lastSyncedAt,
+    );
+    const blockedRead = artifactIdbMock.blockArtifactCursorContinuation();
+    let requestedUpdatedAfter: string | undefined;
+    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
+      requestedUpdatedAfter = query.updatedAfter;
+      return respond(200, {
+        artifacts: [],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: "2026-01-03T00:00:00.000Z",
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await blockedRead.started;
+    try {
+      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+        "Could not load artifacts",
+      );
+      expect(screen.queryByText("No artifacts found")).not.toBeInTheDocument();
+      expect(requestedUpdatedAfter).toBe(lastSyncedAt);
+    } finally {
+      blockedRead.release();
+    }
+  });
+
   it("writes remote artifacts to the IndexedDB cache", async () => {
     setupTeam();
     const scope = testAuthScope("remote-cache-fill");
@@ -1654,6 +1746,7 @@ describe("artifacts page", () => {
 
   it("cancels an obsolete cache replacement when metadata refreshes", async () => {
     setupTeam();
+    context.mocks.data.connectors([googleDriveConnector()]);
     const scope = testAuthScope("obsolete-cache-replacement");
     const obsoleteArtifact = createArtifact({
       artifactItemId: "obsolete-sync:file-1",
@@ -1678,6 +1771,17 @@ describe("artifacts page", () => {
         syncUntil: serveCurrentArtifacts ? currentSyncUntil : obsoleteSyncUntil,
       });
     });
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ respond }) => {
+        serveCurrentArtifacts = true;
+        return respond(200, {
+          id: "drive-current-sync",
+          name: currentArtifact.filename,
+          webViewLink: "https://drive.test/current-sync",
+        });
+      },
+    );
     const replacement = artifactIdbMock.blockArtifactReplacement();
 
     setupArtifactsPage({ scope });
@@ -1685,9 +1789,18 @@ describe("artifacts page", () => {
     await replacement.started;
     try {
       expect(screen.getByText("obsolete-sync.html")).toBeInTheDocument();
-      serveCurrentArtifacts = true;
-      context.store.set(reloadArtifacts$);
-      await context.store.set(syncArtifacts$, context.signal);
+      click(buttonByLabel("Preview obsolete-sync.html"));
+      await expect(
+        screen.findByRole("dialog", { name: "obsolete-sync.html preview" }),
+      ).resolves.toBeInTheDocument();
+      click(buttonByLabel("Download options"));
+      await waitFor(() => {
+        expect(menuItemByText("Upload to Google Drive")).toBeInTheDocument();
+      });
+      click(menuItemByText("Upload to Google Drive"));
+      await expect(
+        screen.findByText("current-sync.html"),
+      ).resolves.toBeInTheDocument();
       await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
         currentArtifact.artifactItemId,
       ]);

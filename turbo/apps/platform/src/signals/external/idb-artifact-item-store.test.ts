@@ -467,6 +467,17 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     ).resolves.toBe(null);
   });
 
+  it("rejects strict cache reads when IndexedDB misses the deadline", async () => {
+    const pendingDb = Promise.withResolvers<IDBPDatabase>();
+    const stores = createArtifactItemCacheStores(() => {
+      return pendingDb.promise;
+    });
+
+    await expect(stores.readStore.readRecent()).rejects.toThrow(
+      "IndexedDB operation timed out: artifacts:readRecent",
+    );
+  });
+
   it("ignores best-effort write failures", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));

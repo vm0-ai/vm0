@@ -30,6 +30,7 @@ import {
   useLastLoadable,
   useLastResolved,
   useSet,
+  type LoadableState,
 } from "ccstate-react";
 import {
   Button,
@@ -126,6 +127,37 @@ const ARTIFACT_CARD_IMAGE_HEIGHT = 400;
 const ARTIFACT_CARD_PREVIEW_ASPECT_RATIO = 16 / 10;
 const ARTIFACT_CARD_DETAILS_HEIGHT_PX = 64;
 const ARTIFACT_CARD_BORDER_WIDTH_PX = 1;
+
+function getArtifactsPageLoadState({
+  cacheState,
+  hasSourceArtifacts,
+  mergeCachedArtifacts,
+  remoteState,
+}: {
+  cacheState: LoadableState;
+  hasSourceArtifacts: boolean;
+  mergeCachedArtifacts: boolean;
+  remoteState: LoadableState;
+}): {
+  error: boolean;
+  loading: boolean;
+} {
+  const remotePending = remoteState === "loading";
+  const remoteStillNeedsCache =
+    remotePending || remoteState === "hasError" || mergeCachedArtifacts;
+  const noSourceArtifacts = !hasSourceArtifacts;
+
+  return {
+    error:
+      noSourceArtifacts &&
+      (remoteState === "hasError" ||
+        (cacheState === "hasError" && remoteStillNeedsCache)),
+    loading:
+      noSourceArtifacts &&
+      (remotePending || (cacheState === "loading" && remoteStillNeedsCache)),
+  };
+}
+
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -1358,16 +1390,12 @@ export function ArtifactsPage() {
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
-  const nothingCached = sourceArtifacts.length === 0;
-  const cachePending = cachedLoadable.state === "loading";
-  const remotePending = remoteLoadable.state === "loading";
-  const remoteStillNeedsCache =
-    remotePending ||
-    remoteLoadable.state === "hasError" ||
-    remoteData?.mergeCachedArtifacts === true;
-  const loading =
-    nothingCached && (remotePending || (cachePending && remoteStillNeedsCache));
-  const error = nothingCached && remoteLoadable.state === "hasError";
+  const { error, loading } = getArtifactsPageLoadState({
+    cacheState: cachedLoadable.state,
+    hasSourceArtifacts: sourceArtifacts.length > 0,
+    mergeCachedArtifacts: remoteData?.mergeCachedArtifacts === true,
+    remoteState: remoteLoadable.state,
+  });
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);

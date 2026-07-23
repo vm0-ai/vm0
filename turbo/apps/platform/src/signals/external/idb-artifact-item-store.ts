@@ -21,7 +21,11 @@ import {
   ARTIFACT_ITEMS_STORE,
   ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
-import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+  withChatIdbTimeout,
+} from "./chat-idb-safe.ts";
 import { withCleanup } from "../utils.ts";
 
 const L = logger("ChatIdbCache");
@@ -224,6 +228,9 @@ async function readRecentItems(
     if (matchesFilter(stored, effectiveFilter, queryTokens)) {
       items.push(stored.item);
     }
+    if (items.length >= limit) {
+      break;
+    }
     cursor = await cursor.continue();
   }
   L.debug("artifacts:readRecent:done", {
@@ -239,7 +246,13 @@ function createReadStore(
 ): ArtifactItemReadStore {
   return {
     async readRecent(filter, signal) {
-      return await readRecentItems(storeName, getDb, filter, signal);
+      return await withChatIdbTimeout(
+        "artifacts:readRecent",
+        async () => {
+          return await readRecentItems(storeName, getDb, filter, signal);
+        },
+        signal,
+      );
     },
 
     async readRecentBestEffort(filter, signal) {
