@@ -1,6 +1,6 @@
 """Classify public destination addresses for credential-bearing firewall traffic.
 
-“Public” is this repository's explicit native public-unicast policy, not a
+"Public" is this repository's explicit native public-unicast policy, not a
 guarantee that an address is reachable from a particular network. IPv4 follows
 the globally reachable distinctions in the IANA IPv4 Special-Purpose Address
 Registry, together with the non-unicast address space. IPv6 is deliberately
@@ -72,7 +72,10 @@ _IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX = 0x01FF
 _IPV6_DOCUMENTATION_SECOND = 0x0DB8
 _IPV6_6TO4_FIRST = 0x2002
 # These are the globally reachable allocations nested inside the otherwise
-# non-global 2001::/23 IETF Protocol Assignments block.
+# non-global 2001::/23 IETF Protocol Assignments block:
+# - exact PCP, TURN, and DNS-SD anycast addresses 2001:1::1, 2001:1::2, and 2001:1::3;
+# - 2001:3::/32 (AMT) and 2001:4:112::/48 (AS112-v6);
+# - 2001:20::/28 (ORCHIDv2) and 2001:30::/28 (Drone Remote ID).
 _IPV6_SPECIAL_EXACT_SECOND = 0x0001
 _IPV6_SPECIAL_EXACT_LAST_MIN = 0x0001
 _IPV6_SPECIAL_EXACT_LAST_MAX = 0x0003
@@ -87,9 +90,9 @@ _IPV6_EXPANDED_DOCUMENTATION_FIRST = 0x3FFF
 _IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX = 0x0FFF
 
 # Reasons produced when a concrete runtime destination cannot be approved:
-# missing means no usable destination evidence was supplied, invalid means the
-# evidence is not a concrete canonical IP literal, and non-public means a valid
-# address was rejected by the public-unicast policy.
+# `missing_destination` means no usable destination evidence was supplied;
+# `invalid_destination` means the evidence is not accepted concrete IP-literal
+# syntax; `non_public_destination` means a valid address was rejected by policy.
 DestinationDenialReason = Literal[
     "missing_destination",
     "invalid_destination",
