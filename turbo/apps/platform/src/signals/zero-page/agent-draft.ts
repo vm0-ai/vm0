@@ -159,13 +159,19 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
       });
       const features = get(featureSwitch$);
       const editorDocument = set(draft.readEditorDocument$);
+      const generationTemplate = get(draft.generationTemplate$);
+      const hasStructuredDraft =
+        content !== null ||
+        generationTemplate !== undefined ||
+        persistedAttachments.length > 0;
       let structuredPrompt: UserMessageDocument | null = null;
       if (
         (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-        editorDocument
+        editorDocument &&
+        hasStructuredDraft
       ) {
         structuredPrompt = editorDocument.toMessageDocument({
-          generationTemplate: get(draft.generationTemplate$),
+          generationTemplate,
           attachments: persistedAttachments,
         });
         if (!structuredPrompt) {

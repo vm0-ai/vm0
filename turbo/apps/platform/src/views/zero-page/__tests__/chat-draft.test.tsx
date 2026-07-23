@@ -300,7 +300,8 @@ describe("chat drafts", () => {
     });
   });
 
-  it("persists typed agent drafts through the agent draft endpoint", async () => {
+  it("persists and clears typed agent drafts through the agent draft endpoint", async () => {
+    const user = userEvent.setup({ delay: null });
     const agentId = "c0000000-0000-4000-a000-000000000102";
     const draftPatches: Record<string, unknown>[] = [];
     const toastError = vi.spyOn(toast, "error");
@@ -341,6 +342,18 @@ describe("chat drafts", () => {
           draftAttachments: null,
         });
       });
+
+      await user.click(textarea());
+      await user.keyboard("{Control>}a{/Control}{Backspace}");
+
+      await waitFor(() => {
+        expect(draftPatches).toContainEqual({
+          draftContent: null,
+          draftStructuredPrompt: null,
+          draftAttachments: null,
+        });
+      });
+      expect(textarea().textContent ?? "").toBe("");
       await Promise.resolve();
       await Promise.resolve();
       expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
