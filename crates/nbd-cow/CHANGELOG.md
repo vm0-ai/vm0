@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.69](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.68...nbd-cow-v0.4.69) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** preconnect one-shot nbd cow slots ([#22683](https://github.com/vm0-ai/vm0/issues/22683)) ([1d02f4a](https://github.com/vm0-ai/vm0/commit/1d02f4a9e5df3d981da9fbf99606bd10d31b1a16))
+
 ## [0.4.68](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.67...nbd-cow-v0.4.68) (2026-07-23)
 
 

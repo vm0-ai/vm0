@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.455.0](https://github.com/vm0-ai/vm0/compare/core-v8.454.1...core-v8.455.0) (2026-07-23)
+
+
+### Features
+
+* roll out chat message background sync ([#22708](https://github.com/vm0-ai/vm0/issues/22708)) ([667d6af](https://github.com/vm0-ai/vm0/commit/667d6af7f4edbcde4c251bfbbdaa2318dc9a863d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.5
+    * @vm0/connectors bumped to 1.183.0
+
 ## [8.454.1](https://github.com/vm0-ai/vm0/compare/core-v8.454.0...core-v8.454.1) (2026-07-23)
 
 

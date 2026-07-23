@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.623.0](https://github.com/vm0-ai/vm0/compare/app-v0.622.1...app-v0.623.0) (2026-07-23)
+
+
+### Features
+
+* **activity:** show millisecond run offsets in activity logs ([#22723](https://github.com/vm0-ai/vm0/issues/22723)) ([e904fd8](https://github.com/vm0-ai/vm0/commit/e904fd8276ec8b84bec7cc0467d4374c812c6960))
+* roll out chat message background sync ([#22708](https://github.com/vm0-ai/vm0/issues/22708)) ([667d6af](https://github.com/vm0-ai/vm0/commit/667d6af7f4edbcde4c251bfbbdaa2318dc9a863d))
+
+
+### Bug Fixes
+
+* show full step text and drop leading icon in onboarding workflow cards ([#22693](https://github.com/vm0-ai/vm0/issues/22693)) ([89975ab](https://github.com/vm0-ai/vm0/commit/89975ab106ef262a16fe3b2c0ddfeb7aec0d6d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.5
+    * @vm0/connectors bumped to 1.183.0
+    * @vm0/core bumped to 8.455.0
+
 ## [0.622.1](https://github.com/vm0-ai/vm0/compare/app-v0.622.0...app-v0.622.1) (2026-07-23)
 
 
