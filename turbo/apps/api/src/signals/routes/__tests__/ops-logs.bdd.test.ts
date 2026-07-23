@@ -622,83 +622,99 @@ describe("OPS-01: user data export", () => {
     });
   });
 
-  it("exports structured user messages with readable text and the source document", async () => {
-    const api = createOpsLogsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
+  it.each([
+    { projection: "structured", structuredPromptEnabled: true },
+    { projection: "legacy", structuredPromptEnabled: false },
+  ])(
+    "exports the $projection user-message projection",
+    async ({ structuredPromptEnabled }) => {
+      const api = createOpsLogsApi(context);
+      const chat = createChatFilesBddApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an org-scoped actor");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
+      );
 
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-    if (!style) {
-      throw new Error("Expected a registered illustration style");
-    }
-    const generationTemplate: GenerationTemplateRequest = {
-      type: "illustration",
-      selection: { illustrationStyleId: style.illustrationStyleId },
-    };
-    const structuredPrompt: UserMessageDocument = {
-      version: 1,
-      parts: [
+      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+      if (!style) {
+        throw new Error("Expected a registered illustration style");
+      }
+      const generationTemplate: GenerationTemplateRequest = {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      };
+      const structuredPrompt: UserMessageDocument = {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: style.title,
+            template: generationTemplate,
+          },
+          { type: "text", text: "Export the structured request" },
+        ],
+      };
+      const sent = await chat.requestSendMessage(
+        actor,
         {
-          type: "template",
-          titleSnapshot: style.title,
-          template: generationTemplate,
+          agentId,
+          prompt: "stale export content",
+          generationTemplate,
+          structuredPrompt,
         },
-        { type: "text", text: "Export the structured request" },
-      ],
-    };
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "stale export content",
-        generationTemplate,
-        structuredPrompt,
-      },
-      [201],
-    );
-    if (sent.status !== 201) {
-      throw new Error("Expected the structured message send to succeed");
-    }
+        [201],
+      );
+      if (sent.status !== 201) {
+        throw new Error("Expected the structured message send to succeed");
+      }
 
-    const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
-    mockNow(exportStartAt);
-    context.mocks.s3.getSignedUrl.mockResolvedValue(
-      "https://r2.example.com/bdd-structured-export.zip?sig=test",
-    );
-    const started = await api.requestPostUserExport(actor, [202]);
-    const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
-    await waitForUserExportJobStatus(
-      api,
-      actor,
-      started.body.jobId,
-      "completed",
-    );
+      const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
+      mockNow(exportStartAt);
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        "https://r2.example.com/bdd-structured-export.zip?sig=test",
+      );
+      const started = await api.requestPostUserExport(actor, [202]);
+      const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+      await waitForUserExportJobStatus(
+        api,
+        actor,
+        started.body.jobId,
+        "completed",
+      );
 
-    const messages = JSON.parse(
-      zipText(
-        exportZip(exportKey),
-        `conversations/chat-thread-${sent.body.threadId}.json`,
-      ),
-    ) as {
-      readonly role: string;
-      readonly content: string;
-      readonly structuredPrompt?: UserMessageDocument;
-    }[];
-    expect(messages[0]).toMatchObject({
-      role: "user",
-      content: `[Template: ${style.title}]\n\nExport the structured request`,
-      structuredPrompt,
-    });
-    expect(messages[0]?.content).not.toContain("stale export content");
-  });
+      const messages = JSON.parse(
+        zipText(
+          exportZip(exportKey),
+          `conversations/chat-thread-${sent.body.threadId}.json`,
+        ),
+      ) as {
+        readonly role: string;
+        readonly content: string;
+        readonly structuredPrompt?: UserMessageDocument;
+      }[];
+      const expectedContent = structuredPromptEnabled
+        ? `[Template: ${style.title}]\n\nExport the structured request`
+        : "stale export content";
+      expect(messages[0]).toMatchObject({
+        role: "user",
+        content: expectedContent,
+        ...(structuredPromptEnabled ? { structuredPrompt } : {}),
+      });
+      expect(messages[0]?.content).not.toContain(
+        structuredPromptEnabled
+          ? "stale export content"
+          : "Export the structured request",
+      );
+      if (!structuredPromptEnabled) {
+        expect(messages[0]).not.toHaveProperty("structuredPrompt");
+      }
+    },
+  );
 
   it("exports only agent instruction files, workflow files, and memory files", async () => {
     const api = createOpsLogsApi(context);
