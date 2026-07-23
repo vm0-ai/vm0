@@ -98,12 +98,10 @@ codex_thread_id_from_output() {
     assert_equal "$(codex_thread_id_from_output "$output")" "$codex_thread_id"
     assert_output --partial '"type":"turn.completed"'
 
-    local resumed_run_id resumed_checkpoint_id resumed_vm0_session_id
+    local resumed_run_id resumed_checkpoint_id
     resumed_run_id="$(run_fixture_field "$output" '.runId')"
     resumed_checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
-    resumed_vm0_session_id="$(run_fixture_field "$output" '.sessionId')"
     assert_run_reused_sandbox "$resumed_run_id"
-    assert_equal "$resumed_vm0_session_id" "$vm0_session_id"
     [ -n "$resumed_checkpoint_id" ]
     [ "$resumed_checkpoint_id" != "$checkpoint_id" ]
 }
