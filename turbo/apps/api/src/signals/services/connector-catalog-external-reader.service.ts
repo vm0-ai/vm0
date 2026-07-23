@@ -86,7 +86,10 @@ interface PreparedExternalCatalogCache {
         readonly catalog: AcceptedConnectorCatalogSnapshot;
       }
     | undefined;
-  readonly inFlight: Map<string, Promise<AcceptedConnectorCatalogSnapshot>>;
+  readonly inFlight: Map<
+    string,
+    Promise<AcceptedConnectorCatalogSnapshot | undefined>
+  >;
 }
 
 interface RequestFilteringCounts {
@@ -378,12 +381,9 @@ async function readCurrentCatalog(args: {
 async function loadCurrentCatalog(args: {
   readonly db: ReadonlyDb;
   readonly identity: ExternalCatalogIdentity;
-}): Promise<AcceptedConnectorCatalogSnapshot> {
+}): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const result = await settle(readCurrentCatalog(args));
   if (result.ok) {
-    if (!result.value) {
-      throw new ExternalConnectorCatalogUnavailableError();
-    }
     return result.value;
   }
 
@@ -401,16 +401,16 @@ async function loadCurrentCatalog(args: {
 function deleteInFlightCatalog(
   cache: PreparedExternalCatalogCache,
   key: string,
-  promise: Promise<AcceptedConnectorCatalogSnapshot>,
+  promise: Promise<AcceptedConnectorCatalogSnapshot | undefined>,
 ): void {
   if (cache.inFlight.get(key) === promise) {
     cache.inFlight.delete(key);
   }
 }
 
-export async function loadAcceptedConnectorCatalogSnapshot(
+async function loadAcceptedConnectorCatalogSnapshotAttempt(
   db: ReadonlyDb,
-): Promise<AcceptedConnectorCatalogSnapshot> {
+): Promise<AcceptedConnectorCatalogSnapshot | undefined> {
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityDigest();
   const currentIdentity = await readCurrentIdentity({
@@ -438,8 +438,29 @@ export async function loadAcceptedConnectorCatalogSnapshot(
     deleteInFlightCatalog(cache, currentKey, promise);
   });
   deleteInFlightCatalog(cache, currentKey, promise);
+  if (!catalog) {
+    return undefined;
+  }
   cache.completed = { key: currentKey, catalog };
   return catalog;
+}
+
+export async function loadAcceptedConnectorCatalogSnapshot(
+  db: ReadonlyDb,
+): Promise<AcceptedConnectorCatalogSnapshot> {
+  const first = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  if (first) {
+    return first;
+  }
+
+  // The active row is intentionally the only durable catalog snapshot. If an
+  // activation commits between the identity and payload queries, the old
+  // identity no longer has a row; retry once against the newly active identity.
+  const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db);
+  if (!second) {
+    throw new ExternalConnectorCatalogUnavailableError();
+  }
+  return second;
 }
 
 /**
