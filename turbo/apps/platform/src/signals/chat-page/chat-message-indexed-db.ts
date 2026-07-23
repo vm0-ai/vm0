@@ -40,6 +40,33 @@ export const loadIndexedDbChatMessages$ = command(
   },
 );
 
+export const loadIndexedDbChatMessagesFrom$ = command(
+  async (
+    { get },
+    threadId: string,
+    message: PagedChatMessage,
+    signal: AbortSignal,
+  ) => {
+    const stores = await get(chatMessageStores$);
+    signal.throwIfAborted();
+    const messages = await chatIdbReadOr(
+      "indexedDbMessages:readFrom",
+      () => {
+        return stores.readStore.readFrom(threadId, message, signal);
+      },
+      [],
+      signal,
+    );
+    signal.throwIfAborted();
+    L.debug("loadIndexedDbMessagesFrom", {
+      threadId,
+      messageId: message.id,
+      count: messages.length,
+    });
+    return messages;
+  },
+);
+
 export const loadIndexedDbChatMessageBounds$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
     const stores = await get(chatMessageStores$);

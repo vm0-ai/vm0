@@ -79,6 +79,7 @@ import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
   loadIndexedDbChatMessages$,
+  loadIndexedDbChatMessagesFrom$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
 import type { BodyRenderBlock, ParsedBodyBlock } from "./parse-body-blocks.ts";
@@ -1326,7 +1327,7 @@ function compareServerMessageOrder(
     return leftSequence - rightSequence;
   }
 
-  return 0;
+  return compareCursorString(left.id, right.id);
 }
 
 function mergeRegisteredMessages(
@@ -2389,6 +2390,59 @@ function createBodyBlocksRenderer({
   };
 }
 
+function createIndexedDbMessageMergeCommands({
+  threadId,
+  persistentMessages$,
+  registerBodyBlocks,
+}: {
+  threadId: string;
+  persistentMessages$: PersistentChatMessages$;
+  registerBodyBlocks: BodyBlocksRenderer;
+}) {
+  const mergeIndexedDbMessages$ = command(
+    ({ set }, messages: PagedChatMessage[]): void => {
+      const registeredMessages = messages.map((message) => {
+        return registerChatMessage(message, registerBodyBlocks);
+      });
+      set(persistentMessages$, (previous) => {
+        return mergeRegisteredMessages([registeredMessages, previous]);
+      });
+    },
+  );
+
+  const initializeIndexedDbMessages$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const indexedDbMessages = await set(
+        loadIndexedDbChatMessages$,
+        threadId,
+        signal,
+      );
+      signal.throwIfAborted();
+      set(mergeIndexedDbMessages$, indexedDbMessages);
+    },
+  );
+
+  const mergeNewIndexedDbMessages$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const latestPersistentMessage = get(persistentMessages$).at(-1)?.message;
+      if (latestPersistentMessage === undefined) {
+        await set(initializeIndexedDbMessages$, signal);
+        return;
+      }
+      const indexedDbMessages = await set(
+        loadIndexedDbChatMessagesFrom$,
+        threadId,
+        latestPersistentMessage,
+        signal,
+      );
+      signal.throwIfAborted();
+      set(mergeIndexedDbMessages$, indexedDbMessages);
+    },
+  );
+
+  return { initializeIndexedDbMessages$, mergeNewIndexedDbMessages$ };
+}
+
 function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
@@ -2463,29 +2517,12 @@ function createPagedMessages(
     threadId,
     mergePersistentMessages$,
   );
-
-  const mergeIndexedDbMessages$ = command(
-    ({ set }, messages: PagedChatMessage[]): void => {
-      const registeredMessages = messages.map((message) => {
-        return registerChatMessage(message, registerBodyBlocks);
-      });
-      set(persistentChatMessages$, (previous) => {
-        return mergeRegisteredMessages([registeredMessages, previous]);
-      });
-    },
-  );
-
-  const initializeIndexedDbMessages$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const indexedDbMessages = await set(
-        loadIndexedDbChatMessages$,
-        threadId,
-        signal,
-      );
-      signal.throwIfAborted();
-      set(mergeIndexedDbMessages$, indexedDbMessages);
-    },
-  );
+  const { initializeIndexedDbMessages$, mergeNewIndexedDbMessages$ } =
+    createIndexedDbMessageMergeCommands({
+      threadId,
+      persistentMessages$: persistentChatMessages$,
+      registerBodyBlocks,
+    });
 
   const latestMessageSignals = createLatestMessageSignals(rawMessages$);
 
@@ -2508,6 +2545,7 @@ function createPagedMessages(
 
   return {
     initializeIndexedDbMessages$,
+    mergeNewIndexedDbMessages$,
     writePersistentMessages$,
     ...latestMessageSignals,
     appendOptimisticMessage$,
@@ -2664,6 +2702,7 @@ interface RunTrackingDeps {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
+  mergeNewIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   settleMessageSync$: Command<Promise<void>, []>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
@@ -2915,6 +2954,7 @@ function createRunTracking({
   latestChatMessageId$,
   latestRunFinishCreatedAt$,
   initializeIndexedDbMessages$,
+  mergeNewIndexedDbMessages$,
   syncRemoteMessages$,
   settleMessageSync$,
   fetchUpdatedMessage$,
@@ -2959,6 +2999,8 @@ function createRunTracking({
 
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
+      await set(mergeNewIndexedDbMessages$, sig);
+      sig.throwIfAborted();
       await set(syncRemoteMessages$, sig);
       L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
       await set(markThreadReadIfNeeded$, sig);
@@ -4324,6 +4366,7 @@ export function createChatThreadSignals(
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
+    mergeNewIndexedDbMessages$: messages.mergeNewIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     settleMessageSync$: messages.settleMessageSync$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
