@@ -26,6 +26,27 @@ fn restore_session_writes_codex_session() {
 }
 
 #[test]
+fn restore_session_writes_codex_session_at_existing_logical_path() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        format!("{CODEX_EXISTING_ROLLOUT_PATH}\n").into_bytes(),
+        Vec::new(),
+    )));
+    let ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let session = materialized_text_session(CODEX_SESSION_ID, history);
+
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, CODEX_EXISTING_ROLLOUT_PATH);
+    assert_eq!(writes[0].content, session.history_bytes());
+}
+
+#[test]
 fn restore_session_writes_codex_zstd_session() {
     let sandbox = MockSandbox::new("test");
     let ctx = codex_context();
@@ -51,6 +72,31 @@ fn restore_session_writes_codex_zstd_session() {
     );
     assert_eq!(writes[0].content, compressed);
     assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+}
+
+#[test]
+fn restore_session_writes_codex_zstd_session_at_existing_logical_path() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        format!("{CODEX_EXISTING_ROLLOUT_PATH}\n").into_bytes(),
+        Vec::new(),
+    )));
+    let ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let compressed = zstd::encode_all(history.as_bytes(), 0).unwrap();
+    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-04T07:18:08.000Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let session = materialized_codex_zstd_session(CODEX_SESSION_ID, &compressed, timestamp);
+
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, format!("{CODEX_EXISTING_ROLLOUT_PATH}.zst"));
+    assert_eq!(writes[0].content, compressed);
 }
 
 #[test]
@@ -252,6 +298,65 @@ async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
     let message = err.to_string();
     assert!(message.contains("codex session cleanup failed"));
     assert!(message.contains("codex session cleanup exceeded scan budget"));
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn restore_session_rejects_malformed_codex_cleanup_success_output_without_path_leak() {
+    for stdout in [
+        CODEX_EXISTING_ROLLOUT_PATH.to_string(),
+        format!("{CODEX_EXISTING_ROLLOUT_PATH}\nextra\n"),
+        format!("{CODEX_EXISTING_ROLLOUT_PATH}.zst\n"),
+        format!(
+            "/home/user/.codex/sessions/2026/02/31/rollout-2026-02-31T04-01-04-{CODEX_SESSION_ID}.jsonl\n"
+        ),
+        "/home/user/.codex/sessions/2026/07/23/rollout-2026-07-23T04-01-04-019e9154-c304-70f0-adde-36efb1be1702.jsonl\n"
+            .to_string(),
+    ] {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            0,
+            stdout.clone().into_bytes(),
+            Vec::new(),
+        )));
+        let ctx = codex_context();
+        let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
+
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+        let message = err.to_string();
+        assert!(
+            message.contains("invalid codex session cleanup output"),
+            "got: {message}"
+        );
+        assert!(
+            !message.contains(stdout.trim()),
+            "invalid output must not disclose the candidate: {message}"
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn restore_session_rejects_truncated_codex_cleanup_success_output() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::Exited { exit_code: 0 },
+        stdout: format!("{CODEX_EXISTING_ROLLOUT_PATH}\n").into_bytes(),
+        stderr: Vec::new(),
+        diagnostic: String::new(),
+        stdout_truncated: true,
+        stderr_truncated: false,
+    }));
+    let ctx = codex_context();
+    let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("invalid codex session cleanup output")
+    );
     assert!(sandbox.write_file_calls().is_empty());
 }
 
