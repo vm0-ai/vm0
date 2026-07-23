@@ -235,8 +235,9 @@ function createConnectorActionResolver(
         },
       );
       if (catalogMethod?.grantKind === input.expectedGrantKind) {
-        const runtimeMethod = runtimeConnector?.methods.get(input.authMethodId);
-        if (runtimeMethod && !runtimeMethod.availableForNewActions) {
+        if (
+          !runtimeConnector?.authoredVisibleMethodIds.has(input.authMethodId)
+        ) {
           return { ok: false, reason: "hidden_auth_method" };
         }
       }

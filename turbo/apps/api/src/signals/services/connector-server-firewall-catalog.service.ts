@@ -781,7 +781,10 @@ function externalFixedHostOwners(
         );
       }
       const existing = owners.get(host);
-      if (existing) {
+      if (
+        existing &&
+        compareStrings(existing.connectorRef, firewall.connectorRef) <= 0
+      ) {
         continue;
       }
       owners.set(host, {

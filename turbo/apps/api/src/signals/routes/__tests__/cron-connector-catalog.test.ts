@@ -4444,6 +4444,15 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    const response = await accept(
+      runnerFirewallClient().resolve({
+        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+        body: {},
+      }),
+      [200],
+    );
+    expect(response.body.firewalls).not.toHaveProperty(release.connectorRef);
   });
 
   it("serializes overlapping syncs without a mixed snapshot", async () => {
@@ -5112,6 +5121,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         firstRecord(secondConfig.apis, "firewall.apis").base =
           "https://firewall-placeholder.vm3.ai/collision-b/hook";
         connectors.push(second);
+        connectors.reverse();
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -5119,6 +5129,23 @@ describe("connector catalog rejection and latest-valid retention", () => {
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: release.version },
+    });
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const diagnostic = await accept(
+      setupApp({ context })(zeroConnectorCheckContract).check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          mode: "url",
+          method: "GET",
+          url: "https://firewall-placeholder.vm3.ai/collision-a/hook/items",
+        },
+      }),
+      [200],
+    );
+    expect(diagnostic.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorRef: "collision-a" },
     });
   });
 

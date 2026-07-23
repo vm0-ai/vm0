@@ -90,6 +90,7 @@ export interface ConnectorRuntimeConnector {
   readonly connectorRef: ConnectorRef;
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
+  readonly authoredVisibleMethodIds: ReadonlySet<ConnectorAuthMethodId>;
   readonly skill: AcceptedPrivateSkill | null;
 }
 
@@ -520,6 +521,14 @@ const staticRuntimeSnapshot = singleton(() => {
         connectorRef,
         catalogConnector,
         methods,
+        authoredVisibleMethodIds: new Set(
+          catalogConnector.authMethods.flatMap((method) => {
+            const runtimeMethod = methods.get(method.id);
+            return runtimeMethod?.availableForNewActions === true
+              ? [method.id]
+              : [];
+          }),
+        ),
         skill: null,
       });
     }
@@ -552,7 +561,20 @@ function externalRuntimeSnapshot(
       }),
     );
     const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
+    const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
     for (const method of connector.authMethods) {
+      if (method.visible) {
+        authoredVisibleMethodIds.add(method.id);
+      }
+      if (
+        !acceptedConnectorCatalogMethodIsCompatible({
+          snapshot: acceptedSnapshot,
+          connectorRef: connector.connectorRef,
+          authMethodId: method.id,
+        })
+      ) {
+        continue;
+      }
       const catalogMethod = catalogMethods.get(method.id);
       if (catalogMethod === undefined) {
         throw new Error(
@@ -566,11 +588,7 @@ function externalRuntimeSnapshot(
           catalogMethod,
           method: runtimeMethod(method),
           availableForNewActions: method.visible,
-          compatible: acceptedConnectorCatalogMethodIsCompatible({
-            snapshot: acceptedSnapshot,
-            connectorRef: connector.connectorRef,
-            authMethodId: method.id,
-          }),
+          compatible: true,
         }),
       );
     }
@@ -578,6 +596,7 @@ function externalRuntimeSnapshot(
       connectorRef: connector.connectorRef,
       catalogConnector,
       methods,
+      authoredVisibleMethodIds,
       skill: connector.skill,
     });
   }
