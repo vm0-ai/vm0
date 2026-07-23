@@ -9,10 +9,7 @@ import {
   loadIndexedDbChatMessageBounds$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
-import {
-  listMessagesAfter$,
-  listMessagesBefore$,
-} from "./remote-chat-thread-data-source.ts";
+import { listMessagesAfter$ } from "./remote-chat-thread-data-source.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatMessageBackgroundSync");
@@ -42,23 +39,14 @@ export const syncChatThreadMessagesToIndexedDb$ = command(
     signal.throwIfAborted();
 
     let sinceId = bounds.last?.id;
-    const startedWithoutCursor = sinceId === undefined;
-    let initialHasHistoryBefore: boolean | undefined;
-    let firstFetchedMessageId: string | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
-      const requestedSinceId = sinceId;
       const result = await set(
         listMessagesAfter$,
-        { threadId, sinceId: requestedSinceId },
+        { threadId, sinceId },
         signal,
       );
       signal.throwIfAborted();
-
-      if (requestedSinceId === undefined) {
-        initialHasHistoryBefore = result.hasHistoryBefore;
-      }
-      firstFetchedMessageId ??= result.messages[0]?.id;
 
       if (result.messages.length === 0) {
         return;
@@ -71,44 +59,6 @@ export const syncChatThreadMessagesToIndexedDb$ = command(
     }
 
     await syncMessagesAfter();
-    signal.throwIfAborted();
-
-    const oldestMessageId = bounds.first?.id ?? firstFetchedMessageId;
-    if (
-      oldestMessageId === undefined ||
-      (startedWithoutCursor && initialHasHistoryBefore === false)
-    ) {
-      return;
-    }
-
-    let beforeId = oldestMessageId;
-    async function syncMessagesBefore(): Promise<void> {
-      const result = await set(
-        listMessagesBefore$,
-        { threadId, beforeId },
-        signal,
-      );
-      signal.throwIfAborted();
-
-      if (result.messages.length > 0) {
-        await set(
-          writeIndexedDbChatMessages$,
-          threadId,
-          result.messages,
-          signal,
-        );
-        signal.throwIfAborted();
-      }
-
-      if (!result.hasHistoryBefore) {
-        return;
-      }
-
-      beforeId = result.messages[0]!.id;
-      await syncMessagesBefore();
-    }
-
-    await syncMessagesBefore();
     signal.throwIfAborted();
     L.debug("synced chat messages to IndexedDB", { threadId });
   },
