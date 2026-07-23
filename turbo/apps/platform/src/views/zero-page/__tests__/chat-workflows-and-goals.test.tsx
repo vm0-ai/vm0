@@ -1319,4 +1319,130 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       structuredPrompt,
     });
   });
+
+  it("restores a copied structured template when pasting into the composer", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const threadId = "structured-template-copy-paste";
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "illustration" as const,
+      selection: {
+        illustrationStyleId: style.illustrationStyleId,
+      },
+    };
+    const messageText = "Create a matching illustration";
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "template" as const,
+          titleSnapshot: style.title,
+          template: generationTemplate,
+        },
+        { type: "text" as const, text: messageText },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-template-copy-paste",
+          role: "user",
+          content: "invalidate",
+          structuredPrompt,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(messageText)).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    const plainText = await readClipboardItemText(item, "text/plain");
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/html"
+            ? html
+            : type === "text/plain"
+              ? plainText
+              : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(messageText);
+      expect(
+        screen.getByLabelText(`Remove template ${style.title}`),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not restore a copied structured template when the switch is off", async () => {
+    const threadId = "structured-template-paste-disabled";
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const messageText = "Paste without restoring the template";
+    const payload = {
+      text: messageText,
+      attachments: [],
+      structuredPrompt: {
+        version: 1 as const,
+        parts: [
+          {
+            type: "template" as const,
+            titleSnapshot: style.title,
+            template: {
+              type: "illustration" as const,
+              selection: {
+                illustrationStyleId: style.illustrationStyleId,
+              },
+            },
+          },
+          { type: "text" as const, text: messageText },
+        ],
+      },
+    };
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return `<div data-vm0-chat-message="${encodeURIComponent(
+              JSON.stringify(payload),
+            )}"></div>`;
+          }
+          return type === "text/plain" ? messageText : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(messageText);
+      expect(
+        screen.queryByLabelText(`Remove template ${style.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

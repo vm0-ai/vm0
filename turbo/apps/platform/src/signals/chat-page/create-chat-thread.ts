@@ -135,6 +135,7 @@ import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
+  messageDocumentToPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 
@@ -3809,13 +3810,23 @@ function createRecallMessage(deps: RecallMessageDeps) {
         },
       });
       const features = get(featureSwitch$);
+      const structuredPrompt =
+        (features[FeatureSwitchKey.StructuredPrompt] ?? false)
+          ? (message.structuredPrompt ?? null)
+          : null;
+      const templatePart = structuredPrompt?.parts.find((part) => {
+        return part.type === "template";
+      });
       set(draft.seed$, {
-        content: message.content ?? "",
-        structuredPrompt:
-          (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-            ? (message.structuredPrompt ?? null)
-            : null,
-        generationTemplate: message.generationTemplate,
+        content: structuredPrompt
+          ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+          : (message.content ?? ""),
+        structuredPrompt,
+        generationTemplate: structuredPrompt
+          ? templatePart?.type === "template"
+            ? templatePart.template
+            : undefined
+          : message.generationTemplate,
         attachments: (message.attachFiles ?? []).map(createRestoredAttachment),
       });
 
