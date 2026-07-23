@@ -54,6 +54,13 @@ type CanonicalSlackDeliveryResult =
       readonly retryable: boolean;
     };
 
+function requiredSlackFileId(externalId: string | null): string {
+  if (!externalId) {
+    throw new Error("Delivered Slack asset is missing its external file ID");
+  }
+  return externalId;
+}
+
 async function canonicalSlackDeliveryRow(
   db: Db,
   args: {
@@ -102,7 +109,7 @@ function deliveredResult(
 ): CanonicalSlackDeliveryResult {
   return {
     status: "delivered",
-    fileId: row.externalId ?? "",
+    fileId: requiredSlackFileId(row.externalId),
     permalink: row.deliveryUrl ?? "",
   };
 }
@@ -166,7 +173,7 @@ async function deliveryResultAfterTransitionConflict(
   if (current?.status === "delivered") {
     return {
       status: "delivered",
-      fileId: current.externalId ?? "",
+      fileId: requiredSlackFileId(current.externalId),
       permalink: current.deliveryUrl ?? "",
     };
   }
@@ -204,6 +211,7 @@ async function markDeliveryDelivered(
   row: CanonicalSlackDeliveryRow,
   permalink: string,
 ): Promise<CanonicalSlackDeliveryResult> {
+  const fileId = requiredSlackFileId(row.externalId);
   const [delivered] = await db
     .update(canonicalAssetDeliveries)
     .set({
@@ -217,7 +225,7 @@ async function markDeliveryDelivered(
   return delivered
     ? {
         status: "delivered",
-        fileId: row.externalId ?? "",
+        fileId,
         permalink,
       }
     : await deliveryResultAfterTransitionConflict(db, row);
