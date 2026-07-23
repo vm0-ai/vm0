@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 
 import {
+  firewallBaseUrlTemplateNeedsHostPolicy,
   validateAuthBaseUrl,
   validateBaseUrl,
   validateBaseUrlHostPolicy,
@@ -14,7 +15,6 @@ const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
 const DIRECT_TEMPLATE_PATTERN =
   /\$\{\{\s*(?:secrets|vars)\.[A-Z][A-Z0-9_]*\s*\}\}/gu;
 const BASE_URL_PARAMETER_PATTERN = /\{[A-Za-z][A-Za-z0-9]*(?:[+*])?\}/gu;
-const BASE_VARIABLE_PATTERN = /\$\{\{\s*vars\.[A-Z][A-Z0-9_]*\s*\}\}/u;
 const BASE_VARIABLE_CAPTURE_PATTERN =
   /\$\{\{\s*vars\.([A-Z][A-Z0-9_]*)\s*\}\}/gu;
 const FULL_BASE_VARIABLE_PATTERN =
@@ -25,7 +25,7 @@ const HOST_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 
 export const firewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
 
-export const firewallPermissionSchema = z
+const firewallPermissionSchema = z
   .object({
     name: z.string().min(1),
     description: z.string().min(1).optional(),
@@ -41,7 +41,7 @@ const firewallAwsSigv4AuthSchema = z
   })
   .strict();
 
-export const firewallAuthSchema = z
+const firewallAuthSchema = z
   .object({
     headers: z.record(z.string().min(1), z.string()).optional(),
     base: z.string().min(1).optional(),
@@ -153,7 +153,7 @@ const publicDestinationHostPolicySchema = z
   .object({ kind: z.literal("publicDestination") })
   .strict();
 
-export const firewallHostPolicySchema = z.discriminatedUnion("kind", [
+const firewallHostPolicySchema = z.discriminatedUnion("kind", [
   providerOwnedHostPolicySchema,
   publicDestinationHostPolicySchema,
 ]);
@@ -353,28 +353,10 @@ export function firewallAuthInjectsCredentials(auth: {
   );
 }
 
-function isFixedProviderHost(base: string): boolean {
-  if (!BASE_VARIABLE_PATTERN.test(base)) {
-    return true;
-  }
-  const normalized = base.replace(
-    /\$\{\{\s*vars\.[A-Z][A-Z0-9_]*\s*\}\}/gu,
-    "variable",
-  );
-  const parsed = safeUrlParse(normalized);
-  if (!parsed) {
-    return false;
-  }
-  const labels = parsed.hostname.split(".");
-  const variableIndex = labels.indexOf("variable");
-  return variableIndex !== -1 && labels.length - variableIndex - 1 >= 2;
-}
-
 function validateHostPolicy(connectorRef: string, api: FirewallApi): void {
   if (
-    BASE_VARIABLE_PATTERN.test(api.base) &&
     firewallAuthInjectsCredentials(api.auth) &&
-    !isFixedProviderHost(api.base)
+    firewallBaseUrlTemplateNeedsHostPolicy(api.base)
   ) {
     if (api.hostPolicy === undefined) {
       throw new Error(
