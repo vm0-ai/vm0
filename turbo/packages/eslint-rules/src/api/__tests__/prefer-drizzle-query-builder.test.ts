@@ -313,6 +313,22 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       `,
     },
     {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        const source = sql.identifier("runs");
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT id
+            FROM \${source}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         async function executeRawRows(...args: unknown[]) { return args; }
