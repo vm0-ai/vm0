@@ -144,9 +144,9 @@ export async function publishChatThreadDetailChangedSafely(
  * (e.g. the composer's folded goal state) updates live.
  *
  * `syncThroughMessageId` is an optional cache watermark: the ID of the row
- * that sorts last, in server list order (createdAt, sequenceNumber), among the
- * rows appended by the mutation that triggered this publish. Only pass it when
- * that "last of the batch" identity is certain.
+ * that sorts last, in server list order (`seqId`), among the rows appended by
+ * the mutation that triggered this publish. Only pass it when that "last of
+ * the batch" identity is certain.
  *
  * Compatibility: keep publishing this optional payload while browser bundles
  * from #22718 may still be active. The restored payload-independent loop

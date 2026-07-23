@@ -1313,6 +1313,10 @@ function compareServerMessageOrder(
   left: PagedChatMessage,
   right: PagedChatMessage,
 ): number {
+  if (left.seqId !== undefined && right.seqId !== undefined) {
+    return left.seqId - right.seqId;
+  }
+
   const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
   if (createdAtOrder !== 0) {
     return createdAtOrder;

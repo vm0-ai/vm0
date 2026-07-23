@@ -106,18 +106,10 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
-const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
-
-function chatMessageOrderSequenceSql() {
-  return sql`CASE
-    WHEN ${isNotNull(chatMessages.runLifecycleEvent)} THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
-    ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
-  END`;
-}
 
 type ChatMessageRow = {
   readonly id: string;
@@ -136,6 +128,7 @@ type ChatMessageRow = {
   readonly goalSnapshot: ChatMessageGoalSnapshot | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
+  readonly seqId: number;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
   readonly attachFiles: readonly string[] | null;
@@ -191,6 +184,7 @@ type ChatSearchMessageRow = {
   readonly role: string;
   readonly content: string | null;
   readonly createdAt: Date;
+  readonly seqId: number;
   readonly sequenceNumber: number | null;
   readonly runId: string | null;
 };
@@ -245,6 +239,7 @@ const messageColumns = {
   goalSnapshot: chatMessages.goalSnapshot,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
+  seqId: chatMessages.seqId,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
   attachFiles: chatMessages.attachFiles,
@@ -386,6 +381,7 @@ const searchMessageColumns = {
   role: chatMessages.role,
   content: chatMessages.content,
   createdAt: chatMessages.createdAt,
+  seqId: chatMessages.seqId,
   sequenceNumber: chatMessages.sequenceNumber,
   runId: effectiveChatMessageRunId(),
 } as const;
@@ -613,6 +609,7 @@ function toPagedMessage(
       error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
+      seqId: row.seqId,
       sequenceNumber: row.sequenceNumber,
       workflowSnapshot,
       createdAt: row.createdAt.toISOString(),
@@ -1176,7 +1173,7 @@ async function listChangedArtifacts(args: {
               SELECT ${chatMessages.chatThreadId}
               FROM ${chatMessages}
               WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              ORDER BY ${asc(chatMessages.createdAt)}
+              ORDER BY ${asc(chatMessages.seqId)}
               LIMIT 1
             )
           )
@@ -1238,7 +1235,7 @@ async function listChangedArtifacts(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.createdAt)}
+            ORDER BY ${asc(chatMessages.seqId)}
             LIMIT 1
           )
         )
@@ -1305,7 +1302,7 @@ async function listArtifactHistory(args: {
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.createdAt)}
+            ORDER BY ${asc(chatMessages.seqId)}
             LIMIT 1
           )
         )
@@ -1438,7 +1435,7 @@ async function artifactUrlIsVisible(
             SELECT ${chatMessages.chatThreadId}
             FROM ${chatMessages}
             WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.createdAt)}
+            ORDER BY ${asc(chatMessages.seqId)}
             LIMIT 1
           )
         )
@@ -1519,6 +1516,7 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
     role: messageRoleSchema.parse(row.role),
     content: row.content,
     createdAt: row.createdAt.toISOString(),
+    seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
     runId: row.runId,
   };
@@ -1548,18 +1546,14 @@ function chatSearchContextSideQuery(
       and(
         eq(chatMessages.chatThreadId, matchedChatMessage.chatThreadId),
         args.isBefore
-          ? lt(chatMessages.createdAt, matchedChatMessage.createdAt)
-          : gt(chatMessages.createdAt, matchedChatMessage.createdAt),
+          ? lt(chatMessages.seqId, matchedChatMessage.seqId)
+          : gt(chatMessages.seqId, matchedChatMessage.seqId),
         isNotNull(chatMessages.content),
         visibleChatMessageCondition(db),
         excludeGoalMarkerCondition(),
       ),
     )
-    .orderBy(
-      args.isBefore
-        ? desc(chatMessages.createdAt)
-        : asc(chatMessages.createdAt),
-    )
+    .orderBy(args.isBefore ? desc(chatMessages.seqId) : asc(chatMessages.seqId))
     .limit(args.limit);
 }
 
@@ -1615,6 +1609,7 @@ async function loadChatSearchContexts(
       role: context.role,
       content: context.content,
       createdAt: context.createdAt,
+      seqId: context.seqId,
       sequenceNumber: context.sequenceNumber,
       runId: context.runId,
     })
@@ -1630,7 +1625,7 @@ async function loadChatSearchContexts(
       sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
     )
     .crossJoinLateral(context)
-    .orderBy(resultOrdinality, asc(context.createdAt));
+    .orderBy(resultOrdinality, asc(context.seqId));
 
   for (const row of rows) {
     const matchedContext = contextsByMessageId.get(row.matchedMessageId);
@@ -1764,18 +1759,13 @@ export function zeroChatThreadMessagesPage(args: {
     }
 
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
-    const cursorSequence = chatMessageOrderSequenceSql();
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
     if (args.sinceId === undefined && args.beforeId === undefined) {
       const latestRows = await selectChatMessagesWithMetadata(db)
         .where(threadFilter)
-        .orderBy(
-          desc(chatMessages.createdAt),
-          desc(cursorSequence),
-          desc(chatMessages.id),
-        )
+        .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
       hasHistoryBefore = latestRows.length > args.limit;
       rows = latestRows.slice(0, args.limit).reverse();
@@ -1784,26 +1774,14 @@ export function zeroChatThreadMessagesPage(args: {
       if (cursorId === undefined) {
         throw new Error("message cursor is required");
       }
-      const cursorAfterCondition = sql`(
-        ${chatMessages.createdAt},
-        ${cursorSequence},
-        ${chatMessages.id}
-      ) > (
-        SELECT ${chatMessages.createdAt},
-          ${chatMessageOrderSequenceSql()},
-          ${chatMessages.id}
+      const cursorAfterCondition = sql`${chatMessages.seqId} > (
+        SELECT ${chatMessages.seqId}
         FROM ${chatMessages}
         WHERE ${eq(chatMessages.id, cursorId)}
           AND ${eq(chatMessages.chatThreadId, args.threadId)}
       )`;
-      const cursorBeforeCondition = sql`(
-        ${chatMessages.createdAt},
-        ${cursorSequence},
-        ${chatMessages.id}
-      ) < (
-        SELECT ${chatMessages.createdAt},
-          ${chatMessageOrderSequenceSql()},
-          ${chatMessages.id}
+      const cursorBeforeCondition = sql`${chatMessages.seqId} < (
+        SELECT ${chatMessages.seqId}
         FROM ${chatMessages}
         WHERE ${eq(chatMessages.id, cursorId)}
           AND ${eq(chatMessages.chatThreadId, args.threadId)}
@@ -1812,20 +1790,12 @@ export function zeroChatThreadMessagesPage(args: {
       if (args.sinceId !== undefined) {
         rows = await selectChatMessagesWithMetadata(db)
           .where(and(threadFilter, cursorAfterCondition))
-          .orderBy(
-            asc(chatMessages.createdAt),
-            asc(cursorSequence),
-            asc(chatMessages.id),
-          )
+          .orderBy(asc(chatMessages.seqId))
           .limit(args.limit);
       } else {
         const previousRows = await selectChatMessagesWithMetadata(db)
           .where(and(threadFilter, cursorBeforeCondition))
-          .orderBy(
-            desc(chatMessages.createdAt),
-            desc(cursorSequence),
-            desc(chatMessages.id),
-          )
+          .orderBy(desc(chatMessages.seqId))
           .limit(args.limit + 1);
         hasHistoryBefore = previousRows.length > args.limit;
         rows = previousRows.slice(0, args.limit).reverse();

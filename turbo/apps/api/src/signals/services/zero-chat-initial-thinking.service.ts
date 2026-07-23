@@ -108,7 +108,7 @@ async function loadThinkingContextMessages(args: {
         ) as SQL,
       ),
     )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatMessages.seqId))
     .limit(THINKING_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {

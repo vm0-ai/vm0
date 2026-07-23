@@ -372,6 +372,8 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  /** Server-assigned strict position within the chat thread. */
+  seqId: z.number().int().positive().optional(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
@@ -1015,6 +1017,7 @@ const chatSearchMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   createdAt: z.string(),
+  seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable(),
   runId: z.string().nullable(),
 });

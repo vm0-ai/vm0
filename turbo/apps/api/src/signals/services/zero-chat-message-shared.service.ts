@@ -260,17 +260,10 @@ export async function insertAssistantEventMessages(
 
   if (insertedRowCount > 0) {
     // The watermark must be the batch row that sorts last in server list
-    // order (createdAt, sequenceNumber) so old clients can safely treat it as
-    // proof that every earlier row from this publish is already present.
+    // order (seqId) so older clients that still consume the watermark can
+    // treat it as proof that every earlier row from this publish is present.
     const watermark = insertedRows.reduce((last, row) => {
-      const lastCreated = last.createdAt.getTime();
-      const rowCreated = row.createdAt.getTime();
-      if (rowCreated !== lastCreated) {
-        return rowCreated > lastCreated ? row : last;
-      }
-      return (row.sequenceNumber ?? -1) >= (last.sequenceNumber ?? -1)
-        ? row
-        : last;
+      return row.seqId > last.seqId ? row : last;
     });
     await publishUserSignal(
       [args.userId],

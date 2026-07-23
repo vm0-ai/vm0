@@ -24,6 +24,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { insertChatMessage } from "../services/zero-chat-message.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -372,16 +373,13 @@ async function seedQueueMarkerForAction(
   if (!thread) {
     return actionBadRequest("failed to seed chat thread");
   }
-  const [marker] = await db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: thread.id,
-      role: "assistant",
-      content: "Waiting in queue...",
-      runId,
-      runEventId: "queue:queued",
-    })
-    .returning({ id: chatMessages.id });
+  const marker = await insertChatMessage(db, {
+    chatThreadId: thread.id,
+    role: "assistant",
+    content: "Waiting in queue...",
+    runId,
+    runEventId: "queue:queued",
+  });
   signal.throwIfAborted();
   if (!marker) {
     return actionBadRequest("failed to seed queue marker");

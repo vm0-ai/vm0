@@ -39,7 +39,7 @@ async function getFirstRunSelectedModel(
         isNotNull(zeroRuns.selectedModel),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .orderBy(asc(chatMessages.seqId))
     .limit(1);
   return run?.selectedModel ?? null;
 }
