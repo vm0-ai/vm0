@@ -41,6 +41,8 @@ use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
     GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
+use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
+use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceTarget;
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
@@ -457,6 +459,8 @@ pub struct FirecrackerSandbox {
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
     /// Firecracker-local device rate limiters for this sandbox lifecycle.
     device_rate_limits: Option<FirecrackerDeviceRateLimits>,
+    /// Attachment-local counters captured before Firecracker starts.
+    guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
     /// Per-sandbox runtime task handles.
     runtime: SandboxRuntimeHandles,
     /// Process-group leader PID for the spawned Firecracker wrapper.
@@ -510,6 +514,7 @@ pub(crate) struct FirecrackerSandboxInit {
     pub(crate) cow_device: PooledNbdCowDevice,
     pub(crate) device_rate_limits: Option<FirecrackerDeviceRateLimits>,
     pub(crate) leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+    pub(crate) guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -539,6 +544,19 @@ impl SandboxNetwork {
 
     fn attachment_generation(&self) -> u64 {
         self.info.attachment_generation()
+    }
+
+    fn reuse_eligible(&self) -> bool {
+        self.lease.as_ref().is_some_and(NetnsLease::reuse_eligible)
+    }
+
+    pub(crate) fn set_dns_network_baseline(
+        &mut self,
+        baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
+    ) {
+        if let Some(lease) = self.lease.as_mut() {
+            lease.set_dns_network_baseline(baseline);
+        }
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -581,6 +599,7 @@ impl FirecrackerSandbox {
             cow_device,
             device_rate_limits,
             leak_tx,
+            guest_dns_network_baseline,
         } = init;
         let id = config.id.to_string();
         Self {
@@ -592,6 +611,7 @@ impl FirecrackerSandbox {
             network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
             device_rate_limits,
+            guest_dns_network_baseline,
             runtime: SandboxRuntimeHandles::default(),
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -620,6 +640,14 @@ impl FirecrackerSandbox {
 
     pub(crate) fn allow_workspace_delete_on_leak_cleanup(&mut self) {
         self.delete_workspace_on_leak_cleanup = true;
+    }
+
+    pub(crate) fn dns_network_evidence_target_for_reuse(
+        &self,
+    ) -> Option<GuestDnsNetworkEvidenceTarget> {
+        (self.factory_config.dns_port.is_some() && self.network.reuse_eligible()).then(|| {
+            GuestDnsNetworkEvidenceTarget::new(self.network.name(), self.network.host_device())
+        })
     }
 
     fn current_state(&self) -> SandboxState {
@@ -1280,6 +1308,8 @@ impl FirecrackerSandbox {
                             peer_ip: self.network.peer_ip(),
                             dns_port,
                             attachment_generation: self.network.attachment_generation(),
+                            readiness_attempts: error.attempts,
+                            network_evidence_baseline: self.guest_dns_network_baseline.as_deref(),
                             startup_mode: if self.factory_config.snapshot.is_some() {
                                 "snapshot_restore"
                             } else {

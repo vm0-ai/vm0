@@ -153,6 +153,31 @@ rule_packet_count() {
   '
 }
 
+link_fields() {
+  local expected_ifname=$1
+  jq -er --arg expected_ifname "$expected_ifname" '
+    if type == "array"
+      and length == 1
+      and .[0].ifname == $expected_ifname
+    then
+      [
+        .[0].ifindex,
+        .[0].link_index,
+        .[0].stats64.rx.packets,
+        .[0].stats64.rx.bytes,
+        .[0].stats64.rx.errors,
+        .[0].stats64.rx.dropped,
+        .[0].stats64.tx.packets,
+        .[0].stats64.tx.bytes,
+        .[0].stats64.tx.errors,
+        .[0].stats64.tx.dropped
+      ] | @tsv
+    else
+      error("expected exactly one link named \($expected_ifname)")
+    end
+  '
+}
+
 send_udp_dns_query() {
   local namespace=$1 source_ip=$2
   sudo ip netns exec "$namespace" python3 - "$source_ip" <<'PY'
@@ -443,7 +468,78 @@ ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
   | head -n 1 || true)
 ATTACKER_GUARD_BEFORE=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
 [ -n "$ATTACKER_GUARD_BEFORE" ] || fail "source guard counter missing"
+
+ATTACKER_NS_LINK_BEFORE=$(sudo ip -n "$ATTACKER_NS" -j -s \
+  link show dev veth0)
+ATTACKER_ROOT_LINK_BEFORE=$(sudo ip -j -s link show dev "$ATTACKER_IF")
+IFS=$'\t' read -r \
+  ATTACKER_NS_IFINDEX_BEFORE ATTACKER_NS_LINK_INDEX_BEFORE \
+  ATTACKER_NS_RX_PACKETS_BEFORE ATTACKER_NS_RX_BYTES_BEFORE \
+  ATTACKER_NS_RX_ERRORS_BEFORE ATTACKER_NS_RX_DROPPED_BEFORE \
+  ATTACKER_NS_TX_PACKETS_BEFORE ATTACKER_NS_TX_BYTES_BEFORE \
+  ATTACKER_NS_TX_ERRORS_BEFORE ATTACKER_NS_TX_DROPPED_BEFORE \
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_BEFORE" | link_fields veth0)"
+IFS=$'\t' read -r \
+  ATTACKER_ROOT_IFINDEX_BEFORE ATTACKER_ROOT_LINK_INDEX_BEFORE \
+  ATTACKER_ROOT_RX_PACKETS_BEFORE ATTACKER_ROOT_RX_BYTES_BEFORE \
+  ATTACKER_ROOT_RX_ERRORS_BEFORE ATTACKER_ROOT_RX_DROPPED_BEFORE \
+  ATTACKER_ROOT_TX_PACKETS_BEFORE ATTACKER_ROOT_TX_BYTES_BEFORE \
+  ATTACKER_ROOT_TX_ERRORS_BEFORE ATTACKER_ROOT_TX_DROPPED_BEFORE \
+  <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_BEFORE" \
+    | link_fields "$ATTACKER_IF")"
+[ "$ATTACKER_NS_IFINDEX_BEFORE" -eq "$ATTACKER_ROOT_LINK_INDEX_BEFORE" ] \
+  && [ "$ATTACKER_NS_LINK_INDEX_BEFORE" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
+  || fail "attacker veth peers do not have reciprocal identities"
+
 send_udp_dns_query "$ATTACKER_NS" "$ATTACKER_PEER"
+
+ATTACKER_NS_LINK_AFTER=$(sudo ip -n "$ATTACKER_NS" -j -s \
+  link show dev veth0)
+ATTACKER_ROOT_LINK_AFTER=$(sudo ip -j -s link show dev "$ATTACKER_IF")
+IFS=$'\t' read -r \
+  ATTACKER_NS_IFINDEX_AFTER ATTACKER_NS_LINK_INDEX_AFTER \
+  ATTACKER_NS_RX_PACKETS_AFTER ATTACKER_NS_RX_BYTES_AFTER \
+  ATTACKER_NS_RX_ERRORS_AFTER ATTACKER_NS_RX_DROPPED_AFTER \
+  ATTACKER_NS_TX_PACKETS_AFTER ATTACKER_NS_TX_BYTES_AFTER \
+  ATTACKER_NS_TX_ERRORS_AFTER ATTACKER_NS_TX_DROPPED_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_NS_LINK_AFTER" | link_fields veth0)"
+IFS=$'\t' read -r \
+  ATTACKER_ROOT_IFINDEX_AFTER ATTACKER_ROOT_LINK_INDEX_AFTER \
+  ATTACKER_ROOT_RX_PACKETS_AFTER ATTACKER_ROOT_RX_BYTES_AFTER \
+  ATTACKER_ROOT_RX_ERRORS_AFTER ATTACKER_ROOT_RX_DROPPED_AFTER \
+  ATTACKER_ROOT_TX_PACKETS_AFTER ATTACKER_ROOT_TX_BYTES_AFTER \
+  ATTACKER_ROOT_TX_ERRORS_AFTER ATTACKER_ROOT_TX_DROPPED_AFTER \
+  <<< "$(printf '%s\n' "$ATTACKER_ROOT_LINK_AFTER" \
+    | link_fields "$ATTACKER_IF")"
+[ "$ATTACKER_NS_IFINDEX_AFTER" -eq "$ATTACKER_NS_IFINDEX_BEFORE" ] \
+  && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_NS_LINK_INDEX_BEFORE" ] \
+  && [ "$ATTACKER_ROOT_IFINDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_BEFORE" ] \
+  && [ "$ATTACKER_ROOT_LINK_INDEX_AFTER" -eq "$ATTACKER_ROOT_LINK_INDEX_BEFORE" ] \
+  || fail "attacker veth identity changed during the control query"
+[ "$ATTACKER_NS_IFINDEX_AFTER" -eq "$ATTACKER_ROOT_LINK_INDEX_AFTER" ] \
+  && [ "$ATTACKER_NS_LINK_INDEX_AFTER" -eq "$ATTACKER_ROOT_IFINDEX_AFTER" ] \
+  || fail "attacker veth peers lost reciprocal identities"
+
+ATTACKER_NS_TX_PACKET_DELTA=$((ATTACKER_NS_TX_PACKETS_AFTER -
+  ATTACKER_NS_TX_PACKETS_BEFORE))
+ATTACKER_NS_TX_BYTE_DELTA=$((ATTACKER_NS_TX_BYTES_AFTER -
+  ATTACKER_NS_TX_BYTES_BEFORE))
+ATTACKER_ROOT_RX_PACKET_DELTA=$((ATTACKER_ROOT_RX_PACKETS_AFTER -
+  ATTACKER_ROOT_RX_PACKETS_BEFORE))
+ATTACKER_ROOT_RX_BYTE_DELTA=$((ATTACKER_ROOT_RX_BYTES_AFTER -
+  ATTACKER_ROOT_RX_BYTES_BEFORE))
+[ "$ATTACKER_NS_TX_PACKET_DELTA" -gt 0 ] \
+  && [ "$ATTACKER_NS_TX_PACKET_DELTA" -eq "$ATTACKER_ROOT_RX_PACKET_DELTA" ] \
+  || fail "control query did not produce matching namespace TX and root RX packets"
+[ "$ATTACKER_NS_TX_BYTE_DELTA" -gt 0 ] \
+  && [ "$ATTACKER_NS_TX_BYTE_DELTA" -eq "$ATTACKER_ROOT_RX_BYTE_DELTA" ] \
+  || fail "control query did not produce matching namespace TX and root RX bytes"
+[ "$ATTACKER_NS_TX_ERRORS_AFTER" -eq "$ATTACKER_NS_TX_ERRORS_BEFORE" ] \
+  && [ "$ATTACKER_NS_TX_DROPPED_AFTER" -eq "$ATTACKER_NS_TX_DROPPED_BEFORE" ] \
+  && [ "$ATTACKER_ROOT_RX_ERRORS_AFTER" -eq "$ATTACKER_ROOT_RX_ERRORS_BEFORE" ] \
+  && [ "$ATTACKER_ROOT_RX_DROPPED_AFTER" -eq "$ATTACKER_ROOT_RX_DROPPED_BEFORE" ] \
+  || fail "control query incremented veth error or drop counters"
+
 ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
   | grep -F -- "$ATTACKER_NS" \
   | grep -F -- "-A PREROUTING" \

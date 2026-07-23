@@ -5,6 +5,7 @@ mod invariant;
 mod leak_cleaner;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -24,6 +25,10 @@ use crate::factory::create_transaction::{
     rollback_create_transaction,
 };
 use crate::factory::leak_cleaner::LeakCleaner;
+use crate::guest_dns_network_evidence::{
+    GuestDnsNetworkEvidenceBaseline, GuestDnsNetworkEvidenceTarget,
+    capture_guest_dns_network_evidence_baseline,
+};
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
@@ -218,61 +223,64 @@ impl FirecrackerFactory {
         };
         let mut tx = SandboxCreateTransaction::new_with_leak_tx(id.clone(), leak_tx.clone());
 
-        let create_result: sandbox::Result<SandboxCreateResources> =
-            async {
-                // Prepare the stable sandbox workspace before acquiring a
-                // connected COW pair. This keeps all await points before
-                // checkout and makes the final pair transfer cancellation-safe.
-                let target_workspace = self.factory_paths.workspace(&id);
-                clean_stale_workspace_dir(&id, &target_workspace)?;
-                tx.track_workspace(target_workspace.clone())?;
-                std::fs::create_dir_all(&target_workspace).map_err(|error| {
-                    SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("create target workspace: {error}"),
-                    }
-                })?;
-                let sandbox_paths = SandboxPaths::new(target_workspace);
-
-                if let Some(workspace_drive) = config.workspace_drive.as_ref() {
-                    let stage_started = Instant::now();
-                    let prepare_result = prepare_workspace_drive_image(
-                        &sandbox_paths.workspace_image(),
-                        workspace_drive,
-                        Some(&mut timing),
-                    )
-                    .await;
-                    timing.record_stage_result(
-                        SandboxCreateStage::WorkspaceDrivePrepare,
-                        stage_started,
-                        prepare_result,
-                    )?;
+        let create_result: sandbox::Result<(
+            SandboxCreateResources,
+            Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
+        )> = async {
+            // Prepare the stable sandbox workspace before acquiring a
+            // connected COW pair. This keeps all await points before
+            // checkout and makes the final pair transfer cancellation-safe.
+            let target_workspace = self.factory_paths.workspace(&id);
+            clean_stale_workspace_dir(&id, &target_workspace)?;
+            tx.track_workspace(target_workspace.clone())?;
+            std::fs::create_dir_all(&target_workspace).map_err(|error| {
+                SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("create target workspace: {error}"),
                 }
+            })?;
+            let sandbox_paths = SandboxPaths::new(target_workspace);
 
-                // Clean stale sock dir and create vsock directory.
+            if let Some(workspace_drive) = config.workspace_drive.as_ref() {
                 let stage_started = Instant::now();
-                let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
-                let sock_result = match clean_stale_sock_dir(&id, sock_paths.dir()) {
-                    Ok(()) => {
-                        tx.track_sock_dir(sock_paths.dir().to_owned());
-                        prepare_runtime_socket_dir(&sock_paths).map_err(|e| {
-                            SandboxError::Initialization {
-                                phase: SandboxInitializationPhase::SandboxAllocation,
-                                message: format!("prepare sock dir: {e}"),
-                            }
-                        })
-                    }
-                    Err(e) => Err(e),
-                };
+                let prepare_result = prepare_workspace_drive_image(
+                    &sandbox_paths.workspace_image(),
+                    workspace_drive,
+                    Some(&mut timing),
+                )
+                .await;
                 timing.record_stage_result(
-                    SandboxCreateStage::SockDirPrepare,
+                    SandboxCreateStage::WorkspaceDrivePrepare,
                     stage_started,
-                    sock_result,
+                    prepare_result,
                 )?;
+            }
 
-                // Acquire a network namespace from the pool.
-                let stage_started = Instant::now();
-                let network = timing.record_stage_result(
+            // Clean stale sock dir and create vsock directory.
+            let stage_started = Instant::now();
+            let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
+            let sock_result = match clean_stale_sock_dir(&id, sock_paths.dir()) {
+                Ok(()) => {
+                    tx.track_sock_dir(sock_paths.dir().to_owned());
+                    prepare_runtime_socket_dir(&sock_paths).map_err(|e| {
+                        SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("prepare sock dir: {e}"),
+                        }
+                    })
+                }
+                Err(e) => Err(e),
+            };
+            timing.record_stage_result(
+                SandboxCreateStage::SockDirPrepare,
+                stage_started,
+                sock_result,
+            )?;
+
+            // Acquire a network namespace from the pool.
+            let stage_started = Instant::now();
+            let mut network =
+                timing.record_stage_result(
                     SandboxCreateStage::NetnsAcquire,
                     stage_started,
                     resources.netns_pool.acquire().await.map_err(|e| {
@@ -282,12 +290,24 @@ impl FirecrackerFactory {
                         }
                     }),
                 )?;
-                tx.track_network(network);
+            let network_evidence_target = self.config.dns_port.map(|_| {
+                (
+                    GuestDnsNetworkEvidenceTarget::new(
+                        network.info().name(),
+                        network.info().host_device(),
+                    ),
+                    network.take_dns_network_baseline(),
+                )
+            });
+            tx.track_network(network);
 
-                // Acquire a complete file + connected-device pair only after
-                // all asynchronous sandbox preparation has finished.
+            // Acquire a complete file + connected-device pair only after
+            // the network attachment is known. A newly created namespace
+            // captures its baseline concurrently with this acquisition;
+            // reused namespaces carry a quiescent snapshot from teardown.
+            let acquire_cow_slot = async {
                 let stage_started = Instant::now();
-                let slot = timing.record_stage_result(
+                timing.record_stage_result(
                     SandboxCreateStage::CowPoolAcquire,
                     stage_started,
                     resources.cow_pool.acquire().await.map_err(|error| {
@@ -296,53 +316,68 @@ impl FirecrackerFactory {
                             message: format!("acquire prepared COW slot: {error}"),
                         }
                     }),
-                )?;
+                )
+            };
+            let (slot_result, guest_dns_network_baseline) = match network_evidence_target {
+                Some((target, None)) => {
+                    let (slot_result, baseline) = tokio::join!(
+                        acquire_cow_slot,
+                        capture_guest_dns_network_evidence_baseline(target),
+                    );
+                    (slot_result, Some(baseline))
+                }
+                Some((_, Some(baseline))) => (acquire_cow_slot.await, Some(baseline)),
+                None => (acquire_cow_slot.await, None),
+            };
+            let slot = slot_result?;
 
-                // Checkout is entirely synchronous. Once it succeeds there are
-                // no await points before the transaction owns the device and
-                // commits all resources.
-                let stage_started = Instant::now();
-                let prepared_device = match slot.checkout_to(sandbox_paths.workspace()) {
-                    Ok(device) => timing.record_stage_result(
+            // Checkout is entirely synchronous. Once it succeeds there are
+            // no await points before the transaction owns the device and
+            // commits all resources.
+            let stage_started = Instant::now();
+            let prepared_device = match slot.checkout_to(sandbox_paths.workspace()) {
+                Ok(device) => timing.record_stage_result(
+                    SandboxCreateStage::WorkspaceDirRename,
+                    stage_started,
+                    Ok::<_, SandboxError>(device),
+                )?,
+                Err(error) => {
+                    let message = error.to_string();
+                    let checkout_result: sandbox::Result<(
+                        SandboxCreateResources,
+                        Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
+                    )> = timing.record_stage_result(
                         SandboxCreateStage::WorkspaceDirRename,
                         stage_started,
-                        Ok::<_, SandboxError>(device),
-                    )?,
-                    Err(error) => {
-                        let message = error.to_string();
-                        let checkout_result: sandbox::Result<SandboxCreateResources> = timing
-                            .record_stage_result(
-                                SandboxCreateStage::WorkspaceDirRename,
-                                stage_started,
-                                Err(SandboxError::Initialization {
-                                    phase: SandboxInitializationPhase::SandboxAllocation,
-                                    message: format!("checkout prepared COW slot: {message}"),
-                                }),
-                            );
-                        tx.preserve_workspace_on_leak_cleanup();
-                        let cleanup_outcome =
-                            crate::cow_pool::destroy_prepared_slot_async(error.into_slot()).await;
-                        if cleanup_outcome.backing_files_safe_to_delete() {
-                            tx.allow_workspace_delete_on_leak_cleanup();
-                        }
-                        return checkout_result;
-                    }
-                };
-                let cow_device =
-                    prepared_device
-                        .into_real()
-                        .map_err(|error| SandboxError::Initialization {
+                        Err(SandboxError::Initialization {
                             phase: SandboxInitializationPhase::SandboxAllocation,
-                            message: format!("use prepared COW device: {error}"),
-                        })?;
-                tx.track_cow_device(cow_device);
+                            message: format!("checkout prepared COW slot: {message}"),
+                        }),
+                    );
+                    tx.preserve_workspace_on_leak_cleanup();
+                    let cleanup_outcome =
+                        crate::cow_pool::destroy_prepared_slot_async(error.into_slot()).await;
+                    if cleanup_outcome.backing_files_safe_to_delete() {
+                        tx.allow_workspace_delete_on_leak_cleanup();
+                    }
+                    return checkout_result;
+                }
+            };
+            let cow_device =
+                prepared_device
+                    .into_real()
+                    .map_err(|error| SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("use prepared COW device: {error}"),
+                    })?;
+            tx.track_cow_device(cow_device);
 
-                tx.commit()
-            }
-            .await;
+            Ok((tx.commit()?, guest_dns_network_baseline))
+        }
+        .await;
 
-        let resources = match create_result {
-            Ok(resources) => resources,
+        let (resources, guest_dns_network_baseline) = match create_result {
+            Ok(result) => result,
             Err(e) => {
                 rollback_create_transaction(tx, rollback_cleanup, &self.cleanup_group).await;
                 return Err(e);
@@ -367,6 +402,7 @@ impl FirecrackerFactory {
             cow_device,
             device_rate_limits,
             leak_tx,
+            guest_dns_network_baseline,
         });
         Ok(Box::new(sandbox))
     }
@@ -509,19 +545,27 @@ async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool
     // After kill_process_group + child.wait(), the kernel may still be
     // releasing file descriptors (particularly the NBD device fd).
     // Retry a few times to let it finish.
-    let cow_cleanup_outcome = match sandbox.cow_device.take() {
-        Some(cow_device) => {
-            // If shutdown aborts this task while the COW finalizer is running,
-            // Drop-based leak cleanup must not delete the backing workspace.
-            sandbox.preserve_workspace_on_leak_cleanup();
-            let outcome = destroy_cow_device_with_retries(&sandbox_id, cow_device).await;
-            if outcome.backing_files_safe_to_delete() {
-                sandbox.allow_workspace_delete_on_leak_cleanup();
-            }
-            outcome
-        }
+    let cow_device = sandbox.cow_device.take();
+    if cow_device.is_some() {
+        // If shutdown aborts this task while the COW finalizer is running,
+        // Drop-based leak cleanup must not delete the backing workspace.
+        sandbox.preserve_workspace_on_leak_cleanup();
+    }
+    let network_evidence_target = sandbox.dns_network_evidence_target_for_reuse();
+    let cow_cleanup_outcome = match cow_device {
+        Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
         None => CowCleanupOutcome::BackingFilesSafeToDelete,
     };
+    if cow_cleanup_outcome.backing_files_safe_to_delete() {
+        sandbox.allow_workspace_delete_on_leak_cleanup();
+    }
+    let dns_network_baseline = match network_evidence_target {
+        Some(target) => Some(capture_guest_dns_network_evidence_baseline(target).await),
+        None => None,
+    };
+    sandbox
+        .network
+        .set_dns_network_baseline(dns_network_baseline);
 
     // Return the network namespace to the pool.
     let outcome = netns_pool.release(sandbox.network.lease_mut()).await;
