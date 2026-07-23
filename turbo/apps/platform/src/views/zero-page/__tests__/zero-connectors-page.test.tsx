@@ -1742,8 +1742,14 @@ describe("connectors page", () => {
     });
   });
 
-  it("starts Stripe OAuth from the connect dialog", async () => {
+  it("connects Stripe OAuth from the dialog for all visible agents", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research Agent"),
+    ]);
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "stripe",
@@ -1793,6 +1799,14 @@ describe("connectors page", () => {
         });
       },
     );
+    const authorizedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, respond }) => {
+        authorizedAgentIds.push(params.id);
+        return respond(200, { enabledTypes: ["stripe"] });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1814,6 +1828,16 @@ describe("connectors page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
       );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+
+    mockConnectors([{ type: "stripe", authMethod: "oauth" }]);
+    context.mocks.ably.trigger("connector:changed");
+
+    await waitFor(() => {
+      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
     });
   });
 

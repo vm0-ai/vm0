@@ -5,7 +5,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
-import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
+import {
+  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
+  isConnectorAppOauthCallbackEnabled,
+} from "@vm0/connectors/app-oauth-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -70,6 +73,9 @@ const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 
 const { get$: hiddenConnectorRefsRaw$, set$: setHiddenConnectorRefs$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
+const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
+  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
+);
 type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
@@ -2099,7 +2105,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
 
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly connectorRef: ConnectorRef;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
@@ -2111,6 +2117,15 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     signal: AbortSignal,
   ) => {
     const standalone = isStandaloneMode();
+    if (isConnectorAppOauthCallbackEnabled(args.connectorRef)) {
+      set(
+        setConnectorAppOauthCallbackMetadata$,
+        JSON.stringify({
+          connectorRef: args.connectorRef,
+          icon: args.connectorIcon,
+        }),
+      );
+    }
 
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.

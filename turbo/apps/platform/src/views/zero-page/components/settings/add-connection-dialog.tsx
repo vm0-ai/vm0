@@ -417,6 +417,7 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
       item={props.item}
       method={props.method}
       onSuccess={props.onSuccess}
+      authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
       signal={props.signal}
     />
@@ -944,9 +945,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
       authMethod={props.authMethod}
       method={props.method}
       onSuccess={props.onSuccess}
-      authorizeVisibleAgentsOnConnect={
-        props.authorizeVisibleAgentsOnConnect
-      }
+      authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
       agentId={props.agentId}
       submit={props.submitManualGrant}
       submitting={props.manualGrantSubmitting}

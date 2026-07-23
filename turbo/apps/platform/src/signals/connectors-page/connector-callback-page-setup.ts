@@ -3,6 +3,11 @@ import {
   type ConnectorOauthCallbackResult,
 } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
+  publicConnectorCatalogIconSchema,
+  type PublicConnectorCatalogIcon,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
+import {
   connectorRefSchema,
   type ConnectorRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
@@ -13,13 +18,20 @@ import { ZeroConnectorCallbackPage } from "../../views/zero-page/zero-connector-
 import { zeroClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
+import { jsonParseOr } from "../utils.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
   | ConnectorOauthCallbackResult;
+
+const {
+  get$: connectorAppOauthCallbackMetadataRaw$,
+  clear$: clearConnectorAppOauthCallbackMetadata$,
+} = localStorageSignals(CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY);
 
 function connectorRefFromPath(value: string | undefined): ConnectorRef | null {
   const parsed = connectorRefSchema.safeParse(value?.toLowerCase());
@@ -31,6 +43,71 @@ function connectorLabel(connectorRef: ConnectorRef | null): string {
     return "Connector";
   }
   return connectorRef === "github" ? "GitHub" : connectorRef.toUpperCase();
+}
+
+function connectorIconFromSearchParams(
+  searchParams: URLSearchParams,
+): PublicConnectorCatalogIcon | undefined {
+  const url = searchParams.get("iconUrl");
+  const invertInDarkMode = searchParams.get("iconInvertInDarkMode");
+  if (!url || (invertInDarkMode !== "true" && invertInDarkMode !== "false")) {
+    return undefined;
+  }
+  const scale = searchParams.get("iconScale");
+  const parsed = publicConnectorCatalogIconSchema.safeParse({
+    url,
+    invertInDarkMode: invertInDarkMode === "true",
+    ...(scale === null ? {} : { scale: Number(scale) }),
+  });
+  return parsed.success ? parsed.data : undefined;
+}
+
+function addConnectorIconSearchParams(
+  searchParams: URLSearchParams,
+  icon: PublicConnectorCatalogIcon | undefined,
+): void {
+  if (!icon) {
+    return;
+  }
+  searchParams.set("iconUrl", icon.url);
+  searchParams.set("iconInvertInDarkMode", String(icon.invertInDarkMode));
+  if (icon.scale !== undefined) {
+    searchParams.set("iconScale", String(icon.scale));
+  }
+}
+
+function connectorCallbackMetadataFromStorage(
+  raw: string | null,
+  connectorRef: ConnectorRef | null,
+): {
+  readonly connectorRef: ConnectorRef;
+  readonly icon: PublicConnectorCatalogIcon;
+} | null {
+  if (!raw || !connectorRef) {
+    return null;
+  }
+  const value = jsonParseOr<unknown>(raw, null);
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("connectorRef" in value) ||
+    !("icon" in value)
+  ) {
+    return null;
+  }
+  const parsedConnectorRef = connectorRefSchema.safeParse(value.connectorRef);
+  const parsedIcon = publicConnectorCatalogIconSchema.safeParse(value.icon);
+  if (
+    !parsedConnectorRef.success ||
+    parsedConnectorRef.data !== connectorRef ||
+    !parsedIcon.success
+  ) {
+    return null;
+  }
+  return {
+    connectorRef: parsedConnectorRef.data,
+    icon: parsedIcon.data,
+  };
 }
 
 function resultFromPath(
@@ -54,12 +131,12 @@ function resultFromPath(
 }
 
 function callbackPageElement(
-  connectorRef: ConnectorRef | null,
+  connectorIcon: PublicConnectorCatalogIcon | undefined,
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
   return createElement(ZeroConnectorCallbackPage, {
-    connectorRef,
+    connectorIcon,
     connectorLabel: label,
     status: result.status,
     username: result.status === "success" ? result.username : null,
@@ -98,13 +175,19 @@ export const setupConnectorCallbackPage$ = command(
     );
     const label = connectorLabel(connectorRef);
     const searchParams = get(searchParams$);
+    const storedMetadata = connectorCallbackMetadataFromStorage(
+      get(connectorAppOauthCallbackMetadataRaw$),
+      connectorRef,
+    );
+    const connectorIcon =
+      connectorIconFromSearchParams(searchParams) ?? storedMetadata?.icon;
     const pathResult = resultFromPath(
       typeof params?.status === "string" ? params.status : undefined,
       searchParams,
     );
 
     if (pathResult) {
-      set(updatePage$, callbackPageElement(connectorRef, label, pathResult));
+      set(updatePage$, callbackPageElement(connectorIcon, label, pathResult));
       set(updateDocumentTitle$, `Connect ${label}`);
       await set(hideAppSkeleton$, signal);
       return;
@@ -113,7 +196,7 @@ export const setupConnectorCallbackPage$ = command(
     if (!connectorRef) {
       set(
         updatePage$,
-        callbackPageElement(connectorRef, label, {
+        callbackPageElement(connectorIcon, label, {
           status: "error",
           message: "Invalid connector callback URL.",
         }),
@@ -125,7 +208,7 @@ export const setupConnectorCallbackPage$ = command(
 
     set(
       updatePage$,
-      callbackPageElement(connectorRef, label, { status: "loading" }),
+      callbackPageElement(connectorIcon, label, { status: "loading" }),
     );
     set(updateDocumentTitle$, `Connect ${label}`);
     await set(hideAppSkeleton$, signal);
@@ -136,7 +219,7 @@ export const setupConnectorCallbackPage$ = command(
       Object.fromEntries(searchParams),
       signal,
     );
-    set(updatePage$, callbackPageElement(connectorRef, label, result));
+    set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();
     if (result.status === "success" && result.username) {
@@ -145,11 +228,15 @@ export const setupConnectorCallbackPage$ = command(
     if (result.status === "error") {
       resultSearchParams.set("message", result.message);
     }
+    addConnectorIconSearchParams(resultSearchParams, connectorIcon);
     set(
       replacePathSilently$,
       ROUTES.connectorCallbackResult,
       { type: connectorRef, status: result.status },
       resultSearchParams,
     );
+    if (storedMetadata) {
+      set(clearConnectorAppOauthCallbackMetadata$);
+    }
   },
 );

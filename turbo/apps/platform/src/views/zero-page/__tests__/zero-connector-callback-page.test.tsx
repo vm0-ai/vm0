@@ -1,15 +1,25 @@
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
+const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
+  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
+);
 
 describe("connector callback page", () => {
   it("forwards provider parameters and renders a durable success page", async () => {
+    const githubIcon = getStaticConnectorIconMetadata("github");
+    context.store.set(
+      setConnectorAppOauthCallbackMetadata$,
+      JSON.stringify({ connectorRef: "github", icon: githubIcon }),
+    );
     let observedQuery: Readonly<Record<string, string | undefined>> = {};
     context.mocks.api(
       connectorsTypeCallbackContract.callback,
@@ -30,15 +40,14 @@ describe("connector callback page", () => {
       session: null,
     });
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "GitHub connected",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(document.querySelector("img")).toHaveAttribute(
-      "src",
-      getStaticConnectorIconMetadata("github").url,
-    );
+    const heading = await screen.findByRole("heading", {
+      name: "GitHub connected",
+    });
+    const connectorIcon = heading.parentElement?.querySelector("img");
+    if (!(connectorIcon instanceof HTMLImageElement)) {
+      throw new Error("GitHub connector icon not found");
+    }
+    expect(connectorIcon).toHaveAttribute("src", githubIcon.url);
     expect(screen.getByText("octocat")).toBeInTheDocument();
     expect(screen.getByText(/You can close this window\./)).toBeInTheDocument();
     expect(observedQuery).toMatchObject({
@@ -49,7 +58,15 @@ describe("connector callback page", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/connectors/github/callback/success");
     });
-    expect(search()).toBe("?username=octocat");
+    const resultSearchParams = new URLSearchParams(search());
+    expect(resultSearchParams.get("username")).toBe("octocat");
+    expect(resultSearchParams.get("iconUrl")).toBe(githubIcon.url);
+    expect(resultSearchParams.get("iconInvertInDarkMode")).toBe(
+      String(githubIcon.invertInDarkMode),
+    );
+    expect(resultSearchParams.get("iconScale")).toBe(
+      githubIcon.scale === undefined ? null : String(githubIcon.scale),
+    );
   });
 
   it("renders the API failure result without retaining OAuth parameters", async () => {
