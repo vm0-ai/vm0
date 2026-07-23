@@ -171,6 +171,7 @@ interface ClaimedMorningBrief {
   readonly briefDate: string;
   readonly deliveryId: string;
   readonly currentTime: Date;
+  readonly structuredPromptEnabled: boolean;
 }
 
 /** Feature and once-per-local-date gates; claims the delivery row. */
@@ -214,7 +215,17 @@ async function admitMorningBriefDelivery(
     return null;
   }
 
-  return { row, timezone, briefDate, deliveryId: delivery.id, currentTime };
+  return {
+    row,
+    timezone,
+    briefDate,
+    deliveryId: delivery.id,
+    currentTime,
+    structuredPromptEnabled: isFeatureEnabled(
+      FeatureSwitchKey.StructuredPrompt,
+      featureSwitchContext,
+    ),
+  };
 }
 
 interface StagedMorningBriefInput {
@@ -254,6 +265,7 @@ const stageMorningBriefInput$ = command(
       dayStart,
       dayEnd,
       excludeChatThreadId: row.chatThreadId,
+      structuredPromptEnabled: claimed.structuredPromptEnabled,
       signal,
     });
     signal.throwIfAborted();
@@ -698,6 +710,10 @@ async function admitManualMorningBrief(
       briefDate,
       deliveryId: delivery.id,
       currentTime,
+      structuredPromptEnabled: isFeatureEnabled(
+        FeatureSwitchKey.StructuredPrompt,
+        featureSwitchContext,
+      ),
     },
   };
 }

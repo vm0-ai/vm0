@@ -22,6 +22,7 @@ import {
   lte,
   ne,
   or,
+  type SQL,
 } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -35,6 +36,7 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -574,6 +576,7 @@ async function collectUnreadChatThreads(args: {
   readonly since: Date;
   readonly until: Date;
   readonly excludeChatThreadId: string | null;
+  readonly structuredPromptEnabled: boolean;
 }): Promise<MorningBriefChatThreadsData> {
   const appUrl = env("APP_URL");
   const rows = await args.db
@@ -608,13 +611,22 @@ async function collectUnreadChatThreads(args: {
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
       .where(
         and(
           eq(chatMessages.chatThreadId, row.id),
-          isNotNull(chatMessages.content),
+          args.structuredPromptEnabled
+            ? (or(
+                isNotNull(chatMessages.content),
+                and(
+                  eq(chatMessages.role, "user"),
+                  isNotNull(chatMessages.structuredPrompt),
+                ),
+              ) as SQL)
+            : isNotNull(chatMessages.content),
         ),
       )
       .orderBy(desc(chatMessages.createdAt))
@@ -624,18 +636,23 @@ async function collectUnreadChatThreads(args: {
       title: row.title,
       url: `${appUrl}/chats/${row.id}`,
       lastMessageAt: row.lastMessageAt.toISOString(),
-      recentMessages: messages
-        .reverse()
-        .filter((message) => {
-          return message.content !== null;
-        })
-        .map((message) => {
-          return {
-            role: message.role,
-            content: message.content ?? "",
-            at: message.createdAt.toISOString(),
-          };
-        }),
+      recentMessages: messages.reverse().flatMap((message) => {
+        const content =
+          args.structuredPromptEnabled &&
+          message.role === "user" &&
+          message.structuredPrompt
+            ? projectStructuredUserMessage(message.structuredPrompt).displayText
+            : message.content;
+        return content === null
+          ? []
+          : [
+              {
+                role: message.role,
+                content,
+                at: message.createdAt.toISOString(),
+              },
+            ];
+      }),
     });
   }
 
@@ -694,6 +711,7 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
+  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
 }
 
@@ -741,6 +759,7 @@ export async function collectMorningBriefInput(
         since: args.since,
         until: args.until,
         excludeChatThreadId: args.excludeChatThreadId,
+        structuredPromptEnabled: args.structuredPromptEnabled,
       });
     }),
   ]);

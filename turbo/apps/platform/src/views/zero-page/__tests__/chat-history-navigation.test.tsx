@@ -10,6 +10,7 @@ import {
   type ChatThreadEvent,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
@@ -463,6 +464,71 @@ describe("chat lifecycle", () => {
       expect(screen.queryByText("A reply 10")).not.toBeInTheDocument();
     });
   });
+
+  it.each([
+    { projection: "structured", structuredPromptEnabled: true },
+    { projection: "legacy", structuredPromptEnabled: false },
+  ])(
+    "labels folded runs from their $projection projection",
+    async ({ structuredPromptEnabled }) => {
+      const threadId = `structured-run-group-label-${structuredPromptEnabled ? "on" : "off"}`;
+      const messages = makeRunGroupMessages({
+        label: "legacy run label",
+        count: 2,
+        runGroupId: "structured-label-group",
+        startMinute: 0,
+      }).map((message) => {
+        return message.role === "user"
+          ? {
+              ...message,
+              structuredPrompt: {
+                version: 1 as const,
+                parts: [
+                  {
+                    type: "file" as const,
+                    fileId: "roadmap-file",
+                    filenameSnapshot: "roadmap.pdf",
+                    contentType: "application/pdf",
+                  },
+                  { type: "text" as const, text: "Review the roadmap" },
+                ],
+              },
+            }
+          : message;
+      });
+      mockChatLifecycle(context, {
+        threadId,
+        threadTitle: "Structured run group label",
+        chatMessages: messages,
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled,
+        },
+      });
+
+      const structuredLabel =
+        "1 run for [File: roadmap.pdf] Review the roadmap";
+      const legacyLabel = "1 run for legacy run label";
+      const expectedLabel = structuredPromptEnabled
+        ? structuredLabel
+        : legacyLabel;
+      const excludedLabel = structuredPromptEnabled
+        ? legacyLabel
+        : structuredLabel;
+      await waitFor(() => {
+        expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+          expectedLabel,
+        );
+      });
+      expect(buttonByLabel("Expand grouped run history")).not.toHaveTextContent(
+        excludedLabel,
+      );
+    },
+  );
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "render-window-middle-run-group";

@@ -10,9 +10,12 @@ import {
 import {
   chatThreadMessagesContract,
   chatThreadsContract,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { Cron } from "croner";
 import { describe, expect, it } from "vitest";
 
@@ -22,6 +25,7 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
   mockGitHubConnectorOAuth,
@@ -47,6 +51,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
+const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const connectors = createConnectorBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -663,6 +668,99 @@ describe("cron execute morning briefs", () => {
     expect(email.html).not.toContain("evil.example.com");
     clearMockNow();
   });
+
+  it.each([
+    { projection: "structured", structuredPromptEnabled: true },
+    { projection: "legacy", structuredPromptEnabled: false },
+  ])(
+    "uses $projection message text in the chat-thread source",
+    async ({ structuredPromptEnabled }) => {
+      const scenario = await setupMorningBriefActor({
+        connectConnectors: false,
+      });
+      await updateFeatureSwitchesForUser(context, scenario.actor, {
+        [FeatureSwitchKey.MorningBrief]: true,
+        [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled,
+      });
+      const agent = await bdd.createAgent(scenario.actor, {
+        displayName: "Structured morning brief agent",
+        visibility: "private",
+      });
+      const thread = await chat.createThread(scenario.actor, {
+        agentId: agent.agentId,
+        title: "Structured morning brief source",
+      });
+      await chat.markThreadRead(scenario.actor, thread.id);
+
+      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+      if (!style) {
+        throw new Error("Expected a registered illustration style");
+      }
+      const generationTemplate: GenerationTemplateRequest = {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      };
+      const structuredPrompt: UserMessageDocument = {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: style.title,
+            template: generationTemplate,
+          },
+          { type: "text", text: "Review the structured brief" },
+        ],
+      };
+
+      mockNow(BEFORE_SEVEN_LOCAL + 60_000);
+      await chat.requestSendMessage(
+        scenario.actor,
+        {
+          agentId: agent.agentId,
+          threadId: thread.id,
+          prompt: "stale morning brief content",
+          generationTemplate,
+          structuredPrompt,
+        },
+        [201],
+      );
+
+      mockNow(AFTER_SEVEN_LOCAL);
+      await executeMorningBriefsCron();
+
+      const input = capturedMorningBriefInput();
+      const threads = input.sources.chatThreads?.data?.threads as
+        | {
+            readonly threadId: string;
+            readonly recentMessages: readonly {
+              readonly role: string;
+              readonly content: string;
+            }[];
+          }[]
+        | undefined;
+      const sourceThread = threads?.find((item) => {
+        return item.threadId === thread.id;
+      });
+      const structuredContent = `[Template: ${style.title}]\n\nReview the structured brief`;
+      const legacyContent = "stale morning brief content";
+      const expectedContent = structuredPromptEnabled
+        ? structuredContent
+        : legacyContent;
+      const excludedContent = structuredPromptEnabled
+        ? legacyContent
+        : structuredContent;
+      expect(sourceThread?.recentMessages).toContainEqual({
+        role: "user",
+        content: expectedContent,
+        at: expect.any(String),
+      });
+      expect(
+        sourceThread?.recentMessages.some((message) => {
+          return message.content.includes(excludedContent);
+        }),
+      ).toBeFalsy();
+    },
+  );
 
   it("triggers a brief immediately through the manual endpoint", async () => {
     context.mocks.resend.send.mockResolvedValue({
