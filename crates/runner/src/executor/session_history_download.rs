@@ -1260,7 +1260,7 @@ mod tests {
 
     fn ref_session(url: String, hash: String, raw_size: u64, encoded_size: u64) -> ResumeSession {
         ResumeSession {
-            cli_agent_session_id: CODEX_SESSION_ID.to_string(),
+            cli_agent_session_id: "sess-123".to_string(),
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -1313,7 +1313,7 @@ mod tests {
         encoding: ResumeSessionHistoryEncoding,
     ) -> ResumeSession {
         ResumeSession {
-            cli_agent_session_id: CODEX_SESSION_ID.to_string(),
+            cli_agent_session_id: "sess-123".to_string(),
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -1326,6 +1326,11 @@ mod tests {
                 },
             },
         }
+    }
+
+    fn codex_session(mut session: ResumeSession) -> ResumeSession {
+        session.cli_agent_session_id = CODEX_SESSION_ID.to_string();
+        session
     }
 
     fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
@@ -1682,7 +1687,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -1760,7 +1765,12 @@ mod tests {
         let body = b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"019e9154-c304-70f0-adde-36efb1be1701\",\"timestamp\":\"2026-07-13T01:02:03Z\"}}\n";
         let hash = hex::encode(Sha256::digest(body));
         let server = serve_once("200 OK", body, Some(body.len() as u64)).await;
-        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+        let session = codex_session(ref_session(
+            server.url(),
+            hash,
+            body.len() as u64,
+            body.len() as u64,
+        ));
 
         let result = start_materializer_with_framework(&session, EffectiveCliFramework::Codex)
             .finish(&CancellationToken::new())
@@ -2077,7 +2087,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -2103,7 +2113,12 @@ mod tests {
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
         let server = serve_once("200 OK", compressed, None).await;
-        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+        let session = codex_session(gzip_ref_session(
+            server.url(),
+            hash,
+            body.len() as u64,
+            encoded_size,
+        ));
 
         let result = start_materializer_with_framework(&session, EffectiveCliFramework::Codex)
             .finish(&CancellationToken::new())
@@ -2141,7 +2156,7 @@ mod tests {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
-                assert_eq!(session.cli_agent_session_id(), CODEX_SESSION_ID);
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
                 assert_eq!(session.history_bytes(), body);
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
@@ -2208,7 +2223,12 @@ mod tests {
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
         let server = serve_once("200 OK", compressed.clone(), None).await;
-        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+        let session = codex_session(zstd_ref_session(
+            server.url(),
+            hash,
+            body.len() as u64,
+            encoded_size,
+        ));
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
@@ -2255,12 +2275,12 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let server = serve_once("200 OK", compressed.clone(), None).await;
-        let session = zstd_ref_session(
+        let session = codex_session(zstd_ref_session(
             server.url(),
             hex::encode(Sha256::digest(body)),
             body.len() as u64,
             encoded_size,
-        );
+        ));
 
         let result = start_materializer_with_prefix_attribution(
             &session,
@@ -2300,12 +2320,12 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let server = serve_once("200 OK", compressed, None).await;
-        let session = zstd_ref_session(
+        let session = codex_session(zstd_ref_session(
             server.url(),
             "0".repeat(64),
             body.len() as u64,
             encoded_size,
-        );
+        ));
 
         let materializer = start_materializer_with_prefix_attribution(
             &session,
@@ -2338,7 +2358,7 @@ mod tests {
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
         let server = serve_once("200 OK", compressed, None).await;
-        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
+        let session = codex_session(zstd_ref_session(server.url(), hash, 1, encoded_size));
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
