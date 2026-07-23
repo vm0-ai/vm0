@@ -13,7 +13,7 @@ interface ChatMessageCommandResult {
   readonly createdAt: Date;
 }
 
-export interface ChatMessageBatchCommandResult {
+interface ChatMessageBatchCommandResult {
   readonly id: string;
   readonly createdAt: Date;
   readonly sequenceNumber: number | null;

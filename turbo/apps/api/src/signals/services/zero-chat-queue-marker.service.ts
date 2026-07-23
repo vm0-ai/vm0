@@ -23,7 +23,7 @@ export interface QueueMarkerRevokeNotification {
   readonly userId: string;
 }
 
-export type QueuedRunMarkerAppendResult =
+type QueuedRunMarkerAppendResult =
   | { readonly kind: "not-queued" }
   | { readonly kind: "existing" }
   | { readonly kind: "appended"; readonly markerId: string };
