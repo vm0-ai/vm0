@@ -4537,6 +4537,13 @@
       "when": 1784774416471,
       "tag": "0647_fearless_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 648,
+      "version": "7",
+      "when": 1784778921101,
+      "tag": "0648_military_onslaught",
+      "breakpoints": true
     }
   ]
 }

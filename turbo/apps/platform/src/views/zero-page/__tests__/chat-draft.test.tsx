@@ -222,6 +222,84 @@ describe("chat drafts", () => {
     });
   });
 
+  it("restores a structured agent draft instead of stale legacy state", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000111";
+    const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
+    const firstAttachment = {
+      id: "agent-draft-first",
+      filename: "first.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/first.txt",
+    };
+    const secondAttachment = {
+      id: "agent-draft-second",
+      filename: "second.txt",
+      contentType: "text/plain",
+      size: 6,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
+    };
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "stale legacy agent draft",
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: secondAttachment.id,
+              filenameSnapshot: secondAttachment.filename,
+              contentType: secondAttachment.contentType,
+            },
+            {
+              type: "file",
+              fileId: firstAttachment.id,
+              filenameSnapshot: firstAttachment.filename,
+              contentType: firstAttachment.contentType,
+            },
+            { type: "text", text: "Review " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Launch research",
+            },
+            { type: "text", text: " now" },
+          ],
+        },
+        draftAttachments: [firstAttachment, secondAttachment],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("Review Launch research now");
+      expect(editor).not.toHaveTextContent("stale legacy agent draft");
+      expect(
+        editor.querySelector(
+          `span[data-chat-thread-mention="${referencedThreadId}"]`,
+        ),
+      ).toHaveTextContent("Launch research");
+      expect(
+        queryAllByRoleFast("button")
+          .filter((button) => {
+            return /^Remove (?:first|second)\.txt$/.test(
+              button.getAttribute("aria-label") ?? "",
+            );
+          })
+          .map((button) => {
+            return button.getAttribute("aria-label");
+          }),
+      ).toStrictEqual(["Remove second.txt", "Remove first.txt"]);
+    });
+  });
+
   it("persists typed agent drafts through the agent draft endpoint", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000102";
     const draftPatches: Record<string, unknown>[] = [];
@@ -245,6 +323,7 @@ describe("chat drafts", () => {
       detachedSetupPage({
         context,
         path: `/agents/${agentId}/chat`,
+        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
       });
 
       await waitFor(() => {
@@ -255,6 +334,10 @@ describe("chat drafts", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "agent-level draft",
+          draftStructuredPrompt: {
+            version: 1,
+            parts: [{ type: "text", text: "agent-level draft" }],
+          },
           draftAttachments: null,
         });
       });
