@@ -438,7 +438,7 @@ function formatContextForAgent(
   )}\n\n---`;
 }
 
-function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
+export function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 

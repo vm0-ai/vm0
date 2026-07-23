@@ -4,11 +4,19 @@ import { integrationsSlackUploadInitContract } from "@vm0/api-contracts/contract
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import {
   createSlackClient,
   getUploadUrlExternal,
 } from "../external/slack-message-client";
+import { MAX_SLACK_FILE_SIZE_BYTES } from "../external/slack-file-fetcher";
+import {
+  canonicalSlackAssetsEnabled,
+  prepareCanonicalPublishedAsset$,
+} from "../services/canonical-asset.service";
 import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
+import { badRequestMessage } from "../../lib/error";
+import { isAllowedUploadType } from "../../lib/uploads-constants";
 import type { RouteEntry } from "../route-entry";
 
 const noInstallation = Object.freeze({
@@ -21,7 +29,7 @@ const noInstallation = Object.freeze({
   }),
 });
 
-const initInner$ = command(async ({ get }, signal: AbortSignal) => {
+const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const bodyResult = await get(
@@ -30,6 +38,10 @@ const initInner$ = command(async ({ get }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
+  }
+  const body = bodyResult.data;
+  if (body.length > MAX_SLACK_FILE_SIZE_BYTES) {
+    return badRequestMessage("File too large (max 100 MB)");
   }
 
   const installation = await get(
@@ -40,10 +52,59 @@ const initInner$ = command(async ({ get }, signal: AbortSignal) => {
     return noInstallation;
   }
 
+  const runId =
+    "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;
+  const canonicalEnabled =
+    body.canonical !== undefined &&
+    runId !== undefined &&
+    (await canonicalSlackAssetsEnabled(get(db$), auth));
+  signal.throwIfAborted();
+  if (canonicalEnabled && body.canonical && runId) {
+    const contentType =
+      body.canonical.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    if (!isAllowedUploadType(contentType)) {
+      return badRequestMessage(`Unsupported file type: ${contentType}`);
+    }
+    const prepared = await set(
+      prepareCanonicalPublishedAsset$,
+      {
+        runId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+        operationId: body.canonical.operationId,
+        filename: body.filename,
+        contentType,
+        size: body.length,
+        checksumSha256: body.canonical.checksumSha256,
+        destination: {
+          channelId: body.canonical.channel,
+          ...(body.canonical.threadTs
+            ? { threadTs: body.canonical.threadTs }
+            : {}),
+          ...(body.canonical.title ? { title: body.canonical.title } : {}),
+          ...(body.canonical.initialComment
+            ? { initialComment: body.canonical.initialComment }
+            : {}),
+        },
+      },
+      signal,
+    );
+    return {
+      status: 200 as const,
+      body: {
+        kind: "canonical" as const,
+        assetId: prepared.assetId,
+        operationId: prepared.operationId,
+        ...(prepared.uploadUrl ? { uploadUrl: prepared.uploadUrl } : {}),
+        url: prepared.url,
+      },
+    };
+  }
+
   const client = createSlackClient(installation.botToken);
   const result = await getUploadUrlExternal(client, {
-    filename: bodyResult.data.filename,
-    length: bodyResult.data.length,
+    filename: body.filename,
+    length: body.length,
   });
   signal.throwIfAborted();
 

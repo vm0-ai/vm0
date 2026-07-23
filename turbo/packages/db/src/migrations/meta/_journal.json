@@ -4607,6 +4607,13 @@
       "when": 1784811338014,
       "tag": "0657_pale_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 658,
+      "version": "7",
+      "when": 1784823623330,
+      "tag": "0658_new_grandmaster",
+      "breakpoints": true
     }
   ]
 }

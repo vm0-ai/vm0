@@ -41,6 +41,7 @@ export const MAX_SLACK_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 export async function fetchSlackFile(
   url: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<Response> {
   if (!isValidSlackDownloadUrl(url)) {
     throw new SlackFileFetchError("invalid-url", "Invalid Slack download URL");
@@ -48,6 +49,7 @@ export async function fetchSlackFile(
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
+    signal,
   });
 
   if (!response.ok) {

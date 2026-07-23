@@ -1173,11 +1173,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
       [FeatureSwitchKey.CanonicalSlackIngress]: true,
+      [FeatureSwitchKey.CanonicalSlackAssets]: true,
     });
 
     const channelId = "C_BDD_CANONICAL_INGRESS";
     const threadTs = "2900.000100";
     const eventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    const fileUrl = "https://files.slack.com/F_CANONICAL_INPUT";
+    const fileBody = "canonical Slack attachment";
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response(fileBody, {
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
     const event = {
       type: "app_mention",
       user: slackUserId,
@@ -1185,6 +1193,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: threadTs,
       channel: channelId,
       channel_type: "channel",
+      files: [
+        {
+          id: "F_CANONICAL_INPUT",
+          name: "source-notes.txt",
+          mimetype: "text/plain",
+          size: fileBody.length,
+          url_private_download: fileUrl,
+        },
+      ],
     };
     const eventBody = JSON.stringify({
       type: "event_callback",
@@ -1259,7 +1276,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         expect.objectContaining({
           triggerSource: "slack",
           userId: actor.userId,
-          promptPreview: "admit this event once",
+          promptPreview: expect.stringContaining("admit this event once"),
         }),
       ]),
     );
@@ -1297,18 +1314,40 @@ describe("INT-01: Slack app deep webhook flows", () => {
       (await chat.requestReadThread(actor, canonicalChatThreadId, [200]))
         .status,
     ).toBe(200);
-    expect(
-      (await chat.listThreadMessages(actor, canonicalChatThreadId)).messages,
-    ).toStrictEqual(
+    const visibleMessages = (
+      await chat.listThreadMessages(actor, canonicalChatThreadId)
+    ).messages;
+    expect(visibleMessages).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           role: "user",
           content: "admit this event once",
           slackMessagePermalink:
             "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
+          attachFiles: [
+            expect.objectContaining({
+              filename: "source-notes.txt",
+              contentType: "text/plain",
+              size: fileBody.length,
+              url: expect.stringContaining(
+                "/api/zero/web/download-file?file_id=",
+              ),
+              assetRef: expect.objectContaining({
+                classification: "input",
+                access: "private",
+                materialization: { status: "ready" },
+                provenance: { provider: "slack" },
+              }),
+            }),
+          ],
         }),
       ]),
     );
+    expect(
+      visibleMessages.some((message) => {
+        return message.content?.includes("[Slack file]") ?? false;
+      }),
+    ).toBeFalsy();
     expect(context.mocks.slack.chat.getPermalink).toHaveBeenCalledWith({
       channel: channelId,
       message_ts: threadTs,
@@ -1431,7 +1470,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
           {
             orgId: featureSwitchActor.orgId,
             userId: actor.userId,
-            prompt: "admit this event once",
+            runId: run1Id,
           },
           context.signal,
         );
@@ -1447,7 +1486,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         {
           orgId: featureSwitchActor.orgId,
           userId: actor.userId,
-          prompt: "admit this event once",
+          runId: run1Id,
         },
         context.signal,
       )
@@ -1503,7 +1542,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.objectContaining({
         id: run2Id,
         triggerSource: "slack",
-        promptPreview: "stay canonical after the switch changes",
+        promptPreview: expect.stringContaining(
+          "stay canonical after the switch changes",
+        ),
       }),
     );
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
@@ -1542,7 +1583,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
           {
             orgId: featureSwitchActor.orgId,
             userId: actor.userId,
-            prompt: "stay canonical after the switch changes",
+            runId: run2Id,
           },
           context.signal,
         );
@@ -1558,7 +1599,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         {
           orgId: featureSwitchActor.orgId,
           userId: actor.userId,
-          prompt: "stay canonical after the switch changes",
+          runId: run2Id,
         },
         context.signal,
       )

@@ -32,11 +32,16 @@ const agentRunCallbacksResponseSchema = z.object({
 
 type AgentRunCallbackSnapshot = z.infer<typeof agentRunCallbackSnapshotSchema>;
 
-interface ReadAgentRunCallbacksOptions {
+interface ReadAgentRunCallbacksBaseOptions {
   readonly orgId: string;
   readonly userId: string;
-  readonly prompt: string;
 }
+
+type ReadAgentRunCallbacksOptions = ReadAgentRunCallbacksBaseOptions &
+  (
+    | { readonly runId: string; readonly prompt?: never }
+    | { readonly prompt: string; readonly runId?: never }
+  );
 
 function requestTelegramState(
   signal: AbortSignal,
@@ -115,7 +120,8 @@ export const readAgentRunCallbacks$ = command(
           action: "get-post-run-state",
           org_id: options.orgId,
           user_id: options.userId,
-          prompt: options.prompt,
+          ...("runId" in options ? { run_id: options.runId } : {}),
+          ...("prompt" in options ? { prompt: options.prompt } : {}),
         }),
       },
     );

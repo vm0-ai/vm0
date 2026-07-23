@@ -1200,10 +1200,14 @@ async function getTelegramPostRunStateForAction(
     return actionBadRequest("org_id and user_id are required");
   }
   const prompt = readActionOptionalString(body, "prompt");
+  const runId = readActionOptionalString(body, "run_id");
   const conditions = [
     eq(agentRuns.orgId, required.org_id!),
     eq(agentRuns.userId, required.user_id!),
   ];
+  if (runId) {
+    conditions.push(eq(agentRuns.id, runId));
+  }
   if (prompt) {
     conditions.push(eq(agentRuns.prompt, prompt));
   }
