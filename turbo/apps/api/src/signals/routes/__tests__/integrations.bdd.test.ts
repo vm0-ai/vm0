@@ -1296,9 +1296,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
         expect.objectContaining({
           role: "user",
           content: "admit this event once",
+          slackMessagePermalink:
+            "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
         }),
       ]),
     );
+    expect(context.mocks.slack.chat.getPermalink).toHaveBeenCalledWith({
+      channel: channelId,
+      message_ts: threadTs,
+    });
     const defaultAgentId = state.default_agent?.id;
     if (!defaultAgentId) {
       throw new Error("Expected canonical Slack thread to use a default agent");

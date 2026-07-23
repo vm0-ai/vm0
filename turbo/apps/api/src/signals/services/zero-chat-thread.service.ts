@@ -108,6 +108,7 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
+const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -127,6 +128,7 @@ type ChatMessageRow = {
   readonly runId: string | null;
   readonly runGroupId: string | null;
   readonly triggerSource: TriggerSource | null;
+  readonly slackMessagePermalink: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
@@ -346,6 +348,12 @@ function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
     .select({
       ...messageColumns,
       triggerSource: metadata.triggerSource,
+      slackMessagePermalink: sql`COALESCE(
+        ${chatMessages.slackMessagePermalink},
+        ${revokedChatMessage.slackMessagePermalink}
+      )`
+        .mapWith(nullableTextDecoder)
+        .as("slack_message_permalink"),
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -365,7 +373,11 @@ function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
       isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
     })
     .from(chatMessages)
-    .leftJoinLateral(metadata, sql`true`);
+    .leftJoinLateral(metadata, sql`true`)
+    .leftJoin(
+      revokedChatMessage,
+      eq(revokedChatMessage.id, chatMessages.revokesMessageId),
+    );
 }
 
 const searchMessageColumns = {
@@ -590,6 +602,7 @@ function toPagedMessage(
       runId: row.runId ?? undefined,
       runGroupId: row.runGroupId ?? undefined,
       triggerSource: row.triggerSource ?? undefined,
+      slackMessagePermalink: row.slackMessagePermalink ?? undefined,
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,

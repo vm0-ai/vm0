@@ -1,0 +1,1 @@
+ALTER TABLE "chat_messages" ADD COLUMN "slack_message_permalink" text;
