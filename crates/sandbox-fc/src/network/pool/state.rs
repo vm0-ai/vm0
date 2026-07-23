@@ -1,5 +1,4 @@
 use std::collections::{HashSet, VecDeque};
-use std::fs::File;
 #[cfg(test)]
 use std::future::Future;
 use std::sync::Arc;
@@ -7,9 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::future::join_all;
-use nix::fcntl::Flock;
-#[cfg(test)]
-use nix::fcntl::FlockArg;
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 
@@ -29,9 +25,9 @@ use super::completion::{
 #[cfg(test)]
 use super::host::ConntrackFlushOutcome;
 use super::host::{
-    NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
-    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
-    setup_dns_input_filter,
+    NamespaceDeleteOutcome, NetnsLifecycleOps, PoolIndexLock, acquire_pool_lock,
+    create_single_namespace, enable_host_ip_forwarding, get_default_interface,
+    reconcile_orphan_namespaces, setup_dns_input_filter,
 };
 use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
@@ -152,14 +148,14 @@ struct NetnsPoolState {
     #[cfg(test)]
     acquire_waiting_notify: Option<Arc<tokio::sync::Notify>>,
     /// Held for the lifetime of the pool to reserve the pool index.
-    _lock: Flock<File>,
+    _lock: PoolIndexLock,
 }
 
 impl NetnsPoolState {
     #[cfg(test)]
     pub(crate) fn inactive_for_test() -> Self {
         let file = tempfile::tempfile().expect("create test netns pool lock file");
-        let lock = match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+        let lock = match PoolIndexLock::try_lock(file) {
             Ok(lock) => lock,
             Err((_, errno)) => panic!("lock test netns pool file: {errno}"),
         };

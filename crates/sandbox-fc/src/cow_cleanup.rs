@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use nbd_cow::{DestroyRetryPolicy, PooledDestroyError};
+use nbd_cow::{DestroyRetryPolicy, PooledDestroyError, PooledNbdCowDevice};
+use tracing::warn;
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
 /// After kill_process_group + child.wait(), the kernel may still be
@@ -49,6 +50,32 @@ where
         Ok(()) => CowCleanupOutcome::BackingFilesSafeToDelete,
         Err(e) if e.backing_files_safe_to_delete() => CowCleanupOutcome::BackingFilesSafeToDelete,
         Err(_) => CowCleanupOutcome::DeviceMayStillReferenceBackingFiles,
+    }
+}
+
+pub(crate) async fn destroy_cow_device_with_retries(
+    id: &str,
+    cow_device: PooledNbdCowDevice,
+) -> CowCleanupOutcome {
+    let result = cow_device
+        .destroy_with_retries_detailed(cow_destroy_retry_policy())
+        .await;
+    let outcome = classify_cow_destroy_result(&result);
+
+    match (result, outcome) {
+        (Ok(()), outcome) => outcome,
+        (Err(e), CowCleanupOutcome::BackingFilesSafeToDelete) => {
+            warn!(
+                id = %id,
+                error = %e,
+                "COW device released but file cleanup failed; continuing directory cleanup"
+            );
+            outcome
+        }
+        (Err(e), CowCleanupOutcome::DeviceMayStillReferenceBackingFiles) => {
+            warn!(id = %id, error = %e, "destroy failed after retries — abandoned device");
+            outcome
+        }
     }
 }
 

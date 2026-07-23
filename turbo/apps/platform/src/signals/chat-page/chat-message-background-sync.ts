@@ -1,9 +1,4 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  featureSwitch$,
-  reloadFeatureSwitch$,
-} from "../external/feature-switch.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   hasIndexedDbChatMessage$,
@@ -125,15 +120,7 @@ export const subscribeChatMessageBackgroundSync$ = command(
 );
 
 export const setupChatMessageBackgroundSync$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    await set(reloadFeatureSwitch$, signal);
-    signal.throwIfAborted();
-    if (
-      !get(featureSwitch$)[FeatureSwitchKey.ChatThreadMessageBackgroundSync]
-    ) {
-      return;
-    }
-
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(subscribeChatMessageBackgroundSync$, signal);
   },
 );

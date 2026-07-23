@@ -49,34 +49,6 @@ fn test_network() -> NetnsLease {
     NetnsLease::new_for_test("test-ns")
 }
 
-struct SlotWorkspaceFixture {
-    _tmp: tempfile::TempDir,
-    slot_workspace: PathBuf,
-    target_workspace: PathBuf,
-}
-
-impl SlotWorkspaceFixture {
-    async fn new() -> Self {
-        let tmp = tempfile::tempdir().unwrap();
-        let slot_workspace = tmp.path().join("slot-workspace");
-        let target_workspace = tmp.path().join("sandbox-workspace");
-        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-            .await
-            .unwrap();
-
-        Self {
-            _tmp: tmp,
-            slot_workspace,
-            target_workspace,
-        }
-    }
-
-    fn slot(&self) -> crate::cow_pool::PrewarmedSlot {
-        test_slot("slot", self.slot_workspace.clone())
-    }
-}
-
 struct WorkspaceSockFixture {
     _tmp: tempfile::TempDir,
     workspace: PathBuf,
@@ -222,9 +194,6 @@ impl BlockingRemoveDirCleanup {
                     .unwrap_or("<unknown>");
                 self.record(format!("remove_dir:{kind}:{name}"));
             }
-            CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
-                self.record(format!("destroy_slot:{}", slot.id()));
-            }
         }
     }
 
@@ -232,9 +201,6 @@ impl BlockingRemoveDirCleanup {
         match step {
             CreateRollbackFilesystemCleanupStep::RemoveDir { path, .. } => {
                 let _ = std::fs::remove_dir_all(path);
-            }
-            CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
-                crate::cow_pool::destroy_slot_sync(slot);
             }
         }
         self.removed.fetch_add(1, Ordering::SeqCst);
@@ -443,10 +409,6 @@ impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
                     self.record(format!("remove_dir:{kind}:{name}"));
                     remove_create_rollback_dir_sync("sandbox", kind, path);
                 }
-                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
-                    self.record(format!("destroy_slot:{}", slot.id()));
-                    crate::cow_pool::destroy_slot_sync(slot);
-                }
             }
         }
         CreateRollbackFilesystemCleanupWaiter::ready()
@@ -490,10 +452,6 @@ impl CreateRollbackCleanup for CowOutcomeCreateRollbackCleanup {
                         .unwrap_or("<unknown>");
                     self.record(format!("remove_dir:{kind}:{name}"));
                     remove_create_rollback_dir_sync("sandbox", kind, path);
-                }
-                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
-                    self.record(format!("destroy_slot:{}", slot.id()));
-                    crate::cow_pool::destroy_slot_sync(slot);
                 }
             }
         }
@@ -557,10 +515,6 @@ impl CreateRollbackCleanup for BlockingNetworkAfterCowCleanup {
     }
 }
 
-fn test_slot(id: &str, workspace: PathBuf) -> crate::cow_pool::PrewarmedSlot {
-    crate::cow_pool::PrewarmedSlot::new(id.into(), workspace)
-}
-
 fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
     LeakedResources {
         sandbox_id: sandbox_id.into(),
@@ -570,170 +524,6 @@ fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
         workspace: PathBuf::from("/nonexistent"),
         delete_workspace: true,
     }
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_before_rename_destroys_slot_workspace() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let cleanup = RecordingCreateRollbackCleanup::default();
-
-    tx.rollback(&cleanup).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_before_rename_waits_for_slot_teardown() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let cleanup = BlockingRemoveDirCleanup::default();
-    let rollback_cleanup = cleanup.clone();
-    let rollback = tokio::spawn(async move {
-        let mut tx = tx;
-        tx.rollback(&rollback_cleanup).await;
-    });
-
-    tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(1))
-        .await
-        .unwrap();
-    assert!(fixture.slot_workspace.exists());
-    assert!(!rollback.is_finished());
-
-    cleanup.release();
-    rollback.await.unwrap();
-    cleanup.wait_removed(1).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_during_rename_removes_slot_source() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let tracked_slot_workspace = tx
-        .begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    assert_eq!(tracked_slot_workspace, fixture.slot_workspace);
-    let cleanup = RecordingCreateRollbackCleanup::default();
-
-    tx.rollback(&cleanup).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
-    assert_eq!(
-        cleanup.events(),
-        vec![
-            "remove_dir:workspace:sandbox-workspace",
-            "destroy_slot:slot"
-        ]
-    );
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_during_rename_removes_target_after_move() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let tracked_slot_workspace = tx
-        .begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
-        .await
-        .unwrap();
-    let cleanup = RecordingCreateRollbackCleanup::default();
-
-    tx.rollback(&cleanup).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
-    assert_eq!(
-        cleanup.events(),
-        vec![
-            "remove_dir:workspace:sandbox-workspace",
-            "destroy_slot:slot"
-        ]
-    );
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_after_rename_error_preserves_target() {
-    let fixture = SlotWorkspaceFixture::new().await;
-    tokio::fs::create_dir_all(&fixture.target_workspace)
-        .await
-        .unwrap();
-    tokio::fs::write(fixture.target_workspace.join("owner.txt"), b"other")
-        .await
-        .unwrap();
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    tx.begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    tx.abort_workspace_rename_after_error().unwrap();
-    let cleanup = RecordingCreateRollbackCleanup::default();
-
-    tx.rollback(&cleanup).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(fixture.target_workspace.join("owner.txt").exists());
-    assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
-}
-
-#[tokio::test]
-async fn create_transaction_drop_after_rename_error_preserves_target() {
-    let fixture = SlotWorkspaceFixture::new().await;
-    tokio::fs::create_dir_all(&fixture.target_workspace)
-        .await
-        .unwrap();
-    tokio::fs::write(fixture.target_workspace.join("owner.txt"), b"other")
-        .await
-        .unwrap();
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    tx.begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    tx.abort_workspace_rename_after_error().unwrap();
-
-    drop(tx);
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(fixture.target_workspace.join("owner.txt").exists());
-}
-
-#[tokio::test]
-async fn create_transaction_rollback_after_rename_removes_target_workspace() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let tracked_slot_workspace = tx
-        .begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
-        .await
-        .unwrap();
-    tx.finish_workspace_rename().unwrap();
-    let cleanup = RecordingCreateRollbackCleanup::default();
-
-    tx.rollback(&cleanup).await;
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
-    assert_eq!(
-        cleanup.events(),
-        vec!["remove_dir:workspace:sandbox-workspace"]
-    );
 }
 
 #[tokio::test]
@@ -752,6 +542,22 @@ async fn create_transaction_rollback_after_sock_dir_removes_sock_then_workspace(
         cleanup.events(),
         vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
     );
+}
+
+#[tokio::test]
+async fn create_transaction_rollback_preserves_previously_unsafe_workspace() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let mut tx = SandboxCreateTransaction::new("sandbox".into());
+    fixture.track_on(&mut tx);
+    tx.preserve_workspace_on_leak_cleanup();
+    let cleanup = RecordingCreateRollbackCleanup::default();
+
+    tx.rollback(&cleanup).await;
+
+    assert!(fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
+    assert_eq!(cleanup.events(), vec!["remove_dir:sock:sock"]);
 }
 
 #[tokio::test]
@@ -1138,70 +944,6 @@ async fn create_transaction_commit_rejects_test_cow_without_losing_base_resource
     let _ = network.into_info_for_test();
     assert_eq!(leaked.sock_dir, fixture.sock_dir);
     assert_eq!(leaked.workspace, fixture.workspace);
-}
-
-#[tokio::test]
-async fn create_transaction_drop_before_rename_destroys_slot_workspace() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-
-    drop(tx);
-
-    assert!(!fixture.slot_workspace.exists());
-}
-
-#[tokio::test]
-async fn create_transaction_drop_during_rename_removes_slot_source() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let tracked_slot_workspace = tx
-        .begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    assert_eq!(tracked_slot_workspace, fixture.slot_workspace);
-
-    drop(tx);
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
-}
-
-#[tokio::test]
-async fn create_transaction_drop_during_rename_removes_target_after_move() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    let tracked_slot_workspace = tx
-        .begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
-        .await
-        .unwrap();
-
-    drop(tx);
-
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
-}
-
-#[tokio::test]
-async fn create_transaction_commit_rejects_pending_workspace_rename() {
-    let fixture = SlotWorkspaceFixture::new().await;
-
-    let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(fixture.slot()).unwrap();
-    tx.begin_workspace_rename(fixture.target_workspace.clone())
-        .unwrap();
-
-    assert!(tx.commit_without_cow_for_test().is_err());
-
-    drop(tx);
-    assert!(!fixture.slot_workspace.exists());
-    assert!(!fixture.target_workspace.exists());
 }
 
 #[tokio::test]
