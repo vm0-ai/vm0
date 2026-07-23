@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::error::Result;
+use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
     StartProcessRequest, WriteFileEntry,
@@ -17,6 +17,18 @@ pub enum SandboxParkOutcome {
     Reusable,
     /// The sandbox is validly parked but must be destroyed instead of reused.
     NonReusable(SandboxParkNonReusableReason),
+}
+
+/// Completed final guest exec together with the resulting parked state.
+///
+/// The exec result is transport-complete but may still be semantically
+/// unacceptable to the lifecycle owner. The sandbox is validly parked in
+/// either case and must be admitted or destroyed through a parked cleanup path.
+pub struct SandboxFinalExecParkOutcome {
+    /// Terminal result of the lifecycle-owned final guest exec.
+    pub exec_result: ExecResult,
+    /// Eligibility reported after the sandbox reached the parked state.
+    pub park_outcome: SandboxParkOutcome,
 }
 
 /// Stable reason why a validly parked sandbox cannot be reused.
@@ -231,6 +243,35 @@ pub trait Sandbox: Send + Sync + Any {
     /// when the implementation documents that retry as safe.
     async fn park(&mut self) -> Result<SandboxParkOutcome> {
         Ok(SandboxParkOutcome::Reusable)
+    }
+
+    /// Run one final normal guest exec and park without reopening operation
+    /// admission between the exec and pause.
+    ///
+    /// Implementations must close admission to new normal/control operations
+    /// before atomically ordering `request` after every previously admitted
+    /// normal operation. A successful exec must remain fenced through guest
+    /// quiesce and the completed park transition. A competing earlier operation
+    /// may reject this transition, but it must not run after the final exec and
+    /// still allow this method to succeed.
+    ///
+    /// A completed non-zero or otherwise semantically unacceptable exec result
+    /// may still be returned after a valid park; the lifecycle owner decides
+    /// whether to admit or destroy that parked sandbox. On `Err`, callers must
+    /// not dispatch further work and should destroy the sandbox.
+    ///
+    /// Unlike [`park`](Self::park), this operation is not idempotent because its
+    /// final exec must run exactly once on an active sandbox.
+    async fn final_exec_and_park(
+        &mut self,
+        _request: &ExecRequest<'_>,
+        _diagnostic_label: &'static str,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        Err(SandboxError::IdleTransition {
+            transition: SandboxIdleTransition::Park,
+            message: "final guest exec during park is not supported by this sandbox provider"
+                .to_string(),
+        })
     }
 
     /// Transition the sandbox back to the active state.

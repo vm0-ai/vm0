@@ -36,6 +36,7 @@ type FailedStateChange = { reason?: { message?: string } };
 type ConnectionEventListener = (stateChange?: FailedStateChange) => void;
 
 const subscriptions = new Map<string, Set<Callback>>();
+const channelSubscriptions = new Set<Callback>();
 
 let capturedAuthCallback: AuthCallback | null = null;
 let tokenBodies: AuthCallbackToken[] = [];
@@ -51,11 +52,15 @@ let nextSubscribeError: Error | null = null;
  * to simulate a server-side Ably publish.
  */
 export function triggerAblyEvent(topic: string, data: unknown = null): void {
+  const message = { name: topic, data };
   const cbs = subscriptions.get(topic);
   if (cbs) {
     for (const cb of cbs) {
-      cb({ name: topic, data });
+      cb(message);
     }
+  }
+  for (const cb of channelSubscriptions) {
+    cb(message);
   }
 }
 
@@ -81,6 +86,7 @@ export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
 /** Reset all subscriptions and captured auth state between tests. */
 export function resetAblySubscriptions(): void {
   subscriptions.clear();
+  channelSubscriptions.clear();
   capturedAuthCallback = null;
   tokenBodies = [];
   connectedListener = null;
@@ -96,6 +102,11 @@ export function resetAblySubscriptions(): void {
 export function hasSubscription(topic: string): boolean {
   const cbs = subscriptions.get(topic);
   return cbs !== undefined && cbs.size > 0;
+}
+
+/** Debug: check if the user channel has an active catch-all subscription. */
+export function hasChannelSubscription(): boolean {
+  return channelSubscriptions.size > 0;
 }
 
 /**
@@ -120,6 +131,7 @@ const connectedListeners = new Set<ConnectionListener>();
 export function triggerAblyConnectionClosed(): void {
   connectionClosed = true;
   subscriptions.clear();
+  channelSubscriptions.clear();
 }
 
 export function rejectNextAblySubscribe(message: string): void {
@@ -144,13 +156,20 @@ function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
 const fakeChannel = {
   // Mirror real Ably: subscribe registers the callback synchronously before
   // waiting for the channel attach to complete.
-  async subscribe(topic: string, callback: Callback): Promise<void> {
-    let cbs = subscriptions.get(topic);
-    if (!cbs) {
-      cbs = new Set();
-      subscriptions.set(topic, cbs);
+  async subscribe(
+    topicOrCallback: string | Callback,
+    callback?: Callback,
+  ): Promise<void> {
+    if (typeof topicOrCallback === "function") {
+      channelSubscriptions.add(topicOrCallback);
+    } else if (callback) {
+      let cbs = subscriptions.get(topicOrCallback);
+      if (!cbs) {
+        cbs = new Set();
+        subscriptions.set(topicOrCallback, cbs);
+      }
+      cbs.add(callback);
     }
-    cbs.add(callback);
     await Promise.resolve();
     if (connectionClosed) {
       throw new Error("Connection closed");
@@ -161,10 +180,13 @@ const fakeChannel = {
       throw error;
     }
   },
-  unsubscribe(topic: string, callback: Callback): void {
-    const cbs = subscriptions.get(topic);
-    if (cbs) {
-      cbs.delete(callback);
+  unsubscribe(topicOrCallback: string | Callback, callback?: Callback): void {
+    if (typeof topicOrCallback === "function") {
+      channelSubscriptions.delete(topicOrCallback);
+      return;
+    }
+    if (callback) {
+      subscriptions.get(topicOrCallback)?.delete(callback);
     }
   },
 };

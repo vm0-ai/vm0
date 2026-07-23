@@ -163,6 +163,32 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("exposes the workspace switcher in the onboarding shell", async () => {
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      org: {
+        activeOrg: { id: "org_switcher", name: "Acme Workspace", slug: "acme" },
+        memberships: [{ id: "org_switcher" }],
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "What do you want to make first",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    // The compact switcher (mobile layout) is wired into the onboarding shell.
+    expect(buttonByAriaLabel("Switch workspace")).toBeInTheDocument();
+
+    // The desktop switcher shows the active workspace name in the top-left.
+    await waitFor(() => {
+      expect(queryButtonByText("Acme Workspace")).not.toBeNull();
+    });
+  });
+
   it("renders workflow connector marks from catalog metadata", async () => {
     mockGithubCatalogItem({
       url: "https://icons.example.test/onboarding-github.svg",

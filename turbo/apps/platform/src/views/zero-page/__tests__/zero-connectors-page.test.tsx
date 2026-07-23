@@ -902,14 +902,6 @@ describe("connectors page", () => {
     });
     expect(screen.queryByText("Slack")).not.toBeInTheDocument();
     expect(search()).toBe("?keywords=vcs");
-
-    context.store.set(detachedNavigateTo$, ROUTES.connectors);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Find connectors")).toHaveValue("");
-      expect(search()).toBe("");
-    });
-    expect(screen.getByText("Slack")).toBeInTheDocument();
   });
 
   it("filters connectors by capability keywords", async () => {
@@ -1100,7 +1092,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("hydrates connector search from URL keywords", async () => {
+  it("hydrates connector search and clears it on clean navigation", async () => {
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
       { type: "axiom", authMethod: "api-token" },
@@ -1114,6 +1106,14 @@ describe("connectors page", () => {
       expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+
+    context.store.set(detachedNavigateTo$, ROUTES.connectors);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find connectors")).toHaveValue("");
+      expect(search()).toBe("");
+    });
+    expect(screen.getByText("GitHub")).toBeInTheDocument();
   });
 
   it("shows an empty state when connector search has no matches", async () => {

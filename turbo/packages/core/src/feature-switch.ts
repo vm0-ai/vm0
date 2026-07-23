@@ -380,6 +380,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Prefetch chat thread messages into IndexedDB when message-created realtime events arrive outside the focused thread.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -391,13 +398,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SidebarManageIconCollapse]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

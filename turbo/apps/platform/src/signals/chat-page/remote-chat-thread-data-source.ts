@@ -225,7 +225,7 @@ const recallMessage$ = command(
   },
 );
 
-const listMessagesAfter$ = command(
+export const listMessagesAfter$ = command(
   async (
     { get },
     { threadId, sinceId }: ListMessagesAfterArgs,
@@ -264,7 +264,7 @@ const listMessagesAfter$ = command(
   },
 );
 
-const listMessagesBefore$ = command(
+export const listMessagesBefore$ = command(
   async (
     { get },
     { threadId, beforeId }: ListMessagesBeforeArgs,

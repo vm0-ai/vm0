@@ -8,7 +8,7 @@ use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
     ReusePreparationReport, ReusePreparationRequest,
 };
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, ExecTermination, Sandbox};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, ExecTermination};
 use tracing::{info, warn};
 
 use crate::helper_exec::{
@@ -16,10 +16,12 @@ use crate::helper_exec::{
 };
 use crate::ids::RunId;
 use crate::paths::guest;
+use crate::workspace_mount::{WORKSPACE_MOUNT_TIMEOUT, workspace_mount_command};
 
 const REUSE_PREPARATION_TIMEOUT: Duration = Duration::from_secs(10);
 const MIN_REUSE_ROOTFS_AVAILABLE_BYTES: u64 = 128 * 1024 * 1024;
 const MIN_REUSE_ROOTFS_AVAILABLE_INODES: u64 = 1024;
+const REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED: i32 = 6;
 
 #[derive(Clone, Copy)]
 enum ReuseRejectionReason {
@@ -27,6 +29,7 @@ enum ReuseRejectionReason {
     InspectionFailed,
     CleanupFailed,
     ContainmentFailed,
+    WorkspaceMountFailed,
     HelperFailed,
     InvalidReport,
     LowBytes,
@@ -41,6 +44,7 @@ impl ReuseRejectionReason {
             Self::InspectionFailed => "inspection_failed",
             Self::CleanupFailed => "cleanup_failed",
             Self::ContainmentFailed => "containment_failed",
+            Self::WorkspaceMountFailed => "workspace_mount_failed",
             Self::HelperFailed => "helper_failed",
             Self::InvalidReport => "invalid_report",
             Self::LowBytes => "low_bytes",
@@ -61,103 +65,125 @@ impl std::fmt::Display for IdleReusePreparationFailure {
     }
 }
 
-pub(crate) async fn prepare_sandbox_for_idle_reuse(
-    sandbox: &dyn Sandbox,
+pub(crate) struct IdleReusePreparation {
     run_id: RunId,
-    retained_runtime_dir: Option<&str>,
-) -> Result<(), IdleReusePreparationFailure> {
-    let current_runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(
-        CANONICAL_GUEST_HOME_DIR,
-        &run_id.to_string(),
-    )
-    .map_err(|error| {
-        reject_without_exec(
-            sandbox,
-            run_id,
-            ReuseRejectionReason::InvalidRequest,
-            format!("resolve current runtime directory: {error}"),
+    sandbox_id: String,
+    command: String,
+    request_bytes: Vec<u8>,
+}
+
+impl IdleReusePreparation {
+    pub(crate) fn new(
+        sandbox_id: &str,
+        run_id: RunId,
+        retained_runtime_dir: Option<&str>,
+    ) -> Result<Self, IdleReusePreparationFailure> {
+        let current_runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(
+            CANONICAL_GUEST_HOME_DIR,
+            &run_id.to_string(),
         )
-    })?
-    .to_string_lossy()
-    .into_owned();
-    let request = ReusePreparationRequest {
-        current_runtime_dir,
-        retained_runtime_dir: retained_runtime_dir.map(str::to_owned),
-    };
-    let request_bytes = serde_json::to_vec(&request).map_err(|error| {
-        reject_without_exec(
-            sandbox,
-            run_id,
-            ReuseRejectionReason::InvalidRequest,
-            format!("serialize reuse-preparation request: {error}"),
-        )
-    })?;
-    let command = format!("{} prepare-for-reuse", guest::RUN_AGENT);
-    let result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &command,
-                timeout: REUSE_PREPARATION_TIMEOUT,
-                env: &[],
-                sudo: true,
-                expected_exit_codes: &[],
-                stdin_bytes: Some(&request_bytes),
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "idle-reuse-preparation",
-        )
-        .await
         .map_err(|error| {
             reject_without_exec(
-                sandbox,
+                sandbox_id,
                 run_id,
-                ReuseRejectionReason::HelperFailed,
-                format!("reuse-preparation exec failed: {error}"),
+                ReuseRejectionReason::InvalidRequest,
+                format!("resolve current runtime directory: {error}"),
             )
-        })?;
-
-    if !helper_exec_succeeded(&result) {
-        let reason = helper_failure_reason(&result);
-        return Err(reject_with_result(
-            sandbox,
-            run_id,
-            reason,
-            &result,
-            format_helper_exec_failure("reuse preparation", &result),
-        ));
-    }
-
-    let report =
-        serde_json::from_slice::<ReusePreparationReport>(&result.stdout).map_err(|error| {
-            reject_with_result(
-                sandbox,
-                run_id,
-                ReuseRejectionReason::InvalidReport,
-                &result,
-                format!("reuse preparation returned an invalid report: {error}"),
-            )
-        })?;
-    let low_bytes = report.after.available_bytes < MIN_REUSE_ROOTFS_AVAILABLE_BYTES;
-    let low_inodes = report.after.available_inodes < MIN_REUSE_ROOTFS_AVAILABLE_INODES;
-    if low_bytes || low_inodes {
-        let reason = if low_bytes && low_inodes {
-            ReuseRejectionReason::LowBytesAndInodes
-        } else if low_bytes {
-            ReuseRejectionReason::LowBytes
-        } else {
-            ReuseRejectionReason::LowInodes
+        })?
+        .to_string_lossy()
+        .into_owned();
+        let request = ReusePreparationRequest {
+            current_runtime_dir,
+            retained_runtime_dir: retained_runtime_dir.map(str::to_owned),
         };
-        log_report(sandbox, run_id, reason.as_str(), &result, report, false);
-        return Err(IdleReusePreparationFailure {
-            error: format!(
-                "guest rootfs below reuse reserve: {} bytes and {} inodes available",
-                report.after.available_bytes, report.after.available_inodes
-            ),
-        });
+        let request_bytes = serde_json::to_vec(&request).map_err(|error| {
+            reject_without_exec(
+                sandbox_id,
+                run_id,
+                ReuseRejectionReason::InvalidRequest,
+                format!("serialize reuse-preparation request: {error}"),
+            )
+        })?;
+        let mount_command = workspace_mount_command();
+        let command = format!(
+            "set -e\n{} prepare-for-reuse\nset +e\n(\nset -eu\n{}\n) >/dev/null\nmount_status=$?\nset -e\nif [ \"$mount_status\" -ne 0 ]; then\n  exit {REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED}\nfi",
+            guest::RUN_AGENT,
+            mount_command
+        );
+        Ok(Self {
+            run_id,
+            sandbox_id: sandbox_id.to_owned(),
+            command,
+            request_bytes,
+        })
     }
 
-    log_report(sandbox, run_id, "ready", &result, report, true);
-    Ok(())
+    pub(crate) fn exec_request(&self) -> ExecRequest<'_> {
+        ExecRequest {
+            cmd: &self.command,
+            timeout: REUSE_PREPARATION_TIMEOUT + WORKSPACE_MOUNT_TIMEOUT,
+            env: &[],
+            sudo: true,
+            expected_exit_codes: &[],
+            stdin_bytes: Some(&self.request_bytes),
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+        }
+    }
+
+    pub(crate) fn validate_result(
+        &self,
+        result: &ExecResult,
+    ) -> Result<(), IdleReusePreparationFailure> {
+        if !helper_exec_succeeded(result) {
+            let reason = helper_failure_reason(result);
+            return Err(reject_with_result(
+                &self.sandbox_id,
+                self.run_id,
+                reason,
+                result,
+                format_helper_exec_failure("reuse preparation", result),
+            ));
+        }
+
+        let report =
+            serde_json::from_slice::<ReusePreparationReport>(&result.stdout).map_err(|error| {
+                reject_with_result(
+                    &self.sandbox_id,
+                    self.run_id,
+                    ReuseRejectionReason::InvalidReport,
+                    result,
+                    format!("reuse preparation returned an invalid report: {error}"),
+                )
+            })?;
+        let low_bytes = report.after.available_bytes < MIN_REUSE_ROOTFS_AVAILABLE_BYTES;
+        let low_inodes = report.after.available_inodes < MIN_REUSE_ROOTFS_AVAILABLE_INODES;
+        if low_bytes || low_inodes {
+            let reason = if low_bytes && low_inodes {
+                ReuseRejectionReason::LowBytesAndInodes
+            } else if low_bytes {
+                ReuseRejectionReason::LowBytes
+            } else {
+                ReuseRejectionReason::LowInodes
+            };
+            log_report(
+                &self.sandbox_id,
+                self.run_id,
+                reason.as_str(),
+                result,
+                report,
+                false,
+            );
+            return Err(IdleReusePreparationFailure {
+                error: format!(
+                    "guest rootfs below reuse reserve: {} bytes and {} inodes available",
+                    report.after.available_bytes, report.after.available_inodes
+                ),
+            });
+        }
+
+        log_report(&self.sandbox_id, self.run_id, "ready", result, report, true);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -212,6 +238,9 @@ fn helper_failure_reason(result: &ExecResult) -> ReuseRejectionReason {
         ExecTermination::Exited {
             exit_code: REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
         } => ReuseRejectionReason::ContainmentFailed,
+        ExecTermination::Exited {
+            exit_code: REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED,
+        } => ReuseRejectionReason::WorkspaceMountFailed,
         ExecTermination::Exited { .. }
         | ExecTermination::TimedOut
         | ExecTermination::Cancelled
@@ -221,14 +250,14 @@ fn helper_failure_reason(result: &ExecResult) -> ReuseRejectionReason {
 }
 
 fn reject_without_exec(
-    sandbox: &dyn Sandbox,
+    sandbox_id: &str,
     run_id: RunId,
     reason: ReuseRejectionReason,
     error: String,
 ) -> IdleReusePreparationFailure {
     warn!(
         run_id = %run_id,
-        sandbox_id = %sandbox.id(),
+        sandbox_id,
         reason = reason.as_str(),
         error = %error,
         "sandbox rejected from idle reuse"
@@ -237,7 +266,7 @@ fn reject_without_exec(
 }
 
 fn reject_with_result(
-    sandbox: &dyn Sandbox,
+    sandbox_id: &str,
     run_id: RunId,
     reason: ReuseRejectionReason,
     result: &ExecResult,
@@ -245,7 +274,7 @@ fn reject_with_result(
 ) -> IdleReusePreparationFailure {
     warn!(
         run_id = %run_id,
-        sandbox_id = %sandbox.id(),
+        sandbox_id,
         reason = reason.as_str(),
         helper_termination = helper_exec_termination_label(result),
         helper_stdout_len = result.stdout.len(),
@@ -259,7 +288,7 @@ fn reject_with_result(
 }
 
 fn log_report(
-    sandbox: &dyn Sandbox,
+    sandbox_id: &str,
     run_id: RunId,
     reason: &'static str,
     result: &ExecResult,
@@ -277,7 +306,7 @@ fn log_report(
     if ready {
         info!(
             run_id = %run_id,
-            sandbox_id = %sandbox.id(),
+            sandbox_id,
             reason,
             helper_termination = helper_exec_termination_label(result),
             removed_entries = report.removed_entries,
@@ -292,7 +321,7 @@ fn log_report(
     } else {
         warn!(
             run_id = %run_id,
-            sandbox_id = %sandbox.id(),
+            sandbox_id,
             reason,
             helper_termination = helper_exec_termination_label(result),
             removed_entries = report.removed_entries,
@@ -311,7 +340,7 @@ fn log_report(
 mod tests {
     use super::*;
 
-    use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
+    use sandbox::{Sandbox, SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::MockSandbox;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -345,9 +374,29 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let guard = tracing::subscriber::set_default(subscriber);
         tracing::callsite::rebuild_interest_cache();
-        let result = prepare_sandbox_for_idle_reuse(sandbox, run_id, None).await;
+        let result = execute_preparation(sandbox, run_id, None).await;
         drop(guard);
         (result, captured.entries())
+    }
+
+    async fn execute_preparation(
+        sandbox: &MockSandbox,
+        run_id: RunId,
+        retained_runtime_dir: Option<&str>,
+    ) -> Result<(), IdleReusePreparationFailure> {
+        let preparation = IdleReusePreparation::new(sandbox.id(), run_id, retained_runtime_dir)?;
+        let result = sandbox
+            .exec_with_diagnostic_label(&preparation.exec_request(), "idle-reuse-preparation")
+            .await
+            .map_err(|error| {
+                reject_without_exec(
+                    sandbox.id(),
+                    run_id,
+                    ReuseRejectionReason::HelperFailed,
+                    format!("reuse-preparation exec failed: {error}"),
+                )
+            })?;
+        preparation.validate_result(&result)
     }
 
     fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
@@ -373,14 +422,22 @@ mod tests {
         let run_id = RunId::new_v4();
         let retained = "/home/user/.vm0/guest-agent/runs/previous";
 
-        prepare_sandbox_for_idle_reuse(&sandbox, run_id, Some(retained))
+        execute_preparation(&sandbox, run_id, Some(retained))
             .await
             .expect("healthy guest should be prepared");
 
         let calls = sandbox.exec_calls();
         assert_eq!(calls.len(), 1);
         assert!(calls[0].sudo);
-        assert!(calls[0].cmd.ends_with("guest-agent prepare-for-reuse"));
+        let helper_position = calls[0]
+            .cmd
+            .find("guest-agent prepare-for-reuse")
+            .expect("reuse helper command");
+        let mount_position = calls[0]
+            .cmd
+            .find("workspace_device=")
+            .expect("workspace mount command");
+        assert!(helper_position < mount_position);
         let request: ReusePreparationRequest = serde_json::from_slice(
             calls[0]
                 .stdin_bytes
@@ -491,6 +548,27 @@ mod tests {
                 Some(expected_reason)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn preparation_distinguishes_workspace_mount_failure() {
+        let sandbox = MockSandbox::new("workspace-mount-failure");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED,
+            serde_json::to_vec(&healthy_reuse_preparation_report()).unwrap(),
+            b"workspace mount failed".to_vec(),
+        )));
+
+        let (result, events) = capture_preparation(&sandbox, RunId::new_v4()).await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            captured_event(&events, "sandbox rejected from idle reuse")
+                .fields
+                .get("reason")
+                .map(String::as_str),
+            Some("workspace_mount_failed")
+        );
     }
 
     #[tokio::test]

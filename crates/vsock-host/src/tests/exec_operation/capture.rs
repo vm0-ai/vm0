@@ -8,11 +8,31 @@ use vsock_proto::{
 };
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, operation_count, read_guest_message,
-    read_guest_messages, send_exec_result, send_raw_exec_result, setup_host_and_guest,
+    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
+    operation_count, read_guest_message, read_guest_messages, send_exec_result,
+    send_raw_exec_result, setup_host_and_guest,
 };
 use super::start_capture_operation;
-use crate::{ExecCaptureRequest, ExecOperationRequest, ExecOwnedCapturedOutput};
+use crate::operation_tracker::NormalOperationReadiness;
+use crate::{
+    ExecCaptureRequest, ExecOperationRequest, ExecOwnedCapturedOutput, FencedExecError,
+    NormalOperationFenceRejection,
+};
+
+fn fenced_capture_request() -> ExecCaptureRequest<'static> {
+    ExecCaptureRequest {
+        timeout_ms: 5000,
+        command: "final-preparation",
+        env: &[],
+        sudo: true,
+        label: "fenced-capture",
+        stdout_limit_bytes: 1024,
+        stderr_limit_bytes: 1024,
+        expected_exit_codes: &[],
+        stdin_bytes: None,
+        wait_timeout: Duration::from_secs(5),
+    }
+}
 
 #[tokio::test]
 async fn exec_operation_capture_sends_start_and_receives_result() {
@@ -81,6 +101,112 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
         }
     );
     assert_eq!(operation_count(&host), 0);
+}
+
+#[tokio::test]
+async fn fenced_capture_excludes_normal_operations_until_fence_drops() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.exec_operation_capture_with_fence(fenced_capture_request())
+                .await
+        })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Fenced
+    );
+    let error = match host
+        .start_exec_operation(ExecOperationRequest {
+            timeout_ms: 5000,
+            command: "competing-operation",
+            env: &[],
+            sudo: false,
+            label: "competing-operation",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 16 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 16 },
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            stream_queue_capacity: None,
+        })
+        .await
+    {
+        Ok(_) => panic!("competing operation should be fenced"),
+        Err(error) => error,
+    };
+    assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+
+    send_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"ready",
+        b"",
+    )
+    .await;
+    let (result, fence) = task.await.unwrap().unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Fenced
+    );
+
+    drop(fence);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn fenced_capture_rejects_an_existing_normal_operation() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let handle = start_capture_operation(&host, "existing-operation").await;
+    let msg = read_guest_message(&mut guest).await;
+
+    let error = host
+        .exec_operation_capture_with_fence(fenced_capture_request())
+        .await
+        .expect_err("busy normal-operation tracker should reject fencing");
+    assert!(matches!(
+        error,
+        FencedExecError::FenceRejected(NormalOperationFenceRejection::Busy)
+    ));
+
+    send_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn dropping_fenced_capture_after_write_is_not_parkable() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.exec_operation_capture_with_fence(fenced_capture_request())
+                .await
+        })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    task.abort();
+    let _ = task.await;
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]
