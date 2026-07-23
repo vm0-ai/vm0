@@ -645,6 +645,11 @@ pub fn ensure_dir(path: impl AsRef<Path>) -> io::Result<()> {
 ///
 /// This applies [`ensure_dir`] to the path's parent and returns
 /// [`io::ErrorKind::InvalidInput`] when the path has no parent.
+///
+/// On Unix, missing directory components are created with `0700` permissions,
+/// an existing final parent directory is tightened to `0700`, and `..` or
+/// symlinked components are rejected. On non-Unix targets, this creates the
+/// parent path without claiming equivalent permission or symlink guarantees.
 pub fn ensure_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
     let parent = path.parent().ok_or_else(|| {
@@ -815,9 +820,15 @@ pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
 
 /// Write bytes to a runtime-private file.
 ///
-/// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and private permissions are
-/// enforced on the final parent directory.
+/// This creates or truncates the file through [`create_private`], then writes
+/// all provided bytes.
+///
+/// On Unix, missing parent directories are created with `0700` permissions, an
+/// existing final parent directory is tightened to `0700`, and `..` or
+/// symlinked parent components are rejected. The final path must be a regular
+/// file rather than a symlink, and its permissions are tightened to `0600`. On
+/// non-Unix targets, parent directories are created and the file is created or
+/// truncated without claiming equivalent permission or symlink guarantees.
 pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     let mut file = create_private(path)?;
     std::io::Write::write_all(&mut file, bytes.as_ref())
