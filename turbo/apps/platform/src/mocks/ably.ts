@@ -51,7 +51,7 @@ let nextSubscribeError: Error | null = null;
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
  * to simulate a server-side Ably publish.
  */
-export function triggerAblyEvent(topic: string, data: unknown = null): void {
+export function triggerAblyEvent(topic: string, data?: unknown): void {
   const message = { name: topic, data };
   const cbs = subscriptions.get(topic);
   if (cbs) {

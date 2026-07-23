@@ -9,10 +9,7 @@ import type {
 
 export interface ChatThreadRealtimeHandlers {
   onThreadDetailChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-  onMessageCreated$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
+  onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
   onMessageUpdated$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
