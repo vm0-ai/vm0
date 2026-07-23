@@ -205,19 +205,18 @@ describe("chat lifecycle", () => {
     });
     const forwardRequestCount = sinceIds.length;
 
-    // Watermark already loaded: no forward sync may fire for this event.
+    // The app-level background IndexedDB sync also handles both events and
+    // issues one cursor fetch each. The open thread must skip its own fetch
+    // for the watermark event and fetch once for the payload-less event, so
+    // the two events add exactly three cursor requests; a broken skip adds a
+    // fourth.
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {
       syncThroughMessageId: messages[1]!.id,
     });
-    // Events process in order, so the payload-less event proving the
-    // handler is alive also proves the previous event fetched nothing.
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
     await waitFor(() => {
-      expect(sinceIds).toHaveLength(forwardRequestCount + 1);
+      expect(sinceIds).toHaveLength(forwardRequestCount + 3);
     });
-    // Realtime events process serially, so the payload-less event's request
-    // proves the watermark event before it completed without fetching.
-    expect(sinceIds).toHaveLength(forwardRequestCount + 1);
   });
 
   it("automatically loads older chat history before publishing messages", async () => {

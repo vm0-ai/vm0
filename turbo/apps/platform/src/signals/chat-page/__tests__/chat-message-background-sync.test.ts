@@ -181,9 +181,6 @@ describe("chat message background sync", () => {
 
   it("skips the fetch when the event watermark is already cached", async () => {
     mockSignedInUser();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: true,
-    });
     const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatMessages$,
