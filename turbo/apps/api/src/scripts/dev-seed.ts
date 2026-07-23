@@ -487,6 +487,9 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
+  // APIDojo Yahoo Finance — https://rapidapi.com/apidojo/api/yahoo-finance1/pricing
+  // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
+  ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.

@@ -4558,6 +4558,13 @@
       "when": 1784788562522,
       "tag": "0650_add_zero_weather_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 651,
+      "version": "7",
+      "when": 1784804285303,
+      "tag": "0651_add_zero_finance_pricing",
+      "breakpoints": true
     }
   ]
 }

@@ -44,6 +44,7 @@ export enum FeatureSwitchKey {
   CanonicalSlackWebVisibility = "canonicalSlackWebVisibility",
   ZeroWebSearch = "zeroWebSearch",
   ZeroWeather = "zeroWeather",
+  ZeroFinance = "zeroFinance",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",

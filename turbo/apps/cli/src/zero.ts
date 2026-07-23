@@ -55,6 +55,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   weather: "weather:read",
   scrape: "scrape:read",
   "web-search": "web-search:read",
+  finance: "finance:read",
   banking: "banking:read",
 };
 
@@ -306,6 +307,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "finance",
+    description: "Query financial instruments through managed zero finance",
+    load: async () => {
+      return (await import("./commands/zero/finance")).zeroFinanceCommand;
+    },
+  },
+  {
     name: "banking",
     description: "Use managed zero banking services",
     load: async () => {
@@ -456,6 +464,9 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("web-search", payload)
       ? []
       : ['  Search the public web? zero web-search "latest news" --json']),
+    ...(shouldHideCommand("finance", payload)
+      ? []
+      : ["  Get a market quote?   zero finance quote AAPL --json"]),
     ...(shouldHideCommand("banking", payload)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),
