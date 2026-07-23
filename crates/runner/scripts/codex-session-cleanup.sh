@@ -270,7 +270,7 @@ delete_matching_session_entries() {
   xargs -0 sh -c '
     for path do
       if [ -f "$path" ] || [ -L "$path" ]; then
-        rm -f -- "$path" || exit 1
+        rm -f -- "$path" 2>/dev/null || exit 1
       fi
     done
   ' sh < "$matching_entries_file" || {

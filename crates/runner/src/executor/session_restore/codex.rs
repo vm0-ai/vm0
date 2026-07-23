@@ -490,6 +490,40 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_script_does_not_disclose_candidate_when_deletion_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let existing_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        create_file(&existing_path);
+
+        let fake_bin = temp.path().join("fake-bin");
+        fs::create_dir(&fake_bin).unwrap();
+        let fake_rm = fake_bin.join("rm");
+        fs::write(&fake_rm, "#!/bin/sh\nprintf '%s\\n' \"$*\" >&2\nexit 1\n").unwrap();
+        let mut permissions = fs::metadata(&fake_rm).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_rm, permissions).unwrap();
+        let path = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
+
+        let output = cleanup_command(
+            &codex_home,
+            &fallback_path,
+            SESSION_ID,
+            SESSION_ID_NO_DASHES,
+        )
+        .env("PATH", path)
+        .output()
+        .unwrap();
+
+        assert_failure_contains(&output, "failed to delete codex session files");
+        assert!(output.stdout.is_empty());
+        assert!(existing_path.exists());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(!stderr.contains(existing_path.to_str().unwrap()));
+    }
+
+    #[test]
     fn cleanup_script_does_not_select_noncanonical_date_or_time() {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
