@@ -3446,7 +3446,7 @@ async fn killpg_kills_entire_process_group() {
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use tokio::net::UnixListener;
-use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::{Mutex as TokioMutex, Notify};
 
 /// A captured HTTP request from the mock FC API server.
 #[derive(Debug, Clone)]
@@ -3501,6 +3501,11 @@ impl MockBalloonStats {
 enum MockBalloonStatsReply {
     Ok(MockBalloonStats),
     DelayedOk(Duration, MockBalloonStats),
+    GatedOk {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+        stats: MockBalloonStats,
+    },
     Status(u16),
 }
 
@@ -3666,6 +3671,15 @@ async fn spawn_mock_fc_api_with_stats_source(
                         MockBalloonStatsReply::Ok(stats) => mock_balloon_stats_ok_response(&stats),
                         MockBalloonStatsReply::DelayedOk(delay, stats) => {
                             tokio::time::sleep(delay).await;
+                            mock_balloon_stats_ok_response(&stats)
+                        }
+                        MockBalloonStatsReply::GatedOk {
+                            entered,
+                            release,
+                            stats,
+                        } => {
+                            entered.notify_one();
+                            release.notified().await;
                             mock_balloon_stats_ok_response(&stats)
                         }
                         MockBalloonStatsReply::Status(status) => {
@@ -5006,45 +5020,71 @@ async fn unpark_retry_after_partial_failure_resumes_idempotently() {
 
 #[tokio::test]
 async fn park_waits_for_balloon_before_pause() {
-    // Mock returns actual_mib = 0 initially, then 1536 before the next
-    // poll interval. This uses the real clock because
-    // the API boundary uses a real Unix socket.
-    let balloon_actual = Arc::new(AtomicU32::new(0));
-    let (sock, reqs, _dir) = spawn_mock_fc_api(
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let ready_response_entered = Arc::new(Notify::new());
+    let release_ready_response = Arc::new(Notify::new());
+    let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
         std::collections::VecDeque::new(),
-        Some(Arc::clone(&balloon_actual)),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&ready_response_entered),
+                release: Arc::clone(&release_ready_response),
+                stats: MockBalloonStats::new(target_mib, target_mib),
+            },
+        ]),
     )
     .await;
 
-    // Set actual to target before the second 500ms poll.
-    let actual_clone = Arc::clone(&balloon_actual);
-    tokio::spawn(async move {
-        // Let the first stats request complete before changing the value.
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        actual_clone.store(1536, Ordering::Relaxed);
+    let mut park_task = tokio::spawn(async move {
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+        let result = park_inner(&mut is_parked, 2048, &mut controller, &sock, "wait-test").await;
+        (result, is_parked, controller)
     });
 
-    let mut controller = Some(test_balloon_controller());
-    let mut is_parked = false;
+    let early_park_result = tokio::select! {
+        result = &mut park_task => Some(result),
+        () = ready_response_entered.notified() => None,
+    };
+    let completed_before_release = park_task.is_finished();
+    let requests_before_release = reqs.lock().await.clone();
+    release_ready_response.notify_one();
+    let park_result = match early_park_result {
+        Some(result) => result,
+        None => park_task.await,
+    };
 
-    park_inner(&mut is_parked, 2048, &mut controller, &sock, "wait-test")
-        .await
-        .unwrap();
-
-    assert!(is_parked);
-    let reqs = reqs.lock().await;
-
-    // Should have at least one GET /balloon/statistics before the PATCH /vm pause.
-    let stats_gets: Vec<_> = reqs
-        .iter()
-        .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
-        .collect();
     assert!(
-        !stats_gets.is_empty(),
-        "expected at least one balloon stats poll before pause"
+        !completed_before_release,
+        "park completed before the target-reaching statistics response was released"
+    );
+    let (result, is_parked, controller) = park_result.unwrap();
+    result.unwrap();
+
+    let requests_before_release: Vec<_> = requests_before_release
+        .iter()
+        .map(|request| (request.method.as_str(), request.path.as_str()))
+        .collect();
+    assert_eq!(
+        requests_before_release,
+        [
+            ("PATCH", "/balloon"),
+            ("GET", "/balloon/statistics"),
+            ("GET", "/balloon/statistics"),
+        ],
+        "VM pause must be withheld while the target-reaching response is gated"
     );
 
-    // Verify PATCH ordering: balloon inflate, then vm pause.
+    assert!(is_parked);
+    assert!(controller.is_none());
+    let reqs = reqs.lock().await;
+    let stats_gets = reqs
+        .iter()
+        .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+        .count();
+    assert_eq!(stats_gets, 2);
+
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 2);
     assert_eq!(ps[0].path, "/balloon");

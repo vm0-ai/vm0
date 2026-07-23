@@ -7,8 +7,6 @@ import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   IconAlertTriangle,
-  IconCarambola,
-  IconCarambolaFilled,
   IconCheck,
   IconChevronDown,
   IconDownload,
@@ -23,7 +21,6 @@ import {
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { r2ImageTransformUrl } from "@vm0/core";
 import {
   useGet,
@@ -50,11 +47,8 @@ import {
 import { agents$ } from "../../signals/agent.ts";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import {
-  applyArtifactFavorites,
-  artifactFavoriteOverrides$,
   artifactsGridElement$,
   artifactsGridWidth$,
-  artifactsFavoritesOnly$,
   artifactsSearch$,
   artifactsScrollMetrics$,
   artifactsScrollViewport$,
@@ -67,13 +61,11 @@ import {
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
-  remoteArtifactFavoriteUrls$,
   requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
   setArtifactCardRef$,
   setArtifactsGridRef$,
-  setArtifactsFavoritesOnly$,
   setArtifactsScrollViewportRef$,
   setArtifactsSearch$,
   setSelectedArtifactsAgentId$,
@@ -81,15 +73,12 @@ import {
   startArtifactChat$,
   syncArtifacts$,
   syncArtifactsScrollMetrics$,
-  toggleArtifactFavorite$,
-  type ArtifactPageItem,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
 import {
   classifyChatAttachment,
   type BodyPreviewKind,
 } from "../../signals/chat-page/parse-body-blocks.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   lightboxUrl$,
@@ -460,69 +449,38 @@ function ArtifactsToolbar({
   search,
   selectedAgentId,
   selectedCategory,
-  favoritesOnly,
-  showFavoritesFilter,
   agents,
   onSearchChange,
   onAgentChange,
   onCategoryChange,
-  onFavoritesOnlyChange,
 }: {
   readonly search: string;
   readonly selectedAgentId: string | null;
   readonly selectedCategory: ArtifactCategory | null;
-  readonly favoritesOnly: boolean;
-  readonly showFavoritesFilter: boolean;
   readonly agents: readonly TeamComposeItem[];
   readonly onSearchChange: (value: string) => void;
   readonly onAgentChange: (value: string | null) => void;
   readonly onCategoryChange: (value: ArtifactCategory | null) => void;
-  readonly onFavoritesOnlyChange: (value: boolean) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-1 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1 sm:max-w-sm">
-            <IconSearch
-              aria-hidden
-              size={15}
-              stroke={1.5}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-            />
-            <Input
-              aria-label="Search artifacts"
-              placeholder="Search artifacts..."
-              value={search}
-              onChange={(event) => {
-                onSearchChange(event.target.value);
-              }}
-              className="pl-9"
-            />
-          </div>
-          {showFavoritesFilter && (
-            <button
-              type="button"
-              aria-label="Show favorite artifacts"
-              aria-pressed={favoritesOnly}
-              onClick={() => {
-                onFavoritesOnlyChange(!favoritesOnly);
-              }}
-              className={cn(
-                "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium leading-none transition-colors",
-                favoritesOnly
-                  ? "bg-muted text-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-              )}
-            >
-              {favoritesOnly ? (
-                <IconCarambolaFilled size={14} aria-hidden />
-              ) : (
-                <IconCarambola size={14} stroke={1.7} aria-hidden />
-              )}
-              Favorites
-            </button>
-          )}
+        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <IconSearch
+            aria-hidden
+            size={15}
+            stroke={1.5}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+          />
+          <Input
+            aria-label="Search artifacts"
+            placeholder="Search artifacts..."
+            value={search}
+            onChange={(event) => {
+              onSearchChange(event.target.value);
+            }}
+            className="pl-9"
+          />
         </div>
         <ArtifactsAgentFilter
           agents={agents}
@@ -740,25 +698,17 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
 }
 
 interface ArtifactCardActionsProps {
-  readonly favorited: boolean;
-  readonly item: ArtifactPageItem;
+  readonly item: ArtifactItem;
   readonly previewUrl: string;
-  readonly favoriteActionEnabled: boolean;
-  readonly showFavoriteAction: boolean;
   readonly onOpenChat: (threadId: string) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
 }
 
 function ArtifactCardActions({
-  favorited,
   item,
   previewUrl,
-  favoriteActionEnabled,
-  showFavoriteAction,
   onOpenChat,
   onStartChat,
-  onToggleFavorite,
 }: ArtifactCardActionsProps) {
   return (
     <div
@@ -770,38 +720,6 @@ function ArtifactCardActions({
         event.stopPropagation();
       }}
     >
-      {showFavoriteAction && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted",
-            favorited && "text-amber-500 hover:text-amber-500",
-          )}
-          aria-label={
-            favorited
-              ? `Remove ${item.filename} from favorites`
-              : `Add ${item.filename} to favorites`
-          }
-          aria-pressed={favorited}
-          disabled={!favoriteActionEnabled}
-          title={
-            favorited
-              ? `Remove ${item.filename} from favorites`
-              : `Add ${item.filename} to favorites`
-          }
-          onClick={() => {
-            onToggleFavorite(item);
-          }}
-        >
-          {favorited ? (
-            <IconCarambolaFilled size={16} aria-hidden />
-          ) : (
-            <IconCarambola size={16} stroke={1.5} aria-hidden />
-          )}
-        </Button>
-      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -880,25 +798,18 @@ function ArtifactCard({
   onOpenChat,
   onOpenPreview,
   onStartChat,
-  onToggleFavorite,
-  favoriteActionEnabled,
-  showFavoriteAction,
 }: {
   readonly cardRef: (element: HTMLElement | null) => void;
   readonly index: number;
-  readonly item: ArtifactPageItem;
+  readonly item: ArtifactItem;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
-  readonly favoriteActionEnabled: boolean;
-  readonly showFavoriteAction: boolean;
 }) {
   const kindLabel = formatArtifactKind(item.artifactKind);
   const contextLabel = artifactContextLabel({ item, kindLabel });
   const previewUrl = publicAttachmentUrl(item.url);
   const previewable = artifactLightboxKind(item) !== "file";
-  const favorited = item.isFavorited;
   return (
     <article
       ref={cardRef}
@@ -956,14 +867,10 @@ function ArtifactCard({
           </p>
         </div>
         <ArtifactCardActions
-          favorited={favorited}
-          favoriteActionEnabled={favoriteActionEnabled}
           item={item}
           previewUrl={previewUrl}
-          showFavoriteAction={showFavoriteAction}
           onOpenChat={onOpenChat}
           onStartChat={onStartChat}
-          onToggleFavorite={onToggleFavorite}
         />
       </div>
     </article>
@@ -1216,11 +1123,8 @@ function ArtifactsList({
   onOpenChat,
   onOpenPreview,
   onStartChat,
-  onToggleFavorite,
-  favoriteActionEnabled,
-  showFavoriteAction,
 }: {
-  readonly artifacts: readonly ArtifactPageItem[];
+  readonly artifacts: readonly ArtifactItem[];
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
@@ -1228,9 +1132,6 @@ function ArtifactsList({
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
-  readonly onToggleFavorite: (item: ArtifactPageItem) => void;
-  readonly favoriteActionEnabled: boolean;
-  readonly showFavoriteAction: boolean;
 }) {
   const scrollViewport = useGet(artifactsScrollViewport$);
   const scrollMetrics = useGet(artifactsScrollMetrics$);
@@ -1316,14 +1217,11 @@ function ArtifactsList({
             <ArtifactCard
               key={artifact.artifactItemId}
               cardRef={setArtifactCardRef}
-              favoriteActionEnabled={favoriteActionEnabled}
               index={index}
               item={artifact}
               onOpenChat={onOpenChat}
               onOpenPreview={onOpenPreview}
               onStartChat={onStartChat}
-              onToggleFavorite={onToggleFavorite}
-              showFavoriteAction={showFavoriteAction}
             />
           );
         })}
@@ -1339,13 +1237,9 @@ export function ArtifactsPage() {
   const search = useGet(artifactsSearch$);
   const selectedAgentId = useGet(selectedArtifactsAgentId$);
   const selectedCategory = useGet(selectedArtifactsCategory$);
-  const favoritesOnly = useGet(artifactsFavoritesOnly$);
-  const favoriteOverrides = useGet(artifactFavoriteOverrides$);
   const setSearch = useSet(setArtifactsSearch$);
   const setSelectedAgentId = useSet(setSelectedArtifactsAgentId$);
   const setSelectedCategory = useSet(setSelectedArtifactsCategory$);
-  const setFavoritesOnly = useSet(setArtifactsFavoritesOnly$);
-  const toggleFavorite = useSet(toggleArtifactFavorite$);
   const openChat = useSet(navigateToArtifactThread$);
   const startChat = useSet(startArtifactChat$);
   const pageSignal = useGet(pageSignal$);
@@ -1357,15 +1251,7 @@ export function ArtifactsPage() {
   const lightboxUrl = useGet(lightboxUrl$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
   const cachedLoadable = useLastLoadable(cachedArtifacts$);
-  const favoriteUrlsLoadable = useLastLoadable(remoteArtifactFavoriteUrls$);
   const agents = useLastResolved(agents$) ?? [];
-  const features = useLastResolved(featureSwitch$);
-  const artifactFavoritesEnabled =
-    features?.[FeatureSwitchKey.ArtifactFavorites] ?? false;
-  const favoriteUrls =
-    favoriteUrlsLoadable.state === "hasData" ? favoriteUrlsLoadable.data : null;
-  const artifactFavoritesReady =
-    artifactFavoritesEnabled && favoriteUrls !== null;
   const remoteData =
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
@@ -1373,20 +1259,14 @@ export function ArtifactsPage() {
   // Keep the bounded cache visible while incremental pages arrive. A full
   // remote snapshot replaces it; an incremental response merges into it until
   // the background sync has rebuilt the complete local snapshot.
-  const sourceData = mergeArtifactSources(
+  const sourceArtifacts = mergeArtifactSources(
     cachedData?.artifacts ?? [],
     remoteData,
-  );
-  const sourceArtifacts = applyArtifactFavorites(
-    sourceData,
-    favoriteUrls,
-    favoriteOverrides,
   );
   const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,
     category: selectedCategory,
-    favoritesOnly: artifactFavoritesReady && favoritesOnly,
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
@@ -1435,17 +1315,13 @@ export function ArtifactsPage() {
             search={search}
             selectedAgentId={selectedAgentId}
             selectedCategory={selectedCategory}
-            favoritesOnly={artifactFavoritesReady && favoritesOnly}
-            showFavoritesFilter={artifactFavoritesReady}
             agents={agents}
             onSearchChange={setSearch}
             onAgentChange={setSelectedAgentId}
             onCategoryChange={setSelectedCategory}
-            onFavoritesOnlyChange={setFavoritesOnly}
           />
           <ArtifactsList
             artifacts={artifacts}
-            favoriteActionEnabled={artifactFavoritesReady}
             loading={loading}
             error={error}
             visibleCount={visibleCount}
@@ -1455,10 +1331,6 @@ export function ArtifactsPage() {
             onStartChat={(item) => {
               detach(startChat(item, pageSignal), Reason.DomCallback);
             }}
-            onToggleFavorite={(item) => {
-              detach(toggleFavorite(item, pageSignal), Reason.DomCallback);
-            }}
-            showFavoriteAction={artifactFavoritesEnabled}
           />
         </div>
       </main>
