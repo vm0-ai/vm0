@@ -97,7 +97,7 @@ async function selectIncompleteRoundFrontier(
             )
           )
         ORDER BY
-          ${desc(chatMessages.seqId)},
+          ${desc(chatMessages.seqId)}
         LIMIT 1
       ) AS candidate
       WHERE incomplete_frontier.depth < ${INCOMPLETE_ROUND_LIMIT + 1}

@@ -173,8 +173,13 @@ async function validateChatEventSourcesAreAppendOnly(
 
     const thread = await client.query<{ id: string }>(
       `
-        INSERT INTO "chat_threads" ("user_id", "agent_compose_id", "title")
-        VALUES ('append-only-test-user', $1, 'append-only migration test')
+        INSERT INTO "chat_threads" (
+          "user_id",
+          "agent_compose_id",
+          "title",
+          "last_chat_message_seq_id"
+        )
+        VALUES ('append-only-test-user', $1, 'append-only migration test', 1)
         RETURNING "id"
       `,
       [agentComposeId],
@@ -186,8 +191,13 @@ async function validateChatEventSourcesAreAppendOnly(
 
     const message = await client.query<{ id: string }>(
       `
-        INSERT INTO "chat_messages" ("chat_thread_id", "role", "content")
-        VALUES ($1, 'user', 'append-only migration test')
+        INSERT INTO "chat_messages" (
+          "chat_thread_id",
+          "seq_id",
+          "role",
+          "content"
+        )
+        VALUES ($1, 1, 'user', 'append-only migration test')
         RETURNING "id"
       `,
       [threadId],
