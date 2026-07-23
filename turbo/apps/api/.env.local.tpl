@@ -141,6 +141,7 @@ ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
 # Optional: Zero Finance provider (APIDojo via RapidAPI)
+# 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
 ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 
 # Optional: Steam Web API
