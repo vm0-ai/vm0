@@ -39,6 +39,7 @@ function buildCommands(): Command[] {
     new Command("weather"),
     new Command("scrape"),
     new Command("web-search"),
+    new Command("finance"),
     new Command("banking"),
     new Command("goal"),
   ];
@@ -176,6 +177,7 @@ describe("registerZeroCommands", () => {
       "weather",
       "scrape",
       "web-search",
+      "finance",
       "banking",
       "goal",
     ]);
@@ -242,6 +244,18 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("web-search");
+  });
+
+  it("should show finance when finance:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["finance:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("finance");
   });
 
   it("should show credit with either billing read or billing write capability", () => {
@@ -703,6 +717,28 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Scrape a web page?",
+    );
+  });
+
+  it("should show the finance help example when finance:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["finance:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Get a market quote?",
+    );
+  });
+
+  it("should hide the finance help example when finance:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Get a market quote?",
     );
   });
 

@@ -178,6 +178,23 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("web-search:read");
   });
 
+  it("grants finance capability from user feature switch overrides", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const overrideToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ZeroFinance]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "finance:read",
+    );
+    expect(verifyZeroToken(overrideToken)?.capabilities).toContain(
+      "finance:read",
+    );
+  });
+
   it("grants goal capabilities by default", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 

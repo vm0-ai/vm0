@@ -222,6 +222,13 @@ export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
+export {
+  callZeroFinanceChart,
+  callZeroFinanceProfile,
+  callZeroFinanceQuote,
+  callZeroFinanceSearch,
+  type ZeroFinanceResponse,
+} from "./domains/zero-finance";
 
 // Domain modules - Zero Banking
 export {
