@@ -1042,6 +1042,12 @@ async def handle_firewall_request(
                 )
 
         if _firewall_auth_context_needs_resolution(context):
+            probe_failure = flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
+            if isinstance(probe_failure, Exception):
+                return _finish_firewall_auth_result(
+                    flow,
+                    _set_firewall_auth_resolution_failure(flow, context, probe_failure),
+                )
             try:
                 token_meta = await get_firewall_headers(
                     context.auth_cache_key,
@@ -1119,13 +1125,14 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
                 request_path_snapshot=request_path_snapshot,
             )
             raise
-        except Exception:
+        except Exception as exc:
             _restore_header_phase_probe_state(
                 flow,
                 metadata_snapshot=metadata_snapshot,
                 request_headers_snapshot=request_headers_snapshot,
                 request_path_snapshot=request_path_snapshot,
             )
+            flow.metadata[metadata_keys.FIREWALL_AUTH_PROBE_FAILURE] = exc
             return FirewallHeaderPhaseAuthResult.FALLBACK
     else:
         token_meta = _empty_firewall_auth_metadata()

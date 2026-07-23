@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.147.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.7...runner-rs-v0.147.8) (2026-07-23)
+
+## [0.147.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.6...runner-rs-v0.147.7) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** preserve session history cancellation ([#22705](https://github.com/vm0-ai/vm0/issues/22705)) ([2a968e3](https://github.com/vm0-ai/vm0/commit/2a968e3dd063c4436ad8218ed55f110494c29b9c))
+
 ## [0.147.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.5...runner-rs-v0.147.6) (2026-07-23)
 
 

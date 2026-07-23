@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.0...guest-contracts-v0.4.1) (2026-07-23)
+
+
+### Documentation
+
+* **rust:** expose private path guarantees in guest-agent ([#22710](https://github.com/vm0-ai/vm0/issues/22710)) ([ef12e55](https://github.com/vm0-ai/vm0/commit/ef12e55e627b4e627c8efbcf30867bc493222785))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.17...guest-contracts-v0.4.0) (2026-07-22)
 
 

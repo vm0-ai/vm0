@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.623.0](https://github.com/vm0-ai/vm0/compare/app-v0.622.1...app-v0.623.0) (2026-07-23)
+
+
+### Features
+
+* **activity:** show millisecond run offsets in activity logs ([#22723](https://github.com/vm0-ai/vm0/issues/22723)) ([e904fd8](https://github.com/vm0-ai/vm0/commit/e904fd8276ec8b84bec7cc0467d4374c812c6960))
+* roll out chat message background sync ([#22708](https://github.com/vm0-ai/vm0/issues/22708)) ([667d6af](https://github.com/vm0-ai/vm0/commit/667d6af7f4edbcde4c251bfbbdaa2318dc9a863d))
+
+
+### Bug Fixes
+
+* show full step text and drop leading icon in onboarding workflow cards ([#22693](https://github.com/vm0-ai/vm0/issues/22693)) ([89975ab](https://github.com/vm0-ai/vm0/commit/89975ab106ef262a16fe3b2c0ddfeb7aec0d6d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.5
+    * @vm0/connectors bumped to 1.183.0
+    * @vm0/core bumped to 8.455.0
+
+## [0.622.1](https://github.com/vm0-ai/vm0/compare/app-v0.622.0...app-v0.622.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **artifacts:** render cached and paged results progressively ([#22646](https://github.com/vm0-ai/vm0/issues/22646)) ([53c7133](https://github.com/vm0-ai/vm0/commit/53c71331364bf31e8ffff6bf77dfbf1b88816121))
+* **platform:** hydrate active chats from indexeddb before remote refresh ([#22669](https://github.com/vm0-ai/vm0/issues/22669)) ([709eade](https://github.com/vm0-ai/vm0/commit/709eadedc178d3a371078ff312eaebf3c384bc91))
+
+
+### Refactoring
+
+* **platform:** remove presentation element dragging ([#22696](https://github.com/vm0-ai/vm0/issues/22696)) ([fdb7430](https://github.com/vm0-ai/vm0/commit/fdb74306ad150e81346e81c8b1c633ba1195ac2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.4
+    * @vm0/connectors bumped to 1.182.2
+    * @vm0/core bumped to 8.454.1
+
 ## [0.622.0](https://github.com/vm0-ai/vm0/compare/app-v0.621.0...app-v0.622.0) (2026-07-23)
 
 

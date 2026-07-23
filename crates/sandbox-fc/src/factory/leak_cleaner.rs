@@ -1,7 +1,6 @@
 use tracing::{info, warn};
 
-use crate::cow_cleanup::CowCleanupOutcome;
-use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
+use crate::cow_cleanup::{CowCleanupOutcome, destroy_cow_device_with_retries};
 use crate::leaked_resources::LeakedResources;
 use crate::network::NetnsPoolHandle;
 

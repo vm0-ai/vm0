@@ -2,10 +2,10 @@
 //!
 //! `SandboxCreateTransaction` owns resources acquired while
 //! `FirecrackerFactory::create` builds a sandbox. The normal create path
-//! acquires a prewarmed COW slot, renames that slot workspace to the sandbox
-//! workspace, optionally prepares the workspace drive image, creates the socket
-//! directory, acquires a network namespace, creates the NBD COW device, and
-//! then commits those stable resources into `SandboxCreateResources`.
+//! prepares a stable sandbox workspace, optionally prepares the workspace drive
+//! image, creates the socket directory, acquires a network namespace, checks
+//! out a prepared NBD COW device, and then commits those stable resources into
+//! `SandboxCreateResources`.
 //!
 //! Until commit succeeds, every acquired resource remains transaction-owned.
 //! Rollback keeps the cleanup order tied to resource safety: destroy the COW
@@ -16,8 +16,8 @@
 //! hand stable resources to `LeakCleaner` when possible.
 //!
 //! `Drop` is only a synchronous fallback for abandoned transactions. It can
-//! clean local slot, socket, and workspace state, but async-only resources such
-//! as COW devices and network leases need leak-cleaner handoff. That handoff
+//! clean local socket and workspace state, but async-only resources such as COW
+//! devices and network leases need leak-cleaner handoff. That handoff
 //! requires a stable workspace path, socket directory, live leak channel, and at
 //! least one async-only resource; otherwise the transaction logs what remains
 //! and runner GC is the final backstop.
@@ -34,10 +34,8 @@ use tracing::warn;
 
 use nbd_cow::PooledNbdCowDevice;
 
-use crate::cow_cleanup::CowCleanupOutcome;
-use crate::cow_pool::PrewarmedSlot;
+use crate::cow_cleanup::{CowCleanupOutcome, destroy_cow_device_with_retries};
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
-use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsLease, NetnsPoolHandle};
 use crate::paths::{SandboxPaths, SockPaths};
@@ -83,7 +81,6 @@ pub(super) struct CreateRollbackFilesystemCleanup {
 
 enum CreateRollbackFilesystemCleanupStep {
     RemoveDir { kind: &'static str, path: PathBuf },
-    DestroySlot(PrewarmedSlot),
 }
 
 impl CreateRollbackFilesystemCleanup {
@@ -96,11 +93,6 @@ impl CreateRollbackFilesystemCleanup {
             .push(CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path });
     }
 
-    fn push_destroy_slot(&mut self, slot: PrewarmedSlot) {
-        self.steps
-            .push(CreateRollbackFilesystemCleanupStep::DestroySlot(slot));
-    }
-
     fn is_empty(&self) -> bool {
         self.steps.is_empty()
     }
@@ -110,9 +102,6 @@ impl CreateRollbackFilesystemCleanup {
             match step {
                 CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path } => {
                     remove_create_rollback_dir_sync(id, kind, path);
-                }
-                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
-                    crate::cow_pool::destroy_slot_sync(slot);
                 }
             }
         }
@@ -241,20 +230,10 @@ impl CreateTransactionCowDevice {
 
 #[derive(Default)]
 enum WorkspaceOwnership {
-    /// No workspace or prewarmed slot is currently owned.
+    /// No workspace is currently owned.
     #[default]
     None,
-    /// A prewarmed COW slot is owned before its workspace is renamed.
-    Slot(PrewarmedSlot),
-    /// The slot workspace rename has started.
-    ///
-    /// The target workspace path may or may not exist on disk, so rollback and
-    /// `Drop` must account for both the slot source and target path.
-    RenameInProgress {
-        slot: PrewarmedSlot,
-        target_workspace: PathBuf,
-    },
-    /// The rename finished and the stable sandbox workspace path is owned.
+    /// The stable sandbox workspace path is owned.
     Workspace(PathBuf),
 }
 
@@ -262,8 +241,6 @@ impl WorkspaceOwnership {
     fn state_name(&self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::Slot(_) => "slot",
-            Self::RenameInProgress { .. } => "rename_in_progress",
             Self::Workspace(_) => "workspace",
         }
     }
@@ -299,77 +276,15 @@ impl SandboxCreateTransaction {
         }
     }
 
-    pub(super) fn track_slot(&mut self, slot: PrewarmedSlot) -> sandbox::Result<()> {
+    pub(super) fn track_workspace(&mut self, workspace: PathBuf) -> sandbox::Result<()> {
         if !matches!(self.workspace, WorkspaceOwnership::None) {
             return Err(create_transaction_invalid_state(&format!(
-                "cannot track COW slot while workspace state is {}",
+                "cannot track workspace while workspace state is {}",
                 self.workspace.state_name()
             )));
         }
-        self.workspace = WorkspaceOwnership::Slot(slot);
+        self.workspace = WorkspaceOwnership::Workspace(workspace);
         Ok(())
-    }
-
-    pub(super) fn begin_workspace_rename(
-        &mut self,
-        target_workspace: PathBuf,
-    ) -> sandbox::Result<PathBuf> {
-        let current = std::mem::take(&mut self.workspace);
-        match current {
-            WorkspaceOwnership::Slot(slot) => {
-                let slot_workspace = slot.workspace().to_owned();
-                self.workspace = WorkspaceOwnership::RenameInProgress {
-                    slot,
-                    target_workspace,
-                };
-                Ok(slot_workspace)
-            }
-            other => {
-                self.workspace = other;
-                Err(create_transaction_invalid_state(&format!(
-                    "cannot start workspace rename while workspace state is {}",
-                    self.workspace.state_name()
-                )))
-            }
-        }
-    }
-
-    pub(super) fn finish_workspace_rename(&mut self) -> sandbox::Result<()> {
-        let current = std::mem::take(&mut self.workspace);
-        match current {
-            WorkspaceOwnership::RenameInProgress {
-                slot,
-                target_workspace,
-            } => {
-                slot.disarm_after_workspace_rename();
-                self.workspace = WorkspaceOwnership::Workspace(target_workspace);
-                Ok(())
-            }
-            other => {
-                self.workspace = other;
-                Err(create_transaction_invalid_state(&format!(
-                    "cannot finish workspace rename while workspace state is {}",
-                    self.workspace.state_name()
-                )))
-            }
-        }
-    }
-
-    pub(super) fn abort_workspace_rename_after_error(&mut self) -> sandbox::Result<()> {
-        let current = std::mem::take(&mut self.workspace);
-        match current {
-            WorkspaceOwnership::RenameInProgress { slot, .. } => {
-                self.workspace = WorkspaceOwnership::Slot(slot);
-                Ok(())
-            }
-            other => {
-                self.workspace = other;
-                Err(create_transaction_invalid_state(&format!(
-                    "cannot abort workspace rename while workspace state is {}",
-                    self.workspace.state_name()
-                )))
-            }
-        }
     }
 
     pub(super) fn track_sock_dir(&mut self, sock_dir: PathBuf) {
@@ -382,6 +297,14 @@ impl SandboxCreateTransaction {
 
     pub(super) fn track_cow_device(&mut self, cow_device: PooledNbdCowDevice) {
         self.cow_device = Some(CreateTransactionCowDevice::Real(cow_device));
+    }
+
+    pub(super) fn preserve_workspace_on_leak_cleanup(&mut self) {
+        self.delete_workspace_on_leak_cleanup = false;
+    }
+
+    pub(super) fn allow_workspace_delete_on_leak_cleanup(&mut self) {
+        self.delete_workspace_on_leak_cleanup = true;
     }
 
     pub(super) fn commit(&mut self) -> sandbox::Result<SandboxCreateResources> {
@@ -457,7 +380,7 @@ impl SandboxCreateTransaction {
             self.delete_workspace_on_leak_cleanup = backing_files_safe_to_delete;
             !backing_files_safe_to_delete
         } else {
-            false
+            !self.delete_workspace_on_leak_cleanup
         };
         if let Some(network) = self.network.take() {
             self.network = Some(network);
@@ -506,14 +429,6 @@ impl SandboxCreateTransaction {
     ) {
         match std::mem::take(&mut self.workspace) {
             WorkspaceOwnership::None => {}
-            WorkspaceOwnership::Slot(slot) => cleanup.push_destroy_slot(slot),
-            WorkspaceOwnership::RenameInProgress {
-                slot,
-                target_workspace,
-            } => {
-                cleanup.push_remove_dir("workspace", target_workspace);
-                cleanup.push_destroy_slot(slot);
-            }
             WorkspaceOwnership::Workspace(workspace) => {
                 if keep_workspace {
                     warn!(
@@ -531,16 +446,6 @@ impl SandboxCreateTransaction {
     fn cleanup_workspace_on_drop(&mut self) {
         match std::mem::take(&mut self.workspace) {
             WorkspaceOwnership::None => {}
-            WorkspaceOwnership::Slot(slot) => {
-                crate::cow_pool::destroy_slot_sync(slot);
-            }
-            WorkspaceOwnership::RenameInProgress {
-                slot,
-                target_workspace,
-            } => {
-                crate::cow_pool::destroy_slot_sync(slot);
-                let _ = std::fs::remove_dir_all(target_workspace);
-            }
             WorkspaceOwnership::Workspace(workspace) => {
                 if self.delete_workspace_on_leak_cleanup {
                     let _ = std::fs::remove_dir_all(workspace);

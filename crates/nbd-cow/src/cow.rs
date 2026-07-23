@@ -537,6 +537,10 @@ impl CowLayer {
         Ok(())
     }
 
+    pub(crate) fn relocate_cow_file_after_rename(&mut self, cow_path: std::path::PathBuf) {
+        self.cow_path = cow_path;
+    }
+
     /// Save the dirty bitmap to a file.
     pub(crate) fn save_bitmap(&self, path: &Path) -> Result<()> {
         bitmap::save_bitmap(&self.dirty, path)

@@ -374,13 +374,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Prefetch chat thread messages into IndexedDB when message-created realtime events arrive outside the focused thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -430,14 +423,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PresentationElementDragging]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable selecting and dragging presentation elements in the HTML presentation editor.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",

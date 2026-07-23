@@ -300,6 +300,78 @@ async fn destroy_keep_cow_preserves_file() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
+async fn connected_device_survives_cow_path_relocation() {
+    if !nbd_test_available() {
+        return;
+    }
+
+    let fixture = NbdTestFixture::new();
+    let source_cow = fixture.cow_path("pool-slot/cow.img");
+    let target_cow = fixture.cow_path("sandbox/cow.img");
+    fs::create_dir_all(source_cow.parent().expect("source parent")).expect("create source parent");
+    fs::create_dir_all(target_cow.parent().expect("target parent")).expect("create target parent");
+    fs::File::create(&source_cow)
+        .expect("create source COW file")
+        .set_len(fixture.size())
+        .expect("size source COW file");
+
+    let pool = default_device_pool();
+    let mut device = pool
+        .create_cow_device(fixture.base(), &source_cow, fixture.size())
+        .await
+        .expect("create");
+    let dev_path = device.device_path().to_owned();
+
+    fs::rename(&source_cow, &target_cow).expect("relocate connected COW file");
+    device
+        .relocate_cow_file_after_rename(target_cow.clone())
+        .expect("record relocated COW path");
+
+    let marker = "NBD_COW_RELOCATED";
+    let write = Command::new("bash")
+        .args([
+            "-c",
+            &format!(
+                "echo -n '{}' | dd of={} bs=1 count={} conv=notrunc",
+                marker,
+                dev_path.to_string_lossy(),
+                marker.len()
+            ),
+        ])
+        .status()
+        .expect("write relocated COW");
+    assert!(
+        write.success(),
+        "write through relocated device should succeed"
+    );
+
+    let read = Command::new("dd")
+        .args([
+            &format!("if={}", dev_path.to_string_lossy()),
+            "bs=1",
+            &format!("count={}", marker.len()),
+        ])
+        .output()
+        .expect("read relocated COW");
+    assert!(
+        read.status.success(),
+        "read through relocated device should succeed"
+    );
+    assert_eq!(String::from_utf8_lossy(&read.stdout), marker);
+
+    let kept = device
+        .destroy_keep_cow_with_retries(keep_cow_policy())
+        .await
+        .expect("destroy relocated COW");
+    assert_eq!(kept.cow_file, target_cow);
+    assert!(kept.cow_file.exists());
+    assert!(kept.bitmap_file.exists());
+    assert!(!source_cow.exists());
+    pool.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn write_and_read_back_via_block_device() {
     if !nbd_test_available() {
         return;

@@ -91,6 +91,12 @@ impl CowIo {
         .await
     }
 
+    pub(crate) fn relocate_cow_file_after_rename(&self, cow_file: PathBuf) -> Result<()> {
+        let mut cow = lock_cow(&self.inner, "backing-file relocation")?;
+        cow.relocate_cow_file_after_rename(cow_file);
+        Ok(())
+    }
+
     async fn run<T>(
         &self,
         operation: &'static str,
@@ -197,5 +203,42 @@ mod tests {
         let mut restored_data = vec![0; BLOCK_SIZE];
         restored.read(0, &mut restored_data).unwrap();
         assert_eq!(restored_data, write_data);
+    }
+
+    #[tokio::test]
+    async fn relocated_path_controls_lazy_cow_file_open() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0x11; BLOCK_SIZE]).unwrap();
+        base.flush().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let source_dir = tmp.path().join("slot");
+        let target_dir = tmp.path().join("sandbox");
+        std::fs::create_dir(&source_dir).unwrap();
+        std::fs::create_dir(&target_dir).unwrap();
+        let source_cow = source_dir.join("cow.img");
+        let target_cow = target_dir.join("cow.img");
+        std::fs::File::create(&source_cow)
+            .unwrap()
+            .set_len(BLOCK_SIZE as u64)
+            .unwrap();
+        let cow = CowLayer::new(
+            base.path(),
+            &source_cow,
+            BLOCK_SIZE as u64,
+            BLOCK_SIZE,
+            BLOCK_SIZE * 4,
+        )
+        .unwrap();
+        let cow = CowIo::new(cow);
+
+        std::fs::rename(&source_cow, &target_cow).unwrap();
+        cow.relocate_cow_file_after_rename(target_cow.clone())
+            .unwrap();
+        let write_data = vec![0x22; BLOCK_SIZE];
+        cow.write(0, write_data.clone()).await.unwrap();
+        cow.sync().await.unwrap();
+
+        assert!(!source_cow.exists());
+        assert_eq!(std::fs::read(target_cow).unwrap(), write_data);
     }
 }
