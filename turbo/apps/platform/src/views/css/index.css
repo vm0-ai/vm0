@@ -1335,7 +1335,7 @@ details[open] > summary > span:first-child {
   --workflow-action-left: 142px;
   --workflow-action-one-width: 339px;
   --workflow-action-two-width: 341px;
-  --workflow-action-height: 79px;
+  --workflow-action-height: 98px;
   --workflow-action-one-center-x: calc(
     var(--workflow-action-left) + calc(var(--workflow-action-one-width) / 2)
   );
@@ -1676,64 +1676,6 @@ details[open] > summary > span:first-child {
   width: var(--workflow-action-two-width);
 }
 
-.owf-diagram-action-icon {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #f3f5f8;
-}
-
-.owf-diagram-action-icon-filed {
-  background: #1f2329;
-}
-
-.owf-diagram-action-icon-filed span {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #ffffff;
-}
-
-.owf-diagram-action-icon-complete {
-  background: #31a653;
-}
-
-.owf-diagram-action-icon-complete span {
-  position: relative;
-  width: 13px;
-  height: 10px;
-}
-
-.owf-diagram-action-icon-complete span::before,
-.owf-diagram-action-icon-complete span::after {
-  position: absolute;
-  background: #ffffff;
-  content: "";
-}
-
-.owf-diagram-action-icon-complete span::before {
-  top: 1px;
-  left: 1px;
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-}
-
-.owf-diagram-action-icon-complete span::after {
-  right: 1px;
-  bottom: 1px;
-  width: 7px;
-  height: 7px;
-  border: 1.6px solid #ffffff;
-  border-radius: 999px;
-  background: transparent;
-}
-
 .owf-diagram-action-copy {
   display: flex;
   min-width: 0;
@@ -1755,11 +1697,12 @@ details[open] > summary > span:first-child {
 }
 
 .owf-diagram-action-copy span {
-  display: block;
+  display: -webkit-box;
   overflow: hidden;
   color: var(--workflow-diagram-action-muted);
   font-size: 14px;
   line-height: 20px;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }

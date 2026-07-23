@@ -20,6 +20,7 @@ interface GroupedMessageCardProps {
   currentMatchIndex?: number;
   matchStartIndex?: number;
   showConnector?: boolean;
+  startedAt?: string | null;
 }
 
 // Layout constants
@@ -169,6 +170,7 @@ export function GroupedMessageCard({
   currentMatchIndex,
   matchStartIndex = 0,
   showConnector = false,
+  startedAt,
 }: GroupedMessageCardProps) {
   // System event
   if (message.type === "system") {
@@ -177,6 +179,7 @@ export function GroupedMessageCard({
         message={message}
         searchTerm={searchTerm}
         showConnector={showConnector}
+        startedAt={startedAt}
       />
     );
   }
@@ -184,7 +187,11 @@ export function GroupedMessageCard({
   // Result event
   if (message.type === "result") {
     return (
-      <ResultMessageCard message={message} showConnector={showConnector} />
+      <ResultMessageCard
+        message={message}
+        showConnector={showConnector}
+        startedAt={startedAt}
+      />
     );
   }
 
@@ -195,6 +202,7 @@ export function GroupedMessageCard({
         message={message}
         searchTerm={searchTerm}
         showConnector={showConnector}
+        startedAt={startedAt}
       />
     );
   }
@@ -207,6 +215,7 @@ export function GroupedMessageCard({
       currentMatchIndex={currentMatchIndex}
       matchStartIndex={matchStartIndex}
       showConnector={showConnector}
+      startedAt={startedAt}
     />
   );
 }
@@ -215,10 +224,12 @@ function TaskMessageCard({
   message,
   searchTerm,
   showConnector = false,
+  startedAt,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
   showConnector?: boolean;
+  startedAt?: string | null;
 }) {
   const taskData = isTaskEventData(message.eventData)
     ? message.eventData
@@ -230,7 +241,7 @@ function TaskMessageCard({
   const taskStatus = stringValue(taskData?.task_status);
   const isFailed = isFailedTaskStatus(taskStatus);
   const isRunning = !taskStatus;
-  const timestamp = formatEventTime(message.createdAt);
+  const timestamp = formatEventTime(message.createdAt, startedAt);
   const children = message.childMessages ?? [];
   const hasChildren = children.length > 0;
 
@@ -320,6 +331,7 @@ function TaskMessageCard({
                 message={child}
                 searchTerm={searchTerm}
                 showConnector={i < children.length - 1}
+                startedAt={startedAt}
               />
             );
           })}
@@ -333,10 +345,12 @@ function SystemMessageCard({
   message,
   searchTerm,
   showConnector = false,
+  startedAt,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
   showConnector?: boolean;
+  startedAt?: string | null;
 }) {
   const eventData = isRecord(message.eventData) ? message.eventData : {};
   const subtype =
@@ -349,11 +363,12 @@ function SystemMessageCard({
         message={message}
         searchTerm={searchTerm}
         showConnector={showConnector}
+        startedAt={startedAt}
       />
     );
   }
 
-  const timestamp = formatEventTime(message.createdAt);
+  const timestamp = formatEventTime(message.createdAt, startedAt);
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
@@ -384,12 +399,14 @@ function SystemMessageCard({
 function ResultMessageCard({
   message,
   showConnector = false,
+  startedAt,
 }: {
   message: GroupedMessage;
   showConnector?: boolean;
+  startedAt?: string | null;
 }) {
   const eventData = isRecord(message.eventData) ? message.eventData : {};
-  const timestamp = formatEventTime(message.createdAt);
+  const timestamp = formatEventTime(message.createdAt, startedAt);
   const isError = eventData.is_error === true || eventData.success === false;
   return (
     <div className="relative">
@@ -477,10 +494,12 @@ function TodoCard({
   message,
   searchTerm,
   showConnector = false,
+  startedAt,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
   showConnector?: boolean;
+  startedAt?: string | null;
 }) {
   const todoItems = message.todoState ?? [];
   const operationErrors = getTodoOperationErrors(message);
@@ -508,7 +527,7 @@ function TodoCard({
       })),
   );
 
-  const timestamp = formatEventTime(message.createdAt);
+  const timestamp = formatEventTime(message.createdAt, startedAt);
   const todoKeyCounts = new Map<string, number>();
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
@@ -817,12 +836,14 @@ function AssistantMessageCard({
   currentMatchIndex,
   matchStartIndex,
   showConnector = false,
+  startedAt,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
   showConnector?: boolean;
+  startedAt?: string | null;
 }) {
   const { thinkingBlocks, textBefore, textAfter, toolOperations } = message;
   const thinkingText = thinkingBlocks?.join("\n\n");
@@ -831,7 +852,7 @@ function AssistantMessageCard({
   const textBeforeMatches = countMatches(textBefore, searchTerm);
   const thinkingMatches = countMatches(thinkingText, searchTerm);
   const elements: React.ReactNode[] = [];
-  const timestamp = formatEventTime(message.createdAt);
+  const timestamp = formatEventTime(message.createdAt, startedAt);
 
   if (thinkingText) {
     const isLastElement = !textBefore && !hasTools && !textAfter;
