@@ -937,9 +937,11 @@ function buildWorkflowDecorations(
       return;
     }
     for (const match of text.matchAll(pattern)) {
-      const start = pos + (match.index ?? 0);
+      const matchStart = pos + (match.index ?? 0);
+      const workflowStart = match[0].lastIndexOf("/");
+      const start = matchStart + workflowStart;
       decorations.push(
-        Decoration.inline(start, start + match[0].length, {
+        Decoration.inline(start, matchStart + match[0].length, {
           class: WORKFLOW_HIGHLIGHT_CLASS,
         }),
       );

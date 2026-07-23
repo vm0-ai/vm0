@@ -60,7 +60,7 @@ export function workflowTokenPattern(
   const escaped = workflowNames.map((name) => {
     return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   });
-  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
+  return new RegExp(`(?:^|\\s)/(?:${escaped.join("|")})(?=$|\\s)`, "g");
 }
 
 export function buildComposerSlashWorkflows({
