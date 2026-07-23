@@ -10,10 +10,17 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import { command } from "ccstate";
-import { testRuntimeStateContract } from "@vm0/api-contracts/contracts/test-runtime-state";
+import {
+  testRuntimeStateContract,
+  type TestRuntimeStateActionBody,
+} from "@vm0/api-contracts/contracts/test-runtime-state";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { storages } from "@vm0/db/schema/storage";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -249,6 +256,68 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
   signal.throwIfAborted();
 }
 
+async function removeRunCanonicalStorageState(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .update(agentRuns)
+    .set({ storageMounts: null })
+    .where(eq(agentRuns.id, runId));
+  signal.throwIfAborted();
+  await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`${runnerJobQueue.executionContext} - 'storageMounts'`,
+    })
+    .where(eq(runnerJobQueue.runId, runId));
+  signal.throwIfAborted();
+}
+
+type StorageStateAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "remove-run-canonical-storage-state"
+      | "remove-session-canonical-storage-state"
+      | "remove-checkpoint-canonical-storage-state"
+      | "delete-storage-row";
+  }
+>;
+
+async function mutateStorageState(
+  db: Db,
+  body: StorageStateAction,
+  signal: AbortSignal,
+): Promise<void> {
+  switch (body.action) {
+    case "remove-run-canonical-storage-state": {
+      await removeRunCanonicalStorageState(db, body.run_id, signal);
+      return;
+    }
+    case "remove-session-canonical-storage-state": {
+      await db
+        .update(agentSessions)
+        .set({ storageMounts: null })
+        .where(eq(agentSessions.id, body.session_id));
+      break;
+    }
+    case "remove-checkpoint-canonical-storage-state": {
+      await db
+        .update(checkpoints)
+        .set({ storageMounts: null })
+        .where(eq(checkpoints.id, body.checkpoint_id));
+      break;
+    }
+    case "delete-storage-row": {
+      await db.delete(storages).where(eq(storages.id, body.storage_id));
+      break;
+    }
+  }
+  signal.throwIfAborted();
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -316,6 +385,13 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "remove-run-canonical-storage-state":
+      case "remove-session-canonical-storage-state":
+      case "remove-checkpoint-canonical-storage-state":
+      case "delete-storage-row": {
+        await mutateStorageState(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "replace-custom-connector-prefixes": {

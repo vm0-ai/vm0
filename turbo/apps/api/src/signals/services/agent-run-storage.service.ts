@@ -226,6 +226,7 @@ interface ResolvedManifestStorageInput {
   readonly mountPath: string;
   readonly vasStorageName: string;
   readonly instructionsTargetFilename?: string;
+  readonly optional?: boolean;
   readonly resolved: StorageResolution;
 }
 
@@ -1539,6 +1540,7 @@ async function resolveComposeStorageInput(args: {
     mountPath: args.volume.mountPath,
     vasStorageName: args.volume.vasStorageName,
     instructionsTargetFilename: args.volume.instructionsTargetFilename,
+    optional: args.volume.optional,
     resolved: resolvedResult.value,
   };
 }
@@ -1795,6 +1797,7 @@ function persistedStorageMountFromStoragePlan(
     storageId: plan.resolved.storageId,
     version: plan.resolved.versionId,
     mountPath: plan.mountPath,
+    ...(plan.optional === undefined ? {} : { optional: plan.optional }),
     ...(plan.instructionsTargetFilename === undefined
       ? {}
       : { instructionsTargetFilename: plan.instructionsTargetFilename }),
@@ -2561,6 +2564,7 @@ async function resolvePersistedStorageMounts(args: {
       name: mount.name,
       vasStorageName: mount.name,
       mountPath: mount.mountPath,
+      ...(mount.optional === undefined ? {} : { optional: mount.optional }),
       ...(mount.instructionsTargetFilename === undefined
         ? {}
         : {
@@ -2757,6 +2761,154 @@ async function prepareCompletePersistedStorageManifest(
   };
 }
 
+interface SessionStorageOverlay {
+  readonly canonicalWritebackMounts: readonly PersistedStorageMount[];
+  readonly legacyArtifacts: readonly ContextArtifact[];
+}
+
+function resolveSessionStorageOverlay(args: {
+  readonly artifacts: readonly ContextArtifact[];
+  readonly persistedStorageMounts: readonly PersistedStorageMount[] | undefined;
+}): SessionStorageOverlay {
+  const canonicalWritebackByIdentity = new Map(
+    (args.persistedStorageMounts ?? []).map((mount) => {
+      if (!mount.writeback) {
+        throw new Error(
+          "Session Storage persistence may only contain writeback mounts",
+        );
+      }
+      return [persistedMountIdentity(mount), mount] as const;
+    }),
+  );
+  const canonicalWritebackMounts = args.artifacts.flatMap((artifact) => {
+    const mount = canonicalWritebackByIdentity.get(
+      persistedMountIdentity(artifact),
+    );
+    if (!mount) {
+      return [];
+    }
+    const {
+      version: _storedVersion,
+      missingRootPolicy: _storedMissingRootPolicy,
+      ...mountBase
+    } = mount;
+    return [
+      {
+        ...mountBase,
+        ...(artifact.version === undefined
+          ? {}
+          : { version: artifact.version }),
+        ...(artifact.missingRootPolicy === undefined
+          ? {}
+          : { missingRootPolicy: artifact.missingRootPolicy }),
+      },
+    ];
+  });
+  const legacyArtifacts = args.artifacts.filter((artifact) => {
+    return !canonicalWritebackByIdentity.has(persistedMountIdentity(artifact));
+  });
+  return { canonicalWritebackMounts, legacyArtifacts };
+}
+
+async function buildLegacyStorageManifestEntries(
+  get: ComputedGetter,
+  args: PrepareAgentRunStorageManifestArgs,
+  bucket: string,
+  composeVolumes: readonly ResolvedVolume[],
+  artifacts: readonly ContextArtifact[],
+): Promise<StorageManifestEntries> {
+  const additionalVolumeSources = normalizeAdditionalVolumeSources({
+    volumes: args.additionalVolumes,
+    sources: args.additionalVolumeSources,
+  });
+  args.stats?.recordRequestedInputs({
+    composeCount: composeVolumes.length,
+    additionalCount: args.additionalVolumes?.length ?? 0,
+    artifactCount: args.artifacts.length,
+    dedupedArtifactCount: artifacts.length,
+  });
+
+  await ensureStorageManifestArtifacts(get, {
+    db: args.db,
+    runtimeOrgId: args.runtimeOrgId,
+    userId: args.userId,
+    artifacts,
+    timing: args.timing,
+    stats: args.stats,
+  });
+
+  const storageIndex = await loadTimedStorageIndex({
+    db: args.db,
+    lookups: storageManifestLookups({
+      agentOrgId: args.agentOrgId,
+      runtimeOrgId: args.runtimeOrgId,
+      userId: args.userId,
+      composeVolumes,
+      additionalVolumes: args.additionalVolumes,
+      additionalVolumeSources,
+      artifacts,
+    }),
+    timing: args.timing,
+  });
+
+  return await buildStorageManifestEntries(get, {
+    db: args.db,
+    bucket,
+    storageIndex,
+    agentOrgId: args.agentOrgId,
+    runtimeOrgId: args.runtimeOrgId,
+    userId: args.userId,
+    composeVolumes,
+    additionalVolumes: args.additionalVolumes,
+    additionalVolumeSources,
+    artifacts,
+    timing: args.timing,
+    stats: args.stats,
+  });
+}
+
+async function prepareStorageManifestWithSessionOverlay(
+  get: ComputedGetter,
+  args: PrepareAgentRunStorageManifestArgs,
+  bucket: string,
+): Promise<PreparedAgentRunStorageManifest> {
+  const { artifacts, composeVolumes } =
+    await resolveStorageManifestInputs(args);
+  const { canonicalWritebackMounts, legacyArtifacts } =
+    resolveSessionStorageOverlay({
+      artifacts,
+      persistedStorageMounts: args.persistedStorageMounts?.mounts,
+    });
+  const legacyEntries = await buildLegacyStorageManifestEntries(
+    get,
+    args,
+    bucket,
+    composeVolumes,
+    legacyArtifacts,
+  );
+  const entries =
+    canonicalWritebackMounts.length === 0
+      ? legacyEntries
+      : combineStorageManifestEntries({
+          legacy: legacyEntries,
+          canonicalWriteback: await buildEntriesFromPersistedStorageMounts(
+            get,
+            {
+              db: args.db,
+              bucket,
+              mounts: canonicalWritebackMounts,
+              timing: args.timing,
+              stats: args.stats,
+            },
+          ),
+        });
+  return await assembleStorageManifest({
+    ...entries,
+    timing: args.timing,
+    stats: args.stats,
+  });
+}
+
 export function prepareAgentRunStorageManifest(
   args: PrepareAgentRunStorageManifestArgs,
 ): Computed<Promise<PreparedAgentRunStorageManifest>> {
@@ -2765,118 +2917,6 @@ export function prepareAgentRunStorageManifest(
     if (args.persistedStorageMounts?.mode === "complete") {
       return await prepareCompletePersistedStorageManifest(get, args, bucket);
     }
-
-    const { artifacts, composeVolumes } =
-      await resolveStorageManifestInputs(args);
-    const canonicalWritebackByIdentity = new Map(
-      (args.persistedStorageMounts?.mounts ?? []).map((mount) => {
-        if (!mount.writeback) {
-          throw new Error(
-            "Session Storage persistence may only contain writeback mounts",
-          );
-        }
-        return [persistedMountIdentity(mount), mount] as const;
-      }),
-    );
-    const canonicalWritebackMounts = artifacts.flatMap((artifact) => {
-      const mount = canonicalWritebackByIdentity.get(
-        persistedMountIdentity(artifact),
-      );
-      if (!mount) {
-        return [];
-      }
-      const {
-        version: _storedVersion,
-        missingRootPolicy: _storedMissingRootPolicy,
-        ...mountBase
-      } = mount;
-      return [
-        {
-          ...mountBase,
-          ...(artifact.version === undefined
-            ? {}
-            : { version: artifact.version }),
-          ...(artifact.missingRootPolicy === undefined
-            ? {}
-            : { missingRootPolicy: artifact.missingRootPolicy }),
-        },
-      ];
-    });
-    const legacyArtifacts = artifacts.filter((artifact) => {
-      return !canonicalWritebackByIdentity.has(
-        persistedMountIdentity(artifact),
-      );
-    });
-    const additionalVolumeSources = normalizeAdditionalVolumeSources({
-      volumes: args.additionalVolumes,
-      sources: args.additionalVolumeSources,
-    });
-    args.stats?.recordRequestedInputs({
-      composeCount: composeVolumes.length,
-      additionalCount: args.additionalVolumes?.length ?? 0,
-      artifactCount: args.artifacts.length,
-      dedupedArtifactCount: artifacts.length,
-    });
-
-    await ensureStorageManifestArtifacts(get, {
-      db: args.db,
-      runtimeOrgId: args.runtimeOrgId,
-      userId: args.userId,
-      artifacts: legacyArtifacts,
-      timing: args.timing,
-      stats: args.stats,
-    });
-
-    const storageIndex = await loadTimedStorageIndex({
-      db: args.db,
-      lookups: storageManifestLookups({
-        agentOrgId: args.agentOrgId,
-        runtimeOrgId: args.runtimeOrgId,
-        userId: args.userId,
-        composeVolumes,
-        additionalVolumes: args.additionalVolumes,
-        additionalVolumeSources,
-        artifacts: legacyArtifacts,
-      }),
-      timing: args.timing,
-    });
-
-    const entries = await buildStorageManifestEntries(get, {
-      db: args.db,
-      bucket,
-      storageIndex,
-      agentOrgId: args.agentOrgId,
-      runtimeOrgId: args.runtimeOrgId,
-      userId: args.userId,
-      composeVolumes,
-      additionalVolumes: args.additionalVolumes,
-      additionalVolumeSources,
-      artifacts: legacyArtifacts,
-      timing: args.timing,
-      stats: args.stats,
-    });
-
-    const finalEntries =
-      canonicalWritebackMounts.length === 0
-        ? entries
-        : combineStorageManifestEntries({
-            legacy: entries,
-            canonicalWriteback: await buildEntriesFromPersistedStorageMounts(
-              get,
-              {
-                db: args.db,
-                bucket,
-                mounts: canonicalWritebackMounts,
-                timing: args.timing,
-                stats: args.stats,
-              },
-            ),
-          });
-
-    return await assembleStorageManifest({
-      ...finalEntries,
-      timing: args.timing,
-      stats: args.stats,
-    });
+    return await prepareStorageManifestWithSessionOverlay(get, args, bucket);
   });
 }

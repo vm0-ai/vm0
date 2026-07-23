@@ -108,6 +108,46 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
+export async function removeRunCanonicalStorageState(
+  context: TestContext,
+  runId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "remove-run-canonical-storage-state",
+    run_id: runId,
+  });
+}
+
+export async function removeSessionCanonicalStorageState(
+  context: TestContext,
+  sessionId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "remove-session-canonical-storage-state",
+    session_id: sessionId,
+  });
+}
+
+export async function removeCheckpointCanonicalStorageState(
+  context: TestContext,
+  checkpointId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "remove-checkpoint-canonical-storage-state",
+    checkpoint_id: checkpointId,
+  });
+}
+
+export async function deleteStorageRow(
+  context: TestContext,
+  storageId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-storage-row",
+    storage_id: storageId,
+  });
+}
+
 export async function replaceCustomConnectorPrefixes(
   context: TestContext,
   connectorId: string,

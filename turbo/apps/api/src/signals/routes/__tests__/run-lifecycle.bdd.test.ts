@@ -76,10 +76,14 @@ import {
 } from "./helpers/agent-run-callback";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
+  deleteStorageRow,
   deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
+  removeCheckpointCanonicalStorageState,
+  removeRunCanonicalStorageState,
+  removeSessionCanonicalStorageState,
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
@@ -1875,6 +1879,257 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+  });
+
+  it("skips a persisted optional Storage missing during checkpoint resume", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const storageName = `bdd-optional-resume-${randomUUID().slice(0, 8)}`;
+    const storageFile = storageTextFile(
+      "optional.txt",
+      `optional checkpoint ${storageName}`,
+    );
+    const preparedStorage = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: preparedStorage.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-optional-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        optional: {
+          name: storageName,
+          version: preparedStorage.versionId,
+          optional: true,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: ["optional:/optional"],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "persist an optional Storage mount",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected canonical mounts for the optional Storage");
+    }
+    const optionalMount = initialManifest.storageMounts.find((mount) => {
+      return mount.name === storageName;
+    });
+    if (!optionalMount) {
+      throw new Error("Expected the optional Storage to resolve initially");
+    }
+
+    const historyHash = createHash("sha256")
+      .update(`optional checkpoint ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-optional-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the optional Storage checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    // No production API can construct the historical missing-row condition.
+    // This gated test endpoint removes only the resolved Storage row; resume
+    // and verification still exercise the production checkpoint APIs.
+    await deleteStorageRow(context, optionalMount.storageId);
+    const resumedRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume without the optional Storage",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumedRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const resumedManifest = resumedClaim.storageManifest;
+    if (!resumedManifest || !("storageMounts" in resumedManifest)) {
+      throw new Error("Expected canonical mounts after checkpoint resume");
+    }
+    expect(resumedManifest.storageMounts).not.toContainEqual(
+      expect.objectContaining({ name: storageName }),
+    );
+    expect(resumedManifest.storageMounts).toContainEqual(
+      expect.objectContaining({ name: "memory", writeback: true }),
+    );
+
+    await api.requestCancelRun(actor, resumedRun.runId, [200]);
+  });
+
+  it("falls back to legacy run, session, and checkpoint Storage state", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const pendingLegacyRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "claim a pre-canonical Storage run",
+    });
+    // Pre-migration null JSONB columns cannot be produced by a current public
+    // endpoint. The gated compatibility action removes only the new field from
+    // an otherwise production-created row and queued execution context.
+    await removeRunCanonicalStorageState(context, pendingLegacyRun.runId);
+    const legacyRunClaim = await api.claimRunnerJob(pendingLegacyRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    expect(
+      expectLegacyStorageManifest(legacyRunClaim.storageManifest)?.artifacts,
+    ).toContainEqual(expect.objectContaining({ vasStorageName: "memory" }));
+    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "create legacy session and checkpoint projections",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected initial canonical Storage mounts");
+    }
+    const initialMemory = initialManifest.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the initial memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `legacy projection ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [memoryFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+    const historyHash = createHash("sha256")
+      .update(`legacy storage state ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-legacy-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [
+          {
+            name: initialMemory.name,
+            version: preparedMemory.versionId,
+            mountPath: initialMemory.mountPath,
+          },
+        ],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the legacy projection checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    await removeSessionCanonicalStorageState(context, initialRun.sessionId);
+    await removeCheckpointCanonicalStorageState(
+      context,
+      checkpoint.body.checkpointId,
+    );
+
+    const sessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "continue a pre-canonical Storage session",
+    });
+    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const sessionManifest = sessionClaim.storageManifest;
+    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
+      throw new Error("Expected canonical mounts from legacy session state");
+    }
+    expect(sessionManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        versionId: preparedMemory.versionId,
+        writeback: true,
+      }),
+    );
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume a pre-canonical Storage checkpoint",
+    });
+    const checkpointClaim = await api.claimRunnerJob(checkpointRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const checkpointManifest = checkpointClaim.storageManifest;
+    if (!checkpointManifest || !("storageMounts" in checkpointManifest)) {
+      throw new Error("Expected canonical mounts from legacy checkpoint state");
+    }
+    expect(checkpointManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        versionId: preparedMemory.versionId,
+        writeback: true,
+      }),
+    );
+
     await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
