@@ -82,21 +82,6 @@ export function createEmailApi(context: TestContext) {
     postResendInboundWebhook,
     enqueueInboundErrorEmail,
 
-    /**
-     * Induce a pending email outbox row through public state only: an inbound
-     * email from a sender with no vm0 account makes the inbound webhook enqueue
-     * an inbound-error reply, and a rejecting Resend mock rolls back the inline
-     * drain so the row stays pending for the drain cron.
-     */
-    async triggerInboundErrorEmail(
-      opts: { readonly from?: string; readonly subject?: string } = {},
-    ): Promise<{ readonly from: string; readonly subject: string }> {
-      context.mocks.resend.send.mockRejectedValue(
-        new Error("inline drain down"),
-      );
-      return await enqueueInboundErrorEmail(opts);
-    },
-
     async suppressEmailAddress(address: string): Promise<void> {
       await postResendInboundWebhook(
         {
