@@ -97,6 +97,8 @@ assert_run_reused_sandbox() {
     agent_session_id="$(run_fixture_field "$output" '.sessionId')"
     [ -n "$checkpoint_id" ]
     [ -n "$agent_session_id" ]
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "\"thread_id\":\"${agent_session_id}\""
 
     run continue_run_fixture "$agent_session_id" \
         "Remember this exact second memory token: ${SECOND_MEMORY_TOKEN}. Reply with exactly SECOND_MEMORY_STORED." \
@@ -139,13 +141,17 @@ assert_run_reused_sandbox() {
     assert_output --partial "CODEX_CHECKPOINT_HISTORY_REWOUND"
     assert_output --partial "FIRST=${FIRST_MEMORY_TOKEN}"
     assert_output --partial "SECOND=UNKNOWN"
+    assert_output --partial '"type":"thread.started"'
+    assert_output --partial "\"thread_id\":\"${agent_session_id}\""
     assert_output --partial '"type":"turn.completed"'
     refute_output --partial "$SECOND_MEMORY_TOKEN"
 
-    local resumed_run_id resumed_checkpoint_id
+    local resumed_run_id resumed_checkpoint_id resumed_agent_session_id
     resumed_run_id="$(run_fixture_field "$output" '.runId')"
     resumed_checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
+    resumed_agent_session_id="$(run_fixture_field "$output" '.sessionId')"
     assert_run_reused_sandbox "$resumed_run_id"
+    assert_equal "$resumed_agent_session_id" "$agent_session_id"
     [ -n "$resumed_checkpoint_id" ]
     [ "$resumed_checkpoint_id" != "$checkpoint_id" ]
 }
