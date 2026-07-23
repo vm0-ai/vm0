@@ -2556,12 +2556,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     ]);
   });
 
-  it("replays, expires, and auto-recharges subscription invoice credits", async () => {
+  it("replays and expires subscription invoice credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
-    const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
 
     const baseline = await billing.readBillingStatus(actor);
@@ -2681,6 +2680,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     );
     expect(broken.body).toStrictEqual({ error: "Internal server error" });
     expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+  });
+
+  it("atomically accumulates distinct auto-recharge invoices", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+
+    expect((await billing.readBillingStatus(actor)).credits).toBe(20_000);
 
     // Concurrent auto-recharge invoices accumulate distinct grants while a
     // duplicate delivery still grants exactly once.
@@ -2713,7 +2723,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       ),
     ]);
     const final = await billing.readBillingStatus(actor);
-    expect(final.credits).toBe(70_000);
+    expect(final.credits).toBe(30_000);
     const autoGrants = final.creditGrants.filter((grant) => {
       return grant.source === "auto_recharge";
     });

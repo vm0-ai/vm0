@@ -86,6 +86,7 @@ interface SimpleUpsertMatch {
 
 interface CompleteSqlStatement {
   readonly end: number;
+  readonly hasTrailingSemicolon: boolean;
   readonly tokens: readonly SqlToken[];
 }
 
@@ -311,6 +312,7 @@ function completeSqlStatement(
   }
 
   let end = tokens.length;
+  let hasTrailingSemicolon = false;
   let statementEnd = syntaxSource.length;
   const trailingToken = tokens[end - 1];
   if (isPunctuation(trailingToken, ";")) {
@@ -320,6 +322,7 @@ function completeSqlStatement(
     ) {
       return undefined;
     }
+    hasTrailingSemicolon = true;
     statementEnd = trailingToken.start;
     end -= 1;
   }
@@ -336,7 +339,11 @@ function completeSqlStatement(
     return undefined;
   }
 
-  return { end: statementEnd, tokens: statementTokens };
+  return {
+    end: statementEnd,
+    hasTrailingSemicolon,
+    tokens: statementTokens,
+  };
 }
 
 function isSimpleIdentifierList(
@@ -397,8 +404,18 @@ function hasSimpleAssignments(
 
 function simpleDeleteMatch(
   syntaxSource: string,
-  tokens: readonly SqlToken[],
+  statement: CompleteSqlStatement,
 ): SimpleDeleteMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
+  if (
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
+  ) {
+    return undefined;
+  }
+
   const deleteKeyword = tokens[0];
   const fromKeyword = tokens[1];
   const targetTable = tokens[2];
@@ -1481,7 +1498,7 @@ export const preferDrizzleQueryBuilder = createRule({
       if (statement === undefined) {
         return;
       }
-      const deleteMatch = simpleDeleteMatch(syntaxSource, statement.tokens);
+      const deleteMatch = simpleDeleteMatch(syntaxSource, statement);
       const upsertMatch =
         deleteMatch === undefined
           ? simpleUpsertMatch(source, syntaxSource, statement)
