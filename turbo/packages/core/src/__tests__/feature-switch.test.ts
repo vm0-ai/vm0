@@ -126,7 +126,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -160,7 +159,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);

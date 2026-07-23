@@ -394,12 +394,6 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
   });
 }
 
-function mockArtifactFavorites(artifactUrls: readonly string[]): void {
-  context.mocks.api(artifactsContract.listFavorites, ({ respond }) => {
-    return respond(200, { artifactUrls: [...artifactUrls] });
-  });
-}
-
 function mockScrollViewport(
   element: HTMLElement,
   initial: {
@@ -440,13 +434,11 @@ function mockScrollViewport(
 function setupArtifactsPage({
   scope,
   enabled = true,
-  artifactFavoritesEnabled = false,
   htmlArtifactCommentEditingEnabled = false,
   imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
-  readonly artifactFavoritesEnabled?: boolean;
   readonly htmlArtifactCommentEditingEnabled?: boolean;
   readonly imageEditingEnabled?: boolean;
 }): void {
@@ -463,7 +455,6 @@ function setupArtifactsPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
-      [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
       [FeatureSwitchKey.HtmlArtifactCommentEditing]:
         htmlArtifactCommentEditingEnabled,
       [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
@@ -1243,131 +1234,19 @@ describe("artifacts page", () => {
     expect(listCalls).toBe(1);
   });
 
-  it("hides favorite controls when artifact favorites are disabled", async () => {
-    setupTeam();
-    const scope = testAuthScope("favorites-disabled");
-    mockArtifacts([createArtifact()]);
-
-    setupArtifactsPage({ scope });
-
-    await screen.findByText("launch-plan.html");
-    expect(
-      screen.queryByLabelText("Show favorite artifacts"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Add launch-plan.html to favorites"),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows interaction feedback on artifact card actions", async () => {
     setupTeam();
     const scope = testAuthScope("card-action-feedback");
     mockArtifacts([createArtifact()]);
 
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+    setupArtifactsPage({ scope });
 
     await screen.findByText("launch-plan.html");
-    expect(buttonByLabel("Add launch-plan.html to favorites")).toHaveClass(
-      "hover:bg-muted/60",
-      "active:bg-muted",
-    );
     expect(buttonByLabel("More actions for launch-plan.html")).toHaveClass(
       "hover:bg-muted/60",
       "active:bg-muted",
       "data-[state=open]:bg-muted",
     );
-  });
-
-  it("keeps artifacts visible when favorite state fails to load", async () => {
-    setupTeam();
-    const scope = testAuthScope("favorites-unavailable");
-    mockArtifacts([createArtifact()]);
-    context.mocks.api(artifactsContract.listFavorites, ({ respond }) => {
-      return respond(403, {
-        error: { code: "FORBIDDEN", message: "Could not load favorites" },
-      });
-    });
-
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
-
-    await screen.findByText("launch-plan.html");
-    expect(
-      screen.queryByLabelText("Show favorite artifacts"),
-    ).not.toBeInTheDocument();
-    expect(buttonByLabel("Add launch-plan.html to favorites")).toBeDisabled();
-  });
-
-  it("favorites artifacts optimistically and filters favorites locally", async () => {
-    setupTeam();
-    const scope = testAuthScope("favorites");
-    const launch = createArtifact({
-      artifactItemId: "favorite-launch:file-1",
-      runId: "favorite-launch",
-      filename: "launch-plan.html",
-      createdAt: "2026-01-03T00:00:00Z",
-      url: "https://artifacts.example.com/launch-plan.html",
-    });
-    const brief = createArtifact({
-      artifactItemId: "favorite-brief:file-1",
-      runId: "favorite-brief",
-      fileId: "favorite-brief-file",
-      filename: "favorite-brief.html",
-      createdAt: "2026-01-02T00:00:00Z",
-      url: "https://artifacts.example.com/favorite-brief.html",
-    });
-    const archive = createArtifact({
-      artifactItemId: "favorite-archive:file-1",
-      runId: "favorite-archive",
-      fileId: "favorite-archive-file",
-      filename: "archive.html",
-      createdAt: "2026-01-01T00:00:00Z",
-      url: "https://artifacts.example.com/archive.html",
-    });
-    mockArtifacts([launch, brief, archive]);
-    mockArtifactFavorites([brief.url]);
-
-    let favoriteBody: { readonly artifactUrl: string } | undefined;
-    context.mocks.api(artifactsContract.favorite, ({ body, respond }) => {
-      favoriteBody = body;
-      return respond(204);
-    });
-
-    let unfavoriteBody: { readonly artifactUrl: string } | undefined;
-    context.mocks.api(artifactsContract.unfavorite, ({ body, respond }) => {
-      unfavoriteBody = body;
-      return respond(204);
-    });
-
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
-
-    await screen.findByText("launch-plan.html");
-    await screen.findByText("favorite-brief.html");
-    await screen.findByText("archive.html");
-
-    const favoriteButton = buttonByLabel("Add launch-plan.html to favorites");
-    expect(
-      favoriteButton.closest('[data-testid="artifact-card-details"]'),
-    ).not.toBeNull();
-    click(favoriteButton);
-    await waitFor(() => {
-      expect(favoriteBody).toStrictEqual({ artifactUrl: launch.url });
-      expect(
-        buttonByLabel("Remove launch-plan.html from favorites"),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Show favorite artifacts"));
-    await waitFor(() => {
-      expect(screen.getByText("launch-plan.html")).toBeInTheDocument();
-      expect(screen.getByText("favorite-brief.html")).toBeInTheDocument();
-      expect(screen.queryByText("archive.html")).not.toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Remove favorite-brief.html from favorites"));
-    await waitFor(() => {
-      expect(unfavoriteBody).toStrictEqual({ artifactUrl: brief.url });
-      expect(screen.queryByText("favorite-brief.html")).not.toBeInTheDocument();
-    });
   });
 
   it("preserves a saved draft and references a hosted artifact by URL", async () => {
@@ -1541,7 +1420,6 @@ describe("artifacts page", () => {
       ).readStore.readRecent({ limit: 10_000 });
     });
     expect(cached).toStrictEqual([artifact]);
-    expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
   it("renders the cache immediately when returning while the remote refresh is pending", async () => {
