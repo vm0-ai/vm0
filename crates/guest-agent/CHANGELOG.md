@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.55.0...guest-agent-v0.56.0) (2026-07-23)
+
+
+### Features
+
+* **zero:** enable managed web search for all users ([#22761](https://github.com/vm0-ai/vm0/issues/22761)) ([68f7cd0](https://github.com/vm0-ai/vm0/commit/68f7cd02c24a65ca7226541f83b21ca09c0923c6))
+
 ## [0.55.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.54.3...guest-agent-v0.55.0) (2026-07-23)
 
 
