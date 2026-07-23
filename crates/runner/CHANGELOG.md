@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.147.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.10...runner-rs-v0.147.11) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** scope platform api auto-allow to configured port ([#22746](https://github.com/vm0-ai/vm0/issues/22746)) ([7c0babf](https://github.com/vm0-ai/vm0/commit/7c0babfe551f715104345e9a5048e331b972e6ad))
+
 ## [0.147.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.9...runner-rs-v0.147.10) (2026-07-23)
 
 ## [0.147.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.8...runner-rs-v0.147.9) (2026-07-23)

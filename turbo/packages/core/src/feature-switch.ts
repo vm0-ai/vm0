@@ -411,6 +411,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.FeishuIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show the Feishu direct-message integration and Works page entry point.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationExport]: {
     maintainer: "bingjie@vm0.ai",
     description:

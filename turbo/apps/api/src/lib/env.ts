@@ -52,6 +52,7 @@ const SCHEMA = {
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to VM0_WEB_URL.
   VM0_API_BACKEND_URL: z.url().optional(),
+  FEISHU_CALLBACK_BASE_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
   RESEND_API_KEY: z.string().min(1).optional(),

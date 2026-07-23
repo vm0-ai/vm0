@@ -7,6 +7,7 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 
 # Required: API, web, and app URLs
 VM0_API_BACKEND_URL=https://api.vm7.ai:8443
+FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 

@@ -2556,12 +2556,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     ]);
   });
 
-  it("replays, expires, and auto-recharges subscription invoice credits", async () => {
+  it("replays and expires subscription invoice credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
-    const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
 
     const baseline = await billing.readBillingStatus(actor);
@@ -2681,9 +2680,21 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     );
     expect(broken.body).toStrictEqual({ error: "Internal server error" });
     expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+  });
 
-    // Concurrent auto-recharge invoices grant the sentinel exactly once.
-    const autoRechargeInvoice = {
+  it("atomically accumulates distinct auto-recharge invoices", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+
+    expect((await billing.readBillingStatus(actor)).credits).toBe(20_000);
+
+    // Concurrent auto-recharge invoices accumulate distinct grants while a
+    // duplicate delivery still grants exactly once.
+    const autoRechargeInvoiceA = {
       id: `in_bdd_auto_${randomUUID().slice(0, 8)}`,
       customer: granted.customerId,
       metadata: {
@@ -2693,26 +2704,37 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       },
       parent: null,
     };
+    const autoRechargeInvoiceB = {
+      ...autoRechargeInvoiceA,
+      id: `in_bdd_auto_${randomUUID().slice(0, 8)}`,
+    };
     await Promise.all([
       api.postStripeEvent(
-        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceA }),
         [200],
       ),
       api.postStripeEvent(
-        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceA }),
+        [200],
+      ),
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoiceB }),
         [200],
       ),
     ]);
     const final = await billing.readBillingStatus(actor);
-    expect(final.credits).toBe(65_000);
-    const autoGrant = final.creditGrants.find((grant) => {
+    expect(final.credits).toBe(30_000);
+    const autoGrants = final.creditGrants.filter((grant) => {
       return grant.source === "auto_recharge";
     });
-    expect(autoGrant?.amount).toBe(5000);
-    expect(autoGrant?.remaining).toBe(5000);
-    expect(
-      new Date(autoGrant?.expiresAt ?? "1970-01-01").getUTCFullYear(),
-    ).toBeGreaterThanOrEqual(2999);
+    expect(autoGrants).toHaveLength(2);
+    for (const autoGrant of autoGrants) {
+      expect(autoGrant.amount).toBe(5000);
+      expect(autoGrant.remaining).toBe(5000);
+      expect(
+        new Date(autoGrant.expiresAt).getUTCFullYear(),
+      ).toBeGreaterThanOrEqual(2999);
+    }
   });
 
   it("grants, refreshes, and clamps trial credits from trial-period invoices", async () => {

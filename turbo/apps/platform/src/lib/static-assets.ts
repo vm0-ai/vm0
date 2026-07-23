@@ -16,3 +16,26 @@ export const platformVm0LogoImg = platformStaticAssetUrl(
 export const platformVm0LogoDarkImg = platformStaticAssetUrl(
   "assets/vm0-logo-dark-f3de8c7713f8.svg",
 );
+export const platformFeishuCreateEnterpriseCustomAppImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/create-enterprise-custom-app-bfcbb0ba2ffb.png",
+  );
+export const platformFeishuAppCreatedCredentialsImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/app-created-credentials-e58acd598bca.png",
+);
+export const platformFeishuEventSubscriptionModeImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/event-subscription-mode-ac2109302528.png",
+);
+export const platformFeishuEventRequestUrlImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/event-request-url-de3be5a1b88b.png",
+);
+export const platformFeishuEncryptionStrategyImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/encryption-strategy-e50ee6b26d77.png",
+);
+export const platformFeishuCreateAppVersionImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/create-app-version-6a84ea716a76.png",
+);
+export const platformFeishuSecuritySettingsRedirectUrlImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/security-settings-redirect-url-e7cf83ec76d4.png",
+  );

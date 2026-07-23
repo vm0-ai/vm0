@@ -25,6 +25,7 @@ import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
 import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
+import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -257,6 +258,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsTeams,
     setup: setupAuthSidebarPageWrapper(setupTeamsConnectPage$),
+  },
+  {
+    path: ROUTES.settingsFeishu,
+    setup: setupAuthSidebarPageWrapper(setupFeishuSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,
