@@ -81,6 +81,12 @@ export const testSlackMockChatPostEphemeralResponseSchema =
     message_ts: z.string(),
   });
 
+export const testSlackMockChatGetPermalinkResponseSchema =
+  testSlackMockOkResponseSchema.extend({
+    channel: z.string(),
+    permalink: z.string().url(),
+  });
+
 export const testSlackMockConversationsOpenResponseSchema =
   testSlackMockOkResponseSchema.extend({
     channel: z.object({
@@ -140,6 +146,16 @@ export const testSlackMockContract = c.router({
       404: slackMockNotFoundSchema,
     },
     summary: "Mock Slack chat.postEphemeral for e2e tests",
+  },
+  chatGetPermalink: {
+    method: "POST",
+    path: "/api/test/slack-mock/chat.getPermalink",
+    body: slackMockRequestBodySchema,
+    responses: {
+      200: testSlackMockChatGetPermalinkResponseSchema,
+      404: slackMockNotFoundSchema,
+    },
+    summary: "Mock Slack chat.getPermalink for e2e tests",
   },
   chatPostMessage: {
     method: "POST",

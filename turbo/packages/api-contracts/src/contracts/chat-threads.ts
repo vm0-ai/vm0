@@ -357,6 +357,7 @@ const pagedChatMessageBaseSchema = z.object({
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
+  slackMessagePermalink: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalEvent: zeroGoalEventSchema.optional(),
