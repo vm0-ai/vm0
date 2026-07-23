@@ -132,6 +132,7 @@ import type {
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
+import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -3073,22 +3074,26 @@ function prepareTextOnlyUserMessage(
 
 function structuredPromptForSend({
   enabled,
+  prompt,
   editorDocument,
   generationTemplate,
   attachments,
 }: {
   readonly enabled: boolean;
+  readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PagedChatMessage["attachFiles"];
 }): UserMessageDocument | undefined {
-  if (!enabled || !editorDocument) {
+  if (!enabled) {
     return undefined;
   }
-  const structuredPrompt = editorDocument.toMessageDocument({
-    generationTemplate,
-    attachments,
-  });
+  const structuredPrompt = editorDocument
+    ? editorDocument.toMessageDocument({
+        generationTemplate,
+        attachments,
+      })
+    : textToMessageDocument(prompt);
   if (!structuredPrompt) {
     throw new Error("Failed to serialize structured prompt");
   }
@@ -3102,6 +3107,7 @@ function queueStructured(
 ): UserMessageDocument | undefined {
   return structuredPromptForSend({
     enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+    prompt: result.prompt,
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
     attachments: result.attachments,
@@ -3379,6 +3385,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       const features = get(featureSwitch$);
       const structuredPrompt = structuredPromptForSend({
         enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+        prompt: result.prompt,
         editorDocument: request.options?.editorDocument,
         generationTemplate,
         attachments: result.attachments,

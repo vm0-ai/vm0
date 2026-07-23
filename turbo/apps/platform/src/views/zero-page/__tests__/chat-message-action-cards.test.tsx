@@ -1058,7 +1058,11 @@ describe("chat message action cards", () => {
     const threadId = `${THREAD_ID}-single-permission`;
     const callbackPrompt = "Re-check Slack access, then continue";
     const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
-    const sentPrompts: { prompt: string; threadId?: string }[] = [];
+    const sentPrompts: {
+      prompt: string;
+      threadId?: string;
+      structuredPrompt?: unknown;
+    }[] = [];
 
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
@@ -1116,14 +1120,19 @@ describe("chat message action cards", () => {
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
-      onSendRequest: ({ prompt, threadId: sentThreadId }) => {
-        sentPrompts.push({ prompt, threadId: sentThreadId });
+      onSendRequest: ({ prompt, threadId: sentThreadId, structuredPrompt }) => {
+        sentPrompts.push({
+          prompt,
+          threadId: sentThreadId,
+          structuredPrompt,
+        });
       },
     });
 
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -1134,6 +1143,10 @@ describe("chat message action cards", () => {
         {
           prompt: callbackPrompt,
           threadId,
+          structuredPrompt: {
+            version: 1,
+            parts: [{ type: "text", text: callbackPrompt }],
+          },
         },
       ]);
     });

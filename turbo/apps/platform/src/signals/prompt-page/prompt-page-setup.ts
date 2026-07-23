@@ -23,6 +23,11 @@ import {
 } from "../zero-page/zero-chat-page.ts";
 import { withCleanup } from "../utils.ts";
 
+interface ResolvedGenerationTemplate {
+  readonly template: GenerationTemplateRequest;
+  readonly titleSnapshot: string;
+}
+
 function templateIdFromSearchParam(
   template: string | null,
 ): string | undefined {
@@ -35,35 +40,41 @@ function templateIdFromSearchParam(
 
 function websiteGenerationTemplateFromId(
   id: string,
-): GenerationTemplateRequest | undefined {
+): ResolvedGenerationTemplate | undefined {
   const websiteTemplate = findWebsiteTemplateItem(id);
   if (!websiteTemplate) {
     return undefined;
   }
   return {
-    type: "website",
-    selection: {
-      websiteTemplateId: websiteTemplate.id,
+    titleSnapshot: websiteTemplate.title,
+    template: {
+      type: "website",
+      selection: {
+        websiteTemplateId: websiteTemplate.id,
+      },
     },
   };
 }
 
 function videoGenerationTemplateFromId(
   id: string,
-): GenerationTemplateRequest | undefined {
+): ResolvedGenerationTemplate | undefined {
   const videoTemplate = findVideoTemplateItem(id);
   if (!videoTemplate) {
     return undefined;
   }
   return {
-    type: "video",
-    selection: { stylePresetId: videoTemplate.id },
+    titleSnapshot: videoTemplate.title,
+    template: {
+      type: "video",
+      selection: { stylePresetId: videoTemplate.id },
+    },
   };
 }
 
 function presentationGenerationTemplateFromId(
   id: string,
-): GenerationTemplateRequest | undefined {
+): ResolvedGenerationTemplate | undefined {
   const presentationTemplateId = id.replace(/^presentation-template:/, "");
   const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find(
     (item) => {
@@ -78,19 +89,22 @@ function presentationGenerationTemplateFromId(
     return undefined;
   }
   return {
-    type: "presentation",
-    selection: {
-      templateId: presentationTemplate.templateId,
-      colorSystemId:
-        presentationTemplate.colorSystemId ?? "color-system:warm-sand",
-      previewUrl: presentationTemplate.embedUrl,
+    titleSnapshot: presentationTemplate.title,
+    template: {
+      type: "presentation",
+      selection: {
+        templateId: presentationTemplate.templateId,
+        colorSystemId:
+          presentationTemplate.colorSystemId ?? "color-system:warm-sand",
+        previewUrl: presentationTemplate.embedUrl,
+      },
     },
   };
 }
 
 function illustrationGenerationTemplateFromId(
   id: string,
-): GenerationTemplateRequest | undefined {
+): ResolvedGenerationTemplate | undefined {
   const illustrationTemplateId = id
     .replace(/^illustration-template:/, "")
     .replace(/^image-template:/, "");
@@ -105,9 +119,12 @@ function illustrationGenerationTemplateFromId(
     return undefined;
   }
   return {
-    type: "illustration",
-    selection: {
-      illustrationStyleId: illustrationTemplate.illustrationStyleId,
+    titleSnapshot: illustrationTemplate.title,
+    template: {
+      type: "illustration",
+      selection: {
+        illustrationStyleId: illustrationTemplate.illustrationStyleId,
+      },
     },
   };
 }
@@ -121,15 +138,15 @@ const generationTemplateParsers = [
 
 function generationTemplateFromSearchParam(
   template: string | null,
-): GenerationTemplateRequest | undefined {
+): ResolvedGenerationTemplate | undefined {
   const id = templateIdFromSearchParam(template);
   if (!id) {
     return undefined;
   }
   for (const parse of generationTemplateParsers) {
-    const generationTemplate = parse(id);
-    if (generationTemplate) {
-      return generationTemplate;
+    const resolved = parse(id);
+    if (resolved) {
+      return resolved;
     }
   }
   return undefined;
@@ -151,7 +168,8 @@ export const setupPromptPage$ = command(
     const prompt = params.get("prompt")?.trim();
     const requestedModel = params.get("model")?.trim();
     const template = params.get("template");
-    const generationTemplate = generationTemplateFromSearchParam(template);
+    const resolvedGenerationTemplate =
+      generationTemplateFromSearchParam(template);
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
@@ -186,7 +204,9 @@ export const setupPromptPage$ = command(
         {
           agentId,
           prompt,
-          generationTemplate,
+          generationTemplate: resolvedGenerationTemplate?.template,
+          generationTemplateTitleSnapshot:
+            resolvedGenerationTemplate?.titleSnapshot,
           computerUseHostId: null,
           routeSearchParams: cleaned,
         },
