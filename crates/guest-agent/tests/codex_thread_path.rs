@@ -83,12 +83,38 @@ async fn rejects_wrong_thread_and_missing_or_malformed_paths() -> Result<(), Str
 
 #[tokio::test]
 async fn rejects_other_codex_rpc_errors() -> Result<(), String> {
-    for scenario in ["thread-read-rpc-error", "thread-read-wrong-error-code"] {
+    for scenario in [
+        "thread-read-rpc-error",
+        "thread-read-wrong-error-code",
+        "disconnect-after-initialize",
+    ] {
         let error = resolve_error(scenario, LOOKUP_TIMEOUT).await?;
 
         assert!(matches!(error, CodexThreadPathLookupError::AppServer(_)));
         assert_eq!(error.to_string(), "Codex app-server lookup failed");
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn rejects_app_server_startup_failure() -> Result<(), String> {
+    let codex_home = TempDir::new().map_err(|error| format!("create Codex home: {error}"))?;
+    let config =
+        CodexAppServerConfig::new(codex_home.path().join("missing-codex"), codex_home.path())
+            .with_child_env(
+                codex_home.path().to_string_lossy(),
+                &HashMap::new(),
+                "http://127.0.0.1:1",
+            );
+    let thread_id = CodexThreadId::parse(THREAD_ID)
+        .ok_or_else(|| "test thread ID should be valid".to_string())?;
+
+    let error = resolve_codex_thread_path_with_config(&thread_id, config, LOOKUP_TIMEOUT)
+        .await
+        .expect_err("missing Codex binary should fail lookup");
+
+    assert!(matches!(error, CodexThreadPathLookupError::AppServer(_)));
+    assert_eq!(error.to_string(), "Codex app-server lookup failed");
     Ok(())
 }
 
