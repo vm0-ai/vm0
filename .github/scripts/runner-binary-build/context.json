@@ -1,0 +1,107 @@
+{
+  "selectedPackages": [
+    {
+      "name": "ably-subscriber",
+      "path": "crates/ably-subscriber"
+    },
+    {
+      "name": "api-contracts",
+      "path": "crates/api-contracts"
+    },
+    {
+      "name": "guest-agent",
+      "path": "crates/guest-agent"
+    },
+    {
+      "name": "guest-common",
+      "path": "crates/guest-common"
+    },
+    {
+      "name": "guest-contracts",
+      "path": "crates/guest-contracts"
+    },
+    {
+      "name": "guest-download",
+      "path": "crates/guest-download"
+    },
+    {
+      "name": "guest-init",
+      "path": "crates/guest-init"
+    },
+    {
+      "name": "guest-mock-claude",
+      "path": "crates/guest-mock-claude"
+    },
+    {
+      "name": "guest-mock-codex",
+      "path": "crates/guest-mock-codex"
+    },
+    {
+      "name": "guest-reseed",
+      "path": "crates/guest-reseed"
+    },
+    {
+      "name": "guest-write-file",
+      "path": "crates/guest-write-file"
+    },
+    {
+      "name": "nbd-cow",
+      "path": "crates/nbd-cow"
+    },
+    {
+      "name": "process-control-ipc",
+      "path": "crates/process-control-ipc"
+    },
+    {
+      "name": "runner",
+      "path": "crates/runner"
+    },
+    {
+      "name": "sandbox",
+      "path": "crates/sandbox"
+    },
+    {
+      "name": "sandbox-fc",
+      "path": "crates/sandbox-fc"
+    },
+    {
+      "name": "shell-quote",
+      "path": "crates/shell-quote"
+    },
+    {
+      "name": "vsock-guest",
+      "path": "crates/vsock-guest"
+    },
+    {
+      "name": "vsock-host",
+      "path": "crates/vsock-host"
+    },
+    {
+      "name": "vsock-proto",
+      "path": "crates/vsock-proto"
+    }
+  ],
+  "structuralPackages": [
+    {
+      "name": "sandbox-mock",
+      "path": "crates/sandbox-mock",
+      "targetEntries": [
+        "src/lib.rs"
+      ]
+    },
+    {
+      "name": "tracing-test-support",
+      "path": "crates/tracing-test-support",
+      "targetEntries": [
+        "src/lib.rs"
+      ]
+    },
+    {
+      "name": "vsock-test",
+      "path": "crates/vsock-test",
+      "targetEntries": [
+        "src/bin/guest-write-file-test-helper.rs"
+      ]
+    }
+  ]
+}
