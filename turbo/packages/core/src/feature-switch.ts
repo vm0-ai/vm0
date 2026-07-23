@@ -368,13 +368,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Prefetch chat thread messages into IndexedDB when message-created realtime events arrive outside the focused thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:
