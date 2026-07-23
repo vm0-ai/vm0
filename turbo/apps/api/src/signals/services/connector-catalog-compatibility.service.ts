@@ -18,7 +18,7 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, isNull, ne, or } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -289,12 +289,9 @@ async function deleteReplacedEvaluations(args: {
           connectorCatalogCompatibilityEvaluation.schemaVersion,
           SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
         ),
-        or(
-          isNull(connectorCatalogCompatibilityEvaluation.catalogDigest),
-          ne(
-            connectorCatalogCompatibilityEvaluation.catalogDigest,
-            args.catalogDigest,
-          ),
+        ne(
+          connectorCatalogCompatibilityEvaluation.catalogDigest,
+          args.catalogDigest,
         ),
       ),
     );
@@ -322,7 +319,6 @@ export async function persistConnectorCatalogCompatibility(args: {
       sourceId: args.sourceId,
       schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
       catalogVersion: args.identity.catalogVersion,
-      integrityDigest: args.identity.catalogDigest,
       catalogDigest: args.identity.catalogDigest,
       executableCapabilityDigest: args.capability.digest,
       evaluatedAt: nowDate(),
@@ -372,17 +368,7 @@ async function activeSnapshotForUpdate(
     )
     .limit(1)
     .for("update");
-  return snapshot !== undefined &&
-    snapshot.catalogDigest !== null &&
-    snapshot.catalogRawSize !== null &&
-    snapshot.catalogGzip !== null
-    ? {
-        catalogVersion: snapshot.catalogVersion,
-        catalogDigest: snapshot.catalogDigest,
-        catalogRawSize: snapshot.catalogRawSize,
-        catalogGzip: snapshot.catalogGzip,
-      }
-    : undefined;
+  return snapshot;
 }
 
 function staleFilteringStatus(

@@ -4,10 +4,6 @@ import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron"
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
-import {
-  testConnectorCatalogStateContract,
-  type TestConnectorCatalogStateActionBody,
-} from "@vm0/api-contracts/contracts/test-connector-catalog-state";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
 import {
@@ -76,7 +72,6 @@ import {
   createRunsApi,
   expectLegacyStorageManifest,
 } from "./helpers/api-bdd-runs";
-import { testConnectorCatalogStateRoutes } from "../test-connector-catalog-state";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
@@ -1267,19 +1262,6 @@ function runnerFirewallClient() {
   return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
 }
 
-function connectorCatalogStateClient() {
-  return setupAppWithRoutes({
-    context,
-    routes: testConnectorCatalogStateRoutes,
-  })(testConnectorCatalogStateContract);
-}
-
-async function connectorCatalogStateAction(
-  body: TestConnectorCatalogStateActionBody,
-) {
-  return await accept(connectorCatalogStateClient().action({ body }), [200]);
-}
-
 interface VolumeStorageState {
   readonly s3_prefix: string;
   readonly size: number;
@@ -1423,31 +1405,6 @@ describe("connector catalog cron authentication and initial state", () => {
         evaluatedAt: null,
         stale: true,
         filteredAuthMethods: [],
-      },
-    });
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-  });
-
-  it("ignores a legacy-only active snapshot during deployment overlap", async () => {
-    configureSource();
-    const fixture = await connectorCatalogStateAction({
-      action: "seed-legacy-active",
-      catalog_version: "legacy-split-artifacts",
-      catalog_digest: ZERO_DIGEST,
-      activated_at: FIRST_SYNC_TIME,
-    });
-    onTestFinished(async () => {
-      await connectorCatalogStateAction({
-        action: "delete",
-        source_id: fixture.body.source_id,
-      });
-    });
-
-    expect((await readStatus()).body).toMatchObject({
-      state: "never-synced",
-      active: null,
-      lastAttempt: {
-        outcome: "accepted",
       },
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
@@ -5304,11 +5261,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "integrity digest mismatch",
+      name: "catalog digest mismatch",
       expected: "digest-mismatch",
       release: () => {
         return buildRelease({
-          version: "bad-integrity-digest",
+          version: "bad-catalog-digest",
           mutatePointer: (pointer) => {
             pointer.catalogDigest = ZERO_DIGEST;
           },
@@ -5321,20 +5278,20 @@ describe("connector catalog rejection and latest-valid retention", () => {
       release: () => {
         return buildRelease({
           version: "unsupported-schema",
-          mutateArtifact: (integrity) => {
-            integrity.artifactSchemaVersion = 2;
+          mutateArtifact: (artifact) => {
+            artifact.artifactSchemaVersion = 2;
           },
         });
       },
     },
     {
-      name: "legacy integrity property",
+      name: "legacy catalog source property",
       expected: "invalid-artifact",
       release: () => {
         return buildRelease({
-          version: "legacy-integrity-property",
-          mutateArtifact: (integrity) => {
-            integrity.catalogSource = {
+          version: "legacy-catalog-source-property",
+          mutateArtifact: (artifact) => {
+            artifact.catalogSource = {
               key: "catalog/catalog.yaml",
               digest: ZERO_DIGEST,
             };

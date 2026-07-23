@@ -174,12 +174,14 @@ function statusFromState(
   state: SyncStateSnapshot | undefined,
 ): ConnectorCatalogRawSyncStatus {
   let active: ConnectorCatalogRawSyncStatus["active"] = null;
-  if (
-    state?.activeCatalogVersion &&
-    state.activeCatalogKey &&
-    state.activeCatalogDigest &&
-    state.activatedAt
-  ) {
+  if (state?.activeCatalogVersion) {
+    if (
+      !state.activatedAt ||
+      !state.activeCatalogKey ||
+      !state.activeCatalogDigest
+    ) {
+      throw new Error("Connector catalog active snapshot is incomplete");
+    }
     active = {
       catalogVersion: state.activeCatalogVersion,
       catalogDigest: state.activeCatalogDigest,
@@ -304,7 +306,6 @@ function rejectedCandidateValues(candidate: RejectedCandidate | undefined) {
   }
   return {
     lastRejectedCatalogVersion: candidate.pointer?.catalogVersion ?? null,
-    lastRejectedIntegrityDigest: candidate.pointer?.catalogDigest ?? null,
     lastRejectedCatalogKey: candidate.pointer?.catalogKey ?? null,
     lastRejectedCatalogDigest: candidate.pointer?.catalogDigest ?? null,
     lastRejectedPointerEtag: candidate.pointerEtag,
@@ -318,7 +319,6 @@ function pointerObservationValues(observation: PointerObservation | undefined) {
   }
   return {
     lastObservedCatalogVersion: observation.pointer?.catalogVersion ?? null,
-    lastObservedIntegrityDigest: observation.pointer?.catalogDigest ?? null,
     lastObservedCatalogKey: observation.pointer?.catalogKey ?? null,
     lastObservedCatalogDigest: observation.pointer?.catalogDigest ?? null,
     lastObservedPointerEtag: observation.etag,
@@ -417,19 +417,10 @@ function activeSnapshotValues(
 ) {
   return {
     catalogVersion: candidate.identity.catalogVersion,
-    integrityDigest: candidate.identity.catalogDigest,
     catalogKey: candidate.identity.catalogKey,
     catalogDigest: candidate.identity.catalogDigest,
     catalogRawSize: candidate.rawBytes.byteLength,
     catalogGzip,
-    publicCatalogDigest: null,
-    privateCatalogDigest: null,
-    privateFirewallsDigest: null,
-    runnerFirewallsDigest: null,
-    publicCatalog: null,
-    privateCatalog: null,
-    privateFirewalls: null,
-    runnerFirewalls: null,
     activatedAt,
   };
 }

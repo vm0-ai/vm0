@@ -280,7 +280,7 @@ async function readCurrentIdentity(args: {
       ),
     )
     .limit(1);
-  return row?.catalogDigest
+  return row
     ? {
         sourceId: args.sourceId,
         schemaVersion: row.schemaVersion,
@@ -326,7 +326,7 @@ async function readCurrentCatalog(args: {
       ),
     )
     .limit(1);
-  if (!row || row.catalogRawSize === null || row.catalogGzip === null) {
+  if (!row) {
     return undefined;
   }
 
