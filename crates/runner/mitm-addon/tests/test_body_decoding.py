@@ -162,14 +162,15 @@ class TestStreamDecodeFeed:
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_zlib_high_ratio_output_stops_at_expansion_budget(self, headers, encoding):
-        plaintext = b"A" * (64 * 1024 * 1024)
+        plaintext_size = 8 * 1024 * 1024
+        compression_block = hashlib.shake_256(b"vm0-streaming-zlib-ratio-budget").digest(5 * 1024)
+        plaintext = (compression_block * (plaintext_size // len(compression_block) + 1))[
+            :plaintext_size
+        ]
         compressed = _compress_one_shot_body(encoding, plaintext)
         assert len(compressed) < STREAM_DECODE_CHUNK_LIMIT
-        expected_decoded_bytes = max(
-            STREAM_DECODE_EXPANSION_GRACE,
-            len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO,
-        )
-        assert expected_decoded_bytes < len(plaintext)
+        expected_decoded_bytes = len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO
+        assert STREAM_DECODE_EXPANSION_GRACE < expected_decoded_bytes < len(plaintext)
         chunks: list[bytes] = []
         session = create_stream_decode_session(
             headers(("Content-Encoding", encoding)), chunks.append
