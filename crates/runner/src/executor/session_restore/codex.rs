@@ -15,13 +15,12 @@ const CODEX_SESSION_CLEANUP_SCRIPT: &str =
     include_str!("../../../scripts/codex-session-cleanup.sh");
 const INVALID_CODEX_CLEANUP_OUTPUT: &str = "invalid codex session cleanup output";
 
-fn codex_restore_rollout_path(
+fn codex_restore_logical_rollout_path(
     session_id: &str,
     timestamp: chrono::DateTime<chrono::Utc>,
-    extension: &str,
 ) -> String {
     format!(
-        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}{extension}",
+        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
         timestamp.format("%Y"),
         timestamp.format("%m"),
         timestamp.format("%d"),
@@ -59,7 +58,7 @@ pub(super) async fn restore_codex_session(
     } else {
         (session.history_bytes(), "")
     };
-    let fallback_logical_path = codex_restore_rollout_path(session_id, timestamp, ".jsonl");
+    let fallback_logical_path = codex_restore_logical_rollout_path(session_id, timestamp);
 
     let logical_path = cleanup_existing_codex_session_files(
         sandbox,
@@ -94,7 +93,7 @@ async fn cleanup_existing_codex_session_files(
     context: &ExecutionContext,
     session_id: &str,
     session_filename_key: &str,
-    session_path: &str,
+    fallback_logical_path: &str,
 ) -> RunnerResult<Option<String>> {
     let cleanup_cmd = codex_session_cleanup_command(CODEX_HOME);
     let env = [
@@ -103,7 +102,7 @@ async fn cleanup_existing_codex_session_files(
             "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
             session_filename_key,
         ),
-        ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
+        ("VM0_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
     ];
     let result = sandbox
         .exec_with_diagnostic_label(
