@@ -348,9 +348,7 @@ export const createCreditCheckoutSession$ = command(
     const customerCoupon =
       "discount" in customer ? customer.discount?.source.coupon : null;
     const customerCouponId =
-      typeof customerCoupon === "string"
-        ? customerCoupon
-        : customerCoupon?.id;
+      typeof customerCoupon === "string" ? customerCoupon : customerCoupon?.id;
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,

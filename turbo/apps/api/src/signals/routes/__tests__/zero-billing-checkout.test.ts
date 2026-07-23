@@ -1672,9 +1672,8 @@ describe("POST /api/zero/billing/credit-checkout", () => {
   });
 
   it("automatically applies the customer's coupon", async () => {
-    const fixture = await trackedSeed();
-    const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    await createStripeCustomerOrgForFixture(fixture, customerId);
+    const fixture = await createSubscriptionOrg({ tier: "pro" });
+    const { customerId } = fixture;
     const couponId = `coupon_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
       id: customerId,
@@ -1713,9 +1712,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       expect.objectContaining({
         mode: "payment",
         customer: customerId,
-        line_items: [
-          { price: TEST_PRICE_CUSTOM_CREDIT_UNIT, quantity: 20 },
-        ],
+        line_items: [{ price: TEST_PRICE_CUSTOM_CREDIT_UNIT, quantity: 20 }],
         discounts: [{ coupon: couponId }],
       }),
     );
