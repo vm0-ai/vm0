@@ -394,13 +394,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SidebarManageIconCollapse]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
     description:
