@@ -4643,9 +4643,11 @@ async function insertLaunchRunRows(
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
     apiStartedAt:
-      args.apiToFirstAssistantMessageStartedAt === undefined
-        ? new Date(args.apiStartTime)
-        : args.apiToFirstAssistantMessageStartedAt,
+      args.status === "queued"
+        ? null
+        : args.apiToFirstAssistantMessageStartedAt === undefined
+          ? new Date(args.apiStartTime)
+          : args.apiToFirstAssistantMessageStartedAt,
   });
 
   if (args.callbackRows.length > 0) {

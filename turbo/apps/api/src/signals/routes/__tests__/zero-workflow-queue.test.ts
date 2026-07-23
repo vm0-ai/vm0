@@ -19,7 +19,6 @@ import {
   type SecretKmsClient,
 } from "../../../lib/secret-kms-client";
 import { mockNow, now } from "../../../lib/time";
-import { clearWorkflowQueueApiStartFixture } from "../../../test-fixtures/chat-messages";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -27,6 +26,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { clearWorkflowQueueApiStart } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -351,7 +351,7 @@ describe("workflow queue", () => {
     const queuedAt = now() + 60_000;
     mockNow(queuedAt);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
-    await clearWorkflowQueueApiStartFixture(automation.automationId);
+    await clearWorkflowQueueApiStart(context, automation.automationId);
 
     const dequeuedAt = queuedAt + 10_000;
     mockNow(dequeuedAt);

@@ -69,8 +69,8 @@ export const zeroRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // First-assistant timing origin. Concurrency-queued runs replace a present
-    // value with their promotion time; null runs remain unmeasured.
+    // First-assistant timing origin. Concurrency-queued runs leave this null
+    // until promotion supplies the same start used by runner telemetry.
     apiStartedAt: timestamp("api_started_at"),
     firstAssistantMessageAcknowledgedAt: timestamp(
       "first_assistant_message_acknowledged_at",

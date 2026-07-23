@@ -40,7 +40,6 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
-import { clearApiStartFixture } from "../../../test-fixtures/chat-messages";
 import {
   deleteOrgPlanEntitlementFixture,
   readOrgPlanEntitlementFixture,
@@ -76,6 +75,7 @@ import {
 } from "./helpers/agent-run-callback";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
+  clearRunApiStart,
   deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
@@ -85,6 +85,7 @@ import {
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
+  readRunApiStart,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
@@ -9827,6 +9828,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       prompt: "promote this chat run",
     });
     expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
+    await expect(readRunApiStart(context, queued.runId)).resolves.toBeNull();
 
     mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
@@ -9886,7 +9888,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       prompt: "bdd mixed-version assistant event",
     });
     await flushWaitUntilForTest();
-    await clearApiStartFixture(runId);
+    await clearRunApiStart(context, runId);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     context.mocks.ably.publish.mockClear();

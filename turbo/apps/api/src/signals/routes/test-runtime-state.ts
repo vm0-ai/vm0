@@ -16,12 +16,14 @@ import {
 } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { eq, sql } from "drizzle-orm";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -234,6 +236,76 @@ async function deleteVm0ManagedDefaultModelKey(
   signal.throwIfAborted();
 }
 
+async function clearRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [cleared] = await db
+    .update(zeroRuns)
+    .set({ apiStartedAt: null })
+    .where(eq(zeroRuns.id, runId))
+    .returning({ id: zeroRuns.id });
+  signal.throwIfAborted();
+  if (!cleared) {
+    throw new Error("Expected a Zero run timing row");
+  }
+}
+
+async function clearChatMessageQueueApiStart(
+  db: Db,
+  chatMessageId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [cleared] = await db
+    .update(chatMessageQueue)
+    .set({ apiStartedAt: null })
+    .where(eq(chatMessageQueue.chatMessageId, chatMessageId))
+    .returning({ id: chatMessageQueue.id });
+  signal.throwIfAborted();
+  if (!cleared) {
+    throw new Error("Expected a queued chat message timing row");
+  }
+}
+
+async function clearWorkflowQueueApiStart(
+  db: Db,
+  automationId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const cleared = await db
+    .update(chatMessageQueue)
+    .set({ apiStartedAt: null })
+    .where(
+      and(
+        eq(chatMessageQueue.automationId, automationId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    )
+    .returning({ id: chatMessageQueue.id });
+  signal.throwIfAborted();
+  if (cleared.length !== 1) {
+    throw new Error("Expected one queued workflow event timing row");
+  }
+}
+
+async function readRunApiStart(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const [run] = await db
+    .select({ apiStartedAt: zeroRuns.apiStartedAt })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("Expected a Zero run timing row");
+  }
+  return run.apiStartedAt?.toISOString() ?? null;
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -431,6 +503,58 @@ async function storageStateActionResponse(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+type TimingStateAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "clear-run-api-start"
+      | "clear-chat-message-queue-api-start"
+      | "clear-workflow-queue-api-start"
+      | "read-run-api-start";
+  }
+>;
+
+function isTimingStateAction(
+  body: TestRuntimeStateActionBody,
+): body is TimingStateAction {
+  return (
+    body.action === "clear-run-api-start" ||
+    body.action === "clear-chat-message-queue-api-start" ||
+    body.action === "clear-workflow-queue-api-start" ||
+    body.action === "read-run-api-start"
+  );
+}
+
+async function timingStateActionResponse(
+  db: Db,
+  body: TimingStateAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "clear-run-api-start": {
+      await clearRunApiStart(db, body.run_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "clear-chat-message-queue-api-start": {
+      await clearChatMessageQueueApiStart(db, body.chat_message_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "clear-workflow-queue-api-start": {
+      await clearWorkflowQueueApiStart(db, body.automation_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-api-start": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          api_started_at: await readRunApiStart(db, body.run_id, signal),
+        },
+      };
+    }
+  }
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -447,6 +571,9 @@ const postRuntimeStateAction$ = command(
     const db = set(writeDb$);
     if (isStorageStateAction(body)) {
       return await storageStateActionResponse(db, body, signal);
+    }
+    if (isTimingStateAction(body)) {
+      return await timingStateActionResponse(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

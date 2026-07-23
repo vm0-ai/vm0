@@ -8,7 +8,6 @@ import {
   count,
   eq,
   inArray,
-  isNotNull,
   isNull,
   lt,
   ne,
@@ -183,7 +182,7 @@ async function insertPromotedRunnerJob(
   await tx
     .update(zeroRuns)
     .set({ apiStartedAt: new Date(promotedAt) })
-    .where(and(eq(zeroRuns.id, args.runId), isNotNull(zeroRuns.apiStartedAt)));
+    .where(eq(zeroRuns.id, args.runId));
 
   const timestamps = runnerJobQueueTimestamps();
   const [runnerJob] = await tx

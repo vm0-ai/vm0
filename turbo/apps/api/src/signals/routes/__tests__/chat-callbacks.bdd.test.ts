@@ -21,7 +21,6 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
-import { clearQueuedApiStartFixture } from "../../../test-fixtures/chat-messages";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -33,6 +32,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { clearChatMessageQueueApiStart } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
@@ -1036,7 +1036,7 @@ describe("CHAT-02: completed chat callback", () => {
         if (!queuedMessage) {
           throw new Error("Expected the queued Web message fixture");
         }
-        await clearQueuedApiStartFixture(queuedMessage.id);
+        await clearChatMessageQueueApiStart(context, queuedMessage.id);
       }
 
       mockNow(dequeuedAt);
