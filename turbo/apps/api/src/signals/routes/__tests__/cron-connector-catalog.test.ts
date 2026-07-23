@@ -770,8 +770,8 @@ function buildBundledSkill(
     archiveSize: 321,
     fileCount: 1,
   },
+  storageName = `connector-skill@${connectorRef}`,
 ): JsonRecord {
-  const storageName = `connector-skill@${connectorRef}`;
   const prefix = `__system__/volume/${storageName}/${versionId}`;
   return {
     kind: "bundled",
@@ -798,21 +798,26 @@ interface BundledSkillFixture {
 function buildBundledSkillFixture(
   connectorRef: string,
   versionId = "a".repeat(64),
+  storageName = `connector-skill@${connectorRef}`,
 ): BundledSkillFixture {
   const contentSize = Buffer.byteLength(`# ${connectorRef}\n`);
   const archiveSize = 321;
   const fileCount = 1;
-  const storageName = `connector-skill@${connectorRef}`;
   const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
   const versionPrefix = `${s3Prefix}/${versionId}`;
   const manifestKey = `${versionPrefix}/manifest.json`;
   const archiveKey = `${versionPrefix}/archive.tar.gz`;
   return {
-    descriptor: buildBundledSkill(connectorRef, versionId, {
-      size: contentSize,
-      archiveSize,
-      fileCount,
-    }),
+    descriptor: buildBundledSkill(
+      connectorRef,
+      versionId,
+      {
+        size: contentSize,
+        archiveSize,
+        fileCount,
+      },
+      storageName,
+    ),
     storageName,
     s3Prefix,
     versionId,
@@ -4012,9 +4017,11 @@ describe("connector catalog valid lifecycle", () => {
 
   it("accepts a complete bundled skill descriptor", async () => {
     configureSource();
+    const resolvedStorageName = `connector-skill@resolved-${randomUUID().slice(0, 8)}`;
     const skill = buildBundledSkillFixture(
       "external-test",
       createHash("sha256").update(randomUUID()).digest("hex"),
+      resolvedStorageName,
     );
     const previous = await readVolumeStorageState({
       orgId: SYSTEM_ORG_ID,

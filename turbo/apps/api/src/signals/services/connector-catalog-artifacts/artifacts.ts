@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 
 import {
   artifactKeySchema,
@@ -34,8 +35,7 @@ export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 8 * 1024 * 1024;
 const CONNECTOR_SKILL_MAX_FILES = 64;
 const CONNECTOR_SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
 const CONNECTOR_SKILL_MAX_ARCHIVE_BYTES = CONNECTOR_SKILL_MAX_TOTAL_BYTES * 2;
-const CONNECTOR_SKILL_STORAGE_NAME_PREFIX = "connector-skill@";
-const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
+const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = `${SYSTEM_ORG_ID}/volume`;
 
 function artifactHeaderShape() {
   return {
@@ -220,17 +220,9 @@ export const connectorCatalogArtifactConnectorSchema = z
     if (connector.skill.kind === "none") {
       return;
     }
-    const expectedStorageName = `${CONNECTOR_SKILL_STORAGE_NAME_PREFIX}${connector.connectorRef}`;
-    if (connector.skill.storageName !== expectedStorageName) {
-      context.addIssue({
-        code: "custom",
-        message: "Connector skill storage name must match its connector",
-        path: ["skill", "storageName"],
-      });
-    }
     const expectedStorageVersionPrefix =
       `${CONNECTOR_SKILL_STORAGE_PATH_PREFIX}/` +
-      `${expectedStorageName}/${connector.skill.versionId}`;
+      `${connector.skill.storageName}/${connector.skill.versionId}`;
     if (connector.skill.storageVersionPrefix !== expectedStorageVersionPrefix) {
       context.addIssue({
         code: "custom",
