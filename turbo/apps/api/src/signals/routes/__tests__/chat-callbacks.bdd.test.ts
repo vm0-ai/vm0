@@ -971,6 +971,108 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
+  it("uses structured message semantics for title and recommended follow-up context", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const firstStructuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
+        },
+        { type: "text", text: "first structured request" },
+      ],
+    };
+    const templatePrompt = `Select ${style.title} illustration template`;
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "stale first legacy request",
+      generationTemplate,
+      structuredPrompt: firstStructuredPrompt,
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "first structured answer"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const titlePrompts: string[] = [];
+    const followupPrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Structured Context";
+      }
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupPrompts.push(body.messages[1]?.content ?? "");
+        return JSON.stringify([
+          { prompt: "Continue the structured work", kind: "talk" },
+        ]);
+      }
+      return "Generated summary";
+    });
+
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "stale second legacy request",
+      structuredPrompt: {
+        version: 1,
+        parts: [{ type: "text", text: "second structured request" }],
+      },
+    });
+    await waitForThreadTitle(actor, first.threadId, "Structured Context");
+
+    expect(titlePrompts).toHaveLength(1);
+    expect(titlePrompts[0]).toContain(templatePrompt);
+    expect(titlePrompts[0]).toContain("first structured request");
+    expect(titlePrompts[0]).toContain("second structured request");
+    expect(titlePrompts[0]).not.toContain("stale first legacy request");
+    expect(titlePrompts[0]).not.toContain("stale second legacy request");
+
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "second structured answer"),
+    ]);
+    await completeChatRunOk(second.runId, secondHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupPrompts).toHaveLength(1);
+    expect(followupPrompts[0]).toContain(templatePrompt);
+    expect(followupPrompts[0]).toContain("first structured request");
+    expect(followupPrompts[0]).toContain("second structured request");
+    expect(followupPrompts[0]).toContain("second structured answer");
+    expect(followupPrompts[0]).not.toContain("stale first legacy request");
+    expect(followupPrompts[0]).not.toContain("stale second legacy request");
+  }, 90_000);
+
   it("suppresses malformed recommended follow-up JSON instead of storing raw syntax lines", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

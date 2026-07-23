@@ -132,7 +132,10 @@ import type {
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
-import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
+import {
+  messageDocumentToDisplayText,
+  textToMessageDocument,
+} from "../zero-page/user-message-document-codec.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -1928,9 +1931,17 @@ function createMessageSemanticSignals(
   });
   const queuedMessageItems$ = computed(
     (get): Promise<readonly QueuedChatMessageItem[]> => {
+      const structuredPromptEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.StructuredPrompt] ?? false;
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
-          return { id: message.id, text: (message.content ?? "").trim() };
+          const text =
+            structuredPromptEnabled &&
+            message.role === "user" &&
+            message.structuredPrompt
+              ? messageDocumentToDisplayText(message.structuredPrompt)
+              : message.content;
+          return { id: message.id, text: (text ?? "").trim() };
         }),
       );
     },

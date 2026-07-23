@@ -336,3 +336,40 @@ export function messageDocumentToPrompt(value: unknown): string | null {
     })
     .join("");
 }
+
+/** Serializes the business document into a compact human-readable label. */
+export function messageDocumentToDisplayText(value: unknown): string | null {
+  const parsed = userMessageDocumentSchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+
+  const blocks: string[] = [];
+  let inlineText = "";
+  const flushInlineText = () => {
+    if (inlineText.length > 0) {
+      blocks.push(inlineText);
+      inlineText = "";
+    }
+  };
+
+  for (const part of parsed.data.parts) {
+    if (part.type === "text") {
+      inlineText += part.text;
+      continue;
+    }
+    if (part.type === "chat_thread") {
+      inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      continue;
+    }
+
+    flushInlineText();
+    blocks.push(
+      part.type === "template"
+        ? `[Template: ${part.titleSnapshot}]`
+        : `[File: ${part.filenameSnapshot}]`,
+    );
+  }
+  flushInlineText();
+  return blocks.join("\n\n");
+}

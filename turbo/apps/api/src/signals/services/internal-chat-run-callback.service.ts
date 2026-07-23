@@ -1074,6 +1074,7 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
 async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
+  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
 }): Promise<readonly ChatCompletionContextMessage[]> {
   return (
@@ -1081,6 +1082,7 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
       loadChatThreadRecommendedFollowupContext({
         db: args.db,
         threadId: args.threadId,
+        structuredPromptEnabled: args.structuredPromptEnabled,
       }),
       (err) => {
         log.warn("Recommended follow-up context load failed", {
@@ -1098,6 +1100,7 @@ async function handleCompletedChatCallback(args: {
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
   readonly timing: ChatCallbackPreCreateTimingCollector;
+  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly sourceCallbackId?: string;
@@ -1199,6 +1202,7 @@ async function handleCompletedChatCallback(args: {
       return loadRecommendedFollowupContextForCompletedRun({
         db: args.db,
         threadId: args.chatThread.chatThreadId,
+        structuredPromptEnabled: args.structuredPromptEnabled,
         signal: args.signal,
       });
     },
@@ -1221,6 +1225,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly isGoalRun: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
+  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
   readonly saveRunSummary: (resultText: string) => Promise<void>;
 }): Promise<void> {
@@ -1236,6 +1241,7 @@ async function runCompletedChatCallbackSideEffects(args: {
     runId: args.runId,
     prompt: args.run.prompt,
     currentAssistantReply: args.lastResultText ?? undefined,
+    structuredPromptEnabled: args.structuredPromptEnabled,
   });
 
   const followupsStep = (async () => {
@@ -2312,17 +2318,28 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
-  const completed = await measureChatCallbackPreCreateTiming(
+  const prepared = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
     "top_level",
-    () => {
-      return handleCompletedChatCallback({
+    async () => {
+      const featureSwitchContext = await loadUserFeatureSwitchContext(
+        args.db,
+        args.chatThread.orgId,
+        args.chatThread.userId,
+      );
+      args.signal.throwIfAborted();
+      const structuredPromptEnabled = isFeatureEnabled(
+        FeatureSwitchKey.StructuredPrompt,
+        featureSwitchContext,
+      );
+      const completed = await handleCompletedChatCallback({
         db: args.db,
         runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
         timing: args.timing,
+        structuredPromptEnabled,
         signal: args.signal,
         slackDelivery: args.slackDelivery,
         sourceCallbackId: args.sourceCallbackId,
@@ -2338,8 +2355,10 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
           );
         },
       });
+      return { completed, structuredPromptEnabled };
     },
   );
+  const { completed, structuredPromptEnabled } = prepared;
   if (!completed.inserted) {
     return { shouldDrainThreadQueue: false };
   }
@@ -2356,6 +2375,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         isGoalRun: args.isGoalRun,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
+        structuredPromptEnabled,
         signal: args.signal,
         saveRunSummary: (resultText) => {
           return args.dependencies.saveRunSummary(

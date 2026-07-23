@@ -246,6 +246,7 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
+  readonly structuredPromptEnabled: boolean;
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientMessagePrechecked: boolean;
   readonly preflightClientMessageConflict:
@@ -2396,6 +2397,7 @@ const prepareNormalSend$ = command(
       computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      structuredPromptEnabled: featureSwitches.structuredPromptEnabled,
       runConfiguration,
       clientMessagePrechecked,
       preflightClientMessageConflict: preflightClientMessageResponse,
@@ -2459,10 +2461,11 @@ async function queueUnassociatedNormalMessage(params: {
 
 function scheduleChatTitleGeneration(params: {
   readonly db: Db;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
   readonly orgId: string;
+  readonly structuredPromptEnabled: boolean;
 }): void {
   if (
     params.body.hasTextContent === false ||
@@ -2477,8 +2480,12 @@ function scheduleChatTitleGeneration(params: {
       threadId: params.thread.threadId,
       userId: params.userId,
       orgId: params.orgId,
-      prompt: params.body.prompt,
+      prompt:
+        params.structuredPromptEnabled && params.body.structuredPrompt
+          ? params.body.agentPrompt
+          : params.body.prompt,
       includePriorRounds: !params.thread.isNewThread,
+      structuredPromptEnabled: params.structuredPromptEnabled,
     }),
   );
 }
@@ -2541,13 +2548,14 @@ function scheduleAssociatedUserMessage(params: {
 
 function scheduleCreatedChatRunSideEffects(params: {
   readonly db: Db;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly thread: ResolvedThread;
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly structuredPromptEnabled: boolean;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2561,6 +2569,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     thread: params.thread,
     userId: params.userId,
     orgId: params.orgId,
+    structuredPromptEnabled: params.structuredPromptEnabled,
   });
   const appendInitialThinking =
     params.initialThinkingEnabled &&
@@ -3025,6 +3034,7 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
+    structuredPromptEnabled: params.prepared.structuredPromptEnabled,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,

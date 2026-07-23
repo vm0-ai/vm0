@@ -94,6 +94,7 @@ import type {
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  messageDocumentToDisplayText,
   messageDocumentToPrompt,
   type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
@@ -3323,17 +3324,28 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
   });
 }
 
-function runGroupFoldSourceLabel(fold: RunGroupFold): string {
+function runGroupFoldSourceLabel(
+  fold: RunGroupFold,
+  structuredPromptEnabled: boolean,
+): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
   }
-  const userMessage = messages.find((message) => {
-    return message.role === "user" && (message.content?.trim().length ?? 0) > 0;
-  });
-  const content = userMessage?.content?.trim();
-  return content ? normalizedInlineLabel(content) : "Automated run";
+  for (const message of messages) {
+    if (message.role !== "user") {
+      continue;
+    }
+    const content =
+      structuredPromptEnabled && message.structuredPrompt
+        ? messageDocumentToDisplayText(message.structuredPrompt)
+        : message.content;
+    if (content?.trim()) {
+      return normalizedInlineLabel(content);
+    }
+  }
+  return "Automated run";
 }
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
@@ -3416,14 +3428,17 @@ function verboseDurationLabelForRunGroupFold(
   return parts.join(" ");
 }
 
-function runGroupFoldLabel(fold: RunGroupFold): string {
+function runGroupFoldLabel(
+  fold: RunGroupFold,
+  structuredPromptEnabled: boolean,
+): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold);
+  const sourceLabel = runGroupFoldSourceLabel(fold, structuredPromptEnabled);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -3435,7 +3450,11 @@ function RunGroupFoldRow({
   embedded?: boolean;
 }) {
   const { fold, expanded, onToggle } = control;
-  const label = runGroupFoldLabel(fold);
+  const featureSwitches = useGet(featureSwitch$);
+  const label = runGroupFoldLabel(
+    fold,
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false,
+  );
   const isGoal = isGoalRunGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (

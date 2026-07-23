@@ -136,6 +136,61 @@ function mockActiveRunThread(
 }
 
 describe("chat run queue", () => {
+  it("labels a structured queued message from its ordered parts", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-queued-user`,
+          role: "user",
+          content: "stale queued label",
+          runId: undefined,
+          structuredPrompt: {
+            version: 1,
+            parts: [
+              {
+                type: "file",
+                fileId: "roadmap-file",
+                filenameSnapshot: "roadmap.pdf",
+                contentType: "application/pdf",
+              },
+              { type: "text", text: "Review the roadmap" },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "[File: roadmap.pdf] Review the roadmap",
+      );
+    });
+    expect(screen.queryByText("stale queued label")).not.toBeInTheDocument();
+  });
+
   it("shows a sent message and stop control while a new chat run is active", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);

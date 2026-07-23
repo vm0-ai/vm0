@@ -2,12 +2,15 @@ import { createHash } from "node:crypto";
 import archiver from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
   UserExportJob,
   UserExportStartResponse,
   UserExportStatusResponse,
 } from "@vm0/api-contracts/contracts/user-export";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getInstructionsStorageName,
   MEMORY_ARTIFACT_NAME,
@@ -63,6 +66,8 @@ import {
   gunzipSessionHistoryBufferWithMaxBytes,
   unzstdSessionHistoryBufferWithMaxBytes,
 } from "./session-history-decompression";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -135,6 +140,7 @@ interface VolumeFile {
 interface ExportTextMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  readonly structuredPrompt?: UserMessageDocument;
   readonly createdAt: string;
 }
 
@@ -725,6 +731,7 @@ function verifySessionHistoryBuffer(
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
+  structuredPromptEnabled: boolean,
 ): Promise<{
   readonly entries: readonly ZipEntry[];
   readonly threadCount: number;
@@ -746,6 +753,7 @@ async function collectConversationMessages(
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
+        structuredPrompt: chatMessages.structuredPrompt,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -760,13 +768,24 @@ async function collectConversationMessages(
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
       const role = exportMessageRole(message.role);
-      if (!role || !message.content) {
+      if (!role) {
+        return [];
+      }
+      const structuredPrompt =
+        structuredPromptEnabled && role === "user"
+          ? (message.structuredPrompt ?? undefined)
+          : undefined;
+      const content = structuredPrompt
+        ? projectStructuredUserMessage(structuredPrompt).displayText
+        : message.content;
+      if (!content) {
         return [];
       }
       return [
         {
           role,
-          content: message.content,
+          content,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
           createdAt: message.createdAt.toISOString(),
         },
       ];
@@ -829,9 +848,16 @@ async function collectUserData(
   const agentInstructions = await collectAgentInstructionFiles(runtime, userId);
   const workflows = await collectWorkflowFiles(runtime, userId);
   const memory = await collectMemoryFiles(runtime, userId);
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    runtime.db,
+    orgId,
+    userId,
+  );
+  runtime.signal.throwIfAborted();
   const conversationsResult = await collectConversationMessages(
     runtime,
     userId,
+    isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, featureSwitchContext),
   );
   const zipEntries: ZipEntry[] = [
     ...agentInstructions.entries,

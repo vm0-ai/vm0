@@ -10,6 +10,7 @@ import {
   type ChatThreadEvent,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
@@ -390,6 +391,54 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("B reply 1")).toBeInTheDocument();
       expect(screen.queryByText("A reply 10")).not.toBeInTheDocument();
     });
+  });
+
+  it("labels folded structured runs from their ordered message parts", async () => {
+    const threadId = "structured-run-group-label";
+    const messages = makeRunGroupMessages({
+      label: "stale run label",
+      count: 2,
+      runGroupId: "structured-label-group",
+      startMinute: 0,
+    }).map((message) => {
+      return message.role === "user"
+        ? {
+            ...message,
+            structuredPrompt: {
+              version: 1 as const,
+              parts: [
+                {
+                  type: "file" as const,
+                  fileId: "roadmap-file",
+                  filenameSnapshot: "roadmap.pdf",
+                  contentType: "application/pdf",
+                },
+                { type: "text" as const, text: "Review the roadmap" },
+              ],
+            },
+          }
+        : message;
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured run group label",
+      chatMessages: messages,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "1 run for [File: roadmap.pdf] Review the roadmap",
+      );
+    });
+    expect(buttonByLabel("Expand grouped run history")).not.toHaveTextContent(
+      "stale run label",
+    );
   });
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {

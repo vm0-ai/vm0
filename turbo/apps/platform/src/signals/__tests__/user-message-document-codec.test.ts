@@ -11,6 +11,7 @@ import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
   editorDocToMessageDocument,
+  messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
@@ -127,6 +128,10 @@ describe("user message document codec", () => {
     });
     expect(messageDocumentToPrompt(structured)).toBe(
       `  Review [Project Alpha](/chats/${THREAD_ID}) then\ncontinue  \nlast`,
+    );
+    expect(messageDocumentToDisplayText(structured)).toBe(
+      `[Template: Pitch deck]\n\n[File: file-one.pdf]\n\n[File: file-two.txt]\n\n` +
+        "  Review [Chat thread: Project Alpha] then\ncontinue  \nlast",
     );
 
     const restored = messageDocumentToEditorDoc(structured);
@@ -288,6 +293,7 @@ describe("user message document codec", () => {
     const malformed = { version: 1, parts: [] };
     expect(messageDocumentToEditorDoc(malformed)).toBeNull();
     expect(messageDocumentToPrompt(malformed)).toBeNull();
+    expect(messageDocumentToDisplayText(malformed)).toBeNull();
   });
 
   it("restores each template variant to the shared attachment node", () => {

@@ -4,7 +4,13 @@ import { gzipSync, zstdCompressSync } from "node:zlib";
 import AdmZip from "adm-zip";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type {
+  GenerationTemplateRequest,
+  UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
@@ -12,11 +18,13 @@ import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { commitMemoryVersion } from "./helpers/zero-memory";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
@@ -611,6 +619,84 @@ describe("OPS-01: user data export", () => {
       canExport: true,
       nextExportAt: null,
     });
+  });
+
+  it("exports structured user messages with readable text and the source document", async () => {
+    const api = createOpsLogsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
+        },
+        { type: "text", text: "Export the structured request" },
+      ],
+    };
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "stale export content",
+        generationTemplate,
+        structuredPrompt,
+      },
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the structured message send to succeed");
+    }
+
+    const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/bdd-structured-export.zip?sig=test",
+    );
+    const started = await api.requestPostUserExport(actor, [202]);
+    const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+    await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "completed",
+    );
+
+    const messages = JSON.parse(
+      zipText(
+        exportZip(exportKey),
+        `conversations/chat-thread-${sent.body.threadId}.json`,
+      ),
+    ) as {
+      readonly role: string;
+      readonly content: string;
+      readonly structuredPrompt?: UserMessageDocument;
+    }[];
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: `[Template: ${style.title}]\n\nExport the structured request`,
+      structuredPrompt,
+    });
+    expect(messages[0]?.content).not.toContain("stale export content");
   });
 
   it("exports only agent instruction files, workflow files, and memory files", async () => {
