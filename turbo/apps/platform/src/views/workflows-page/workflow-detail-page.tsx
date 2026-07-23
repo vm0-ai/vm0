@@ -50,6 +50,7 @@ import {
   IconExternalLink,
   IconPlugConnected,
   IconVideo,
+  IconX,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -94,6 +95,7 @@ import {
   createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   createWorkflowGmailLabelAppliedAutomation$,
   createWorkflowGmailNewMessageAutomation$,
+  createGmailMatchConditions$,
   createWorkflowNotionChildPageAutomation$,
   createWorkflowNotionDatabaseItemAutomation$,
   createWorkflowNotionPageContentUpdatedAutomation$,
@@ -109,6 +111,7 @@ import {
   deleteWorkflowAutomation$,
   editingScheduleCronFields$,
   editingGithubLabelActors$,
+  editingGmailMatchConditions$,
   editingWorkflowAutomationId$,
   patchWorkflowMetadataForm$,
   openWorkflowChat$,
@@ -120,10 +123,12 @@ import {
   runWorkflowAutomationNow$,
   selectedWorkflowFilePath$,
   setCreateGithubLabelActor$,
+  setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
   setEditingGithubLabelActor$,
+  setEditingGmailMatchConditions$,
   setEditingScheduleCronFields$,
   setEditingWorkflowAutomationId$,
   setRevealWebhookSecretAutomationId$,
@@ -158,6 +163,9 @@ import {
   type WorkflowDetailTab,
   type WorkflowAutomationCreateDialog,
   type NotionPageContentUpdatedScopeMode,
+  type GmailMatchCondition,
+  type GmailTextField,
+  type GmailTextOperator,
   workflowMetadataPatch$,
   workflowConnectorReadiness$,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -223,7 +231,6 @@ const AUTOMATION_TIMEZONE = "UTC";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
-type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 type GmailWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
@@ -252,6 +259,14 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "body", label: "Body" },
   { field: "to", label: "To" },
   { field: "cc", label: "Cc" },
+];
+
+const GMAIL_TEXT_OPERATORS: readonly {
+  readonly operator: GmailTextOperator;
+  readonly label: string;
+}[] = [
+  { operator: "contains", label: "Contains" },
+  { operator: "doesNotContain", label: "Does not contain" },
 ];
 
 const GITHUB_SUBJECT_OPTIONS: readonly {
@@ -2558,6 +2573,63 @@ function buildGmailNewMessageEventConfig(
     : { provider: "gmail", event: "new_message" };
 }
 
+function gmailMatchConditions(
+  config?: GmailNewMessageEventConfig,
+): GmailMatchCondition[] {
+  const conditions: GmailMatchCondition[] = [];
+  for (const { field } of GMAIL_TEXT_FIELDS) {
+    for (const { operator } of GMAIL_TEXT_OPERATORS) {
+      const value = config?.match?.[field]?.[operator];
+      if (value) {
+        conditions.push({ field, operator, value });
+      }
+    }
+  }
+  return conditions.length > 0
+    ? conditions
+    : [{ field: "from", operator: "contains", value: "" }];
+}
+
+function nextGmailMatchCondition(
+  conditions: readonly GmailMatchCondition[],
+): GmailMatchCondition | null {
+  for (const { operator } of GMAIL_TEXT_OPERATORS) {
+    for (const { field } of GMAIL_TEXT_FIELDS) {
+      const used = conditions.some((condition) => {
+        return condition.field === field && condition.operator === operator;
+      });
+      if (!used) {
+        return { field, operator, value: "" };
+      }
+    }
+  }
+  return null;
+}
+
+function gmailTextFieldOption(
+  value: string,
+): (typeof GMAIL_TEXT_FIELDS)[number] {
+  const option = GMAIL_TEXT_FIELDS.find((candidate) => {
+    return candidate.field === value;
+  });
+  if (!option) {
+    throw new Error(`Unknown Gmail text field: ${value}`);
+  }
+  return option;
+}
+
+function gmailTextOperatorOption(
+  value: string,
+): (typeof GMAIL_TEXT_OPERATORS)[number] {
+  const option = GMAIL_TEXT_OPERATORS.find((candidate) => {
+    return candidate.operator === value;
+  });
+  if (!option) {
+    throw new Error(`Unknown Gmail text operator: ${value}`);
+  }
+  return option;
+}
+
 function buildGmailLabelAppliedEventConfig(
   form: FormData,
 ): GmailLabelAppliedEventConfig | null {
@@ -2761,14 +2833,6 @@ function workflowAutomationSummary(
     return title ? `Database ${quote(title)}` : "Configured database";
   }
   return null;
-}
-
-function gmailMatcherDefaultValue(
-  config: GmailNewMessageEventConfig,
-  field: GmailTextField,
-  key: "contains" | "doesNotContain",
-): string {
-  return config.match?.[field]?.[key] ?? "";
 }
 
 type AutomationCreateDialogKind =
@@ -4426,6 +4490,187 @@ function WorkflowDayOfWeekPicker({
   );
 }
 
+function updateGmailMatchCondition(
+  conditions: readonly GmailMatchCondition[],
+  index: number,
+  update: Partial<GmailMatchCondition>,
+): readonly GmailMatchCondition[] {
+  return conditions.map((condition, conditionIndex) => {
+    return conditionIndex === index ? { ...condition, ...update } : condition;
+  });
+}
+
+function gmailMatchConditionUsed(
+  conditions: readonly GmailMatchCondition[],
+  index: number,
+  field: GmailTextField,
+  operator: GmailTextOperator,
+): boolean {
+  return conditions.some((condition, conditionIndex) => {
+    return (
+      conditionIndex !== index &&
+      condition.field === field &&
+      condition.operator === operator
+    );
+  });
+}
+
+function GmailMatchConditionRow({
+  condition,
+  conditions,
+  index,
+  disabled,
+  onChange,
+}: {
+  readonly condition: GmailMatchCondition;
+  readonly conditions: readonly GmailMatchCondition[];
+  readonly index: number;
+  readonly disabled: boolean;
+  readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
+}) {
+  const fieldLabel = gmailTextFieldOption(condition.field).label;
+  const operatorLabel = gmailTextOperatorOption(condition.operator).label;
+  const updateCondition = (update: Partial<GmailMatchCondition>) => {
+    onChange(updateGmailMatchCondition(conditions, index, update));
+  };
+
+  return (
+    <div className="group grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2.25rem] items-center gap-2 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,2fr)_2.25rem]">
+      <Select
+        value={condition.field}
+        disabled={disabled}
+        onValueChange={(value) => {
+          updateCondition({ field: gmailTextFieldOption(value).field });
+        }}
+      >
+        <SelectTrigger aria-label={`Condition ${index + 1} field`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {GMAIL_TEXT_FIELDS.map((option) => {
+            return (
+              <SelectItem
+                key={option.field}
+                value={option.field}
+                disabled={gmailMatchConditionUsed(
+                  conditions,
+                  index,
+                  option.field,
+                  condition.operator,
+                )}
+              >
+                {option.label}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      <Select
+        value={condition.operator}
+        disabled={disabled}
+        onValueChange={(value) => {
+          updateCondition({
+            operator: gmailTextOperatorOption(value).operator,
+          });
+        }}
+      >
+        <SelectTrigger aria-label={`Condition ${index + 1} operator`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {GMAIL_TEXT_OPERATORS.map((option) => {
+            return (
+              <SelectItem
+                key={option.operator}
+                value={option.operator}
+                disabled={gmailMatchConditionUsed(
+                  conditions,
+                  index,
+                  condition.field,
+                  option.operator,
+                )}
+              >
+                {option.label}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      <Input
+        name={`${condition.field}${condition.operator === "contains" ? "Contains" : "DoesNotContain"}`}
+        aria-label={`${fieldLabel} ${operatorLabel.toLowerCase()}`}
+        value={condition.value}
+        disabled={disabled}
+        placeholder="Enter a value"
+        className="col-span-2 row-start-2 sm:col-auto sm:row-auto"
+        onChange={(event) => {
+          updateCondition({ value: event.currentTarget.value });
+        }}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={`Remove condition ${index + 1}`}
+        disabled={disabled || conditions.length === 1}
+        className="col-start-3 row-start-1 h-9 w-9 shrink-0 text-muted-foreground hover:bg-gray-50 hover:text-foreground sm:col-auto sm:row-auto [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+        onClick={() => {
+          onChange(
+            conditions.filter((_, conditionIndex) => {
+              return conditionIndex !== index;
+            }),
+          );
+        }}
+      >
+        <IconX size={16} stroke={1.5} />
+      </Button>
+    </div>
+  );
+}
+
+function GmailMatchConditionsEditor({
+  conditions,
+  disabled,
+  onChange,
+}: {
+  readonly conditions: readonly GmailMatchCondition[];
+  readonly disabled: boolean;
+  readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
+}) {
+  const nextCondition = nextGmailMatchCondition(conditions);
+  return (
+    <div className="flex flex-col gap-2">
+      {conditions.map((condition, index) => {
+        return (
+          <GmailMatchConditionRow
+            key={`${condition.field}-${condition.operator}`}
+            condition={condition}
+            conditions={conditions}
+            index={index}
+            disabled={disabled}
+            onChange={onChange}
+          />
+        );
+      })}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={disabled || !nextCondition}
+        className="-ml-2 w-fit px-2 font-normal"
+        onClick={() => {
+          if (nextCondition) {
+            onChange([...conditions, nextCondition]);
+          }
+        }}
+      >
+        <IconPlus size={14} stroke={1.5} />
+        Add condition
+      </Button>
+    </div>
+  );
+}
+
 function CreateGmailNewMessageAutomationDialog({
   workflowId,
   open,
@@ -4439,6 +4684,8 @@ function CreateGmailNewMessageAutomationDialog({
   const [createLoadable, createGmailAutomation] = useLoadableSet(
     createWorkflowGmailNewMessageAutomation$,
   );
+  const matchConditions = useGet(createGmailMatchConditions$);
+  const setMatchConditions = useSet(setCreateGmailMatchConditions$);
   const creating = createLoadable.state === "loading";
 
   return (
@@ -4471,28 +4718,11 @@ function CreateGmailNewMessageAutomationDialog({
             );
           }}
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
-              return (
-                <div key={field} className="grid grid-cols-2 gap-2">
-                  <input
-                    name={`${field}Contains`}
-                    aria-label={`${label} contains`}
-                    disabled={creating}
-                    placeholder={`${label} contains`}
-                    className={FIELD_CLASS}
-                  />
-                  <input
-                    name={`${field}DoesNotContain`}
-                    aria-label={`${label} does not contain`}
-                    disabled={creating}
-                    placeholder={`${label} does not contain`}
-                    className={FIELD_CLASS}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          <GmailMatchConditionsEditor
+            conditions={matchConditions}
+            disabled={creating}
+            onChange={setMatchConditions}
+          />
           <DialogFooter>
             <Button
               type="button"
@@ -5545,7 +5775,6 @@ function AutomationControls({
   );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowAutomationNow$);
   const busy = runNowLoadable.state === "loading";
-  const running = busy;
   const canEdit = canEditWorkflowAutomation(automation);
   const revealWebhookSecretOpen =
     revealWebhookSecretAutomationId === automation.id &&
@@ -5577,7 +5806,7 @@ function AutomationControls({
                   );
                 }}
               >
-                {running ? (
+                {busy ? (
                   <IconLoader2 size={14} className="animate-spin" />
                 ) : (
                   <IconPlayerPlay size={14} stroke={1.5} />
@@ -5908,6 +6137,11 @@ function UpdateGmailNewMessageAutomationForm({
   const [updateLoadable, updateGmailAutomation] = useLoadableSet(
     updateWorkflowGmailNewMessageAutomation$,
   );
+  const matchConditionsByAutomationId = useGet(editingGmailMatchConditions$);
+  const setMatchConditions = useSet(setEditingGmailMatchConditions$);
+  const matchConditions =
+    matchConditionsByAutomationId[automation.id] ??
+    gmailMatchConditions(automation.eventConfig);
   const saving = updateLoadable.state === "loading";
 
   return (
@@ -5935,38 +6169,13 @@ function UpdateGmailNewMessageAutomationForm({
         );
       }}
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
-          return (
-            <div key={field} className="grid grid-cols-2 gap-1.5">
-              <input
-                name={`${field}Contains`}
-                aria-label={`${label} contains`}
-                defaultValue={gmailMatcherDefaultValue(
-                  automation.eventConfig,
-                  field,
-                  "contains",
-                )}
-                disabled={saving}
-                placeholder={`${label} contains`}
-                className={AUTOMATION_FIELD_CLASS}
-              />
-              <input
-                name={`${field}DoesNotContain`}
-                aria-label={`${label} does not contain`}
-                defaultValue={gmailMatcherDefaultValue(
-                  automation.eventConfig,
-                  field,
-                  "doesNotContain",
-                )}
-                disabled={saving}
-                placeholder={`${label} does not contain`}
-                className={AUTOMATION_FIELD_CLASS}
-              />
-            </div>
-          );
-        })}
-      </div>
+      <GmailMatchConditionsEditor
+        conditions={matchConditions}
+        disabled={saving}
+        onChange={(conditions) => {
+          setMatchConditions({ automationId: automation.id, conditions });
+        }}
+      />
       <DialogFooter>
         <Button
           type="button"
