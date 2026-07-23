@@ -5,7 +5,7 @@ import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
-import { isSupportedRunModel } from "./model-providers";
+import { requestedRunModelSchema } from "./model-providers";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -432,17 +432,7 @@ const chatThreadDraftSchema = z.object({
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
-const selectedModelRequestSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    if (!isSupportedRunModel(value)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid model selection",
-      });
-    }
-  });
+const selectedModelRequestSchema = requestedRunModelSchema;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

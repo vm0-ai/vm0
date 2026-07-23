@@ -14,7 +14,6 @@ ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
 TUNNEL_PIDFILE="/tmp/cloudflared-${TUNNEL_PORT}.pid"
 LEGACY_API_TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
-LEGACY_MARKETING_TUNNEL_PIDFILE="/tmp/cloudflared-3042.pid"
 
 kill_stale() {
   local pidfile="$1" pattern="$2"
@@ -77,7 +76,6 @@ cleanup() {
   if [[ "${API_KEEP_TUNNEL_ON_EXIT:-}" != "1" ]]; then
     kill_stale "$TUNNEL_PIDFILE" ""
     kill_stale "$LEGACY_API_TUNNEL_PIDFILE" ""
-    kill_stale "$LEGACY_MARKETING_TUNNEL_PIDFILE" ""
   fi
 }
 trap cleanup EXIT INT TERM
@@ -125,13 +123,10 @@ start_api_tunnel() {
 }
 
 kill_stale "$LEGACY_API_TUNNEL_PIDFILE" ""
-kill_stale "$LEGACY_MARKETING_TUNNEL_PIDFILE" ""
 
 TUNNEL_URL="$(start_api_tunnel)"
 
 echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
-update_env_value "VM0_MODEL_PROXY_HOST" "$TUNNEL_URL"
-echo "[api:dev] VM0_MODEL_PROXY_HOST=${TUNNEL_URL}"
 
 start_stripe_webhook_forwarding
 

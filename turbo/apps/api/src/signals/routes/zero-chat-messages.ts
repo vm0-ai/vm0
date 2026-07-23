@@ -8,6 +8,7 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
@@ -133,7 +134,7 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
-  readonly model?: string;
+  readonly model?: SupportedRunModel;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;

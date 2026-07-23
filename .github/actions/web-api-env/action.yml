@@ -182,7 +182,6 @@ runs:
         fi
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
-          add_env VM0_MODEL_PROXY_HOST "https://www.vm0.ai"
           add_env ENV "$deploy_env"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
@@ -244,9 +243,6 @@ runs:
         add_secret ABLY_API_KEY ABLY_API_KEY
         add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
         add_secret OPENAI_API_KEY OPENAI_API_KEY
-        if [[ "$INPUT_APP" == "api" ]]; then
-          add_secret VM0_MODEL_PROXY_TOKEN VM0_MODEL_PROXY_TOKEN
-        fi
         add_secret FAL_KEY FAL_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
