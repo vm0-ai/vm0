@@ -13,7 +13,7 @@ Coverage parity is a hard gate: new BDD tests must restore per-file coverage **b
 
 Per-round workflow from here: keep new main changes mapped into the BDD suite, prove targeted behavior locally, and let CI validate the full coverage/build matrix.
 
-Known coverage jitter (not regressions): `src/signals/services/agent-run-create.service.ts` and `src/signals/services/local-day.ts` fluctuate by a few covered statements between identical runs because some branches depend on wall-clock day boundaries. Back-to-back full-suite runs on identical code also measured ±2-5 statement swings in `src/lib/slack-connect-blocks.ts`, `src/signals/services/zero-slack-connect.service.ts`, `src/signals/services/webhooks-stripe.service.ts`, `src/signals/services/cron-summarize-memory.service.ts`, and `src/signals/routes/test-slack-state.ts` (timing-dependent detached work; test-slack-state measured 155-162 covered statements across identical runs with its covering legacy test alive). A per-file drop below baseline is therefore adjudicated before being treated as a regression: rerun the full suite, or run the file's covering tests scoped on both sides and compare statement-level hits (`coverage-final.json`); only a loss that persists across runs blocks a round.
+Known coverage jitter (not regressions): `src/signals/services/agent-run-create.service.ts` and `src/signals/services/local-day.ts` fluctuate by a few covered statements between identical runs because some branches depend on wall-clock day boundaries. Back-to-back full-suite runs on identical code also measured ±2-5 statement swings in `src/lib/slack-connect-blocks.ts`, `src/signals/services/zero-slack-connect.service.ts`, `src/signals/services/webhooks-stripe.service.ts`, and `src/signals/routes/test-slack-state.ts` (timing-dependent detached work; test-slack-state measured 155-162 covered statements across identical runs with its covering legacy test alive). A per-file drop below baseline is therefore adjudicated before being treated as a regression: rerun the full suite, or run the file's covering tests scoped on both sides and compare statement-level hits (`coverage-final.json`); only a loss that persists across runs blocks a round.
 
 ## Test Principles
 
@@ -191,7 +191,7 @@ When the user reads thread artifacts, artifact sync, memory, memory activity, an
 Then only user-visible artifacts and memory state are returned.
 Then stale, deleted, malformed, cross-user, and cross-org resources are omitted or rejected.
 
-Coverage: `zero-chat-threads-artifacts`, `zero-chat-threads-artifacts-sync`, `zero-memory`, `zero-memory-activity`, memory diff service tests, memory summarize service tests.
+Coverage: `zero-chat-threads-artifacts`, `zero-chat-threads-artifacts-sync`.
 
 ### CONN-01: Connector discovery and by-type access
 
@@ -310,7 +310,7 @@ Then route responses report work done.
 Then follow-up public or internal GET/status endpoints expose visible side effects.
 Then missing or invalid cron auth is rejected.
 
-Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-workflow-automations`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-summarize-memory`, `cron-sync-skills`, `cron-telegram-cleanup`.
+Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-workflow-automations`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-sync-skills`, `cron-telegram-cleanup`.
 
 ### HOOK-01: Signed internal callbacks
 
@@ -483,7 +483,7 @@ Workflow Automation execution notes: the scheduler cron response exposes only gl
 | Auth, users, organizations, onboarding, keys, preferences      |          390 | AUTH-01..03, ORG-01..03                       | Keep/merge through auth/org/user APIs                       |
 | Billing, usage, insights, models, maps, banking                |          297 | BILL-01..02, RUN-01..02, CHAIN-BILLING-MEDIA  | Keep/merge through billing/usage/status APIs                |
 | Logs, skills, email, report, support, feature switches, health |          281 | OPS-01                                        | Keep/merge; provider assertions only at boundary            |
-| Chat, messages, memory, artifacts                              |          245 | CHAT-01..03, CHAIN-CHAT                       | Keep/merge through thread/message/artifact/memory APIs      |
+| Chat, messages, artifacts                                      |          245 | CHAT-01..03, CHAIN-CHAT                       | Keep/merge through thread/message/artifact APIs             |
 | Runs, runner runtime, checkpoints                              |          238 | RUN-01..04, CHAIN-RUN                         | Keep/merge through run/context/runner/queue APIs            |
 | Agents, composes, default agent                                |          179 | AGENT-01..02, COMPOSE-01, CHAIN-AGENT         | Keep/merge through agent/compose/org reads                  |
 | Files, uploads, storage, host, media, computer-use             |          178 | FILE-01..03, CHAIN-FILE, CHAIN-BILLING-MEDIA  | Keep/merge through file/artifact/status APIs                |
@@ -508,7 +508,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `zero-realtime-token.test.ts`                                                                                                                              | AUTH-02 realtime token in `auth-device.bdd.test.ts` plus run-lifecycle publishes                                                                     | same                                 |
 | `cron-reconcile-billing-entitlements.test.ts`                                                                                                              | BILL-01 reconciliation cron chains in `run-lifecycle.bdd.test.ts`                                                                                    | same                                 |
 | `cron-aggregate-usage.test.ts`                                                                                                                             | SCHED-02 safe-cron chain plus entitled usage reads in `run-lifecycle.bdd.test.ts`                                                                    | same                                 |
-| `zero-memory.test.ts`, `zero-onboarding-status.test.ts`                                                                                                    | CHAT-03 memory chain in `chat-files.bdd.test.ts`; ORG-03 status chain in `auth-org-agents.bdd.test.ts`                                               | same                                 |
+| `zero-onboarding-status.test.ts`                                                                                                                           | ORG-03 status chain in `auth-org-agents.bdd.test.ts`                                                                                                 | same                                 |
 | `zero-connectors-oauth-device-auth.test.ts`, `zero-codex-device-auth.test.ts`, `zero-claude-code-device-auth.test.ts`                                      | CONN-02 device-auth chains A-G in `connectors.bdd.test.ts`; MODEL-PROVIDER chains H/I/K/L in `auth-device.bdd.test.ts`                               | same                                 |
 | `zero-slack-events.test.ts`, `zero-slack-commands.test.ts`, `zero-slack-interactive.test.ts`                                                               | INT-01 Slack app deep webhook flows (9 chains) in `integrations.bdd.test.ts`                                                                         | same                                 |
 | `cron-execute-schedules.test.ts`, `cron-drain-email-outbox.test.ts`                                                                                        | Workflow Automation scheduler coverage in `zero-workflow-automation-scheduler.test.ts` and the SCHED-02 email outbox chain in `run-cron.bdd.test.ts` | same                                 |
@@ -568,7 +568,6 @@ Code paths that cannot be reached through any public API request. Recorded here 
 coverage gap is acceptable once listed:
 
 - `agent-webhook-firewall-auth.service.ts` `TOKEN_ACCESS_RESOLUTION_FAILED`: needs a current connector token whose backing secret row is absent; every public seeding path writes both atomically.
-- `zero-memory-detail.service.ts:91-94` (`!version || !bucket` → `return base`): needs `storages.head_version_id` pointing at a missing `storage_versions` row (FK forbids) or an unset `R2_USER_STORAGES_BUCKET_NAME` (always stubbed); already uncovered at the main baseline (21/22), so no parity impact.
 - `runners.ts` claim-transition invariant guards: the ordered statement always returns one outcome row, and `claimed` requires both the run update and queue deletion while returning the non-null timestamp written by that update. Reaching either guard requires a database/driver contract violation and cannot be constructed through the public API; throwing rolls the outer transaction back.
 - `runners.ts` poison-job handling for malformed execution contexts: contexts are always produced schema-valid by the dispatch payload builders. Baseline coverage of `warnInvalidStoredExecutionContext` validation issue logging (62-85), `failPoisonQueuedJob` (506-552), `scheduleClaimFailedSideEffects$` (689-726), and the claim-side poison arms (757-785) came exclusively from DB-seeded execution contexts; the legacy `runners.test.ts` remnant was deleted with those cases recorded here (firewall-auth precedent).
 - `connector-oauth-device-auth.service.ts` `resolveStoredDeviceAuthMethod` invalid-stored-method 500 (lines 255-264): sessions are only created after `resolveDeviceAuthMethod` validates the method, so a stored session with a non-device-auth method can exist only across a deploy that removes the method from the connector definition. Not constructible through any API.

@@ -3066,7 +3066,7 @@ describe("RUN-04: agent run telemetry families", () => {
             },
             featureFlags: { legacyIgnored: true },
             featureFlagEntries: [
-              { name: "memoryViewer", enabled: true },
+              { name: "manualMorningBrief", enabled: true },
               { name: "dummy", enabled: null },
               { enabled: true },
             ],
@@ -3122,7 +3122,7 @@ describe("RUN-04: agent run telemetry families", () => {
           unknownPolicy: "allow",
         },
       },
-      featureFlags: { memoryViewer: true },
+      featureFlags: { manualMorningBrief: true },
       artifact: { vasStorageName: "art-1" },
     });
     expect(contextRead.body.environment).toStrictEqual({

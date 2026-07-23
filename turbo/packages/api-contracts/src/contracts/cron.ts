@@ -246,19 +246,6 @@ const cronAggregateInsightsResponseSchema = z.union([
   cronAggregateInsightsAggregatedResponseSchema,
 ]);
 
-const cronSummarizeMemorySkippedResponseSchema = z.object({
-  skipped: z.literal(true),
-});
-
-const cronSummarizeMemorySummarizedResponseSchema = z.object({
-  summarized: z.number(),
-});
-
-const cronSummarizeMemoryResponseSchema = z.union([
-  cronSummarizeMemorySkippedResponseSchema,
-  cronSummarizeMemorySummarizedResponseSchema,
-]);
-
 const storagePresignedUrlRefreshResultSchema = z.object({
   due: z.number(),
   refreshed: z.number(),
@@ -533,19 +520,6 @@ export const cronAggregateModelStatsContract = c.router({
   },
 });
 
-export const cronSummarizeMemoryContract = c.router({
-  summarize: {
-    method: "GET",
-    path: "/api/cron/summarize-memory",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronSummarizeMemoryResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Summarize daily memory changes per user",
-  },
-});
-
 export const cronRefreshStoragePresignedUrlsContract = c.router({
   refresh: {
     method: "GET",
@@ -572,7 +546,6 @@ export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
-export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronRefreshStoragePresignedUrlsContract =
   typeof cronRefreshStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
@@ -609,6 +582,5 @@ export {
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
-  cronSummarizeMemoryResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
 };

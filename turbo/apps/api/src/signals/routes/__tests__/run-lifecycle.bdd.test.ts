@@ -8432,15 +8432,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.MemoryViewer]: true,
+      [FeatureSwitchKey.ManualMorningBrief]: true,
     });
-    // The memory summarize cron globally sweeps every MemoryViewer-enabled
-    // user in the shared database; leaving this actor opted in would hand
-    // that sweep this actor's storages in every later run. Opt back out
-    // through the same product API.
     onTestFinished(async () => {
       await connectors.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.MemoryViewer]: false,
+        [FeatureSwitchKey.ManualMorningBrief]: false,
       });
     });
 
@@ -8481,7 +8477,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.MemoryViewer]: true,
+      [FeatureSwitchKey.ManualMorningBrief]: true,
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 

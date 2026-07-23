@@ -345,13 +345,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.MemoryViewer]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:

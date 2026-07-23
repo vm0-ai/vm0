@@ -32,7 +32,6 @@ import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
-import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
@@ -103,9 +102,6 @@ import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
-import { zeroMemoryRoutes } from "./routes/zero-memory";
-import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
-import { zeroMemoryDevRefreshRoutes } from "./routes/zero-memory-dev-refresh";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -255,7 +251,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
-  ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
@@ -299,9 +294,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroFeatureSwitchesRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
-  ...zeroMemoryRoutes,
-  ...zeroMemoryActivityRoutes,
-  ...zeroMemoryDevRefreshRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,

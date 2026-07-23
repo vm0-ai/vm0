@@ -60,7 +60,6 @@ export enum FeatureSwitchKey {
   StructuredPrompt = "structuredPrompt",
 
   ZapierConnector = "zapierConnector",
-  MemoryViewer = "memoryViewer",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",
