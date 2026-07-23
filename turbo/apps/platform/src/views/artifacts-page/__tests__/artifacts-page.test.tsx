@@ -17,6 +17,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  reloadArtifacts$,
+  syncArtifacts$,
+} from "../../../signals/artifacts-page/artifacts-signals.ts";
 import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../../../signals/external/idb-artifact-item-store.ts";
 
@@ -32,6 +36,7 @@ const artifactIdbMock = vi.hoisted(() => {
   }
 
   let artifactReplacementGate: {
+    readonly completed: PromiseWithResolvers<void>;
     readonly started: PromiseWithResolvers<void>;
     readonly released: PromiseWithResolvers<void>;
   } | null = null;
@@ -137,9 +142,15 @@ const artifactIdbMock = vi.hoisted(() => {
   }
 
   class MemoryObjectStore {
-    constructor(private readonly store: StoredObjectStore) {}
+    constructor(
+      private readonly store: StoredObjectStore,
+      private readonly transactionAborted: () => boolean = () => {
+        return false;
+      },
+    ) {}
 
     put(value: Record<string, unknown>): Promise<void> {
+      this.throwIfTransactionAborted();
       const key = value[this.store.keyPath];
       if (typeof key === "string") {
         this.store.rows.set(key, value);
@@ -148,6 +159,7 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     delete(key: IDBValidKey): Promise<void> {
+      this.throwIfTransactionAborted();
       if (typeof key === "string") {
         this.store.rows.delete(key);
       }
@@ -157,9 +169,16 @@ const artifactIdbMock = vi.hoisted(() => {
     async clear(): Promise<void> {
       const gate = artifactReplacementGate;
       if (this.store.keyPath === "artifactItemId" && gate) {
+        artifactReplacementGate = null;
         gate.started.resolve();
-        await gate.released.promise;
+        try {
+          await gate.released.promise;
+          this.throwIfTransactionAborted();
+        } finally {
+          gate.completed.resolve();
+        }
       }
+      this.throwIfTransactionAborted();
       for (const key of this.store.rows.keys()) {
         this.store.rows.delete(key);
       }
@@ -223,6 +242,12 @@ const artifactIdbMock = vi.hoisted(() => {
         return key === null ? [] : [{ key, value: item }];
       });
     }
+
+    private throwIfTransactionAborted(): void {
+      if (this.transactionAborted()) {
+        throw new DOMException("Transaction aborted", "AbortError");
+      }
+    }
   }
 
   class MemoryDb {
@@ -246,15 +271,23 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     transaction(storeName: string): {
+      abort: () => void;
       readonly store: MemoryObjectStore;
       readonly done: Promise<void>;
       objectStore: () => MemoryObjectStore;
     } {
-      const store = this.ensureStore(
+      const stored = this.ensureStoredObjectStore(
         storeName,
         storeName === "artifact_items" ? "artifactItemId" : "id",
       );
+      let aborted = false;
+      const store = new MemoryObjectStore(stored, () => {
+        return aborted;
+      });
       return {
+        abort: () => {
+          aborted = true;
+        },
         store,
         done: Promise.resolve(),
         objectStore: () => {
@@ -286,16 +319,25 @@ const artifactIdbMock = vi.hoisted(() => {
     }
 
     private ensureStore(storeName: string, keyPath: string): MemoryObjectStore {
+      return new MemoryObjectStore(
+        this.ensureStoredObjectStore(storeName, keyPath),
+      );
+    }
+
+    private ensureStoredObjectStore(
+      storeName: string,
+      keyPath: string,
+    ): StoredObjectStore {
       const existing = this.stores.get(storeName);
       if (existing !== undefined) {
-        return new MemoryObjectStore(existing);
+        return existing;
       }
       const store = {
         keyPath,
         rows: new Map<string, Record<string, unknown>>(),
       };
       this.stores.set(storeName, store);
-      return new MemoryObjectStore(store);
+      return store;
     }
   }
 
@@ -303,14 +345,17 @@ const artifactIdbMock = vi.hoisted(() => {
 
   return {
     blockArtifactReplacement(): {
+      readonly completed: Promise<void>;
       readonly started: Promise<void>;
       release(): void;
     } {
+      const completed = Promise.withResolvers<void>();
       const started = Promise.withResolvers<void>();
       const released = Promise.withResolvers<void>();
-      const gate = { started, released };
+      const gate = { completed, started, released };
       artifactReplacementGate = gate;
       return {
+        completed: completed.promise,
         started: started.promise,
         release: () => {
           if (artifactReplacementGate === gate) {
@@ -540,6 +585,16 @@ async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
     return artifacts.map((artifact) => {
       return artifact.artifactItemId;
     });
+  });
+}
+
+async function cachedArtifactsLastSyncedAt(
+  scope: TestAuthScope,
+): Promise<string | null> {
+  return await withChatIdb(scope, async (db) => {
+    return await createArtifactItemCacheStores(
+      resolvedChatIdb(db),
+    ).readStore.readLastSyncedAt();
   });
 }
 
@@ -1595,6 +1650,64 @@ describe("artifacts page", () => {
         artifact.artifactItemId,
       ]);
     });
+  });
+
+  it("cancels an obsolete cache replacement when metadata refreshes", async () => {
+    setupTeam();
+    const scope = testAuthScope("obsolete-cache-replacement");
+    const obsoleteArtifact = createArtifact({
+      artifactItemId: "obsolete-sync:file-1",
+      runId: "obsolete-sync",
+      filename: "obsolete-sync.html",
+    });
+    const currentArtifact = createArtifact({
+      artifactItemId: "current-sync:file-1",
+      runId: "current-sync",
+      filename: "current-sync.html",
+    });
+    const obsoleteSyncUntil = "2026-01-02T00:00:00.000Z";
+    const currentSyncUntil = "2026-01-03T00:00:00.000Z";
+    let serveCurrentArtifacts = false;
+    let listCalls = 0;
+    context.mocks.api(artifactsContract.list, ({ respond }) => {
+      listCalls += 1;
+      return respond(200, {
+        artifacts: [serveCurrentArtifacts ? currentArtifact : obsoleteArtifact],
+        truncated: false,
+        nextCursor: null,
+        syncUntil: serveCurrentArtifacts ? currentSyncUntil : obsoleteSyncUntil,
+      });
+    });
+    const replacement = artifactIdbMock.blockArtifactReplacement();
+
+    setupArtifactsPage({ scope });
+
+    await replacement.started;
+    try {
+      expect(screen.getByText("obsolete-sync.html")).toBeInTheDocument();
+      serveCurrentArtifacts = true;
+      context.store.set(reloadArtifacts$);
+      await context.store.set(syncArtifacts$, context.signal);
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        currentArtifact.artifactItemId,
+      ]);
+      await expect(cachedArtifactsLastSyncedAt(scope)).resolves.toBe(
+        currentSyncUntil,
+      );
+    } finally {
+      replacement.release();
+    }
+
+    await replacement.completed;
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        currentArtifact.artifactItemId,
+      ]);
+      await expect(cachedArtifactsLastSyncedAt(scope)).resolves.toBe(
+        currentSyncUntil,
+      );
+    });
+    expect(listCalls).toBeGreaterThanOrEqual(2);
   });
 
   it("renders the cache immediately when returning while the remote refresh is pending", async () => {

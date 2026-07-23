@@ -33,6 +33,7 @@ interface FakeStore {
 }
 
 interface FakeTransaction {
+  abort(): void;
   readonly store: FakeStore;
   readonly done: Promise<void>;
 }
@@ -132,9 +133,15 @@ class MemoryArtifactDb {
 
   get db(): IDBPDatabase {
     return {
-      transaction: () => {
+      transaction: (storeName: string) => {
         return {
-          store: this.store(),
+          abort: () => {
+            return undefined;
+          },
+          store:
+            storeName === ARTIFACT_SYNC_STORE
+              ? this.syncStateStore()
+              : this.store(),
           done: Promise.resolve(),
         } satisfies FakeTransaction;
       },
@@ -150,6 +157,29 @@ class MemoryArtifactDb {
         return Promise.resolve();
       },
     } as unknown as IDBPDatabase;
+  }
+
+  private syncStateStore(): FakeStore {
+    return {
+      put: (value) => {
+        this.syncState = value;
+        return Promise.resolve();
+      },
+      delete: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      clear: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      get: () => {
+        return Promise.resolve(this.syncState);
+      },
+      index: () => {
+        throw new Error("Sync state store has no indexes");
+      },
+    };
   }
 
   private store(): FakeStore {

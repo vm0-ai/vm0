@@ -22,6 +22,7 @@ import {
   ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
 import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
+import { withCleanup } from "../utils.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
@@ -108,6 +109,31 @@ interface IndexedReadPlan {
 interface ValidatedStoredArtifactItem {
   readonly item: ArtifactItem;
   readonly searchText: string;
+}
+
+async function runAbortableTransaction(
+  transaction: {
+    readonly done: Promise<unknown>;
+    abort(): void;
+  },
+  operation: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  const abortTransaction = () => {
+    transaction.abort();
+  };
+  signal?.addEventListener("abort", abortTransaction, { once: true });
+  await withCleanup(
+    (async () => {
+      signal?.throwIfAborted();
+      await operation();
+      signal?.throwIfAborted();
+      await transaction.done;
+    })(),
+    () => {
+      signal?.removeEventListener("abort", abortTransaction);
+    },
+  );
 }
 
 function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
@@ -296,12 +322,17 @@ function createWriteStore(
           const db = await getDb();
           signal?.throwIfAborted();
           const tx = db.transaction(storeName, "readwrite");
-          await tx.store.clear();
-          for (const item of items) {
-            signal?.throwIfAborted();
-            await tx.store.put(storedArtifactItem(item));
-          }
-          await tx.done;
+          await runAbortableTransaction(
+            tx,
+            async () => {
+              await tx.store.clear();
+              for (const item of items) {
+                signal?.throwIfAborted();
+                await tx.store.put(storedArtifactItem(item));
+              }
+            },
+            signal,
+          );
           L.debug("artifacts:replaceItems:done", { count: items.length });
         },
         signal,
@@ -314,10 +345,17 @@ function createWriteStore(
         async () => {
           const db = await getDb();
           signal?.throwIfAborted();
-          await db.put(ARTIFACT_SYNC_STORE, {
-            id: ARTIFACT_SYNC_STATE_ID,
-            lastSyncedAt,
-          });
+          const tx = db.transaction(ARTIFACT_SYNC_STORE, "readwrite");
+          await runAbortableTransaction(
+            tx,
+            async () => {
+              await tx.store.put({
+                id: ARTIFACT_SYNC_STATE_ID,
+                lastSyncedAt,
+              });
+            },
+            signal,
+          );
         },
         signal,
       );

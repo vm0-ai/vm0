@@ -21,7 +21,7 @@ import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRef, onRejection } from "../utils.ts";
+import { onRef, onRejection, resetSignal } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -58,6 +58,7 @@ const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
 const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
 const internalArtifactsGridWidth$ = state(0);
 const internalArtifactsPendingFocusIndex$ = state<number | null>(null);
+const resetArtifactsSyncSignal$ = resetSignal();
 
 interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
@@ -418,7 +419,8 @@ export const remoteArtifacts$ = computed(
 // Continue the remote cursor walk after first-page paint. Cache persistence is
 // deliberately last so it never gates data already published to the view.
 export const syncArtifacts$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, parentSignal: AbortSignal) => {
+    const signal = set(resetArtifactsSyncSignal$, parentSignal);
     const initial = await get(initialRemoteArtifactsPage$);
     signal.throwIfAborted();
     if (get(internalArtifactsReload$) !== initial.reload) {
@@ -492,10 +494,17 @@ export const syncArtifacts$ = command(
     // paint it before a large clear-and-replace transaction starts.
     await delay(0, { signal });
     signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
     const cacheUpdated = await stores.writeStore.replaceItems(
       artifacts,
       signal,
     );
+    signal.throwIfAborted();
+    if (get(internalArtifactsReload$) !== initial.reload) {
+      return;
+    }
     if (cacheUpdated && syncUntil) {
       await stores.writeStore.setLastSyncedAt(syncUntil, signal);
     }
