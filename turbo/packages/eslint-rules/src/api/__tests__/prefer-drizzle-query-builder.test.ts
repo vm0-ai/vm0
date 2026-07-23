@@ -71,6 +71,21 @@ const structuredSelectionPreamble = `
   declare const db: DrizzleDatabase;
 `;
 
+const deletePreamble = `
+  import { integer, pgTable, timestamp } from "drizzle-orm/pg-core";
+
+  const cleanupRows = pgTable("cleanup_rows", {
+    id: integer("id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      cleanupRows: typeof cleanupRows;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const cutoff: Date;
+`;
+
 const scalarQuery = `
   sql\`(
     SELECT "message"."id"
@@ -114,6 +129,113 @@ const runnerLockingQuery = `
 
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH expired AS (
+            SELECT id FROM cleanup_rows WHERE expires_at <= \${cutoff}
+          )
+          DELETE FROM cleanup_rows
+          WHERE id IN (SELECT id FROM expired)
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          USING other_rows
+          WHERE cleanup_rows.id = other_rows.id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff}
+          RETURNING id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM ONLY cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows *
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE CURRENT OF cleanup_cursor
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows AS target
+          WHERE target.expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM public.cleanup_rows
+          WHERE expires_at <= \${cutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows, other_rows
+          WHERE cleanup_rows.id = other_rows.id
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+        \`);
+        await db.execute(sql\`
+          DELETE FROM cleanup_rows
+          WHERE expires_at <= \${cutoff};
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const notATable = sql\`cleanup_rows\`;
+        await db.execute(sql\`
+          DELETE FROM \${notATable}
+          WHERE \${eq(cleanupRows.id, 1)}
+        \`);
+      `,
+    },
     {
       code: `
         import { sql } from "drizzle-orm";
@@ -647,6 +769,65 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     },
   ],
   invalid: [
+    {
+      code: `${deletePreamble}
+        import { lte, sql } from "drizzle-orm";
+        const { rowCount } = await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${lte(cleanupRows.expiresAt, cutoff)}
+        \`);
+        void rowCount;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { gte, inArray, lt, sql } from "drizzle-orm";
+        declare const windowStart: Date;
+        declare const windowEnd: Date;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${gte(cleanupRows.expiresAt, windowStart)}
+            AND \${lt(cleanupRows.expiresAt, windowEnd)}
+            AND \${inArray(cleanupRows.id, [1, 2])}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          DELETE FROM cleanup_rows
+          WHERE id IN (
+            SELECT id
+            FROM cleanup_rows
+            WHERE expires_at <= \${cutoff}
+              AND 'RETURNING ignored' = 'RETURNING ignored'
+              /* USING and DELETE FROM ignored */
+            ORDER BY expires_at
+            LIMIT \${1000}
+          );
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import * as drizzle from "drizzle-orm";
+        const { rowCount } = await db["execute"](drizzle.sql\`
+          DELETE FROM cleanup_rows
+          WHERE ctid IN (
+            SELECT ctid
+            FROM cleanup_rows
+            WHERE expires_at < \${cutoff}
+            LIMIT \${10_000}
+          )
+        \`);
+        void rowCount;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
