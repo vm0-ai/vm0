@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.68](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.67...nbd-cow-v0.4.68) (2026-07-23)
+
+
+### Documentation
+
+* **nbd-cow:** clarify request length semantics ([#22629](https://github.com/vm0-ai/vm0/issues/22629)) ([14e590f](https://github.com/vm0-ai/vm0/commit/14e590f48819d74003d8a7483e7834cbfeaed593))
+
 ## [0.4.67](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.66...nbd-cow-v0.4.67) (2026-07-20)
 
 

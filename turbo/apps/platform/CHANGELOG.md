@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.619.0](https://github.com/vm0-ai/vm0/compare/app-v0.618.1...app-v0.619.0) (2026-07-23)
+
+
+### Features
+
+* **platform:** simplify gmail automation match conditions ([#22596](https://github.com/vm0-ai/vm0/issues/22596)) ([b19a3a6](https://github.com/vm0-ai/vm0/commit/b19a3a660c3824126dc352d0bc4856230973e54a))
+* prefetch chat thread messages from realtime events ([#22622](https://github.com/vm0-ai/vm0/issues/22622)) ([95b85f6](https://github.com/vm0-ai/vm0/commit/95b85f66924ed19ffd0a57791835735b8a63a0f5))
+
+
+### Bug Fixes
+
+* expose org switcher in top-left of onboarding page ([#22574](https://github.com/vm0-ai/vm0/issues/22574)) ([97bc5ac](https://github.com/vm0-ai/vm0/commit/97bc5ac8d459d63f5a8f9a0b24020e13aa074ab6))
+* match settings nav selected state to sidebar gray, drop orange ([#22471](https://github.com/vm0-ai/vm0/issues/22471)) ([6324e00](https://github.com/vm0-ai/vm0/commit/6324e00064ecd1323feec18658dd7b6d03aec3f0))
+
+
+### Refactoring
+
+* **platform:** remove sidebar manage icon collapse experiment ([#22623](https://github.com/vm0-ai/vm0/issues/22623)) ([9bc3aca](https://github.com/vm0-ai/vm0/commit/9bc3aca9916af9d0af1a90290e9d101b90088a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.1
+    * @vm0/connectors bumped to 1.181.0
+    * @vm0/core bumped to 8.453.0
+
 ## [0.618.1](https://github.com/vm0-ai/vm0/compare/app-v0.618.0...app-v0.618.1) (2026-07-23)
 
 
