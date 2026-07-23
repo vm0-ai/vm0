@@ -23,10 +23,19 @@ type StoredPagedChatMessage = PagedChatMessage & {
 };
 
 interface ChatMessageReadStore {
+  readBounds(
+    threadId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatMessageBounds>;
   readLatest(
     threadId: string,
     signal?: AbortSignal,
   ): Promise<PagedChatMessage[]>;
+}
+
+export interface ChatMessageBounds {
+  readonly first: PagedChatMessage | null;
+  readonly last: PagedChatMessage | null;
 }
 
 interface ChatMessageWriteStore {
@@ -85,6 +94,29 @@ function createMessageReadStore(
   getDb: GetDb,
 ): ChatMessageReadStore {
   return {
+    async readBounds(threadId, signal) {
+      L.debug("readBounds:start", { threadId });
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(storeName, "readonly");
+      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
+      const range = threadOrderRange(threadId);
+      const [firstCursor, lastCursor] = await Promise.all([
+        index.openCursor(range, "next"),
+        index.openCursor(range, "prev"),
+      ]);
+      signal?.throwIfAborted();
+      const bounds = {
+        first: firstCursor ? validateMessage(firstCursor.value) : null,
+        last: lastCursor ? validateMessage(lastCursor.value) : null,
+      };
+      L.debug("readBounds:done", {
+        threadId,
+        firstId: bounds.first?.id ?? null,
+        lastId: bounds.last?.id ?? null,
+      });
+      return bounds;
+    },
     async readLatest(threadId, signal) {
       L.debug("readLatest:start", { threadId });
       const db = await getDb();

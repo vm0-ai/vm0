@@ -4,7 +4,10 @@ import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
 } from "../external/chat-idb-safe.ts";
-import { createIdbMessageStores } from "../external/idb-message-store.ts";
+import {
+  createIdbMessageStores,
+  type ChatMessageBounds,
+} from "../external/idb-message-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
 
@@ -34,6 +37,28 @@ export const loadIndexedDbChatMessages$ = command(
     signal.throwIfAborted();
     L.debug("loadIndexedDbMessages", { threadId, count: messages.length });
     return messages;
+  },
+);
+
+export const loadIndexedDbChatMessageBounds$ = command(
+  async ({ get }, threadId: string, signal: AbortSignal) => {
+    const stores = await get(chatMessageStores$);
+    signal.throwIfAborted();
+    const bounds = await chatIdbReadOr<ChatMessageBounds>(
+      "indexedDbMessages:readBounds",
+      () => {
+        return stores.readStore.readBounds(threadId, signal);
+      },
+      { first: null, last: null },
+      signal,
+    );
+    signal.throwIfAborted();
+    L.debug("loadIndexedDbMessageBounds", {
+      threadId,
+      firstId: bounds.first?.id ?? null,
+      lastId: bounds.last?.id ?? null,
+    });
+    return bounds;
   },
 );
 
