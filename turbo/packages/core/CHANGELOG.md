@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.452.1](https://github.com/vm0-ai/vm0/compare/core-v8.452.0...core-v8.452.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.0
+
 ## [8.452.0](https://github.com/vm0-ai/vm0/compare/core-v8.451.0...core-v8.452.0) (2026-07-22)
 
 
