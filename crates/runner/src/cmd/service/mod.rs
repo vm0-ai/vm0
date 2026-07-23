@@ -144,6 +144,10 @@ struct ServiceLogsArgs {
 // ---------------------------------------------------------------------------
 
 pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
+    if let ServiceCommand::Start(args) | ServiceCommand::Install(args) = &args.command {
+        validate_env_vars(&args.env)?;
+    }
+
     match args.command {
         ServiceCommand::Start(a) => start(a).await,
         ServiceCommand::Stop(a) => stop::run(a).await,
@@ -655,8 +659,6 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
     let _service_lock = acquire_service_lock(&unit, &home).await?;
 
-    validate_env_vars(&args.env)?;
-
     if is_unit_active(&unit).await? {
         return Err(RunnerError::Internal(format!(
             "unit {} is already running, stop it first with: runner service stop --name {}",
@@ -730,8 +732,6 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
     let _service_lock = acquire_service_lock(&unit, &home).await?;
-
-    validate_env_vars(&args.env)?;
 
     let config_path = resolve_config_path(&args.config)?;
     let exe_path = validate_current_exe_path(
@@ -1082,18 +1082,62 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-
-    use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
 
+    use clap::Parser;
+
+    use super::*;
     use crate::paths::RootfsPaths;
 
     const TEST_ROOTFS_HASH: &str =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TEST_SNAPSHOT_HASH: &str =
         "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    fn parse_service_args(subcommand: &str, env: &str) -> ServiceArgs {
+        let cli = crate::Cli::try_parse_from([
+            "runner",
+            "service",
+            subcommand,
+            "--config",
+            "/does/not/exist/runner.yaml",
+            "--name",
+            "test",
+            "--env",
+            env,
+        ])
+        .unwrap();
+        let crate::Command::Service(args) = cli.command else {
+            panic!("expected service command");
+        };
+        args
+    }
+
+    #[tokio::test]
+    async fn service_run_commands_reject_invalid_env_names_before_setup() {
+        const SECRET: &str = "sentinel-service-env-secret";
+
+        for subcommand in ["start", "install"] {
+            for key in ["1INVALID", "API-KEY"] {
+                let assignment = format!("{key}={SECRET}");
+                let error = run_service(parse_service_args(subcommand, &assignment))
+                    .await
+                    .unwrap_err()
+                    .to_string();
+
+                assert!(
+                    error.contains(&format!("invalid --env key {key:?}")),
+                    "unexpected {subcommand} error: {error}"
+                );
+                assert!(
+                    !error.contains(SECRET),
+                    "{subcommand} error exposed the environment value: {error}"
+                );
+            }
+        }
+    }
 
     struct ServiceActivationFixture {
         _dir: tempfile::TempDir,

@@ -105,7 +105,7 @@ WantedBy=multi-user.target
     )
 }
 
-/// Validate that each env entry is in `KEY=VALUE` format and contains no
+/// Validate that each env entry has a systemd-compatible key and contains no
 /// characters that would silently corrupt the generated systemd unit file.
 ///
 /// Bare newlines / carriage returns / NUL bytes inside a value break the
@@ -122,10 +122,20 @@ pub(super) fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
                 "invalid --env value: newline or NUL characters are not allowed".to_string(),
             ));
         }
-        let eq_pos = entry.find('=');
-        if eq_pos.is_none_or(|p| p == 0) {
+        let Some((key, _)) = entry.split_once('=') else {
+            return Err(RunnerError::Config(
+                "invalid --env value: expected KEY=VALUE format".to_string(),
+            ));
+        };
+        if key.is_empty() {
+            return Err(RunnerError::Config(
+                "invalid --env value: expected KEY=VALUE format".to_string(),
+            ));
+        }
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            let key = guest_contracts::env::sanitize_user_env_key_for_diagnostic(key);
             return Err(RunnerError::Config(format!(
-                "invalid --env value '{entry}': expected KEY=VALUE format"
+                "invalid --env key {key:?}: expected [_A-Za-z][_A-Za-z0-9]*"
             )));
         }
     }
@@ -675,10 +685,13 @@ mod tests {
 
     #[test]
     fn test_validate_env_vars_valid() {
+        for entry in ["KEY=VALUE", "_KEY=VALUE", "API_KEY_1=VALUE", "K=", "K=V=W"] {
+            assert!(
+                validate_env_vars(&[entry.to_string()]).is_ok(),
+                "expected valid environment assignment: {entry}"
+            );
+        }
         assert!(validate_env_vars(&[]).is_ok());
-        assert!(validate_env_vars(&["KEY=VALUE".to_string()]).is_ok());
-        assert!(validate_env_vars(&["K=".to_string()]).is_ok());
-        assert!(validate_env_vars(&["K=V=W".to_string()]).is_ok());
         // `"`, `\`, and `%` are valid at the validate layer — they get
         // escaped later in `escape_systemd_value`.
         assert!(validate_env_vars(&[r#"MSG=say "hi""#.to_string()]).is_ok());
@@ -692,9 +705,25 @@ mod tests {
 
     #[test]
     fn test_validate_env_vars_invalid() {
-        assert!(validate_env_vars(&["NOEQUALS".to_string()]).is_err());
+        const SECRET: &str = "sentinel-service-env-secret";
+
+        let malformed = validate_env_vars(&[SECRET.to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(malformed.contains("expected KEY=VALUE format"));
+        assert!(!malformed.contains(SECRET));
+
         assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
         assert!(validate_env_vars(&["".to_string()]).is_err());
+        for key in ["1INVALID", "API-KEY", "API KEY", "密钥"] {
+            let entry = format!("{key}={SECRET}");
+            let error = validate_env_vars(&[entry]).unwrap_err().to_string();
+            assert!(
+                error.contains(&format!("invalid --env key {key:?}")),
+                "unexpected error for key {key:?}: {error}"
+            );
+            assert!(!error.contains(SECRET), "error exposed value: {error}");
+        }
         // Bare newline / CR / NUL would silently corrupt the unit file.
         assert!(validate_env_vars(&["KEY=line1\nline2".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=foo\rbar".to_string()]).is_err());
