@@ -347,9 +347,7 @@ async fn materialize_session_history_sidecar(
     let bytes = tokio::select! {
         biased;
         _ = cancel.cancelled() => {
-            return Err(RunnerError::Internal(
-                "session history sidecar materialization cancelled".into(),
-            ));
+            return Err(RunnerError::Cancelled);
         }
         result = read_session_history_sidecar_bytes(sidecar) => result?,
     };
@@ -1625,17 +1623,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         })
     })
     .await;
-    let PreparedAgentProcess {
-        mut handle,
-        agent_started_at: t,
-        deferred_background_fill,
-        session_restore_diagnostics,
-        mut pre_run_restored_session_identity,
-        env_diagnostics,
-        env_pairs,
-    } = match prepared_agent {
-        Some(result) => result?,
-        None => {
+    let prepared_agent = match prepared_agent {
+        Some(Ok(prepared_agent)) => prepared_agent,
+        Some(Err(RunnerError::Cancelled)) | None => {
             info!(
                 run_id = %context.run_id,
                 "cancel received before guest process started"
@@ -1652,7 +1642,17 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
             return Ok(result);
         }
+        Some(Err(error)) => return Err(error),
     };
+    let PreparedAgentProcess {
+        mut handle,
+        agent_started_at: t,
+        deferred_background_fill,
+        session_restore_diagnostics,
+        mut pre_run_restored_session_identity,
+        env_diagnostics,
+        env_pairs,
+    } = prepared_agent;
 
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);

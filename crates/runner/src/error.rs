@@ -21,6 +21,9 @@ pub enum RunnerError {
     #[error("config error: {0}")]
     Config(String),
 
+    #[error("cancelled")]
+    Cancelled,
+
     #[error("internal error: {0}")]
     Internal(String),
 

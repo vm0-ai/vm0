@@ -33,6 +33,7 @@ interface FakeStore {
 }
 
 interface FakeTransaction {
+  abort(): void;
   readonly store: FakeStore;
   readonly done: Promise<void>;
 }
@@ -132,9 +133,15 @@ class MemoryArtifactDb {
 
   get db(): IDBPDatabase {
     return {
-      transaction: () => {
+      transaction: (storeName: string) => {
         return {
-          store: this.store(),
+          abort: () => {
+            return undefined;
+          },
+          store:
+            storeName === ARTIFACT_SYNC_STORE
+              ? this.syncStateStore()
+              : this.store(),
           done: Promise.resolve(),
         } satisfies FakeTransaction;
       },
@@ -150,6 +157,29 @@ class MemoryArtifactDb {
         return Promise.resolve();
       },
     } as unknown as IDBPDatabase;
+  }
+
+  private syncStateStore(): FakeStore {
+    return {
+      put: (value) => {
+        this.syncState = value;
+        return Promise.resolve();
+      },
+      delete: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      clear: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      get: () => {
+        return Promise.resolve(this.syncState);
+      },
+      index: () => {
+        throw new Error("Sync state store has no indexes");
+      },
+    };
   }
 
   private store(): FakeStore {
@@ -269,6 +299,20 @@ describe("artifact item IndexedDB cache reads", () => {
       second,
       first,
     ]);
+  });
+
+  it("stops after the requested recent-item window", async () => {
+    const { stores } = setupStores();
+    const items = Array.from({ length: 61 }, (_, index) => {
+      return artifact(index + 1);
+    });
+
+    await stores.writeStore.upsertItems(items);
+
+    const recent = await stores.readStore.readRecent({ limit: 60 });
+    expect(recent).toHaveLength(60);
+    expect(recent[0]).toStrictEqual(items[60]);
+    expect(recent[59]).toStrictEqual(items[1]);
   });
 
   it("upserts idempotently and replaces stale metadata", async () => {
@@ -398,15 +442,29 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([fresh]);
   });
 
-  it("falls back to cache miss values when IndexedDB reads fail", async () => {
+  it("distinguishes strict cache reads from best-effort misses", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
     });
 
-    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
+    await expect(stores.readStore.readRecent()).rejects.toThrow("open failed");
+    await expect(
+      stores.readStore.readRecentBestEffort(),
+    ).resolves.toStrictEqual([]);
     await expect(
       stores.readStore.readByRunFile("run-1", "file-1"),
     ).resolves.toBe(null);
+  });
+
+  it("rejects strict cache reads when IndexedDB misses the deadline", async () => {
+    const pendingDb = Promise.withResolvers<IDBPDatabase>();
+    const stores = createArtifactItemCacheStores(() => {
+      return pendingDb.promise;
+    });
+
+    await expect(stores.readStore.readRecent()).rejects.toThrow(
+      "IndexedDB operation timed out: artifacts:readRecent",
+    );
   });
 
   it("ignores best-effort write failures", async () => {
