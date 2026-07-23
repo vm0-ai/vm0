@@ -115,6 +115,7 @@ PATH="${fake_bin}:$PATH" \
 
 grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
 grep -Fqx -- "<summary>07-23-2026 07:39:40 SGT</summary>" "$output_file"
+grep -Fqx -- "* RevertId: \`${target_commit}\`" "$output_file"
 grep -Fqx -- "* PDT 07-22-2026 16:39:40" "$output_file"
 grep -Fqx -- "### [app](https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0): \`0.618.0\`" "$output_file"
 grep -Fqx -- "### [api](https://github.com/vm0-ai/vm0/releases/tag/api-v1.303.0): \`1.303.0\`" "$output_file"
@@ -127,8 +128,15 @@ grep -Fqx -- "* api feature" "$output_file"
 grep -Fqx -- "* runner improvement" "$output_file"
 grep -Fqx -- "* zeta feature" "$output_file"
 grep -Fqx -- "<summary>07-22-2026 07:39:39 SGT</summary>" "$output_file"
+grep -Fqx -- "* RevertId: \`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\`" "$output_file"
 grep -Fqx -- "* PDT 07-21-2026 16:39:39" "$output_file"
 grep -Fqx -- "* retained fix" "$output_file"
+
+revert_id_line=$(grep -n -F "* RevertId: \`${target_commit}\`" "$output_file" | cut -d: -f1)
+pdt_line=$(grep -n -F "* PDT 07-22-2026 16:39:40" "$output_file" | cut -d: -f1)
+if ! [ "$revert_id_line" -lt "$pdt_line" ]; then
+  fail "RevertId should appear above Pacific time"
+fi
 
 app_line=$(grep -n '^### \[app\]' "$output_file" | cut -d: -f1)
 api_line=$(grep -n '^### \[api\]' "$output_file" | cut -d: -f1)

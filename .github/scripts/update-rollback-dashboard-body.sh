@@ -97,6 +97,7 @@ new_entry_file="${entries_dir}/000.md"
   printf '<!-- ROLLBACK_ENTRY_START %s -->\n' "$target_commit"
   printf '<details>\n'
   printf '<summary>%s SGT</summary>\n\n' "$singapore_time"
+  printf '* RevertId: `%s`\n' "$target_commit"
   printf '* %s %s\n\n' "$sf_zone" "$sf_time"
 
   while IFS=$'\t' read -r artifact version url encoded_body; do
@@ -144,6 +145,13 @@ normalize_retained_entry() {
   local normalized_entry_file="${entry_file}.normalized"
 
   awk '
+    /^<!-- ROLLBACK_ENTRY_START [0-9a-f]+ -->$/ {
+      entry_commit = $0
+      sub(/^<!-- ROLLBACK_ENTRY_START /, "", entry_commit)
+      sub(/ -->$/, "", entry_commit)
+      print
+      next
+    }
     /^```/ {
       in_fence = !in_fence
       if (!skip_dependencies) {
@@ -168,6 +176,7 @@ normalize_retained_entry() {
       print "<details>"
       print "<summary>" singapore_time " SGT</summary>"
       print ""
+      print "* RevertId: `" entry_commit "`"
       print "* PDT " sf_time
       print ""
       converted = 1
