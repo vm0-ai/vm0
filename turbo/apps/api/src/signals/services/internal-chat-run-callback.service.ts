@@ -2014,7 +2014,7 @@ async function appendAutoSentQueuedRunMarker(args: {
   readonly createdAfter: Date;
   readonly runId: string;
   readonly threadId: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const marker = await settle(
     args.db.transaction(async (tx) => {
       await appendQueuedRunAssistantMarker(tx, {
@@ -2025,7 +2025,7 @@ async function appendAutoSentQueuedRunMarker(args: {
     }),
   );
   if (marker.ok) {
-    return;
+    return true;
   }
   // The atomic launch can commit immediately before thread deletion. Keep the
   // normal marker path query-free and classify only that expected FK race.
@@ -2033,7 +2033,7 @@ async function appendAutoSentQueuedRunMarker(args: {
     isForeignKeyViolation(marker.error) &&
     !(await chatThreadExists(args.db, args.threadId))
   ) {
-    return;
+    return false;
   }
   throw marker.error;
 }
@@ -2060,11 +2060,11 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
   readonly run: CreatedQueuedRun;
   readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<void> {
+}): Promise<boolean> {
   if (args.run.status !== "queued") {
-    return;
+    return true;
   }
-  await measureChatCallbackPreCreateTiming(
+  return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker",
     "nested",
@@ -2192,12 +2192,15 @@ async function autoSendQueuedMessageForThread(args: {
         return null;
       }
       createdRunId = createdRun.runId;
-      await appendAutoSentQueuedRunMarkerIfQueued({
+      const shouldPublishSignals = await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
         run: createdRun,
         threadId,
         timing: args.timing,
       });
+      if (!shouldPublishSignals) {
+        return createdRun;
+      }
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,

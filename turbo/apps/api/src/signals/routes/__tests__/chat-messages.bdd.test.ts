@@ -4985,7 +4985,7 @@ describe("CHAT-02: shared user message queue", () => {
     ).toHaveLength(0);
   }, 90_000);
 
-  it("skips a queued auto-send marker after thread deletion wins", async () => {
+  it("does not publish a queued auto-send after thread deletion wins", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -5065,6 +5065,7 @@ describe("CHAT-02: shared user message queue", () => {
     const deletion = chat.deleteThread(actor, anchor.threadId);
     await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
 
+    context.mocks.ably.publish.mockClear();
     releaseQueuePublish.resolve(undefined);
     await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
     messageLock.release();
@@ -5073,8 +5074,19 @@ describe("CHAT-02: shared user message queue", () => {
     await flushWaitUntilForTest();
     expect(
       apiDispatchActionTypes(apiDispatchTimingEventsForRun(autoRun.id)),
-    ).toContain(
+    ).not.toContain(
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+    );
+    const publishedTopics = context.mocks.ably.publish.mock.calls.map(
+      ([topic]) => {
+        return topic;
+      },
+    );
+    expect(publishedTopics).not.toContain(
+      `chatThreadMessageCreated:${anchor.threadId}`,
+    );
+    expect(publishedTopics).not.toContain(
+      `chatThreadRunCreated:${anchor.threadId}`,
     );
     await waitForRunStatus(actor, autoRun.id, "cancelled");
     await chat.requestReadThread(actor, anchor.threadId, [404]);
