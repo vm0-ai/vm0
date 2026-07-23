@@ -56,10 +56,11 @@ assert_run_reused_sandbox() {
     assert_equal "$(jq -r '.sandboxReuseResult' <<< "$runner")" "reused"
 }
 
-assert_codex_thread_started() {
-    local expected_thread_id="$1"
-    assert_output --partial '"type":"thread.started"'
-    assert_output --partial "\"thread_id\":\"${expected_thread_id}\""
+codex_thread_id_from_output() {
+    local captured_output="$1"
+    jq -Rr \
+        'fromjson? | select(.type == "thread.started") | .thread_id // empty' \
+        <<< "$captured_output"
 }
 
 @test "real Codex restores a checkpoint at the reused rollout path" {
@@ -72,19 +73,20 @@ assert_codex_thread_started() {
     assert_success
     assert_output --partial '"type":"turn.completed"'
 
-    local checkpoint_id agent_session_id
+    local checkpoint_id vm0_session_id codex_thread_id
     checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
-    agent_session_id="$(run_fixture_field "$output" '.sessionId')"
+    vm0_session_id="$(run_fixture_field "$output" '.sessionId')"
+    codex_thread_id="$(codex_thread_id_from_output "$output")"
     [ -n "$checkpoint_id" ]
-    [ -n "$agent_session_id" ]
-    assert_codex_thread_started "$agent_session_id"
+    [ -n "$vm0_session_id" ]
+    [ -n "$codex_thread_id" ]
 
     # Advance the live thread beyond checkpoint A so resume must restore it.
-    run continue_run_fixture "$agent_session_id" \
+    run continue_run_fixture "$vm0_session_id" \
         "Reply with exactly B." \
         "$overrides"
     assert_success
-    assert_codex_thread_started "$agent_session_id"
+    assert_equal "$(codex_thread_id_from_output "$output")" "$codex_thread_id"
     assert_output --partial '"type":"turn.completed"'
 
     local continued_run_id
@@ -93,15 +95,15 @@ assert_codex_thread_started() {
 
     run resume_run_fixture "$checkpoint_id" "Reply with exactly C." "$overrides"
     assert_success
-    assert_codex_thread_started "$agent_session_id"
+    assert_equal "$(codex_thread_id_from_output "$output")" "$codex_thread_id"
     assert_output --partial '"type":"turn.completed"'
 
-    local resumed_run_id resumed_checkpoint_id resumed_agent_session_id
+    local resumed_run_id resumed_checkpoint_id resumed_vm0_session_id
     resumed_run_id="$(run_fixture_field "$output" '.runId')"
     resumed_checkpoint_id="$(run_fixture_field "$output" '.checkpointId')"
-    resumed_agent_session_id="$(run_fixture_field "$output" '.sessionId')"
+    resumed_vm0_session_id="$(run_fixture_field "$output" '.sessionId')"
     assert_run_reused_sandbox "$resumed_run_id"
-    assert_equal "$resumed_agent_session_id" "$agent_session_id"
+    assert_equal "$resumed_vm0_session_id" "$vm0_session_id"
     [ -n "$resumed_checkpoint_id" ]
     [ "$resumed_checkpoint_id" != "$checkpoint_id" ]
 }
