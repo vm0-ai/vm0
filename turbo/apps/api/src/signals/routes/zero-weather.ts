@@ -1,10 +1,14 @@
 import { zeroWeatherContract } from "@vm0/api-contracts/contracts/zero-weather";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { zeroAirQualityCurrent$ } from "../services/zero-air-quality.service";
 import {
   zeroWeatherCurrent$,
@@ -21,8 +25,32 @@ const airQualityCurrentBody$ = bodyResultOf(
   zeroWeatherContract.airQualityCurrent,
 );
 
+const zeroWeatherDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Zero Weather is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const zeroWeatherEnabled$ = command(async ({ get }) => {
+  const auth = get(organizationAuthContext$);
+  const context = await loadUserFeatureSwitchContext(
+    get(db$),
+    auth.orgId,
+    auth.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.ZeroWeather, context);
+});
+
 const currentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  if (!(await set(zeroWeatherEnabled$))) {
+    return zeroWeatherDisabled;
+  }
+  signal.throwIfAborted();
   const bodyResult = await get(currentBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -38,6 +66,10 @@ const currentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const forecastHourlyInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (!(await set(zeroWeatherEnabled$))) {
+      return zeroWeatherDisabled;
+    }
+    signal.throwIfAborted();
     const bodyResult = await get(forecastHourlyBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -54,6 +86,10 @@ const forecastHourlyInner$ = command(
 const forecastDailyInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (!(await set(zeroWeatherEnabled$))) {
+      return zeroWeatherDisabled;
+    }
+    signal.throwIfAborted();
     const bodyResult = await get(forecastDailyBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -70,6 +106,10 @@ const forecastDailyInner$ = command(
 const historyHourlyInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (!(await set(zeroWeatherEnabled$))) {
+      return zeroWeatherDisabled;
+    }
+    signal.throwIfAborted();
     const bodyResult = await get(historyHourlyBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -86,6 +126,10 @@ const historyHourlyInner$ = command(
 const airQualityCurrentInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (!(await set(zeroWeatherEnabled$))) {
+      return zeroWeatherDisabled;
+    }
+    signal.throwIfAborted();
     const bodyResult = await get(airQualityCurrentBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {

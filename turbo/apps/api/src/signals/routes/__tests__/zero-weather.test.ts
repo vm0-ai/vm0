@@ -8,18 +8,17 @@ import {
   type ZeroAirQualityResponse,
   type ZeroWeatherConditionsResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupAppWithRoutes } from "../../../__tests__/test-app";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import type { RouteEntry } from "../../route-entry";
-import { zeroWeatherRoutes } from "../zero-weather";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -34,8 +33,6 @@ const GOOGLE_WEATHER_HISTORY_HOURLY_URL =
 const GOOGLE_AIR_QUALITY_CURRENT_URL =
   "https://airquality.googleapis.com/v1/currentConditions:lookup";
 
-const weatherRoutes: readonly RouteEntry[] = [...zeroWeatherRoutes];
-
 function authenticate(actor: ApiTestUser): { readonly authorization: string } {
   createZeroRouteMocks(context).clerk.session(
     actor.userId,
@@ -46,9 +43,7 @@ function authenticate(actor: ApiTestUser): { readonly authorization: string } {
 }
 
 function client() {
-  return setupAppWithRoutes({ context, routes: weatherRoutes })(
-    zeroWeatherContract,
-  );
+  return setupApp({ context })(zeroWeatherContract);
 }
 
 function configureProvider(): void {
@@ -128,6 +123,41 @@ function expectFreeAirQualityResponse(body: ZeroAirQualityResponse): void {
 }
 
 describe("zero weather route", () => {
+  it("rejects requests when the feature switch is disabled", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Zero Weather test actor must belong to an organization");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: actor.userId,
+        orgId: actor.orgId,
+        ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
+      },
+      { [FeatureSwitchKey.ZeroWeather]: false },
+    );
+    configureProvider();
+    let providerRequests = 0;
+    server.use(
+      http.get(GOOGLE_WEATHER_CURRENT_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const response = await accept(
+      client().current({
+        headers: authenticate(actor),
+        body: { lat: 39.9042, lng: 116.4074, units: "metric" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe("Zero Weather is not enabled");
+    expect(providerRequests).toBe(0);
+  });
+
   it("returns not configured before calling Google Weather", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
