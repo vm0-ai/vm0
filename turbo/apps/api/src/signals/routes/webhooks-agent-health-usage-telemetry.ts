@@ -2,26 +2,32 @@ import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
+  webhookModelUsageObservationV2Contract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
+import {
+  compactModelUsageObservation,
+  modelUsageObservation,
+  modelUsageObservationLegacyKey,
+} from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
+import type { z } from "zod";
 import {
   isSupportedRunModel,
   normalizeRunModelId,
 } from "@vm0/api-contracts/contracts/model-providers";
 
-import { notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route-entry";
@@ -41,6 +47,214 @@ const PG_FOREIGN_KEY_VIOLATION = "23503";
 const MODEL_USAGE_KIND = "model";
 
 const L = logger("webhooks:agent");
+
+type CompactModelUsageObservationBody = z.infer<
+  (typeof webhookModelUsageObservationV2Contract.send)["body"]
+>;
+type CompactModelUsageObservationEvent =
+  CompactModelUsageObservationBody["events"][number];
+type CompactModelUsageMetric = NonNullable<
+  CompactModelUsageObservationEvent["inputTokens"]
+>;
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface SupportedCompactModelUsageObservation {
+  readonly event: CompactModelUsageObservationEvent;
+  readonly model: string;
+}
+
+interface CompactModelUsageLegacyKeyValue {
+  readonly idempotencyKey: string;
+  readonly observedAt: Date;
+}
+
+interface CompactModelUsageObservationValue {
+  readonly idempotencyKey: string;
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+  readonly observedAt: Date;
+}
+
+class CompactModelUsageObservationConflictError extends Error {
+  constructor() {
+    super("Compact model usage observation idempotency key is already in use");
+    this.name = "CompactModelUsageObservationConflictError";
+  }
+}
+
+function acceptedCompactMetricQuantity(
+  metric: CompactModelUsageMetric | undefined,
+  claimedLegacyKeys: ReadonlySet<string>,
+): number {
+  if (!metric || !claimedLegacyKeys.has(metric.legacyIdempotencyKey)) {
+    return 0;
+  }
+  return metric.quantity;
+}
+
+function supportedCompactModelUsageObservations(
+  events: readonly CompactModelUsageObservationEvent[],
+  selectedModel: string | null,
+): readonly SupportedCompactModelUsageObservation[] {
+  return events.flatMap((event) => {
+    const model = normalizeRunModelId(selectedModel ?? event.model);
+    if (!isSupportedRunModel(model)) {
+      return [];
+    }
+    return [{ event, model }];
+  });
+}
+
+function compactModelUsageLegacyKeyValues(
+  observations: readonly SupportedCompactModelUsageObservation[],
+  observedAt: Date,
+): CompactModelUsageLegacyKeyValue[] {
+  return observations.flatMap(({ event }) => {
+    return [
+      event.inputTokens,
+      event.outputTokens,
+      event.cacheReadInputTokens,
+      event.cacheCreationInputTokens,
+    ].flatMap((metric) => {
+      if (!metric) {
+        return [];
+      }
+      return [
+        {
+          idempotencyKey: metric.legacyIdempotencyKey,
+          observedAt,
+        },
+      ];
+    });
+  });
+}
+
+async function claimCompactModelUsageLegacyKeys(
+  tx: DbTransaction,
+  values: CompactModelUsageLegacyKeyValue[],
+  signal: AbortSignal,
+): Promise<ReadonlySet<string>> {
+  if (values.length === 0) {
+    return new Set();
+  }
+  const claimedRows = await tx
+    .insert(modelUsageObservationLegacyKey)
+    .values(values)
+    .onConflictDoNothing({
+      target: [modelUsageObservationLegacyKey.idempotencyKey],
+    })
+    .returning({
+      idempotencyKey: modelUsageObservationLegacyKey.idempotencyKey,
+    });
+  signal.throwIfAborted();
+  return new Set(
+    claimedRows.map((row) => {
+      return row.idempotencyKey;
+    }),
+  );
+}
+
+function compactModelUsageObservationValues(
+  observations: readonly SupportedCompactModelUsageObservation[],
+  claimedLegacyKeys: ReadonlySet<string>,
+  observedAt: Date,
+): CompactModelUsageObservationValue[] {
+  return observations.flatMap(({ event, model }) => {
+    const inputTokens = acceptedCompactMetricQuantity(
+      event.inputTokens,
+      claimedLegacyKeys,
+    );
+    const outputTokens = acceptedCompactMetricQuantity(
+      event.outputTokens,
+      claimedLegacyKeys,
+    );
+    const cacheReadInputTokens = acceptedCompactMetricQuantity(
+      event.cacheReadInputTokens,
+      claimedLegacyKeys,
+    );
+    const cacheCreationInputTokens = acceptedCompactMetricQuantity(
+      event.cacheCreationInputTokens,
+      claimedLegacyKeys,
+    );
+    if (
+      inputTokens === 0 &&
+      outputTokens === 0 &&
+      cacheReadInputTokens === 0 &&
+      cacheCreationInputTokens === 0
+    ) {
+      return [];
+    }
+    return [
+      {
+        idempotencyKey: event.idempotencyKey,
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadInputTokens,
+        cacheCreationInputTokens,
+        observedAt,
+      },
+    ];
+  });
+}
+
+async function persistCompactModelUsageObservations(
+  db: Db,
+  body: CompactModelUsageObservationBody,
+  signal: AbortSignal,
+): Promise<"accepted" | "run_not_found"> {
+  return await db.transaction(async (tx) => {
+    const [runModelContext] = await tx
+      .select({
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId))
+      .limit(1)
+      .for("key share");
+    signal.throwIfAborted();
+    if (!runModelContext) {
+      return "run_not_found" as const;
+    }
+
+    const observations = supportedCompactModelUsageObservations(
+      body.events,
+      runModelContext.selectedModel,
+    );
+    const observedAt = nowDate();
+    const claimedLegacyKeys = await claimCompactModelUsageLegacyKeys(
+      tx,
+      compactModelUsageLegacyKeyValues(observations, observedAt),
+      signal,
+    );
+    const values = compactModelUsageObservationValues(
+      observations,
+      claimedLegacyKeys,
+      observedAt,
+    );
+    if (values.length === 0) {
+      return "accepted" as const;
+    }
+
+    const insertedRows = await tx
+      .insert(compactModelUsageObservation)
+      .values(values)
+      .onConflictDoNothing({
+        target: [compactModelUsageObservation.idempotencyKey],
+      })
+      .returning({
+        idempotencyKey: compactModelUsageObservation.idempotencyKey,
+      });
+    signal.throwIfAborted();
+    if (insertedRows.length !== values.length) {
+      throw new CompactModelUsageObservationConflictError();
+    }
+    return "accepted" as const;
+  });
+}
 
 interface SandboxOperationDimensionInput {
   readonly error?: string;
@@ -326,6 +540,52 @@ const modelUsageObservation$ = command(
   },
 );
 
+const modelUsageObservationV2Body$ = bodyResultOf(
+  webhookModelUsageObservationV2Contract.send,
+);
+const modelUsageObservationV2$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(modelUsageObservationV2Body$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
+    const auth = getSandboxAuthForRun(body.runId, get(authorization$));
+    if (!auth) {
+      return unauthorizedRunMismatch;
+    }
+
+    const db = set(writeDb$);
+    const insertResult = await settle(
+      persistCompactModelUsageObservations(db, body, signal),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!insertResult.ok) {
+      if (
+        insertResult.error instanceof CompactModelUsageObservationConflictError
+      ) {
+        return conflict(insertResult.error.message);
+      }
+      throw insertResult.error;
+    }
+    if (insertResult.value === "run_not_found") {
+      L.debug("Run not found for compact model usage observation, dropping", {
+        runId: body.runId,
+        eventCount: body.events.length,
+      });
+      return notFound("Run not found");
+    }
+
+    return {
+      status: 200 as const,
+      body: { success: true },
+    };
+  },
+);
+
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const bodyResult = await get(telemetryBody$);
@@ -444,6 +704,10 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookModelUsageObservationContract.send,
     handler: modelUsageObservation$,
+  },
+  {
+    route: webhookModelUsageObservationV2Contract.send,
+    handler: modelUsageObservationV2$,
   },
   {
     route: webhookTelemetryContract.send,

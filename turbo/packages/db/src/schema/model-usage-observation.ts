@@ -60,3 +60,56 @@ export const modelUsageObservation = pgTable(
     ];
   },
 );
+
+/**
+ * Compact model usage observations for model statistics.
+ *
+ * The compact idempotency key is both the row identity and the durable retry
+ * boundary. Run and ownership dimensions remain request-only because public
+ * rankings consume only the four token counters.
+ */
+export const compactModelUsageObservation = pgTable(
+  "compact_model_usage_observation",
+  {
+    idempotencyKey: uuid("idempotency_key").primaryKey(),
+    model: varchar("model", { length: 255 }).notNull(),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull(),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull(),
+    cacheReadInputTokens: bigint("cache_read_input_tokens", {
+      mode: "number",
+    }).notNull(),
+    cacheCreationInputTokens: bigint("cache_creation_input_tokens", {
+      mode: "number",
+    }).notNull(),
+    observedAt: timestamp("observed_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_compact_model_usage_observation_observed_at").on(
+        table.observedAt.desc(),
+      ),
+    ];
+  },
+);
+
+/**
+ * Temporary cross-format identity ledger for the compact observation rollout.
+ *
+ * Legacy inserts and compact ingestion claim the same category key here. The
+ * ledger expires with raw observations and is removed after the compact writer
+ * has been the only active format for a complete retention window.
+ */
+export const modelUsageObservationLegacyKey = pgTable(
+  "model_usage_observation_legacy_key",
+  {
+    idempotencyKey: uuid("idempotency_key").primaryKey(),
+    observedAt: timestamp("observed_at").notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_model_usage_observation_legacy_key_observed_at").on(
+        table.observedAt.desc(),
+      ),
+    ];
+  },
+);

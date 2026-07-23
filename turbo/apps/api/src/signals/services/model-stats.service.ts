@@ -1,8 +1,12 @@
 import { command } from "ccstate";
-import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, sql, sum } from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
+import {
+  compactModelUsageObservation,
+  modelUsageObservation,
+  modelUsageObservationLegacyKey,
+} from "@vm0/db/schema/model-usage-observation";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
@@ -153,17 +157,137 @@ function modelStatModelExpression() {
   )} ELSE ${modelColumn} END`;
 }
 
+function modelStatsReplacementQuery(
+  windowStartParam: string,
+  windowEndParam: string,
+) {
+  const observationModelExpr = modelUsageObservationModelExpression();
+  const modelStatsModelIds = getModelStatsModelIds();
+
+  return sql`WITH usage_rows AS (
+      SELECT
+        date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
+        ${observationModelExpr} AS model,
+        ${modelUsageObservation.orgId} AS org_id,
+        ${modelUsageObservation.userId} AS user_id,
+        COALESCE(${modelUsageObservation.runId}::text, ${modelUsageObservation.idempotencyKey}::text) AS request_key,
+        CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_INPUT)}
+          THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS input_tokens,
+        CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_OUTPUT)}
+          THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS output_tokens,
+        CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_READ)}
+          THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_read_input_tokens,
+        CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_CREATION)}
+          THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
+        0::bigint AS credits_charged
+      FROM ${modelUsageObservation}
+      WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
+        AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
+        AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
+        AND ${modelUsageObservation.category} IN (
+          ${TOKEN_CATEGORY_INPUT},
+          ${TOKEN_CATEGORY_OUTPUT},
+          ${TOKEN_CATEGORY_CACHE_READ},
+          ${TOKEN_CATEGORY_CACHE_CREATION}
+        )
+        AND ${modelUsageObservation.quantity} > 0
+      UNION ALL
+      SELECT
+        date_trunc('hour', ${compactModelUsageObservation.observedAt})::timestamp AS hour_start,
+        ${compactModelUsageObservation.model} AS model,
+        NULL::text AS org_id,
+        NULL::text AS user_id,
+        NULL::text AS request_key,
+        ${compactModelUsageObservation.inputTokens} AS input_tokens,
+        ${compactModelUsageObservation.outputTokens} AS output_tokens,
+        ${compactModelUsageObservation.cacheReadInputTokens} AS cache_read_input_tokens,
+        ${compactModelUsageObservation.cacheCreationInputTokens} AS cache_creation_input_tokens,
+        0::bigint AS credits_charged
+      FROM ${compactModelUsageObservation}
+      WHERE ${gte(compactModelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
+        AND ${lt(compactModelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
+        AND ${inArray(compactModelUsageObservation.model, modelStatsModelIds)}
+        AND (
+          ${gt(compactModelUsageObservation.inputTokens, 0)}
+          OR ${gt(compactModelUsageObservation.outputTokens, 0)}
+          OR ${gt(compactModelUsageObservation.cacheReadInputTokens, 0)}
+          OR ${gt(compactModelUsageObservation.cacheCreationInputTokens, 0)}
+        )
+    ),
+    aggregated AS (
+      SELECT
+        hour_start,
+        model,
+        COUNT(DISTINCT request_key)::bigint AS request_count,
+        COUNT(DISTINCT org_id)::int AS org_count,
+        COUNT(DISTINCT user_id)::int AS user_count,
+        COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens,
+        COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+        COALESCE(SUM(cache_read_input_tokens), 0)::bigint AS cache_read_input_tokens,
+        COALESCE(SUM(cache_creation_input_tokens), 0)::bigint AS cache_creation_input_tokens,
+        (
+          COALESCE(SUM(input_tokens), 0)
+          + COALESCE(SUM(output_tokens), 0)
+          + COALESCE(SUM(cache_read_input_tokens), 0)
+          + COALESCE(SUM(cache_creation_input_tokens), 0)
+        )::bigint AS total_tokens,
+        COALESCE(SUM(credits_charged), 0)::bigint AS credits_charged
+      FROM usage_rows
+      WHERE model <> ''
+      GROUP BY hour_start, model
+    )
+    INSERT INTO ${modelStat} (
+      "hour_start",
+      "model",
+      "model_provider",
+      "request_count",
+      "org_count",
+      "user_count",
+      "input_tokens",
+      "output_tokens",
+      "cache_read_input_tokens",
+      "cache_creation_input_tokens",
+      "total_tokens",
+      "credits_charged"
+    )
+    SELECT
+      hour_start,
+      model,
+      ''::varchar(100) AS model_provider,
+      request_count,
+      org_count,
+      user_count,
+      input_tokens,
+      output_tokens,
+      cache_read_input_tokens,
+      cache_creation_input_tokens,
+      total_tokens,
+      credits_charged
+    FROM aggregated
+    ON CONFLICT (hour_start, model, model_provider) DO UPDATE SET
+      request_count = EXCLUDED.request_count,
+      org_count = EXCLUDED.org_count,
+      user_count = EXCLUDED.user_count,
+      input_tokens = EXCLUDED.input_tokens,
+      output_tokens = EXCLUDED.output_tokens,
+      cache_read_input_tokens = EXCLUDED.cache_read_input_tokens,
+      cache_creation_input_tokens = EXCLUDED.cache_creation_input_tokens,
+      total_tokens = EXCLUDED.total_tokens,
+      credits_charged = EXCLUDED.credits_charged,
+      updated_at = NOW()
+    RETURNING id`;
+}
+
 async function replaceModelStats(
   db: Db,
   windowStart: Date,
   windowEnd: Date,
 ): Promise<number> {
-  const observationModelExpr = modelUsageObservationModelExpression();
   const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
 
-  const insertedCount = await db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     await tx
       .delete(modelStat)
       .where(
@@ -173,112 +297,28 @@ async function replaceModelStats(
           inArray(modelStat.model, modelStatsModelIds),
         ),
       );
-
-    const { rowCount } = await tx.execute(sql`
-      WITH usage_rows AS (
-        SELECT
-          date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
-          ${observationModelExpr} AS model,
-          ${modelUsageObservation.orgId} AS org_id,
-          ${modelUsageObservation.userId} AS user_id,
-          COALESCE(${modelUsageObservation.runId}::text, ${modelUsageObservation.idempotencyKey}::text) AS request_key,
-          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_INPUT)}
-            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS input_tokens,
-          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_OUTPUT)}
-            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS output_tokens,
-          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_READ)}
-            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_read_input_tokens,
-          CASE WHEN ${eq(modelUsageObservation.category, TOKEN_CATEGORY_CACHE_CREATION)}
-            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
-          0::bigint AS credits_charged
-        FROM ${modelUsageObservation}
-        WHERE ${gte(modelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
-          AND ${lt(modelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
-          AND ${inArray(modelUsageObservation.model, modelStatsModelIds)}
-          AND ${modelUsageObservation.category} IN (
-            ${TOKEN_CATEGORY_INPUT},
-            ${TOKEN_CATEGORY_OUTPUT},
-            ${TOKEN_CATEGORY_CACHE_READ},
-            ${TOKEN_CATEGORY_CACHE_CREATION}
-          )
-          AND ${modelUsageObservation.quantity} > 0
-      ),
-      aggregated AS (
-        SELECT
-          hour_start,
-          model,
-          COUNT(DISTINCT request_key)::bigint AS request_count,
-          COUNT(DISTINCT org_id)::int AS org_count,
-          COUNT(DISTINCT user_id)::int AS user_count,
-          COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens,
-          COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
-          COALESCE(SUM(cache_read_input_tokens), 0)::bigint AS cache_read_input_tokens,
-          COALESCE(SUM(cache_creation_input_tokens), 0)::bigint AS cache_creation_input_tokens,
-          (
-            COALESCE(SUM(input_tokens), 0)
-            + COALESCE(SUM(output_tokens), 0)
-            + COALESCE(SUM(cache_read_input_tokens), 0)
-            + COALESCE(SUM(cache_creation_input_tokens), 0)
-          )::bigint AS total_tokens,
-          COALESCE(SUM(credits_charged), 0)::bigint AS credits_charged
-        FROM usage_rows
-        WHERE model <> ''
-        GROUP BY hour_start, model
-      )
-      INSERT INTO ${modelStat} (
-        "hour_start",
-        "model",
-        "model_provider",
-        "request_count",
-        "org_count",
-        "user_count",
-        "input_tokens",
-        "output_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-        "total_tokens",
-        "credits_charged"
-      )
-      SELECT
-        hour_start,
-        model,
-        ''::varchar(100) AS model_provider,
-        request_count,
-        org_count,
-        user_count,
-        input_tokens,
-        output_tokens,
-        cache_read_input_tokens,
-        cache_creation_input_tokens,
-        total_tokens,
-        credits_charged
-      FROM aggregated
-      ON CONFLICT (hour_start, model, model_provider) DO UPDATE SET
-        request_count = EXCLUDED.request_count,
-        org_count = EXCLUDED.org_count,
-        user_count = EXCLUDED.user_count,
-        input_tokens = EXCLUDED.input_tokens,
-        output_tokens = EXCLUDED.output_tokens,
-        cache_read_input_tokens = EXCLUDED.cache_read_input_tokens,
-        cache_creation_input_tokens = EXCLUDED.cache_creation_input_tokens,
-        total_tokens = EXCLUDED.total_tokens,
-        credits_charged = EXCLUDED.credits_charged,
-        updated_at = NOW()
-      RETURNING id
-    `);
+    const { rowCount } = await tx.execute(
+      modelStatsReplacementQuery(windowStartParam, windowEndParam),
+    );
     return rowCount ?? 0;
   });
-
-  return insertedCount;
 }
 
 async function deleteExpiredModelUsageObservations(
   db: Db,
   retentionStart: Date,
 ): Promise<void> {
-  await db
-    .delete(modelUsageObservation)
-    .where(lt(modelUsageObservation.observedAt, retentionStart));
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(modelUsageObservation)
+      .where(lt(modelUsageObservation.observedAt, retentionStart));
+    await tx
+      .delete(compactModelUsageObservation)
+      .where(lt(compactModelUsageObservation.observedAt, retentionStart));
+    await tx
+      .delete(modelUsageObservationLegacyKey)
+      .where(lt(modelUsageObservationLegacyKey.observedAt, retentionStart));
+  });
 }
 
 async function selectModelRankings(

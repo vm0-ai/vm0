@@ -510,6 +510,511 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       rows: [],
     });
   });
+
+  it("deduplicates compact and legacy observations across retries, ordering, and concurrency", async () => {
+    const api = createOpsLogsApi(context);
+    const runs = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const model = "claude-sonnet-4-6";
+    const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
+    const dayYear = 2011 + (seed % 7);
+    const dayMonth = Math.floor(seed / 7) % 12;
+    const dayStart = Date.UTC(
+      dayYear,
+      dayMonth,
+      2 + (Math.floor(seed / 84) % 26),
+    );
+    const aggregateAt = dayStart + 4 * HOUR_MS;
+    const observedAt = dayStart + 2 * HOUR_MS + 10 * 60_000;
+    const todayStartIso = new Date(dayStart).toISOString();
+    const windowEndIso = new Date(aggregateAt).toISOString();
+
+    const { actor, agentId } = await entitledRunActor();
+    const created = await runs.createRun(actor, {
+      agentId,
+      prompt: "observe compact model usage",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, created.runId)}`,
+    };
+    await runs.requestCancelRun(actor, created.runId, [200]);
+
+    const unpinnedActor = createBddApi(context).user();
+    await runs.grantProEntitlement(unpinnedActor);
+    const composeName = `bdd-compact-observation-${randomUUID().slice(0, 8)}`;
+    const compose = await runs.createCompose(unpinnedActor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const unpinnedRun = await runs.createDirectRun(unpinnedActor, {
+      agentComposeId: compose.composeId,
+      prompt: "observe compact usage without a pinned model",
+    });
+    const unpinnedSandboxHeaders = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(
+        unpinnedActor,
+        unpinnedRun.runId,
+      )}`,
+    };
+    await runs.requestCancelRun(unpinnedActor, unpinnedRun.runId, [200]);
+
+    mockNow(aggregateAt);
+    await api.requestAggregateModelStats("valid", undefined, [200]);
+    const baseline = await api.readModelRankings("today");
+    const baseRow = baseline.body.rows.find((row) => {
+      return row.model === model;
+    }) ?? {
+      model,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      previousTotalTokens: 0,
+    };
+    const baseTotal = baseline.body.totalTokens;
+
+    const exactRequest = {
+      runId: created.runId,
+      events: [
+        {
+          idempotencyKey: randomUUID(),
+          model,
+          inputTokens: {
+            legacyIdempotencyKey: randomUUID(),
+            quantity: 101,
+          },
+          outputTokens: {
+            legacyIdempotencyKey: randomUUID(),
+            quantity: 102,
+          },
+          cacheReadInputTokens: {
+            legacyIdempotencyKey: randomUUID(),
+            quantity: 103,
+          },
+          cacheCreationInputTokens: {
+            legacyIdempotencyKey: randomUUID(),
+            quantity: 104,
+          },
+        },
+      ],
+    };
+
+    mockNow(observedAt);
+    await webhooks.requestAgentModelUsageObservationV2(
+      exactRequest,
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservationV2(
+      exactRequest,
+      sandboxHeaders,
+      [200],
+    );
+
+    const legacyFirstInputKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: legacyFirstInputKey,
+            model,
+            category: "tokens.input",
+            quantity: 201,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: legacyFirstInputKey,
+              quantity: 201,
+            },
+            outputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 202,
+            },
+            cacheReadInputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 203,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const compactFirstInputKey = randomUUID();
+    const compactFirstOutputKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: compactFirstInputKey,
+              quantity: 301,
+            },
+            outputTokens: {
+              legacyIdempotencyKey: compactFirstOutputKey,
+              quantity: 302,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: compactFirstInputKey,
+            model,
+            category: "tokens.input",
+            quantity: 301,
+          },
+          {
+            idempotencyKey: compactFirstOutputKey,
+            model,
+            category: "tokens.output",
+            quantity: 302,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const concurrentInputKey = randomUUID();
+    const concurrentOutputKey = randomUUID();
+    await Promise.all([
+      webhooks.requestAgentModelUsageObservationV2(
+        {
+          runId: created.runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model,
+              inputTokens: {
+                legacyIdempotencyKey: concurrentInputKey,
+                quantity: 401,
+              },
+              outputTokens: {
+                legacyIdempotencyKey: concurrentOutputKey,
+                quantity: 402,
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+      webhooks.requestAgentModelUsageObservationV2(
+        {
+          runId: created.runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model,
+              inputTokens: {
+                legacyIdempotencyKey: concurrentInputKey,
+                quantity: 401,
+              },
+              outputTokens: {
+                legacyIdempotencyKey: concurrentOutputKey,
+                quantity: 402,
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      ),
+    ]);
+
+    const conflictingCompactKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: conflictingCompactKey,
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 501,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const rolledBackLegacyKey = randomUUID();
+    const conflicting = await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: conflictingCompactKey,
+            model,
+            outputTokens: {
+              legacyIdempotencyKey: rolledBackLegacyKey,
+              quantity: 502,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [409],
+    );
+    expect(conflicting.body).toStrictEqual({
+      error: {
+        code: "CONFLICT",
+        message:
+          "Compact model usage observation idempotency key is already in use",
+      },
+    });
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            outputTokens: {
+              legacyIdempotencyKey: rolledBackLegacyKey,
+              quantity: 502,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const regroupedOutputKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 601,
+            },
+            outputTokens: {
+              legacyIdempotencyKey: regroupedOutputKey,
+              quantity: 602,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            outputTokens: {
+              legacyIdempotencyKey: regroupedOutputKey,
+              quantity: 602,
+            },
+            cacheCreationInputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 603,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const initiallyUnsupportedLegacyKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "unsupported-bdd-model",
+            inputTokens: {
+              legacyIdempotencyKey: initiallyUnsupportedLegacyKey,
+              quantity: 701,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: initiallyUnsupportedLegacyKey,
+              quantity: 711,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const unpinnedUnsupportedLegacyKey = randomUUID();
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: unpinnedRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "unsupported-bdd-model",
+            inputTokens: {
+              legacyIdempotencyKey: unpinnedUnsupportedLegacyKey,
+              quantity: 702,
+            },
+          },
+        ],
+      },
+      unpinnedSandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: unpinnedRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            inputTokens: {
+              legacyIdempotencyKey: unpinnedUnsupportedLegacyKey,
+              quantity: 712,
+            },
+          },
+        ],
+      },
+      unpinnedSandboxHeaders,
+      [200],
+    );
+
+    mockNow(aggregateAt);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const aggregated = await api.readModelRankings("today");
+    expect(
+      aggregated.body.rows.find((row) => {
+        return row.model === model;
+      }),
+    ).toStrictEqual({
+      model,
+      inputTokens: baseRow.inputTokens + 4532,
+      outputTokens: baseRow.outputTokens + 2112,
+      totalTokens: baseRow.totalTokens + 6644,
+      previousTotalTokens: baseRow.previousTotalTokens,
+    });
+    expect(aggregated.body.totalTokens).toBe(baseTotal + 6644);
+
+    mockNow(observedAt);
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model,
+            outputTokens: {
+              legacyIdempotencyKey: randomUUID(),
+              quantity: 50,
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(aggregateAt);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const reprocessed = await api.readModelRankings("today");
+    expect(
+      reprocessed.body.rows.find((row) => {
+        return row.model === model;
+      }),
+    ).toStrictEqual({
+      model,
+      inputTokens: baseRow.inputTokens + 4532,
+      outputTokens: baseRow.outputTokens + 2162,
+      totalTokens: baseRow.totalTokens + 6694,
+      previousTotalTokens: baseRow.previousTotalTokens,
+    });
+    expect(reprocessed.body.totalTokens).toBe(baseTotal + 6694);
+
+    mockNow(dayStart + 33 * DAY_MS + 4 * HOUR_MS);
+    await api.requestAggregateModelStats("valid", undefined, [200]);
+    mockNow(aggregateAt);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const emptied = await api.readModelRankings("today");
+    expect(emptied.body).toStrictEqual({
+      period: "today",
+      totalTokens: 0,
+      windowStart: todayStartIso,
+      windowEnd: windowEndIso,
+      rows: [],
+    });
+
+    mockNow(observedAt);
+    await webhooks.requestAgentModelUsageObservationV2(
+      exactRequest,
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(aggregateAt);
+    await api.requestAggregateModelStats("valid", 24, [200]);
+    const acceptedAfterRetention = await api.readModelRankings("today");
+    expect(acceptedAfterRetention.body).toStrictEqual({
+      period: "today",
+      totalTokens: 410,
+      windowStart: todayStartIso,
+      windowEnd: windowEndIso,
+      rows: [
+        {
+          model,
+          inputTokens: 308,
+          outputTokens: 102,
+          totalTokens: 410,
+          previousTotalTokens: 0,
+        },
+      ],
+    });
+  });
 });
 
 describe("OPS-01: user data export", () => {

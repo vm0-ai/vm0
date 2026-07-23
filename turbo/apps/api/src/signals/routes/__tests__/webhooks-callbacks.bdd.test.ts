@@ -1288,6 +1288,32 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(malformedModelUsage.body);
     expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
 
+    const modelUsageDuplicateLegacyKey = randomUUID();
+    const malformedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2Unchecked(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              inputTokens: {
+                legacyIdempotencyKey: modelUsageDuplicateLegacyKey,
+                quantity: 1,
+              },
+              outputTokens: {
+                legacyIdempotencyKey: modelUsageDuplicateLegacyKey,
+                quantity: 1,
+              },
+            },
+          ],
+        },
+        headers,
+        [400],
+      );
+    expectApiError(malformedCompactModelUsage.body);
+    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
+
     const missingModelUsageRun = await api.requestAgentModelUsageObservation(
       {
         runId,
@@ -1305,6 +1331,37 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingModelUsageRun.body);
     expect(missingModelUsageRun.body.error.code).toBe("NOT_FOUND");
+
+    const compactModelUsageBody = {
+      runId,
+      events: [
+        {
+          idempotencyKey: randomUUID(),
+          model: "claude-sonnet-4-6",
+          inputTokens: {
+            legacyIdempotencyKey: randomUUID(),
+            quantity: 1,
+          },
+        },
+      ],
+    };
+    const mismatchedCompactModelUsage =
+      await api.requestAgentModelUsageObservationV2(
+        compactModelUsageBody,
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedCompactModelUsage.body);
+    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
+
+    const missingCompactModelUsageRun =
+      await api.requestAgentModelUsageObservationV2(
+        compactModelUsageBody,
+        headers,
+        [404],
+      );
+    expectApiError(missingCompactModelUsageRun.body);
+    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
 
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {

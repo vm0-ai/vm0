@@ -991,6 +991,110 @@ export const webhookModelUsageObservationContract = c.router({
   },
 });
 
+const compactModelUsageObservationMetricSchema = z
+  .object({
+    legacyIdempotencyKey: z.uuid(),
+    quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict();
+
+const compactModelUsageObservationMetricNames = [
+  "inputTokens",
+  "outputTokens",
+  "cacheReadInputTokens",
+  "cacheCreationInputTokens",
+] as const;
+
+const webhookModelUsageObservationV2ItemSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    model: z.string().min(1).max(255),
+    inputTokens: compactModelUsageObservationMetricSchema.optional(),
+    outputTokens: compactModelUsageObservationMetricSchema.optional(),
+    cacheReadInputTokens: compactModelUsageObservationMetricSchema.optional(),
+    cacheCreationInputTokens:
+      compactModelUsageObservationMetricSchema.optional(),
+  })
+  .strict()
+  .superRefine((event, ctx) => {
+    if (
+      compactModelUsageObservationMetricNames.every((metricName) => {
+        return event[metricName] === undefined;
+      })
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At least one token metric is required",
+      });
+    }
+  });
+
+const webhookModelUsageObservationV2BodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    events: z.array(webhookModelUsageObservationV2ItemSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const compactKeys = new Set<string>();
+    const legacyKeys = new Set<string>();
+
+    body.events.forEach((event, eventIndex) => {
+      if (compactKeys.has(event.idempotencyKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["events", eventIndex, "idempotencyKey"],
+          message: "Compact idempotency keys must be unique within a request",
+        });
+      }
+      compactKeys.add(event.idempotencyKey);
+
+      compactModelUsageObservationMetricNames.forEach((metricName) => {
+        const metric = event[metricName];
+        if (!metric) {
+          return;
+        }
+        if (legacyKeys.has(metric.legacyIdempotencyKey)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["events", eventIndex, metricName, "legacyIdempotencyKey"],
+            message: "Legacy idempotency keys must be unique within a request",
+          });
+        }
+        legacyKeys.add(metric.legacyIdempotencyKey);
+      });
+    });
+  });
+
+/**
+ * Compact model usage observation webhook for
+ * /api/webhooks/agent/model-usage-observation-v2
+ *
+ * Each positive counter carries its v1 category identity during the additive
+ * rollout so old and new writers share one database deduplication boundary.
+ */
+export const webhookModelUsageObservationV2Contract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/model-usage-observation-v2",
+    headers: authHeadersSchema,
+    body: webhookModelUsageObservationV2BodySchema,
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive compact model usage observation data from sandbox",
+  },
+});
+
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
 export type WebhookModelUsageObservationContract =
   typeof webhookModelUsageObservationContract;
+export type WebhookModelUsageObservationV2Contract =
+  typeof webhookModelUsageObservationV2Contract;

@@ -14,6 +14,7 @@ import {
   webhookEventsContract,
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
+  webhookModelUsageObservationV2Contract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookStripeContract,
@@ -59,6 +60,9 @@ type AgentUsageEventBody = z.infer<
 >;
 type AgentModelUsageObservationBody = z.infer<
   (typeof webhookModelUsageObservationContract.send)["body"]
+>;
+type AgentModelUsageObservationV2Body = z.infer<
+  (typeof webhookModelUsageObservationV2Contract.send)["body"]
 >;
 type AgentStoragePrepareBody = z.infer<
   (typeof webhookStoragesPrepareContract.prepare)["body"]
@@ -766,6 +770,34 @@ export function createWebhookCallbackApi(context: TestContext) {
         setupApp({ context })(webhookModelUsageObservationContract).send({
           headers,
           body: body as AgentModelUsageObservationBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentModelUsageObservationV2(
+      body: AgentModelUsageObservationV2Body,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookModelUsageObservationV2Contract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentModelUsageObservationV2Unchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookModelUsageObservationV2Contract).send({
+          headers,
+          body: body as AgentModelUsageObservationV2Body,
         }),
         statuses,
       );
