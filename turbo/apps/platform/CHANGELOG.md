@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.624.1](https://github.com/vm0-ai/vm0/compare/app-v0.624.0...app-v0.624.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **chat:** use structured prompts in derived message views ([#22702](https://github.com/vm0-ai/vm0/issues/22702)) ([98e48c2](https://github.com/vm0-ai/vm0/commit/98e48c25c95668f600ccdb5a00f97ae592cac52d))
+
+
+### Refactoring
+
+* **platform:** remove image editing ([#22712](https://github.com/vm0-ai/vm0/issues/22712)) ([96bcedb](https://github.com/vm0-ai/vm0/commit/96bcedb673c1e8f3049981a446aec89024060cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.217.0
+    * @vm0/connectors bumped to 1.185.0
+    * @vm0/core bumped to 8.457.0
+
 ## [0.624.0](https://github.com/vm0-ai/vm0/compare/app-v0.623.0...app-v0.624.0) (2026-07-23)
 
 

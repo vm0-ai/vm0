@@ -1744,7 +1744,17 @@ export function zeroChatThreadMessagesPage(args: {
   } | null>
 > {
   return computed(async (get) => {
-    const owned = await get(ownedChatThread(args.threadId, args.userId));
+    const db = get(db$);
+    const [owned] = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .limit(1);
     if (!owned) {
       return null;
     }
@@ -1753,7 +1763,6 @@ export function zeroChatThreadMessagesPage(args: {
       throw new Error("sinceId and beforeId are mutually exclusive");
     }
 
-    const db = get(db$);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
     const cursorSequence = chatMessageOrderSequenceSql();
     let rows: ChatMessageRow[];
