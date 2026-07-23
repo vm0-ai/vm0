@@ -372,17 +372,24 @@ describe("zero people-search route", () => {
       tools: [
         {
           type: "people_search",
-          max_tokens: 3000,
+          max_tokens: 5000,
           max_tokens_per_page: 500,
         },
       ],
       max_steps: 2,
-      max_output_tokens: 2500,
+      max_output_tokens: 4000,
       store: false,
       input: "platform engineering leaders at Notion",
       response_format: {
         type: "json_schema",
-        json_schema: { name: "PeopleSearchProfiles" },
+        json_schema: {
+          name: "PeopleSearchProfiles",
+          schema: {
+            properties: {
+              profiles: { maxItems: 20 },
+            },
+          },
+        },
       },
     });
     expect(authorization).toBe("Bearer test-people-search-token");
@@ -410,6 +417,33 @@ describe("zero people-search route", () => {
       ],
     });
     expect(beforeCredits - afterCredits).toBe(20);
+  });
+
+  it("returns twenty profiles at the supported maximum", async () => {
+    const actor = staffActor();
+    const profiles = Array.from({ length: 20 }, (_, index) => {
+      return structuredProfile({
+        name: `Professional ${String(index + 1)}`,
+        summary: `Public professional profile ${String(index + 1)}.`,
+      });
+    });
+    configureProvider();
+    await seedPeopleSearchPricing();
+    await fundActor(actor);
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        return HttpResponse.json(providerResponse({ profiles }));
+      }),
+    );
+
+    const response = await successfulRequest(
+      actor,
+      defaultRequest({ limit: 20 }),
+    );
+
+    expect(response.body.profiles).toHaveLength(20);
+    expect(response.body.profiles.at(0)?.name).toBe("Professional 1");
+    expect(response.body.profiles.at(-1)?.name).toBe("Professional 20");
   });
 
   it("bills a valid search with no matching profiles", async () => {

@@ -111,7 +111,7 @@ describe("zero people-search command", () => {
   it("documents the default and maximum profile limits", () => {
     const help = zeroPeopleSearchCommand.helpInformation();
 
-    expect(help).toContain("Maximum profiles (1-10)");
+    expect(help).toContain("Maximum profiles (1-20)");
     expect(help).toContain("(default: 5)");
   });
 
@@ -184,7 +184,7 @@ describe("zero people-search command", () => {
   });
 
   it.each([
-    ["invalid limit", ["query", "--limit", "11"], "limit must be"],
+    ["invalid limit", ["query", "--limit", "21"], "limit must be"],
     ["empty query", ["   "], "Too small"],
   ])("rejects %s before calling the API", async (_name, args, message) => {
     let apiRequests = 0;

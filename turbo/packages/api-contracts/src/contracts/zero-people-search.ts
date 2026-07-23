@@ -6,7 +6,7 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 export const ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT = 5;
-export const ZERO_PEOPLE_SEARCH_MAX_LIMIT = 10;
+export const ZERO_PEOPLE_SEARCH_MAX_LIMIT = 20;
 export const ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS = 2_048;
 export const ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS = 256;
 export const ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS = 512;

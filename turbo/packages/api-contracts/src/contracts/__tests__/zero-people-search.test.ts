@@ -48,7 +48,7 @@ describe("zeroPeopleSearchRequestSchema", () => {
     { query: "", limit: 5 },
     { query: "x".repeat(ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS + 1), limit: 5 },
     { query: "valid", limit: 0 },
-    { query: "valid", limit: 11 },
+    { query: "valid", limit: 21 },
     { query: "valid", limit: 1.5 },
   ])("rejects invalid requests", (request) => {
     expect(zeroPeopleSearchRequestSchema.safeParse(request).success).toBe(
@@ -119,8 +119,8 @@ describe("zeroPeopleSearchResponseSchema", () => {
     expect(
       zeroPeopleSearchResponseSchema.safeParse({
         ...baseResponse,
-        limit: 10,
-        profiles: Array.from({ length: 11 }, () => {
+        limit: 20,
+        profiles: Array.from({ length: 21 }, () => {
           return baseResponse.profiles[0];
         }),
       }).success,
