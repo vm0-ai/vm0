@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.247.0](https://github.com/vm0-ai/vm0/compare/cli-v9.246.10...cli-v9.247.0) (2026-07-23)
+
+
+### Features
+
+* add managed weather and air quality commands ([#22670](https://github.com/vm0-ai/vm0/issues/22670)) ([f03e33f](https://github.com/vm0-ai/vm0/commit/f03e33f34134d9de0ea8dd0d5422dcd135f42bd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.217.0
+    * @vm0/connectors bumped to 1.185.0
+    * @vm0/core bumped to 8.457.0
+
 ## [9.246.10](https://github.com/vm0-ai/vm0/compare/cli-v9.246.9...cli-v9.246.10) (2026-07-23)
 
 

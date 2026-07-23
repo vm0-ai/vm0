@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.308.0](https://github.com/vm0-ai/vm0/compare/api-v1.307.0...api-v1.308.0) (2026-07-23)
+
+
+### Features
+
+* add managed weather and air quality commands ([#22670](https://github.com/vm0-ai/vm0/issues/22670)) ([f03e33f](https://github.com/vm0-ai/vm0/commit/f03e33f34134d9de0ea8dd0d5422dcd135f42bd3))
+* simplify morning brief emails ([#22720](https://github.com/vm0-ai/vm0/issues/22720)) ([35bd772](https://github.com/vm0-ai/vm0/commit/35bd772c3f8e69bab490b69aa9600d8cad9fc196))
+
+
+### Bug Fixes
+
+* **chat:** use structured prompts in derived message views ([#22702](https://github.com/vm0-ai/vm0/issues/22702)) ([98e48c2](https://github.com/vm0-ai/vm0/commit/98e48c25c95668f600ccdb5a00f97ae592cac52d))
+
+
+### Refactoring
+
+* **platform:** remove image editing ([#22712](https://github.com/vm0-ai/vm0/issues/22712)) ([96bcedb](https://github.com/vm0-ai/vm0/commit/96bcedb673c1e8f3049981a446aec89024060cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.217.0
+    * @vm0/connectors bumped to 1.185.0
+    * @vm0/core bumped to 8.457.0
+    * @vm0/db bumped to 1.130.0
+
 ## [1.307.0](https://github.com/vm0-ai/vm0/compare/api-v1.306.3...api-v1.307.0) (2026-07-23)
 
 
