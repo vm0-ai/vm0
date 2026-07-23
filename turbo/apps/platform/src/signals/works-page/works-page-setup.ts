@@ -22,12 +22,19 @@ import { detach, Reason } from "../utils.ts";
 const initWorksRedirect$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
   const error = params.get("error");
-  if (!error) {
+  const feishuError = params.get("feishuError");
+  const feishuConnected = params.get("feishu") === "connected";
+  if (!error && !feishuError && !feishuConnected) {
     return;
   }
-
-  toast.error(error);
+  if (error || feishuError) {
+    toast.error(error ?? feishuError);
+  } else if (feishuConnected) {
+    toast.success("Feishu connected successfully");
+  }
   params.delete("error");
+  params.delete("feishuError");
+  params.delete("feishu");
   set(replaceSearchParams$, params);
 });
 

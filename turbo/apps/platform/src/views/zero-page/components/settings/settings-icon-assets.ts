@@ -14,6 +14,7 @@ const SETTINGS_ICON_ASSET_PATHS = {
   imessage:
     "views/zero-page/components/settings/icons/imessage-5275a5a9cb9a.svg",
   kimi: "views/zero-page/components/settings/icons/kimi-bd6d8b8d5390.svg",
+  lark: "views/zero-page/components/settings/icons/lark-f5fdfb27067a.svg",
   "local-agent":
     "views/zero-page/components/settings/icons/local-agent-57c613146fc9.svg",
   "local-browser":
