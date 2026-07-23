@@ -816,6 +816,25 @@ export function createBddIntegrationApi(context: TestContext) {
         ts: "1710000000.000000",
         channel: "C-bdd",
       });
+      context.mocks.slack.chat.getPermalink.mockImplementation(
+        (...args: unknown[]) => {
+          const request = args[0];
+          if (
+            typeof request !== "object" ||
+            request === null ||
+            !("channel" in request) ||
+            typeof request.channel !== "string" ||
+            !("message_ts" in request) ||
+            typeof request.message_ts !== "string"
+          ) {
+            throw new Error("Expected Slack permalink request arguments");
+          }
+          return Promise.resolve({
+            ok: true,
+            permalink: `https://vm0.slack.com/archives/${request.channel}/p${request.message_ts.replace(".", "")}`,
+          });
+        },
+      );
       context.mocks.slack.chat.postEphemeral.mockResolvedValue({
         ok: true,
         message_ts: "1710000000.000001",
@@ -851,6 +870,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     clearSlackCallHistory(): void {
       context.mocks.slack.assistant.threads.setStatus.mockClear();
+      context.mocks.slack.chat.getPermalink.mockClear();
       context.mocks.slack.chat.postMessage.mockClear();
       context.mocks.slack.chat.postEphemeral.mockClear();
       context.mocks.slack.conversations.history.mockClear();

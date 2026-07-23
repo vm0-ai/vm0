@@ -1400,28 +1400,6 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
   });
-
-  it("redirects the legacy agent workflows tab", async () => {
-    mockAgentPageApis();
-    mockWorkflowApis([
-      salesResearch(),
-      opsPlaybook(),
-      launchChecklistWorkflow(),
-      otherAgentWorkflow(),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}?tab=workflows`,
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}`);
-      expect(search()).toBe("");
-    });
-    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
-    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
-  });
 });
 
 describe("workflow detail page", () => {
@@ -2258,9 +2236,30 @@ describe("workflow detail page", () => {
     const createAutomationForm = await screen.findByRole("form", {
       name: "Add Gmail automation",
     });
+    expect(within(createAutomationForm).getAllByRole("textbox")).toHaveLength(
+      1,
+    );
+    expect(
+      buttonByText("Remove condition 1", createAutomationForm),
+    ).toBeDisabled();
     await fill(
       within(createAutomationForm).getByLabelText("From contains"),
       "@acme.com",
+    );
+    click(buttonByText("Add condition", createAutomationForm));
+    expect(within(createAutomationForm).getAllByRole("textbox")).toHaveLength(
+      2,
+    );
+    click(buttonByText("Remove condition 2", createAutomationForm));
+    expect(within(createAutomationForm).getAllByRole("textbox")).toHaveLength(
+      1,
+    );
+    click(buttonByText("Add condition", createAutomationForm));
+    selectOptionByLabel("Condition 2 field", "Subject", createAutomationForm);
+    selectOptionByLabel(
+      "Condition 2 operator",
+      "Does not contain",
+      createAutomationForm,
     );
     await fill(
       within(createAutomationForm).getByLabelText("Subject does not contain"),
@@ -2951,10 +2950,16 @@ describe("workflow detail page", () => {
     const updateAutomationForm = screen.getByRole("form", {
       name: "Update Gmail new message automation",
     });
+    expect(
+      within(updateAutomationForm).getByLabelText("Subject does not contain"),
+    ).toHaveValue("newsletter");
+    click(buttonByText("Add condition", updateAutomationForm));
     await fill(
       within(updateAutomationForm).getByLabelText("From contains"),
       "@acme.com",
     );
+    click(buttonByText("Add condition", updateAutomationForm));
+    selectOptionByLabel("Condition 3 field", "Body", updateAutomationForm);
     await fill(
       within(updateAutomationForm).getByLabelText("Body contains"),
       "invoice",

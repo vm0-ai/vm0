@@ -9,7 +9,6 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -218,16 +217,10 @@ function mockProCheckout(): void {
   });
 }
 
-async function openProvidersTab(options?: {
-  readonly vm0ModelEnabled?: boolean;
-}): Promise<void> {
+async function openProvidersTab(): Promise<void> {
   detachedSetupPage({
     context,
-    path: "/?settings=providers",
-    featureSwitches:
-      options?.vm0ModelEnabled === undefined
-        ? undefined
-        : { [FeatureSwitchKey.Vm0Model]: options.vm0ModelEnabled },
+    path: "/?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -304,7 +297,7 @@ describe("organization model providers settings", () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
-    await openProvidersTab({ vm0ModelEnabled: true });
+    await openProvidersTab();
 
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -338,7 +331,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openProvidersTab({ vm0ModelEnabled: true });
+    await openProvidersTab();
 
     await expect(
       screen.findByTestId("org-model-policy-row-kimi-k2.7-code"),
@@ -366,7 +359,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openProvidersTab({ vm0ModelEnabled: true });
+    await openProvidersTab();
 
     click(buttonByText("Add model"));
     await selectDialogModel("Claude Sonnet 5");

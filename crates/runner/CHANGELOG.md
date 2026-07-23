@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.147.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.3...runner-rs-v0.147.4) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** restore sandbox Codex CLI to 0.144.6 ([#22639](https://github.com/vm0-ai/vm0/issues/22639)) ([79ccf8d](https://github.com/vm0-ai/vm0/commit/79ccf8d5071cab30c7f72a45da0f3fc1b3c6c798))
+
+
+### Performance Improvements
+
+* **runner:** move reused mount validation to idle admission ([#22610](https://github.com/vm0-ai/vm0/issues/22610)) ([710f9da](https://github.com/vm0-ai/vm0/commit/710f9da64fbb6d86a1588df02da2077dfb7c938a))
+
+## [0.147.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.2...runner-rs-v0.147.3) (2026-07-23)
+
+## [0.147.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.1...runner-rs-v0.147.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **runner:** classify guest dns readiness failures ([#22547](https://github.com/vm0-ai/vm0/issues/22547)) ([12fd057](https://github.com/vm0-ai/vm0/commit/12fd057dfb23604891fce86ca7c6f4915e896249))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** batch firewall mutations ([#22589](https://github.com/vm0-ai/vm0/issues/22589)) ([8433c4c](https://github.com/vm0-ai/vm0/commit/8433c4c3057b08c4c548adc0c50125a118077719))
+
+## [0.147.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.0...runner-rs-v0.147.1) (2026-07-22)
+
 ## [0.147.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.29...runner-rs-v0.147.0) (2026-07-22)
 
 

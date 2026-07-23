@@ -8,6 +8,7 @@ use super::super::support::{
 #[tokio::test(start_paused = true)]
 async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let counter = Arc::clone(&overrides);
     overrides.push_destroy_panic("simulated destroy panic");
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
@@ -27,6 +28,7 @@ async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
     assert_eq!(completion.unwrap().exit_code, 0);
 
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(counter.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }

@@ -97,6 +97,7 @@ async function requestOauthStart(
   options: {
     readonly authMethod?: ConnectorRegistryAuthMethodId;
     readonly authenticated?: boolean;
+    readonly callbackTarget?: "app";
     readonly headers?: HeadersInit;
     readonly origin?: string;
   } = {},
@@ -113,7 +114,12 @@ async function requestOauthStart(
   return await app.request(oauthStartUrl(type, options.origin), {
     method: "POST",
     headers,
-    body: JSON.stringify({ authMethod: options.authMethod ?? "oauth" }),
+    body: JSON.stringify({
+      authMethod: options.authMethod ?? "oauth",
+      ...(options.callbackTarget
+        ? { callbackTarget: options.callbackTarget }
+        : {}),
+    }),
   });
 }
 
@@ -390,6 +396,24 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
+  it("uses App callbacks for allowlisted connectors", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("google-maps", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.test/connectors/google-maps/callback",
+    );
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
   it("stores provider PKCE context for server-side OAuth handoff", async () => {
     mockAuthenticatedSession();
 
@@ -419,12 +443,13 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("uses the configured API origin for Cloudflare OAuth callback URLs", async () => {
+  it("keeps API-origin callbacks on the API when the app target is requested", async () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
       origin: WEB_ORIGIN,
+      callbackTarget: "app",
     });
 
     expect(response.status).toBe(200);

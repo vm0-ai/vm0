@@ -9,25 +9,6 @@ export const zeroMailProviderSchema = z.enum(["gmail", "outlook"]);
 
 export const zeroMailDraftStatusSchema = z.enum(["draft", "sent", "deleted"]);
 
-const mailSubjectSchema = z
-  .string()
-  .min(1)
-  .refine((value) => {
-    return !value.includes("\r") && !value.includes("\n");
-  }, "Subject must not contain line breaks");
-
-const mailHeaderValueSchema = z.string().refine((value) => {
-  return !value.includes("\r") && !value.includes("\n");
-}, "Mail header values must not contain line breaks");
-
-export const zeroMailDraftFieldsSchema = z.object({
-  to: z.array(z.email()).min(1),
-  cc: z.array(z.email()).optional(),
-  bcc: z.array(z.email()).optional(),
-  subject: mailSubjectSchema,
-  body: z.string().min(1),
-});
-
 export const zeroMailAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
@@ -57,19 +38,10 @@ const zeroMailDraftBaseSchema = z.object({
   sentAt: z.string().optional(),
 });
 
-export const zeroMailDraftV2Schema = zeroMailDraftBaseSchema.extend({
-  version: z.literal(2),
-});
-
-export const zeroMailDraftV3Schema = zeroMailDraftBaseSchema.extend({
+export const zeroMailDraftSchema = zeroMailDraftBaseSchema.extend({
   version: z.literal(3),
   attachments: z.array(zeroMailAttachmentSchema),
 });
-
-export const zeroMailDraftSchema = z.discriminatedUnion("version", [
-  zeroMailDraftV2Schema,
-  zeroMailDraftV3Schema,
-]);
 
 const zeroMailDraftResponseSchema = z.object({
   mailDraftId: z.string().uuid(),
@@ -87,29 +59,6 @@ const zeroMailDraftPathParamsSchema = z.object({
 });
 
 export const zeroMailContract = c.router({
-  createDraft: {
-    method: "POST",
-    path: "/api/zero/mail/drafts",
-    headers: authHeadersSchema,
-    body: zeroMailDraftFieldsSchema.extend({
-      threadId: z.string().uuid(),
-      agentId: z.string().uuid().optional(),
-      provider: zeroMailProviderSchema.optional(),
-      replyTo: mailHeaderValueSchema.optional(),
-      inReplyTo: mailHeaderValueSchema.optional(),
-      references: z.array(mailHeaderValueSchema).optional(),
-      gmailThreadId: mailHeaderValueSchema.optional(),
-    }),
-    responses: {
-      201: zeroMailDraftResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Create a persistent email draft card in a web chat thread",
-  },
   linkDraft: {
     method: "POST",
     path: "/api/zero/mail/drafts/link",
@@ -142,22 +91,6 @@ export const zeroMailContract = c.router({
     },
     summary: "Get an email draft by ID",
   },
-  updateDraft: {
-    method: "PATCH",
-    path: "/api/zero/mail/drafts/:mailDraftId",
-    headers: authHeadersSchema,
-    pathParams: zeroMailDraftPathParamsSchema,
-    body: zeroMailDraftFieldsSchema,
-    responses: {
-      200: zeroMailDraftResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Persist edits to a legacy email draft card",
-  },
   deleteDraft: {
     method: "DELETE",
     path: "/api/zero/mail/drafts/:mailDraftId",
@@ -178,9 +111,7 @@ export const zeroMailContract = c.router({
     path: "/api/zero/mail/drafts/:mailDraftId/send",
     headers: authHeadersSchema,
     pathParams: zeroMailDraftPathParamsSchema,
-    body: z
-      .union([zeroMailDraftFieldsSchema, z.object({}).strict()])
-      .optional(),
+    body: c.noBody(),
     responses: {
       200: zeroMailDraftResponseSchema,
       400: apiErrorSchema,
@@ -189,14 +120,12 @@ export const zeroMailContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Send a linked or legacy Gmail draft",
+    summary: "Send a linked Gmail draft",
   },
 });
 
 export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
 export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
 export type ZeroMailAttachment = z.infer<typeof zeroMailAttachmentSchema>;
-export type ZeroMailDraftV2 = z.infer<typeof zeroMailDraftV2Schema>;
-export type ZeroMailDraftV3 = z.infer<typeof zeroMailDraftV3Schema>;
 export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
 export type ZeroMailContract = typeof zeroMailContract;

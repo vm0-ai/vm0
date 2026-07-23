@@ -558,30 +558,6 @@ describe("createApp", () => {
       });
     });
 
-    it("returns 404 for retired BB0, API key, and public v1 routes", async () => {
-      const app = createApp({ signal: context.signal });
-      const retiredRoutes = [
-        ["POST", "/api/device-token"],
-        ["POST", "/api/device-token/poll"],
-        ["POST", "/api/zero/devices/bb0/confirm"],
-        ["GET", "/api/zero/api-keys"],
-        ["POST", "/api/zero/api-keys"],
-        ["DELETE", `/api/zero/api-keys/${crypto.randomUUID()}`],
-        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}`],
-        ["GET", `/api/v1/chat-threads/${crypto.randomUUID()}/messages`],
-        ["POST", "/api/v1/chat-threads/messages"],
-        ["POST", "/api/v1/audio/transcriptions"],
-      ] as const;
-
-      for (const [method, path] of retiredRoutes) {
-        const response = await app.request(path, { method });
-        expect(response.status, `${method} ${path}`).toBe(404);
-        await expect(response.json()).resolves.toStrictEqual({
-          error: "Not found",
-        });
-      }
-    });
-
     it("keeps registered routes matched normally", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", { method: "GET" });
@@ -910,7 +886,7 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("allows rollout-compatible mail clients and rejects unsupported versions", async () => {
+    it("requires the current mail client version", async () => {
       const app = createApp({ signal: context.signal });
       const path = "/api/zero/mail/drafts/c0000000-0000-4000-a000-000000000001";
       const stale = await app.request(path, {
@@ -934,7 +910,10 @@ describe("createApp", () => {
           [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
         },
       });
-      expect(previous.status).toBe(401);
+      expect(previous.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(previous.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
 
       const current = await app.request(path, {
         method: "GET",

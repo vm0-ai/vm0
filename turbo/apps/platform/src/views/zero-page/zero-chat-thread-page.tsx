@@ -55,6 +55,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconBrandSlack,
   IconWorld,
 } from "@tabler/icons-react";
 import {
@@ -418,18 +419,13 @@ export function AutomationMenuButton({
   );
 }
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const threadTitleLoadable = useLastLoadable(thread.threadTitle$);
-  const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
-  const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
+  const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
+  const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
+  const threadTitleText = useGet(thread.threadTitleText$);
   const openRenameChatThreadDialog = useSet(
     openRenameChatThreadDialogForThreadId$,
   );
   const pageSignal = useGet(pageSignal$);
-  const threadTitle =
-    threadTitleLoadable.state === "hasData"
-      ? (threadTitleLoadable.data?.trim() ?? "")
-      : "";
-
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
     event.preventDefault();
     detach(
@@ -441,25 +437,19 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        {threadTitleLoadable.state === "loading" ? (
-          <Skeleton className="h-5 w-48 rounded" />
-        ) : (
-          <>
-            <ChatThreadEmojiMenuButton
-              threadId={thread.threadId}
-              title={threadTitle}
-              emoji={threadTitleEmoji}
-            />
-            {threadTitleText && (
-              <span
-                className="min-w-0 truncate text-sm font-medium text-foreground"
-                data-testid="chat-thread-header-title"
-                onDoubleClick={openRenameDialog}
-              >
-                {threadTitleText}
-              </span>
-            )}
-          </>
+        <ChatThreadEmojiMenuButton
+          threadId={thread.threadId}
+          title={threadTitle}
+          emoji={threadTitleEmoji}
+        />
+        {threadTitleText && (
+          <span
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+            data-testid="chat-thread-header-title"
+            onDoubleClick={openRenameDialog}
+          >
+            {threadTitleText}
+          </span>
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
@@ -2651,14 +2641,8 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  threadSettledInServerLoadable: LoadableValue<boolean>,
   renderedGroupsReadyLoadable: LoadableValue<boolean>,
 ): string | null {
-  if (threadSettledInServerLoadable.state === "hasError") {
-    return threadSettledInServerLoadable.error instanceof Error
-      ? threadSettledInServerLoadable.error.message
-      : "Failed to load chat";
-  }
   if (renderedGroupsReadyLoadable.state === "hasError") {
     return renderedGroupsReadyLoadable.error instanceof Error
       ? renderedGroupsReadyLoadable.error.message
@@ -2714,13 +2698,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   if (!sessionError) {
     return null;
   }
@@ -2737,8 +2715,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const threadSettledInServer =
-    useLastResolved(thread.threadSettledInServer$) ?? false;
+  const threadSettledInServer = useGet(thread.threadSettledInServer$);
   const hasMessages = useLastResolved(thread.hasMessages$);
   const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
   if (
@@ -3502,13 +3479,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   const hasMessages = useLastResolved(thread.hasMessages$);
   const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
   const skeletonVisible =
@@ -3585,13 +3556,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsReadyLoadable,
-  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
   const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
 
   if (!awayFromBottom || skeletonVisible || sessionError) {
@@ -3941,9 +3906,8 @@ function useChatComposerModel(
   pageSignal: AbortSignal,
 ) {
   // Per-thread composer selection comes from the event projection. Read with
-  // useLastResolved so the picker keeps the previous value while realtime
-  // callbacks refetch the thread detail for non-selection fields.
-  const selectedModelResolved = useLastResolved(thread.selectedModel$);
+  // useGet because event-backed thread metadata is a synchronous projection.
+  const selectedModelResolved = useGet(thread.selectedModel$);
   const codexFastModeActive =
     useLastResolved(thread.codexFastModeActive$) ?? false;
   const baseModelSelection = selectedModelResolved
@@ -5900,7 +5864,7 @@ function AssistantErrorContent({ error }: { error: string }) {
 }
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useLastResolved(thread.agentId$) ?? "";
+  const agentId = useGet(thread.agentId$) ?? "";
   return (
     <Link
       pathname="/agents/:agentId"
@@ -6321,6 +6285,31 @@ function UserMessageGenerationTemplate({
   );
 }
 
+function SlackUserMessageOrigin({
+  permalink,
+}: {
+  permalink: string | undefined;
+}) {
+  if (!permalink) {
+    return null;
+  }
+  return (
+    <a
+      href={permalink}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original message in Slack"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open message</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
 const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
@@ -6715,6 +6704,7 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}

@@ -5,6 +5,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -2108,6 +2109,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                   body: {
                     authMethod: args.method.id,
                     authorizeAgent: true,
+                    ...(isConnectorAppOauthCallbackEnabled(args.connectorRef)
+                      ? { callbackTarget: "app" as const }
+                      : {}),
                     ...(args.agentId ? { agentId: args.agentId } : {}),
                   },
                   fetchOptions: { signal },

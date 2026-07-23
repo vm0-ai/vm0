@@ -6,6 +6,10 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  chatThreadsContract,
+  type ChatThreadEvent,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -15,9 +19,15 @@ import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contr
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
-import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
+import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
+import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
+import {
+  reloadUserModelPreference$,
+  userModelPreference$,
+} from "../../../signals/external/user-model-preference.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import {
   resetChatPageModelSelection$,
@@ -69,6 +79,52 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("keeps model resources cached across Clerk profile events", async () => {
+    const policy = buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000205",
+      model: "kimi-k2.7-code",
+      modelLabel: "Kimi K2.7 Code",
+      isDefault: true,
+      defaultProviderType: "moonshot-api-key",
+      credentialScope: "org",
+      modelProviderId: MOONSHOT_PROVIDER_ID,
+    });
+    let policiesRequestCount = 0;
+    let preferenceRequestCount = 0;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
+      policiesRequestCount += 1;
+      return respond(200, {
+        policies: [policy],
+        workspaceDefaultModel: policy.model,
+        workspaceDefaultPolicyId: policy.id,
+      });
+    });
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      preferenceRequestCount += 1;
+      return respond(200, { selectedModel: null, updatedAt: null });
+    });
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await waitFor(() => {
+      expect(policiesRequestCount).toBe(1);
+      expect(preferenceRequestCount).toBe(1);
+    });
+
+    await act(async () => {
+      emitMockedClerkEvent();
+      await context.store.get(orgModelPolicies$);
+      await context.store.get(userModelPreference$);
+    });
+
+    expect(policiesRequestCount).toBe(1);
+    expect(preferenceRequestCount).toBe(1);
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -1084,40 +1140,6 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps Auto available when VM0 models and BYOK are restricted", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
-    context.mocks.data.orgModelPolicies([
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000703",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000704",
-        model: "vm0-model",
-        modelLabel: "Auto",
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-      }),
-    ]);
-    mockAgent();
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(await screen.findByRole("option", { name: /Auto/u }));
-
-    await expectComposerModel("Auto");
-    expect(
-      screen.queryByRole("heading", { name: "Compare plans" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens the model picker directly to options and labels BYOK routes", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.data.orgModelProviders([]);
@@ -2043,7 +2065,9 @@ describe("chat composer models", () => {
       [OTHER_AGENT_ID, ["slack"]],
     ]);
     const authorizationAgentIds: string[] = [];
+    const workflowAgentIds: string[] = [];
     const permissionGrantAgentIds: string[] = [];
+    let persistedThreadEvent: ChatThreadEvent | null = null;
     let updatedAuthorizationAgentId: string | undefined;
     let appliedPermissionAgentId: string | undefined;
 
@@ -2059,12 +2083,27 @@ describe("chat composer models", () => {
         title: "Other agent thread",
       },
     ]);
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: persistedThreadEvent ? [persistedThreadEvent] : [],
+        hasMore: false,
+      });
+    });
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
         enabledTypes: enabledByAgent.get(params.id) ?? [],
       });
     });
+    context.mocks.api(
+      zeroWorkflowsCollectionContract.list,
+      ({ query, respond }) => {
+        if (query.agentId) {
+          workflowAgentIds.push(query.agentId);
+        }
+        return respond(200, []);
+      },
+    );
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
@@ -2115,7 +2154,29 @@ describe("chat composer models", () => {
       expect(new Set(authorizationAgentIds)).toStrictEqual(
         new Set([AGENT_ID, OTHER_AGENT_ID]),
       );
+      expect(new Set(workflowAgentIds)).toStrictEqual(
+        new Set([AGENT_ID, OTHER_AGENT_ID]),
+      );
     });
+    const authorizationRequestCount = authorizationAgentIds.length;
+    const workflowRequestCount = workflowAgentIds.length;
+    persistedThreadEvent = {
+      id: "d0000000-0000-4000-a000-000000000099",
+      kind: "renamed",
+      chatThreadId: OTHER_AGENT_THREAD_ID,
+      agentId: OTHER_AGENT_ID,
+      title: "Renamed other agent thread",
+      selectedModel: null,
+      createdAt: "2026-07-22T09:00:00.000Z",
+    };
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        within(sideThread).getByText("Renamed other agent thread"),
+      ).toBeInTheDocument();
+    });
+    expect(authorizationAgentIds).toHaveLength(authorizationRequestCount);
+    expect(workflowAgentIds).toHaveLength(workflowRequestCount);
     await user.click(within(sideComposer).getByLabelText("Connectors"));
     await user.click(
       await screen.findByLabelText("Configure Slack permissions"),
@@ -2132,8 +2193,16 @@ describe("chat composer models", () => {
         }),
       ).toBeTruthy();
     });
-    await user.click(buttonContainingText("Deny", dialog));
-    await user.click(buttonContainingText("Apply", dialog));
+    await user.click(
+      await waitFor(() => {
+        return buttonContainingText("Deny", dialog);
+      }),
+    );
+    await user.click(
+      await waitFor(() => {
+        return buttonContainingText("Apply", dialog);
+      }),
+    );
 
     await waitFor(() => {
       expect(appliedPermissionAgentId).toBe(OTHER_AGENT_ID);

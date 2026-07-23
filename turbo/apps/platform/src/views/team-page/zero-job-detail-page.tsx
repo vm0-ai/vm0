@@ -241,9 +241,6 @@ function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
 ): string {
-  if (rawTab === "automations" || rawTab === "workflows") {
-    return "authorization";
-  }
   if (hideProfileAndInstructions && rawTab !== "authorization") {
     return "authorization";
   }

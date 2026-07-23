@@ -18,11 +18,7 @@ import archiver from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
-import {
-  buildArtifactKey,
-  buildArtifactPrefix,
-  storageUserIdFromFileUrlSegment,
-} from "../../lib/file-url";
+import { buildArtifactPrefix } from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
   deleteS3Objects,
@@ -30,7 +26,6 @@ import {
   downloadS3Buffer,
   downloadS3BufferWithMaxBytes,
   listS3Objects,
-  s3ObjectExists,
 } from "../external/s3";
 import {
   createDeferredPromise,
@@ -640,50 +635,6 @@ function resolveArtifactS3ObjectFromUrl(
   return resolveArtifactS3ObjectFromKey(key, userId);
 }
 
-interface LegacyFileUrlParts {
-  readonly storageUserId: string;
-  readonly id: string;
-  readonly filename: string;
-}
-
-function decodeUrlSegment(segment: string): string | null {
-  const result = safeSync(() => {
-    return decodeURIComponent(segment);
-  });
-  if ("error" in result) {
-    return null;
-  }
-  return result.ok;
-}
-
-function legacyFileUrlParts(value: string): LegacyFileUrlParts | null {
-  if (!URL.canParse(value)) {
-    return null;
-  }
-  const segments = new URL(value).pathname.split("/").filter(Boolean);
-  if (segments.length !== 4 || segments[0] !== "f") {
-    return null;
-  }
-
-  const [, rawUserIdSegment, rawId, rawFilename] = segments;
-  if (!rawUserIdSegment || !rawId || !rawFilename) {
-    return null;
-  }
-
-  const userIdSegment = decodeUrlSegment(rawUserIdSegment);
-  const id = decodeUrlSegment(rawId);
-  const filename = decodeUrlSegment(rawFilename);
-  if (!userIdSegment || !id || !filename) {
-    return null;
-  }
-
-  return {
-    storageUserId: storageUserIdFromFileUrlSegment(userIdSegment),
-    id,
-    filename,
-  };
-}
-
 function artifactSourceUrls(artifact: ArtifactFileRow): readonly string[] {
   const metadataSourceUrl = artifact.metadata.sourceUrl;
   return [
@@ -698,8 +649,8 @@ function artifactSourceUrls(artifact: ArtifactFileRow): readonly string[] {
 function resolveArtifactS3Object(
   artifact: ArtifactFileRow,
   userId: string,
-): Computed<Promise<ArtifactS3Object | null>> {
-  return computed(async (get): Promise<ArtifactS3Object | null> => {
+): Computed<ArtifactS3Object | null> {
+  return computed((): ArtifactS3Object | null => {
     const value = artifact.metadata.s3Key;
     if (typeof value === "string") {
       const s3Object = resolveArtifactS3ObjectFromKey(value, userId);
@@ -713,28 +664,6 @@ function resolveArtifactS3Object(
       if (s3Object) {
         return s3Object;
       }
-    }
-
-    for (const sourceUrl of artifactSourceUrls(artifact)) {
-      const legacy = legacyFileUrlParts(sourceUrl);
-      if (!legacy || legacy.storageUserId !== userId) {
-        continue;
-      }
-
-      const artifactBucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-      const artifactKey = buildArtifactKey(
-        legacy.storageUserId,
-        legacy.id,
-        legacy.filename,
-      );
-      if (await get(s3ObjectExists(artifactBucket, artifactKey))) {
-        return { bucketName: artifactBucket, key: artifactKey };
-      }
-
-      return {
-        bucketName: env("R2_USER_STORAGES_BUCKET_NAME"),
-        key: `uploads/${legacy.storageUserId}/${legacy.id}/${legacy.filename}`,
-      };
     }
 
     return null;
@@ -1201,13 +1130,9 @@ const PPTX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const MAX_GOOGLE_SLIDES_PPTX_BYTES = 100 * 1024 * 1024;
 
-type PresentationPptxSource =
-  | {
-      readonly type: "inline";
-      readonly filename: string;
-      readonly pptx: Buffer;
-    }
-  | { readonly type: "staged"; readonly uploadId: string };
+interface PresentationPptxSource {
+  readonly uploadId: string;
+}
 
 interface ResolvedPresentationPptx {
   readonly filename: string;
@@ -1227,10 +1152,6 @@ function resolvePresentationPptx(
   Promise<ResolvedPresentationPptx | BadRequestResponse | NotFoundResponse>
 > {
   return computed(async (get) => {
-    if (source.type === "inline") {
-      return { filename: source.filename, pptx: source.pptx };
-    }
-
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const objects = await get(
       listS3Objects(bucket, buildArtifactPrefix(userId, source.uploadId)),

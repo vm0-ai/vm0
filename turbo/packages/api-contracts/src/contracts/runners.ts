@@ -36,6 +36,7 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
+export const RUNNER_STORAGE_MOUNTS_CAPABILITY = "storage-mounts-v1";
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -292,9 +293,9 @@ export const artifactEntrySchema = z
 /**
  * Canonical resolved Storage mount accepted by new runners.
  *
- * The API continues to emit the legacy manifest during the receiver-first
- * rollout. A later phase will select this representation only for runners that
- * advertise the storage-mounts-v1 claim capability.
+ * The API emits this representation only for runners that advertise the
+ * storage-mounts-v1 claim capability. Older runners receive the legacy
+ * projection instead.
  */
 export const storageMountEntrySchema = z
   .object({
@@ -346,12 +347,73 @@ export const storageMountEntrySchema = z
   });
 
 /**
- * Storage manifest with presigned URLs for download
+ * Canonical resolved Storage mount persisted by the API before claim-time
+ * capability negotiation. Ownership is API-only metadata and is intentionally
+ * omitted from the Runner wire representation.
  */
-export const storageManifestSchema = z.object({
+export const storedStorageMountEntrySchema = storageMountEntrySchema.extend({
+  orgId: z.string(),
+  userId: z.string(),
+});
+
+/**
+ * Legacy Storage manifest with presigned URLs for download.
+ */
+export const legacyStorageManifestSchema = z.object({
   storages: z.array(storageEntrySchema),
   artifacts: z.array(artifactEntrySchema),
 });
+
+function uniqueStorageMountPaths<T extends { readonly mountPath: string }>(
+  mounts: readonly T[],
+  ctx: z.RefinementCtx,
+): void {
+  const mountPaths = new Set<string>();
+  for (const [index, mount] of mounts.entries()) {
+    if (mountPaths.has(mount.mountPath)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "mountPath"],
+        message: `Duplicate Storage mount path "${mount.mountPath}"`,
+      });
+    }
+    mountPaths.add(mount.mountPath);
+  }
+}
+
+/** Canonical Runner wire representation. */
+export const canonicalStorageManifestSchema = z.object({
+  storageMounts: z
+    .array(storageMountEntrySchema)
+    .superRefine(uniqueStorageMountPaths),
+});
+
+/**
+ * Runner Storage manifests contain exactly one complete representation. Other
+ * runner-derived fields remain strip-compatible, but representation fields may
+ * never be mixed or omitted.
+ */
+export const storageManifestSchema = z
+  .unknown()
+  .superRefine((manifest, ctx) => {
+    if (typeof manifest !== "object" || manifest === null) {
+      return;
+    }
+    const value = manifest as Record<string, unknown>;
+    const hasStorageMounts = Object.hasOwn(value, "storageMounts");
+    const hasStorages = Object.hasOwn(value, "storages");
+    const hasArtifacts = Object.hasOwn(value, "artifacts");
+    const hasCanonical = hasStorageMounts && !hasStorages && !hasArtifacts;
+    const hasLegacy = !hasStorageMounts && hasStorages && hasArtifacts;
+    if (!hasCanonical && !hasLegacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "storage manifest must contain exactly storageMounts or both storages and artifacts",
+      });
+    }
+  })
+  .pipe(z.union([legacyStorageManifestSchema, canonicalStorageManifestSchema]));
 
 /**
  * Resume session information. The compatibility wire field is `sessionId`, but
@@ -459,7 +521,13 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  storageManifest: storageManifestSchema.nullable(),
+  // Rollback projection for old APIs/runners. New writers persist canonical
+  // mounts alongside it until the observation window closes.
+  storageManifest: legacyStorageManifestSchema.nullable(),
+  storageMounts: z
+    .array(storedStorageMountEntrySchema)
+    .superRefine(uniqueStorageMountPaths)
+    .optional(),
   environment: z.record(z.string(), z.string()).nullable(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
@@ -683,20 +751,12 @@ export const heartbeatBodySchema = z
     runnerId: z.uuid(),
     runnerName: z.string(),
     group: runnerGroupSchema,
-    // Optional for rolling compatibility: new APIs accept legacy runners, and
-    // old APIs ignore this additive pair from new runners.
     snapshotGeneration: z
       .number()
       .int()
       .positive()
-      .max(Number.MAX_SAFE_INTEGER)
-      .optional(),
-    snapshotSequence: z
-      .number()
-      .int()
-      .positive()
-      .max(Number.MAX_SAFE_INTEGER)
-      .optional(),
+      .max(Number.MAX_SAFE_INTEGER),
+    snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     totalVcpu: z.number().int().nonnegative(),
     totalMemoryMb: z.number().int().nonnegative(),
     maxConcurrent: z.number().int().nonnegative(),
@@ -708,18 +768,6 @@ export const heartbeatBodySchema = z
     mode: z.enum(["starting", "running", "draining", "stopping"]),
   })
   .superRefine((heartbeat, ctx) => {
-    if (
-      (heartbeat.snapshotGeneration === undefined) !==
-      (heartbeat.snapshotSequence === undefined)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["snapshotGeneration"],
-        message:
-          "snapshotGeneration and snapshotSequence must be provided together",
-      });
-    }
-
     const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
       (count, state) => {
         return count + (state.workspaceCaches?.length ?? 0);
@@ -783,6 +831,13 @@ export type SecretConnectorMetadata = z.infer<
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageMountEntry = z.infer<typeof storageMountEntrySchema>;
+export type StoredStorageMountEntry = z.infer<
+  typeof storedStorageMountEntrySchema
+>;
+export type LegacyStorageManifest = z.infer<typeof legacyStorageManifestSchema>;
+export type CanonicalStorageManifest = z.infer<
+  typeof canonicalStorageManifestSchema
+>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;

@@ -11,6 +11,7 @@ import {
 import {
   setupRealtime$,
   setAblyLoop$,
+  setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -503,6 +504,66 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("serializes user-channel messages received while the handler is in flight", async () => {
+    mockSignedInUser();
+    const subscriber = new AbortController();
+    const firstRunCanFinish = context.mocks.deferred<void>();
+    const handledNames: (string | undefined)[] = [];
+    let activeHandlers = 0;
+    let maxActiveHandlers = 0;
+    const loop$ = command(
+      async (_ctx, message: unknown, signal: AbortSignal): Promise<boolean> => {
+        activeHandlers += 1;
+        maxActiveHandlers = Math.max(maxActiveHandlers, activeHandlers);
+        handledNames.push(
+          typeof message === "object" &&
+            message !== null &&
+            "name" in message &&
+            typeof message.name === "string"
+            ? message.name
+            : undefined,
+        );
+        if (handledNames.length === 1) {
+          await firstRunCanFinish.promise;
+          signal.throwIfAborted();
+        }
+        activeHandlers -= 1;
+        return false;
+      },
+    );
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyMessageLoop$,
+      { loopCommand$: loop$ },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
+    await waitFor(() => {
+      expect(handledNames).toStrictEqual(["chatThreadMessageCreated:thread-1"]);
+    });
+
+    context.mocks.ably.trigger("chatThreadMessageCreated:thread-2");
+    expect(handledNames).toStrictEqual(["chatThreadMessageCreated:thread-1"]);
+    firstRunCanFinish.resolve();
+
+    await waitFor(() => {
+      expect(handledNames).toStrictEqual([
+        "chatThreadMessageCreated:thread-1",
+        "chatThreadMessageCreated:thread-2",
+      ]);
+    });
+    expect(maxActiveHandlers).toBe(1);
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
   });
 
   it("retries a payload notification after a transient handler error", async () => {

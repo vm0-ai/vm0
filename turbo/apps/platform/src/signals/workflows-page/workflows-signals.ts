@@ -40,7 +40,6 @@ import {
   ROUTES,
   type RouteKey,
 } from "../route-paths.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { currentAgentId$ } from "../agent.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import {
@@ -60,6 +59,18 @@ export type WorkflowSortMode = "next-run" | "alphabetical" | "created";
 export interface WorkflowCopyFormState {
   readonly selectedAgentId: string | null;
   readonly removeOriginal: boolean;
+}
+
+export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+export type GmailTextOperator = "contains" | "doesNotContain";
+export interface GmailMatchCondition {
+  readonly field: GmailTextField;
+  readonly operator: GmailTextOperator;
+  readonly value: string;
+}
+
+function defaultGmailMatchConditions(): readonly GmailMatchCondition[] {
+  return [{ field: "from", operator: "contains", value: "" }];
 }
 
 function defaultWorkflowCopyForm(): WorkflowCopyFormState {
@@ -218,6 +229,12 @@ const internalRevealWebhookSecretAutomationId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
   Record<string, WorkflowGithubLabelActor>
+>({});
+const internalCreateGmailMatchConditions$ = state<
+  readonly GmailMatchCondition[]
+>(defaultGmailMatchConditions());
+const internalEditingGmailMatchConditions$ = state<
+  Readonly<Record<string, readonly GmailMatchCondition[]>>
 >({});
 const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
@@ -422,6 +439,8 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalCreatedWorkflowWebhookAutomation$, null);
   set(internalCreateGithubLabelActor$, "me");
   set(internalEditingGithubLabelActors$, {});
+  set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
+  set(internalEditingGmailMatchConditions$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
   set(internalWorkflowConnectorReadiness$, null);
@@ -460,6 +479,7 @@ export const setEditingWorkflowAutomationId$ = command(
     set(internalEditingWorkflowAutomationId$, automationId);
     if (!automationId) {
       set(internalEditingGithubLabelActors$, {});
+      set(internalEditingGmailMatchConditions$, {});
     }
   },
 );
@@ -499,6 +519,9 @@ export const setWorkflowAutomationCreateDialog$ = command(
     }
     if (dialog === "github-label") {
       set(internalCreateGithubLabelActor$, "me");
+    }
+    if (dialog === "gmail") {
+      set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
     }
     if (dialog === "notion-page-content-updated") {
       set(internalCreateNotionPageContentUpdatedScope$, "page");
@@ -578,6 +601,34 @@ export const setEditingGithubLabelActor$ = command(
   },
 );
 
+export const createGmailMatchConditions$ = computed((get) => {
+  return get(internalCreateGmailMatchConditions$);
+});
+
+export const setCreateGmailMatchConditions$ = command(
+  ({ set }, conditions: readonly GmailMatchCondition[]) => {
+    set(internalCreateGmailMatchConditions$, conditions);
+  },
+);
+
+export const editingGmailMatchConditions$ = computed((get) => {
+  return get(internalEditingGmailMatchConditions$);
+});
+
+export const setEditingGmailMatchConditions$ = command(
+  (
+    { set },
+    input: {
+      readonly automationId: string;
+      readonly conditions: readonly GmailMatchCondition[];
+    },
+  ) => {
+    set(internalEditingGmailMatchConditions$, {
+      [input.automationId]: input.conditions,
+    });
+  },
+);
+
 export const createScheduleCronFields$ = computed((get) => {
   return get(internalCreateScheduleCronFields$);
 });
@@ -641,23 +692,6 @@ export const currentAgentVisibleWorkflows$ = computed(
     if (!agentId) {
       return [];
     }
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(client.list({ query: { agentId } }), [200]);
-    return result.body;
-  },
-);
-
-/**
- * The current chat agent's visible workflows, used by the slash-workflow
- * composer. Empty until an agent is resolved.
- */
-export const composerWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    const agentId = await get(currentChatAgentRecordId$);
-    if (!agentId) {
-      return [];
-    }
-    get(workflowReloadVersion$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: { agentId } }), [200]);
     return result.body;

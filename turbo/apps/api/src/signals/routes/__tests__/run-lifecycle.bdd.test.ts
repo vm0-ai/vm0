@@ -10,10 +10,12 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
-  MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import {
+  RUNNER_STORAGE_MOUNTS_CAPABILITY,
+  type Job as RunnerJob,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import {
@@ -59,7 +61,10 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectLegacyStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -70,10 +75,14 @@ import {
 } from "./helpers/agent-run-callback";
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
+  deleteStorageRow,
   deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
+  removeCheckpointCanonicalStorageState,
+  removeRunCanonicalStorageState,
+  removeSessionCanonicalStorageState,
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
@@ -1357,7 +1366,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       orgId: actor.orgId,
       userId: actor.userId,
       name: "memory",
-      type: "artifact",
     });
     const emptyArtifactPutCount = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
@@ -1518,7 +1526,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     const claim = await api.claimRunnerJob(created.runId);
-    const memoryArtifact = claim.storageManifest?.artifacts.find((artifact) => {
+    const memoryArtifact = expectLegacyStorageManifest(
+      claim.storageManifest,
+    )?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "memory";
     });
     expect(memoryArtifact).toMatchObject({
@@ -1655,7 +1665,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(created.status).toBe("pending");
 
     const claim = await api.claimRunnerJob(created.runId);
-    expect(claim.storageManifest?.storages).toStrictEqual([
+    expect(
+      expectLegacyStorageManifest(claim.storageManifest)?.storages,
+    ).toStrictEqual([
       expect.objectContaining({
         mountPath: "/primary",
         vasStorageName: storageName,
@@ -1663,12 +1675,461 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ]);
     expect(
-      claim.storageManifest?.artifacts.some((artifact) => {
-        return artifact.vasStorageName === "memory";
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.artifacts.some(
+        (artifact) => {
+          return artifact.vasStorageName === "memory";
+        },
+      ),
     ).toBeTruthy();
 
     await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("selects exactly one storage manifest representation from runner capabilities", async () => {
+    const api = createRunsApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-storage-capability-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const canonicalRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "canonical storage claim",
+    });
+    const canonicalClaim = await api.claimRunnerJob(canonicalRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const canonicalManifest = canonicalClaim.storageManifest;
+    if (!canonicalManifest || !("storageMounts" in canonicalManifest)) {
+      throw new Error("Expected canonical storageMounts manifest");
+    }
+    expect(canonicalManifest).not.toHaveProperty("storages");
+    expect(canonicalManifest).not.toHaveProperty("artifacts");
+    expect(canonicalManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          writeback: true,
+        }),
+      ]),
+    );
+    for (const mount of canonicalManifest.storageMounts) {
+      expect(mount).not.toHaveProperty("orgId");
+      expect(mount).not.toHaveProperty("userId");
+    }
+
+    const legacyRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "legacy storage claim",
+    });
+    const legacyClaim = await api.claimRunnerJob(legacyRun.runId);
+    const legacyManifest = legacyClaim.storageManifest;
+    if (!legacyManifest || !("storages" in legacyManifest)) {
+      throw new Error("Expected legacy storages and artifacts manifest");
+    }
+    expect(legacyManifest).not.toHaveProperty("storageMounts");
+    expect(legacyManifest.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ vasStorageName: "memory" }),
+      ]),
+    );
+
+    await api.requestCancelRun(actor, canonicalRun.runId, [200]);
+    await api.requestCancelRun(actor, legacyRun.runId, [200]);
+  });
+
+  it("persists canonical mounts across session and checkpoint resumes", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "persist canonical storage mounts",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected an initial canonical Storage manifest");
+    }
+    const initialMemory = initialManifest.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the canonical memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `canonical memory ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [memoryFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+
+    const historyHash = createHash("sha256")
+      .update(`canonical storage history ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [
+          {
+            name: initialMemory.name,
+            version: preparedMemory.versionId,
+            mountPath: initialMemory.mountPath,
+            ...(initialMemory.missingRootPolicy === undefined
+              ? {}
+              : { missingRootPolicy: initialMemory.missingRootPolicy }),
+          },
+        ],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the canonical checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    const sessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "continue canonical storage session",
+    });
+    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const sessionManifest = sessionClaim.storageManifest;
+    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
+      throw new Error("Expected canonical mounts from session persistence");
+    }
+    expect(sessionManifest).not.toHaveProperty("storages");
+    expect(sessionManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          storageId: initialMemory.storageId,
+          versionId: preparedMemory.versionId,
+          mountPath: initialMemory.mountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume canonical storage checkpoint",
+    });
+    const checkpointClaim = await api.claimRunnerJob(checkpointRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const checkpointManifest = checkpointClaim.storageManifest;
+    if (!checkpointManifest || !("storageMounts" in checkpointManifest)) {
+      throw new Error("Expected canonical mounts from checkpoint persistence");
+    }
+    expect(checkpointManifest).not.toHaveProperty("artifacts");
+    expect(checkpointManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          storageId: initialMemory.storageId,
+          versionId: preparedMemory.versionId,
+          mountPath: initialMemory.mountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+  });
+
+  it("skips a persisted optional Storage missing during checkpoint resume", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const storageName = `bdd-optional-resume-${randomUUID().slice(0, 8)}`;
+    const storageFile = storageTextFile(
+      "optional.txt",
+      `optional checkpoint ${storageName}`,
+    );
+    const preparedStorage = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: preparedStorage.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-optional-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        optional: {
+          name: storageName,
+          version: preparedStorage.versionId,
+          optional: true,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: ["optional:/optional"],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "persist an optional Storage mount",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected canonical mounts for the optional Storage");
+    }
+    const optionalMount = initialManifest.storageMounts.find((mount) => {
+      return mount.name === storageName;
+    });
+    if (!optionalMount) {
+      throw new Error("Expected the optional Storage to resolve initially");
+    }
+
+    const historyHash = createHash("sha256")
+      .update(`optional checkpoint ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-optional-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the optional Storage checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    // No production API can construct the historical missing-row condition.
+    // This gated test endpoint removes only the resolved Storage row; resume
+    // and verification still exercise the production checkpoint APIs.
+    await deleteStorageRow(context, optionalMount.storageId);
+    const resumedRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume without the optional Storage",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumedRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const resumedManifest = resumedClaim.storageManifest;
+    if (!resumedManifest || !("storageMounts" in resumedManifest)) {
+      throw new Error("Expected canonical mounts after checkpoint resume");
+    }
+    expect(resumedManifest.storageMounts).not.toContainEqual(
+      expect.objectContaining({ name: storageName }),
+    );
+    expect(resumedManifest.storageMounts).toContainEqual(
+      expect.objectContaining({ name: "memory", writeback: true }),
+    );
+
+    await api.requestCancelRun(actor, resumedRun.runId, [200]);
+  });
+
+  it("falls back to legacy run, session, and checkpoint Storage state", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const pendingLegacyRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "claim a pre-canonical Storage run",
+    });
+    // Pre-migration null JSONB columns cannot be produced by a current public
+    // endpoint. The gated compatibility action removes only the new field from
+    // an otherwise production-created row and queued execution context.
+    await removeRunCanonicalStorageState(context, pendingLegacyRun.runId);
+    const legacyRunClaim = await api.claimRunnerJob(pendingLegacyRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    expect(
+      expectLegacyStorageManifest(legacyRunClaim.storageManifest)?.artifacts,
+    ).toContainEqual(expect.objectContaining({ vasStorageName: "memory" }));
+    await api.requestCancelRun(actor, pendingLegacyRun.runId, [200]);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "create legacy session and checkpoint projections",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const initialManifest = initialClaim.storageManifest;
+    if (!initialManifest || !("storageMounts" in initialManifest)) {
+      throw new Error("Expected initial canonical Storage mounts");
+    }
+    const initialMemory = initialManifest.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the initial memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `legacy projection ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [memoryFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+    const historyHash = createHash("sha256")
+      .update(`legacy storage state ${initialRun.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-legacy-cli-${initialRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots: [
+          {
+            name: initialMemory.name,
+            version: preparedMemory.versionId,
+            mountPath: initialMemory.mountPath,
+          },
+        ],
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the legacy projection checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    await removeSessionCanonicalStorageState(context, initialRun.sessionId);
+    await removeCheckpointCanonicalStorageState(
+      context,
+      checkpoint.body.checkpointId,
+    );
+
+    const sessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "continue a pre-canonical Storage session",
+    });
+    const sessionClaim = await api.claimRunnerJob(sessionRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const sessionManifest = sessionClaim.storageManifest;
+    if (!sessionManifest || !("storageMounts" in sessionManifest)) {
+      throw new Error("Expected canonical mounts from legacy session state");
+    }
+    expect(sessionManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        versionId: preparedMemory.versionId,
+        writeback: true,
+      }),
+    );
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume a pre-canonical Storage checkpoint",
+    });
+    const checkpointClaim = await api.claimRunnerJob(checkpointRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const checkpointManifest = checkpointClaim.storageManifest;
+    if (!checkpointManifest || !("storageMounts" in checkpointManifest)) {
+      throw new Error("Expected canonical mounts from legacy checkpoint state");
+    }
+    expect(checkpointManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        versionId: preparedMemory.versionId,
+        writeback: true,
+      }),
+    );
+
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
   it("keeps a committed artifact head after initial empty artifact creation", async () => {
@@ -1695,11 +2156,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, initialRun.runId, [200]);
     });
     const initialClaim = await api.claimRunnerJob(initialRun.runId);
-    const initialMemory = initialClaim.storageManifest?.artifacts.find(
-      (artifact) => {
-        return artifact.vasStorageName === "memory";
-      },
-    );
+    const initialMemory = expectLegacyStorageManifest(
+      initialClaim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
     expect(initialMemory).toMatchObject({
       empty: true,
       vasVersionId: expect.any(String),
@@ -1757,7 +2218,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       orgId: actor.orgId,
       userId: actor.userId,
       name: "memory",
-      type: "artifact",
     });
     const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
@@ -1795,11 +2255,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, committedRun.runId, [200]);
     });
     const committedClaim = await api.claimRunnerJob(committedRun.runId);
-    const committedMemory = committedClaim.storageManifest?.artifacts.find(
-      (artifact) => {
-        return artifact.vasStorageName === "memory";
-      },
-    );
+    const committedMemory = expectLegacyStorageManifest(
+      committedClaim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
     expect(committedMemory).toMatchObject({
       archiveUrl: expect.any(String),
       vasVersionId: prepared.versionId,
@@ -2417,6 +2877,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    let affinitySnapshotSequence = 0;
+    function nextAffinitySnapshotSequence(): number {
+      affinitySnapshotSequence += 1;
+      return affinitySnapshotSequence;
+    }
+
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
@@ -2432,6 +2898,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         admittableProfiles: args.admittableProfiles,
         heldSessionStates: [
           {
@@ -2483,6 +2951,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runnerId: affinityRunnerId,
         runnerName: "bdd-runner",
         group: runnerGroup,
+        snapshotGeneration: 1,
+        snapshotSequence: nextAffinitySnapshotSequence(),
         totalVcpu: 8,
         totalMemoryMb: 16_384,
         maxConcurrent: 2,
@@ -2553,6 +3023,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
       admittableProfiles: [],
       heldSessionStates: [
         {
@@ -2578,6 +3050,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: 2,
       admittableProfiles: [],
       heldSessionStates: [],
       mode: "stopping",
@@ -2600,6 +3074,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
       group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
       admittableProfiles: ["vm0/default"],
       heldSessionStates: [
         {
@@ -2936,7 +3412,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 
-  it("keeps runner heartbeat snapshots ordered without breaking legacy senders", async () => {
+  it("keeps runner heartbeat snapshots ordered", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2975,8 +3451,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     async function heartbeat(args: {
-      readonly generation?: number;
-      readonly sequence?: number;
+      readonly generation: number;
+      readonly sequence: number;
       readonly advertisesReusableSandbox: boolean;
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
@@ -3066,9 +3542,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       advertisesReusableSandbox: true,
     });
     await expectReusableAffinity(false);
-
-    await heartbeat({ advertisesReusableSandbox: true });
-    await expectReusableAffinity(true);
   });
 
   it("prioritizes exact reusable work only for its runner and protection window", async () => {
@@ -4280,7 +4753,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra and Auto, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -4351,51 +4824,29 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
 
-    const vm0Model = "vm0-model";
-    const proxyHost = "https://www.vm0.test";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(vm0Model);
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: vm0Model,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const vm0Sent = await chat.requestSendMessage(
+    const retiredAuto = await chat.requestSendMessage(
       actor,
       {
         agentId,
-        prompt: "limited-free Auto run",
-        model: vm0Model,
+        prompt: "legacy Auto request",
+        model: "vm0-model",
       },
       [201],
     );
-    if (vm0Sent.status !== 201 || vm0Sent.body.runId === null) {
-      throw new Error("Expected Auto to create a limited-free run");
+    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
+      throw new Error("Expected retired Auto to normalize to Luna");
     }
     await api.heartbeatRunner(runnerGroup);
-    const vm0Claim = await api.claimRunnerJob(vm0Sent.body.runId);
-    expect(vm0Claim.environment).toMatchObject({
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: vm0Model,
+    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
+    expect(retiredAutoClaim.environment).toMatchObject({
+      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
-    expect(vm0Claim.codexRuntimeConfig).toMatchObject({
-      providerId: vm0Model,
-      baseUrl: proxyBaseUrl,
-    });
-    expect(
-      vm0Claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("model-provider:vm0-model");
-    expect(vm0Claim.modelUsageProvider).toBe(vm0Model);
-    await api.requestCancelRun(actor, vm0Sent.body.runId, [200]);
+    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
+    expect(retiredAutoClaim.modelUsageProvider).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -4489,107 +4940,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).toContain("model-provider:openai-api-key");
     expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
     expect(claim.modelUsageProvider).toBe(selectedModel);
-
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-  });
-
-  it("routes vm0-model through the marketing tunnel and injects both managed credentials", async () => {
-    const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const fw = createFirewallApi(context);
-    const selectedModel = "vm0-model";
-    const proxyHost = "https://tunnel-yuma-vm0-marketing.vm7.ai:8443";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    const firewallName = "model-provider:vm0-model";
-    const proxyAuthHeaders = {
-      Authorization: `Bearer \${{ secrets.OPENAI_API_KEY }}`,
-      "X-VM0-Upstream-Authorization": `Bearer \${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}`,
-    } as const;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(selectedModel);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "vm0 model proxy run",
-        model: selectedModel,
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected Auto chat send to create a run");
-    }
-
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(sent.body.runId);
-
-    expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: selectedModel,
-    });
-    expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-model-proxy-token");
-    expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "vm0-model",
-      name: "Auto",
-      baseUrl: proxyBaseUrl,
-      envKey: "OPENAI_API_KEY",
-      wireApi: "responses",
-      supportsWebsockets: false,
-      modelCatalog: {
-        models: [expect.objectContaining({ slug: selectedModel })],
-      },
-    });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain(firewallName);
-    expect(inlineFirewallApis(claim.firewalls, firewallName)).toStrictEqual([
-      {
-        base: `${proxyBaseUrl}/responses`,
-        auth: { headers: proxyAuthHeaders },
-        permissions: [],
-      },
-    ]);
-    expect(claim.billableFirewalls).toContain(firewallName);
-    expect(claim.modelUsageProvider).toBe(selectedModel);
-    expect(claim.encryptedSecrets).toBeTruthy();
-
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: claim.encryptedSecrets!,
-        authHeaders: proxyAuthHeaders,
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected Auto firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer vm0-model-proxy-token",
-      "X-VM0-Upstream-Authorization":
-        "Bearer vm0-key-run-lifecycle-bdd-default-model",
-    });
-    expect(resolved.body.resolvedSecrets).toStrictEqual([
-      "OPENAI_API_KEY",
-      "VM0_MODEL_UPSTREAM_API_KEY",
-    ]);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
@@ -4893,9 +5243,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
 
     const mountPaths =
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ) ?? [];
     for (const workflowName of workflowNames) {
       expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
     }
@@ -7615,7 +7967,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
     });
     const agent = await bdd.createAgent(actor, {
@@ -7756,7 +8107,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
-      "Managed public-web discovery",
+      "Public-web search, current public facts, and source discovery",
       "zero web-search <query>",
       "external public-web provider",
       "bounded, ranked results",
@@ -7795,9 +8146,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
-    expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-    );
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroWebSearch]: true,
+    });
+    expect(claim.disallowedTools).toStrictEqual([
+      ...EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      "WebSearch",
+    ]);
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
     const zeroToken = claim.environment?.ZERO_TOKEN;
@@ -7817,9 +8173,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       inlineFirewallApis(claim.firewalls, customConnectorName),
     ).toHaveLength(1);
     expect(
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ),
     ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -7827,13 +8185,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("does not advertise scrape when only web search is enabled", async () => {
+  it("advertises scrape when web search is disabled", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroWebSearch]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -7843,8 +8197,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").not.toContain(
+      "zero web-search --help",
+    );
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -7891,11 +8247,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const workflowMounts =
-      claim.storageManifest?.storages.filter((storage) => {
-        return (
-          storage.mountPath === `/home/user/.claude/skills/${workflowName}`
-        );
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.filter(
+        (storage) => {
+          return (
+            storage.mountPath === `/home/user/.claude/skills/${workflowName}`
+          );
+        },
+      ) ?? [];
 
     expect(workflowMounts).toHaveLength(1);
     expect(workflowMounts[0]?.vasStorageName).toBe(
@@ -7929,9 +8287,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
+    expect(claim.disallowedTools).not.toContain("WebSearch");
+    expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain(
       "zero web-search --help",
     );
@@ -8049,9 +8409,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.cliAgentType).toBe("claude-code");
     expect(
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }),
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ),
     ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -9528,9 +9890,11 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(created.runId);
     const mountPaths =
-      claim.storageManifest?.storages.map((storage) => {
-        return storage.mountPath;
-      }) ?? [];
+      expectLegacyStorageManifest(claim.storageManifest)?.storages.map(
+        (storage) => {
+          return storage.mountPath;
+        },
+      ) ?? [];
     expect(mountPaths).toContain("/cache");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 

@@ -16,7 +16,6 @@ import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
-import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 const internalSetupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -35,7 +34,6 @@ const internalSetupChatPage$ = command(
 
     await Promise.all([
       set(setupLeftThread$, threadId, signal),
-      set(scrollToThread$, threadId, signal),
       shouldLoadRight
         ? set(setupRightThread$, sidebarThreadId, signal)
         : set(unloadRightThread$),

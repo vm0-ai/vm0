@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconArrowRight,
   IconBox,
   IconBriefcase,
   IconChartBar,
@@ -22,8 +22,12 @@ import {
   updateOnboardingDraft$,
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
+import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { searchParams$ } from "../../signals/route.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   CUSTOM_WORKFLOW_ID,
   findOnboardingWorkflow,
@@ -32,6 +36,7 @@ import {
   type OnboardingWorkflowCategory,
   type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
+import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
   OnboardingDialog,
@@ -104,9 +109,8 @@ export function WorkflowPreview({
   readonly onClose: () => void;
   readonly onSelect: () => void;
 }) {
-  const firstConnector = workflow.connectors[0];
-  const lastConnector = workflow.connectors.at(-1);
-  const steps =
+  const hasDetailSteps = workflow.detailSteps.length > 0;
+  const fallbackSteps =
     workflow.steps.length > 0
       ? workflow.steps
       : ["Zero gathers the context", "The workflow completes the task"];
@@ -135,68 +139,45 @@ export function WorkflowPreview({
       }
     >
       <div className="grid gap-5 sm:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
-        <div className="flex min-h-56 items-center justify-center rounded-lg border border-border bg-muted/20 p-6">
-          <div className="flex w-full max-w-md items-center justify-between gap-3">
-            {firstConnector ? (
-              <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                <WorkflowConnectorIcon
-                  connectorRef={firstConnector}
-                  size={32}
-                />
-              </span>
-            ) : null}
-            {firstConnector ? (
-              <IconArrowRight
-                size={20}
-                className="shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            ) : null}
-            <span className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-              <IconSparkles
-                size={25}
-                className="text-primary"
-                aria-hidden="true"
-              />
-              <span className="mt-1 text-xs font-semibold">Zero</span>
-            </span>
-            {lastConnector && lastConnector !== firstConnector ? (
-              <>
-                <IconArrowRight
-                  size={20}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-background shadow-sm">
-                  <WorkflowConnectorIcon
-                    connectorRef={lastConnector}
-                    size={32}
-                  />
-                </span>
-              </>
-            ) : null}
-          </div>
+        <div className="flex min-h-56 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/20 p-6">
+          <WorkflowPreviewDiagram workflow={workflow} />
         </div>
         <div className="space-y-5">
           <section>
             <h3 className="text-sm font-semibold">What it does</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {workflow.description}
+              {workflow.scenario}
             </p>
           </section>
           <section>
             <h3 className="text-sm font-semibold">How it works</h3>
             <ol className="mt-2 space-y-2 text-sm leading-5 text-muted-foreground">
-              {steps.map((step, index) => {
-                return (
-                  <li key={step} className="flex gap-2">
-                    <span className="font-medium text-foreground">
-                      {index + 1}.
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                );
-              })}
+              {hasDetailSteps
+                ? workflow.detailSteps.map((step, index) => {
+                    return (
+                      <li key={step.title} className="flex gap-2">
+                        <span className="font-medium text-foreground">
+                          {index + 1}.
+                        </span>
+                        <span>
+                          <strong className="font-medium text-foreground">
+                            {step.title}:{" "}
+                          </strong>
+                          {step.description}
+                        </span>
+                      </li>
+                    );
+                  })
+                : fallbackSteps.map((step, index) => {
+                    return (
+                      <li key={step} className="flex gap-2">
+                        <span className="font-medium text-foreground">
+                          {index + 1}.
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    );
+                  })}
             </ol>
           </section>
         </div>
@@ -219,8 +200,8 @@ function WorkflowCard({
   return (
     <article
       className={cn(
-        "relative flex min-h-[143px] min-w-0 flex-col justify-between gap-3.5 rounded-xl border bg-background p-4 text-left shadow-sm transition-all hover:border-primary hover:shadow-md",
-        selected && "border-primary shadow-md",
+        "relative flex min-h-[143px] min-w-0 flex-col justify-between gap-3.5 rounded-xl border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        selected && "border-primary",
       )}
     >
       <button
@@ -295,9 +276,9 @@ function WorkflowOptions({
           onSelect(CUSTOM_WORKFLOW_ID);
         }}
         className={cn(
-          "flex min-h-[143px] flex-col justify-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-left text-muted-foreground transition-all hover:border-primary hover:text-foreground hover:shadow-md",
+          "flex min-h-[143px] flex-col justify-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-left text-muted-foreground shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary hover:text-foreground",
           selectedId === CUSTOM_WORKFLOW_ID &&
-            "border-solid border-primary text-foreground shadow-md",
+            "border-solid border-primary text-foreground",
         )}
       >
         <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted/40 text-primary">
@@ -330,7 +311,7 @@ function CategoryOptions({
             onClick={() => {
               onSelect(category);
             }}
-            className="flex min-h-[130px] min-w-0 flex-col items-start gap-2.5 rounded-xl border border-border bg-background p-4 text-left shadow-sm transition-all hover:border-primary hover:shadow-md"
+            className="flex min-h-[130px] min-w-0 flex-col items-start gap-2.5 rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-muted/40">
               <CategoryIcon size={21} stroke={1.7} aria-hidden="true" />
@@ -351,13 +332,15 @@ export function OnboardingWorkflowPickerPage() {
   const ui = useGet(onboardingUi$);
   const setDraft = useSet(updateOnboardingDraft$);
   const setUi = useSet(updateOnboardingUi$);
+  const searchParams = useGet(searchParams$);
+  const pageSignal = useGet(pageSignal$);
+  const [completeLoadable, complete] = useLoadableSet(completeOnboarding$);
   const { navigateTo } = useOnboardingNavigation();
   const previewWorkflow = findOnboardingWorkflow(ui.workflowPreviewId);
   const selectedCategory = ONBOARDING_WORKFLOW_CATEGORIES.find((category) => {
     return category.id === draft.categoryId;
   });
-  const selectedWorkflowId =
-    draft.workflowId ?? selectedCategory?.workflows[0]?.id ?? "";
+  const selectedWorkflowId = draft.workflowId ?? "";
 
   const handleBack = (): void => {
     if (selectedCategory) {
@@ -371,6 +354,17 @@ export function OnboardingWorkflowPickerPage() {
 
   const handleContinue = (): void => {
     if (!selectedWorkflowId) {
+      return;
+    }
+    // "Talk to Zero and make my own" skips the customize step and hands the
+    // user straight into the product; preset workflows keep the run page.
+    if (selectedWorkflowId === CUSTOM_WORKFLOW_ID) {
+      const redeemCode = searchParams.get("redeemCode")?.trim() || null;
+      const completeAndOpenHome = async (): Promise<void> => {
+        await complete(redeemCode, pageSignal);
+        navigateTo(ROUTES.home, { preserve: false, replace: true });
+      };
+      detach(completeAndOpenHome(), Reason.DomCallback);
       return;
     }
     navigateTo(ROUTES.onboardingWorkflowRun, {
@@ -404,6 +398,7 @@ export function OnboardingWorkflowPickerPage() {
             onPrimary={handleContinue}
             primaryLabel="Continue"
             primaryDisabled={!selectedWorkflowId}
+            busy={completeLoadable.state === "loading"}
           />
         }
       >
@@ -423,7 +418,7 @@ export function OnboardingWorkflowPickerPage() {
             onSelect={(category) => {
               setDraft({
                 categoryId: category.id,
-                workflowId: category.workflows[0]?.id ?? null,
+                workflowId: null,
               });
             }}
           />

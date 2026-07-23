@@ -288,14 +288,6 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
-function queryTabByText(text: string): HTMLElement | null {
-  return (
-    queryAllByRoleFast("tab").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-    }) ?? null
-  );
-}
-
 async function permissionRowByName(
   _container: HTMLElement,
   name: string,
@@ -1051,33 +1043,6 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(deleted).toBeTruthy();
     });
-  });
-
-  it("hides legacy agent automation and workflow tabs", async () => {
-    mockTeamAPIs();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}?tab=automations`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("@workspace")).toBeInTheDocument();
-    });
-    expect(queryTabByText("Automations")).not.toBeInTheDocument();
-    expect(queryTabByText("Workflows")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Research Agent's automations"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Workflow automations attached to Research Agent."),
-    ).not.toBeInTheDocument();
   });
 
   it("discards connector permission policy drafts when closing the drawer", async () => {

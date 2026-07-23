@@ -1,11 +1,5 @@
 import { Buffer } from "node:buffer";
 
-import {
-  CLIENT_TYPE_APP,
-  CLIENT_TYPE_HEADER,
-  CLIENT_VERSION_HEADER,
-  ZERO_MAIL_CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -135,73 +129,6 @@ function mockGmailDraftApi(): GmailDraftTestState {
   return state;
 }
 
-interface LegacyGmailDraftTestState {
-  raw: string;
-  sendCount: number;
-}
-
-function mockLegacyGmailDraftApi(): LegacyGmailDraftTestState {
-  const state: LegacyGmailDraftTestState = { raw: "", sendCount: 0 };
-  server.use(
-    http.post(`${GMAIL_API_BASE}/drafts`, async ({ request }) => {
-      const body = (await request.json()) as {
-        message: { raw: string; threadId?: string };
-      };
-      state.raw = body.message.raw;
-      return HttpResponse.json({
-        id: GMAIL_DRAFT_ID,
-        message: {
-          id: GMAIL_MESSAGE_ID,
-          threadId: body.message.threadId ?? GMAIL_THREAD_ID,
-        },
-      });
-    }),
-    http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
-      expect(params.draftId).toBe(GMAIL_DRAFT_ID);
-      expect(new URL(request.url).searchParams.get("format")).toBe("raw");
-      return HttpResponse.json({
-        id: GMAIL_DRAFT_ID,
-        message: {
-          id: GMAIL_MESSAGE_ID,
-          threadId: GMAIL_THREAD_ID,
-          raw: state.raw,
-        },
-      });
-    }),
-    http.put(
-      `${GMAIL_API_BASE}/drafts/:draftId`,
-      async ({ params, request }) => {
-        expect(params.draftId).toBe(GMAIL_DRAFT_ID);
-        const body = (await request.json()) as {
-          message: { raw: string; threadId: string };
-        };
-        state.raw = body.message.raw;
-        return HttpResponse.json({
-          id: GMAIL_DRAFT_ID,
-          message: {
-            id: `${GMAIL_MESSAGE_ID}-updated`,
-            threadId: body.message.threadId,
-          },
-        });
-      },
-    ),
-    http.post(`${GMAIL_API_BASE}/drafts/send`, async ({ request }) => {
-      const body = (await request.json()) as {
-        id: string;
-        message: { raw: string; threadId: string };
-      };
-      expect(body.id).toBe(GMAIL_DRAFT_ID);
-      state.raw = body.message.raw;
-      state.sendCount += 1;
-      return HttpResponse.json({
-        id: GMAIL_SENT_MESSAGE_ID,
-        threadId: body.message.threadId,
-      });
-    }),
-  );
-  return state;
-}
-
 async function seedGmailMailCardFixture() {
   const actor = bdd.user();
   if (!actor.orgId) {
@@ -250,15 +177,6 @@ function stateClient() {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
-}
-
-function legacyAppHeaders() {
-  return {
-    ...authHeaders(),
-    [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-    [CLIENT_VERSION_HEADER]: "0.606.1",
-    [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
-  };
 }
 
 async function linkDraft(
@@ -502,68 +420,5 @@ describe("POST /api/zero/mail/drafts/link", () => {
       [200],
     );
     expect(unlinked.body.exists).toBeFalsy();
-  });
-});
-
-describe("legacy v2 mail contract compatibility", () => {
-  it("accepts the previous create, update, and body-bearing send requests", async () => {
-    const fixture = await seedGmailMailCardFixture();
-    const gmail = mockLegacyGmailDraftApi();
-
-    const created = await accept(
-      client().createDraft({
-        headers: legacyAppHeaders(),
-        body: {
-          threadId: fixture.thread.id,
-          agentId: fixture.agent.agentId,
-          to: ["first@example.com"],
-          subject: "Initial subject",
-          body: "Initial body",
-        },
-      }),
-      [201],
-    );
-    expect(created.body.mailDraft).toMatchObject({
-      version: 2,
-      to: ["first@example.com"],
-      subject: "Initial subject",
-    });
-
-    const updated = await accept(
-      client().updateDraft({
-        headers: legacyAppHeaders(),
-        params: { mailDraftId: created.body.mailDraftId },
-        body: {
-          to: ["updated@example.com"],
-          subject: "Updated subject",
-          body: "Updated body",
-        },
-      }),
-      [200],
-    );
-    expect(updated.body.mailDraft).toMatchObject({
-      version: 2,
-      to: ["updated@example.com"],
-      subject: "Updated subject",
-    });
-
-    const sent = await accept(
-      client().sendDraft({
-        headers: legacyAppHeaders(),
-        params: { mailDraftId: created.body.mailDraftId },
-        body: {
-          to: ["updated@example.com"],
-          subject: "Updated subject",
-          body: "Updated body",
-        },
-      }),
-      [200],
-    );
-    expect(sent.body.mailDraft).toMatchObject({
-      version: 2,
-      status: "sent",
-      subject: "Updated subject",
-    });
-    expect(gmail.sendCount).toBe(1);
   });
 });

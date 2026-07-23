@@ -987,7 +987,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
+  it("loads more sidebar chats and deletes a chat", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
       return createThread(
@@ -1024,9 +1024,6 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Delete chat?",
     });
-    expect(
-      within(dialog).queryByText(/linked automations/u),
-    ).not.toBeInTheDocument();
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {
@@ -2311,78 +2308,6 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(within(nav).getByText("Agents")).toBeInTheDocument();
-      expect(within(nav).getByText("Connectors")).toBeInTheDocument();
-    });
-  });
-
-  it("keeps the old collapsed manage navigation when the icon switch is disabled", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.SidebarManageIconCollapse]: false,
-      },
-    });
-
-    const nav = await waitFor(() => {
-      const current = sidebar();
-      expect(within(current).getByText("Agents")).toBeInTheDocument();
-      return current;
-    });
-
-    click(within(nav).getByText("Manage"));
-
-    await waitFor(() => {
-      expect(within(nav).getByText("Manage")).toBeInTheDocument();
-      expect(
-        within(nav).queryByLabelText("Expand manage section"),
-      ).not.toBeInTheDocument();
-      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows icon-only manage navigation when collapsed behind the feature switch", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.SidebarManageIconCollapse]: true,
-      },
-    });
-
-    const nav = await waitFor(() => {
-      const current = sidebar();
-      expect(within(current).getByText("Agents")).toBeInTheDocument();
-      expect(within(current).getByText("Workflows")).toBeInTheDocument();
-      expect(within(current).getByText("Connectors")).toBeInTheDocument();
-      return current;
-    });
-
-    click(within(nav).getByText("Manage"));
-
-    await waitFor(() => {
-      expect(within(nav).queryByText("Manage")).not.toBeInTheDocument();
-      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
-      expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
-      expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
-      expect(within(nav).getByLabelText("Agents")).toBeInTheDocument();
-      expect(within(nav).getByLabelText("Workflows")).toBeInTheDocument();
-      expect(within(nav).getByLabelText("Connectors")).toBeInTheDocument();
-      expect(
-        within(nav).getByLabelText("Expand manage section"),
-      ).toBeInTheDocument();
-    });
-
-    click(within(nav).getByLabelText("Expand manage section"));
-
-    await waitFor(() => {
-      expect(within(nav).getByText("Manage")).toBeInTheDocument();
-      expect(within(nav).getByText("Agents")).toBeInTheDocument();
-      expect(within(nav).getByText("Workflows")).toBeInTheDocument();
       expect(within(nav).getByText("Connectors")).toBeInTheDocument();
     });
   });

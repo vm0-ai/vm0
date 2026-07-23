@@ -159,7 +159,7 @@ function buildStorageSeedSql(
     "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", 'volume',
     "s3Prefix", "storageSize", "storageFileCount", seeded_at
   FROM dev_seed_skill_volumes
-  ON CONFLICT (org_id, user_id, name, type) DO UPDATE SET
+  ON CONFLICT (org_id, user_id, name) DO UPDATE SET
     s3_prefix = excluded.s3_prefix,
     size = excluded.size,
     file_count = excluded.file_count,
@@ -179,7 +179,6 @@ function buildStorageSeedSql(
     ON storage.org_id = ${systemOrgId}
     AND storage.user_id = ${volumeOrgUserId}
     AND storage.name = volume."storageName"
-    AND storage.type = 'volume'
   ON CONFLICT (id) DO UPDATE SET
     storage_id = excluded.storage_id,
     s3_key = excluded.s3_key,
@@ -213,7 +212,6 @@ function buildStorageSeedSql(
   WHERE storage.org_id = ${systemOrgId}
     AND storage.user_id = ${volumeOrgUserId}
     AND storage.name = volume."storageName"
-    AND storage.type = 'volume'
     AND storage.head_version_id IS DISTINCT FROM volume."versionHash";
 `;
 }
@@ -237,7 +235,6 @@ function buildSkillSeedSql(
     ON storage.org_id = ${systemOrgId}
     AND storage.user_id = ${volumeOrgUserId}
     AND storage.name = volume."storageName"
-    AND storage.type = 'volume'
   ON CONFLICT (url) DO UPDATE SET
     name = excluded.name,
     full_path = excluded.full_path,
@@ -733,7 +730,6 @@ async function devSeed() {
           and(
             eq(storages.orgId, SYSTEM_ORG_ID),
             eq(storages.userId, VOLUME_ORG_USER_ID),
-            eq(storages.type, "volume"),
             inArray(storages.name, fallbackStorageNames),
           ),
         );

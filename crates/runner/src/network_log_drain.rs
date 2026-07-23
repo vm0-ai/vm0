@@ -15,6 +15,7 @@ use tracing::warn;
 use crate::ids::RunId;
 
 const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
+const DRAIN_STATUS_NOT_CONFIGURED: &str = "not_configured";
 /// Maximum ready lines handled before yielding and rechecking drain control state.
 const READY_LINE_DRAIN_SLICE_SIZE: usize = 64;
 
@@ -82,13 +83,56 @@ impl NetworkLogDrainCoordinator {
         }
     }
 
-    pub async fn drain(&self, context: NetworkLogDrainContext<'_>) {
-        join_all(
+    pub async fn drain(&self, context: NetworkLogDrainContext<'_>) -> NetworkLogDrainReport {
+        let outcomes = join_all(
             self.producers
                 .iter()
                 .map(|producer| producer.drain(context, self.timeout)),
         )
         .await;
+        NetworkLogDrainReport {
+            producers: self
+                .producers
+                .iter()
+                .zip(outcomes)
+                .map(|(producer, outcome)| (producer.name, outcome))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NetworkLogDrainOutcome {
+    Acknowledged,
+    ProducerUnavailable,
+    RequestTimeout,
+    AckDropped,
+    AckTimeout,
+}
+
+impl NetworkLogDrainOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Acknowledged => "acknowledged",
+            Self::ProducerUnavailable => "producer_unavailable",
+            Self::RequestTimeout => "request_timeout",
+            Self::AckDropped => "ack_dropped",
+            Self::AckTimeout => "ack_timeout",
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct NetworkLogDrainReport {
+    producers: Vec<(&'static str, NetworkLogDrainOutcome)>,
+}
+
+impl NetworkLogDrainReport {
+    pub(crate) fn status(&self, producer: &str) -> &'static str {
+        self.producers
+            .iter()
+            .find_map(|(name, outcome)| (*name == producer).then_some(outcome.as_str()))
+            .unwrap_or(DRAIN_STATUS_NOT_CONFIGURED)
     }
 }
 
@@ -104,13 +148,17 @@ impl NetworkLogDrainProducer {
         (Self { name, tx }, rx)
     }
 
-    pub(crate) async fn drain(&self, context: NetworkLogDrainContext<'_>, wait: Duration) {
+    pub(crate) async fn drain(
+        &self,
+        context: NetworkLogDrainContext<'_>,
+        wait: Duration,
+    ) -> NetworkLogDrainOutcome {
         let (ack_tx, ack_rx) = oneshot::channel();
         match timeout(wait, self.tx.send(NetworkLogDrainRequest { ack: ack_tx })).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
                 warn_drain!(context, self.name, "network log drain producer unavailable");
-                return;
+                return NetworkLogDrainOutcome::ProducerUnavailable;
             }
             Err(_) => {
                 warn_drain!(
@@ -119,14 +167,15 @@ impl NetworkLogDrainProducer {
                     timeout_ms = wait.as_millis(),
                     "network log drain request timed out"
                 );
-                return;
+                return NetworkLogDrainOutcome::RequestTimeout;
             }
         }
 
         match timeout(wait, ack_rx).await {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => NetworkLogDrainOutcome::Acknowledged,
             Ok(Err(_)) => {
-                warn_drain!(context, self.name, "network log drain producer dropped ack")
+                warn_drain!(context, self.name, "network log drain producer dropped ack");
+                NetworkLogDrainOutcome::AckDropped
             }
             Err(_) => {
                 warn_drain!(
@@ -134,7 +183,8 @@ impl NetworkLogDrainProducer {
                     self.name,
                     timeout_ms = wait.as_millis(),
                     "network log drain producer timed out"
-                )
+                );
+                NetworkLogDrainOutcome::AckTimeout
             }
         }
     }
@@ -331,6 +381,96 @@ mod tests {
             path,
             generation: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn drain_reports_acknowledged_producers_and_unconfigured_names() {
+        let path = Path::new("network.jsonl");
+        let (dns, mut dns_rx) = NetworkLogDrainProducer::channel("dns");
+        let (kmsg, mut kmsg_rx) = NetworkLogDrainProducer::channel("kmsg");
+        let acknowledge = tokio::spawn(async move {
+            dns_rx.recv().await.unwrap().ack();
+            kmsg_rx.recv().await.unwrap().ack();
+        });
+
+        let report = NetworkLogDrainCoordinator::new(vec![dns, kmsg])
+            .drain(drain_context(path))
+            .await;
+        acknowledge.await.unwrap();
+
+        assert_eq!(report.status("dns"), "acknowledged");
+        assert_eq!(report.status("kmsg"), "acknowledged");
+        assert_eq!(report.status("other"), "not_configured");
+        assert_eq!(
+            NetworkLogDrainCoordinator::noop()
+                .drain(drain_context(path))
+                .await
+                .status("dns"),
+            "not_configured"
+        );
+    }
+
+    #[tokio::test]
+    async fn producer_drain_reports_unavailable() {
+        let path = Path::new("network.jsonl");
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("dns");
+        drop(drain_rx);
+
+        let outcome = producer
+            .drain(drain_context(path), Duration::from_secs(1))
+            .await;
+
+        assert_eq!(outcome, NetworkLogDrainOutcome::ProducerUnavailable);
+    }
+
+    #[tokio::test]
+    async fn producer_drain_reports_request_timeout() {
+        let path = Path::new("network.jsonl");
+        let (producer, _drain_rx) = NetworkLogDrainProducer::channel("dns");
+        let mut acknowledgements = Vec::new();
+        for _ in 0..64 {
+            let (ack, ack_rx) = oneshot::channel();
+            producer
+                .tx
+                .try_send(NetworkLogDrainRequest { ack })
+                .unwrap();
+            acknowledgements.push(ack_rx);
+        }
+
+        let outcome = producer
+            .drain(drain_context(path), Duration::from_millis(1))
+            .await;
+
+        assert_eq!(outcome, NetworkLogDrainOutcome::RequestTimeout);
+        drop(acknowledgements);
+    }
+
+    #[tokio::test]
+    async fn producer_drain_reports_dropped_ack() {
+        let path = Path::new("network.jsonl");
+        let (producer, mut drain_rx) = NetworkLogDrainProducer::channel("dns");
+        let drop_ack = tokio::spawn(async move {
+            drop(drain_rx.recv().await.unwrap());
+        });
+
+        let outcome = producer
+            .drain(drain_context(path), Duration::from_secs(1))
+            .await;
+        drop_ack.await.unwrap();
+
+        assert_eq!(outcome, NetworkLogDrainOutcome::AckDropped);
+    }
+
+    #[tokio::test]
+    async fn producer_drain_reports_ack_timeout() {
+        let path = Path::new("network.jsonl");
+        let (producer, _drain_rx) = NetworkLogDrainProducer::channel("dns");
+
+        let outcome = producer
+            .drain(drain_context(path), Duration::from_millis(1))
+            .await;
+
+        assert_eq!(outcome, NetworkLogDrainOutcome::AckTimeout);
     }
 
     #[tokio::test]

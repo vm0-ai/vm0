@@ -606,6 +606,7 @@ describe("chat lifecycle", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "Summarize the standup",
+          draftStructuredPrompt: null,
           draftAttachments: null,
         });
       });
@@ -665,6 +666,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "First sentence",
+        draftStructuredPrompt: null,
         draftAttachments: null,
       });
     });

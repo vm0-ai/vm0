@@ -43,9 +43,13 @@ function storedLastSyncedAt(raw: unknown): string {
 
 type ArtifactItemKind = ArtifactItem["artifactKind"];
 
-type StoredArtifactItem = ArtifactItem & {
-  readonly searchText: string;
-};
+const storedArtifactItemSchema = artifactItemSchema
+  .extend({
+    size: artifactItemSchema.shape.size.unwrap(),
+    searchText: artifactItemSchema.shape.filename,
+  })
+  .strict();
+type StoredArtifactItem = ArtifactItem & { readonly searchText: string };
 
 interface ArtifactItemCacheFilter {
   readonly agentId?: string;
@@ -110,23 +114,11 @@ function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
   };
 }
 
-function storedSearchText(raw: unknown, item: ArtifactItem): string {
-  if (
-    raw !== null &&
-    typeof raw === "object" &&
-    !Array.isArray(raw) &&
-    typeof (raw as { searchText?: unknown }).searchText === "string"
-  ) {
-    return (raw as { searchText: string }).searchText;
-  }
-  return artifactSearchText(item);
-}
-
 function validateStoredArtifactItem(raw: unknown): ValidatedStoredArtifactItem {
-  const item: ArtifactItem = artifactItemSchema.parse(raw);
+  const { searchText, ...item } = storedArtifactItemSchema.parse(raw);
   return {
     item,
-    searchText: storedSearchText(raw, item),
+    searchText,
   };
 }
 

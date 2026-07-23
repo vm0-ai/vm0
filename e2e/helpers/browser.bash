@@ -156,14 +156,17 @@ wait_for_otp_screen() {
 }
 
 # ---------------------------------------------------------------------------
-# wait_for_sign_in_next_step — Wait for Clerk sign-in to choose a stable branch
+# wait_for_auth_next_step — Wait for Clerk auth to choose a stable branch
+# Usage: wait_for_auth_next_step <auth-path> [timeout-seconds]
+#   auth-path — "sign-up" or "sign-in"
 # Emits one of:
-#   complete — auth redirected away from sign-in
-#   password — password challenge is visible
+#   complete — auth redirected away from the auth route
 #   otp      — email verification code challenge is visible
+#   password — sign-in password challenge is visible
 # ---------------------------------------------------------------------------
-wait_for_sign_in_next_step() {
-  local timeout_secs="${1:-30}"
+wait_for_auth_next_step() {
+  local auth_path="$1"
+  local timeout_secs="${2:-30}"
   for _i in $(seq 1 "$timeout_secs"); do
     local current_url snap
     current_url=$(agent-browser get url 2>/dev/null || true)
@@ -174,7 +177,7 @@ wait_for_sign_in_next_step() {
     fi
     if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" \
       && -n "$current_url" \
-      && ! "$current_url" =~ sign-in ]]; then
+      && ! "$current_url" =~ $auth_path ]]; then
       echo "complete"
       return 0
     fi
@@ -184,7 +187,8 @@ wait_for_sign_in_next_step() {
       echo "otp"
       return 0
     fi
-    if contains "$snap" "enter your password\|forgot password\|password"; then
+    if [[ "$auth_path" == "sign-in" ]] \
+      && contains "$snap" "enter your password\|forgot password\|password"; then
       echo "password"
       return 0
     fi

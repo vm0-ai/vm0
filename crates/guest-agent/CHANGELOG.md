@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.54.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.54.0...guest-agent-v0.54.1) (2026-07-23)
+
+## [0.54.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.23...guest-agent-v0.54.0) (2026-07-22)
+
+
+### Features
+
+* make managed zero web search authoritative ([#22544](https://github.com/vm0-ai/vm0/issues/22544)) ([e8e66ce](https://github.com/vm0-ai/vm0/commit/e8e66ce625f8bde4673ed4846eecd8cda15c7fa9))
+
 ## [0.53.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.22...guest-agent-v0.53.23) (2026-07-22)
 
 

@@ -387,18 +387,20 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
   set(updateSearchParams$, params);
 });
 
-export const closePresentationEditor$ = command(({ get, set }) => {
-  const params = new URLSearchParams(get(searchParams$));
-  set(internalPresentationEditorCloseDialogOpen$, false);
-  const presentationUrl = params.get(PRESENTATION_EDITOR_QUERY_PARAM);
-  if (presentationUrl === null) {
-    return;
-  }
-  params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
-  params.delete(ARTIFACT_FULLSCREEN_PARAM);
-  params.set(ARTIFACT_QUERY_PARAM, presentationUrl);
-  set(replaceSearchParams$, params);
-});
+export const closePresentationEditor$ = command(
+  ({ get, set }, publishedUrl?: string) => {
+    const params = new URLSearchParams(get(searchParams$));
+    set(internalPresentationEditorCloseDialogOpen$, false);
+    const presentationUrl = params.get(PRESENTATION_EDITOR_QUERY_PARAM);
+    if (presentationUrl === null) {
+      return;
+    }
+    params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
+    params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    params.set(ARTIFACT_QUERY_PARAM, publishedUrl ?? presentationUrl);
+    set(replaceSearchParams$, params);
+  },
+);
 
 export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   const params = new URLSearchParams(get(searchParams$));
@@ -878,7 +880,7 @@ export const publishHtmlDomEditPreviewDraft$ = command(
     set(internalHtmlDomEditPublishingUrl$, url);
     const publish = async () => {
       const client = get(zeroClient$)(zeroHostContract, { apiBase: "api" });
-      await accept(
+      const completed = await accept(
         client.redeployHtml({
           body: { url, html },
           fetchOptions: { signal },
@@ -886,6 +888,7 @@ export const publishHtmlDomEditPreviewDraft$ = command(
         [200],
       );
       signal.throwIfAborted();
+      const publishedUrl = completed.body.artifactUrl ?? completed.body.url;
 
       const next = { ...get(internalHtmlDomEditPreviewHtmlByUrl$) };
       delete next[url];
@@ -894,6 +897,7 @@ export const publishHtmlDomEditPreviewDraft$ = command(
 
       const params = new URLSearchParams(get(searchParams$));
       params.delete(ARTIFACT_HTML_EDIT_PARAM);
+      params.set(ARTIFACT_QUERY_PARAM, publishedUrl);
       set(replaceSearchParams$, params);
       set(refreshPresentationHtmlPreviews$);
       toast.success("Site published");

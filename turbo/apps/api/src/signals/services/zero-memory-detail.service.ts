@@ -37,8 +37,8 @@ function emptyMemory(exists: boolean): MemoryDetailResult {
  * Read-only detail for the current user's "memory" artifact (latest version),
  * including each text file's contents extracted from the S3 archive.
  *
- * Memory is a normal artifact (type='artifact') named "memory", scoped per
- * (orgId, userId). Returns `exists: false` when the user has never produced
+ * Memory is a user-owned storage named "memory", scoped per (orgId, userId).
+ * Returns `exists: false` when the user has never produced
  * memory; returns an empty file list when the artifact exists but is empty.
  */
 export function zeroMemoryDetail(
@@ -59,7 +59,6 @@ export function zeroMemoryDetail(
           eq(storages.orgId, orgId),
           eq(storages.userId, userId),
           eq(storages.name, MEMORY_ARTIFACT_NAME),
-          eq(storages.type, "artifact"),
         ),
       )
       .limit(1);

@@ -83,10 +83,6 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
 OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 
-# Optional: Auto proxy authentication (required to run vm0-model)
-VM0_MODEL_PROXY_TOKEN=op://Development/vm0/VM0_MODEL_PROXY_TOKEN
-VM0_MODEL_PROXY_HOST=
-
 # Optional: OpenRouter lightweight model calls
 OPENROUTER_API_KEY=op://Development/openrouter/Section_ak7dvythmldarvk4dodjs4ecyq/OPENROUTER_API_KEY
 

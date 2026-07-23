@@ -17,8 +17,10 @@ import {
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef } from "../utils.ts";
-import type { DraftSignals } from "./chat-draft.ts";
+import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
   formatFeedbackPrompt,
@@ -45,6 +47,7 @@ import {
 import {
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
+  messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
@@ -52,6 +55,9 @@ import {
   createTemplatePreviewRuntime,
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
+import { createComposerWorkflows } from "./composer-workflows.ts";
+
+type AgentIdValue = string | null | Promise<string | null>;
 
 const EDITOR_CONTENT_CLASS =
   // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
@@ -112,6 +118,8 @@ export interface WorkflowComposerSignals {
   readonly chatThreadSuggestions$: Computed<
     Promise<ComposerChatThreadSuggestionResult>
   >;
+  readonly agentId$: Computed<Promise<string | null>>;
+  readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
@@ -154,6 +162,26 @@ export interface WorkflowComposerEventHandlers {
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ) => boolean;
+}
+
+function createComposerAgentResources<T extends AgentIdValue>(
+  agentIdSource$: Computed<T>,
+) {
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    return await get(agentIdSource$);
+  });
+  return { agentId$, workflows$: createComposerWorkflows(agentId$) };
+}
+
+function createComposerFeedback(threadId: string | undefined, editor: Editor) {
+  return createFeedbackSignals(threadId ?? "", {
+    insertItem(item) {
+      insertFeedbackItem(editor, item);
+    },
+    removeItem(id) {
+      removeFeedbackItem(editor, id);
+    },
+  });
 }
 
 function createReadInputForSubmissionCommand(
@@ -1168,6 +1196,82 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
+function workflowComposerDocumentForStructuredPrompt(
+  editor: Editor,
+  value: Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0],
+): ProseMirrorNode | null {
+  const document = messageDocumentToEditorDoc(value);
+  return document ? editor.schema.nodeFromJSON(document) : null;
+}
+
+function workflowComposerDocumentForDraft(
+  editor: Editor,
+  input: string,
+  structuredPrompt:
+    | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
+    | null,
+): ProseMirrorNode {
+  if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
+    return editor.state.doc;
+  }
+  const structuredDocument = structuredPrompt
+    ? workflowComposerDocumentForStructuredPrompt(editor, structuredPrompt)
+    : null;
+  return structuredDocument ?? workflowComposerDocumentForValue(editor, input);
+}
+
+function configureMountedWorkflowEditor(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+  singleLineOnMobile: boolean,
+): void {
+  editor.setOptions({
+    editorProps: {
+      attributes: {
+        "aria-label": "Message",
+        placeholder: COMPOSER_PLACEHOLDER,
+        tabindex: "0",
+        class: editorContentClass(singleLineOnMobile),
+      },
+      handlePaste: (_view, event) => {
+        return runtime.paste(event, _view.dom);
+      },
+      handleKeyDown: (_view, event) => {
+        return runtime.keyDown(event);
+      },
+    },
+  });
+}
+
+function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
+  runtime.update = () => {};
+  runtime.selectionUpdate = () => {};
+  runtime.focus = () => {};
+  runtime.blur = () => {};
+  runtime.input = () => {};
+  runtime.replaceFeedbackItems = () => {};
+  runtime.removeFeedback = () => {};
+  runtime.keyDown = () => {
+    return false;
+  };
+  runtime.paste = () => {
+    return false;
+  };
+}
+
+interface MountEditorOptions {
+  editor: Editor;
+  draft: DraftSignals;
+  runtime: WorkflowComposerRuntime;
+  caretIndex$: State<number>;
+  editorFocusedState$: State<boolean>;
+  selectedSuggestionIndexState$: State<number>;
+  feedback: FeedbackSignals;
+  compositionGate: CompositionGate;
+  autoFocus: boolean;
+  singleLineOnMobile: boolean;
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -1179,18 +1283,7 @@ function createMountEditorCommand({
   compositionGate,
   autoFocus,
   singleLineOnMobile,
-}: {
-  editor: Editor;
-  draft: DraftSignals;
-  runtime: WorkflowComposerRuntime;
-  caretIndex$: State<number>;
-  editorFocusedState$: State<boolean>;
-  selectedSuggestionIndexState$: State<number>;
-  feedback: FeedbackSignals;
-  compositionGate: CompositionGate;
-  autoFocus: boolean;
-  singleLineOnMobile: boolean;
-}) {
+}: MountEditorOptions) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
@@ -1198,6 +1291,10 @@ function createMountEditorCommand({
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
         set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+        set(
+          draft.setEditorDocument$,
+          createEditorDocumentSnapshot(updatedEditor.state.doc),
+        );
         runtime.input();
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -1219,29 +1316,17 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      editor.setOptions({
-        editorProps: {
-          attributes: {
-            "aria-label": "Message",
-            placeholder: COMPOSER_PLACEHOLDER,
-            tabindex: "0",
-            class: editorContentClass(singleLineOnMobile),
-          },
-          handlePaste: (_view, event) => {
-            return runtime.paste(event, _view.dom);
-          },
-          handleKeyDown: (_view, event) => {
-            return runtime.keyDown(event);
-          },
-        },
-      });
+      configureMountedWorkflowEditor(editor, runtime, singleLineOnMobile);
       const input = get(draft.input$);
-      if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
-        setWorkflowComposerDocument(
-          editor,
-          workflowComposerDocumentForValue(editor, input),
-        );
-      }
+      const structuredPrompt = set(draft.takeRestoredStructuredPrompt$);
+      setWorkflowComposerDocument(
+        editor,
+        workflowComposerDocumentForDraft(editor, input, structuredPrompt),
+      );
+      set(
+        draft.setEditorDocument$,
+        createEditorDocumentSnapshot(editor.state.doc),
+      );
       editor.mount(element);
       editor.view.dom.addEventListener(
         "compositionstart",
@@ -1266,7 +1351,30 @@ function createMountEditorCommand({
             runtime.replaceFeedbackItems(
               feedbackItemsFromWorkflowComposer(editor),
             );
+            set(
+              draft.setEditorDocument$,
+              createEditorDocumentSnapshot(editor.state.doc),
+            );
           }
+        },
+        syncStructuredPrompt(value) {
+          const document = workflowComposerDocumentForStructuredPrompt(
+            editor,
+            value,
+          );
+          if (!document) {
+            return;
+          }
+          const changed = setWorkflowComposerDocument(editor, document);
+          if (changed) {
+            runtime.replaceFeedbackItems(
+              feedbackItemsFromWorkflowComposer(editor),
+            );
+          }
+          set(
+            draft.setEditorDocument$,
+            createEditorDocumentSnapshot(editor.state.doc),
+          );
         },
       });
       if (autoFocus && !isIOS()) {
@@ -1274,19 +1382,7 @@ function createMountEditorCommand({
       }
       signal.addEventListener("abort", () => {
         compositionGate.cancel(signal.reason);
-        runtime.update = () => {};
-        runtime.selectionUpdate = () => {};
-        runtime.focus = () => {};
-        runtime.blur = () => {};
-        runtime.input = () => {};
-        runtime.replaceFeedbackItems = () => {};
-        runtime.removeFeedback = () => {};
-        runtime.keyDown = () => {
-          return false;
-        };
-        runtime.paste = () => {
-          return false;
-        };
+        resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();
@@ -1455,9 +1551,12 @@ function createTemplateAttachmentControls(
   return { active$, setLifecycleRef$ };
 }
 
-export function createWorkflowComposerSignals(
+export function createWorkflowComposerSignals<
+  T extends AgentIdValue = Promise<string | null>,
+>(
   draft: DraftSignals,
   threadId?: string,
+  agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -1465,17 +1564,11 @@ export function createWorkflowComposerSignals(
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
+  const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createFeedbackSignals(threadId ?? "", {
-    insertItem(item) {
-      insertFeedbackItem(editor, item);
-    },
-    removeItem(id) {
-      removeFeedbackItem(editor, id);
-    },
-  });
+  const feedback = createComposerFeedback(threadId, editor);
 
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
@@ -1505,6 +1598,7 @@ export function createWorkflowComposerSignals(
   });
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
+    agentId$,
   );
   const setSelectedSuggestionIndex$ = command(({ set }, index: number) => {
     set(selectedSuggestionIndexState$, index);
@@ -1571,6 +1665,8 @@ export function createWorkflowComposerSignals(
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
+    agentId$,
+    workflows$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,

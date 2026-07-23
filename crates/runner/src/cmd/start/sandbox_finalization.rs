@@ -23,8 +23,8 @@ use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
-    DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts,
-    ParkResult, ParkingGate,
+    DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest,
+    IdleParkRequestParts, ParkResult, ParkingGate,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -203,54 +203,97 @@ pub(super) async fn finalize_sandbox_for_completion(
         });
         let park_outcome = match park_request.park_for_idle().await {
             Ok(outcome) => outcome,
-            Err(failure) => {
-                let failure = failure.into_active_parts();
-                let IdleParkActiveParts {
-                    sandbox,
-                    factory: failure_factory,
-                    budget_lease,
-                    workspace_promotion,
-                } = failure.active;
-                warn!(
-                    run_id = %run_id,
-                    session_id = %cli_agent_session_id,
-                    reason = failure.reason,
-                    error = %failure.error,
-                    "sandbox idle admission failed, destroying instead of parking"
-                );
-                let destroy_result = stop_and_destroy_sandbox(
-                    sandbox,
-                    &**failure_factory,
-                    workspace_promotion,
-                    ActiveCleanupContext {
+            Err(failure) => match failure.into_parts() {
+                IdleParkFailureParts::Active {
+                    active,
+                    reason,
+                    error,
+                } => {
+                    let IdleParkActiveParts {
+                        sandbox,
+                        factory: failure_factory,
+                        budget_lease,
+                        workspace_promotion,
+                    } = active;
+                    warn!(
+                        run_id = %run_id,
+                        session_id = %cli_agent_session_id,
+                        reason,
+                        error,
+                        "sandbox idle admission failed, destroying instead of parking"
+                    );
+                    let destroy_result = stop_and_destroy_sandbox(
+                        sandbox,
+                        &**failure_factory,
+                        workspace_promotion,
+                        ActiveCleanupContext {
+                            run_id,
+                            sandbox_id,
+                            profile_name: &profile_name,
+                            cli_agent_session_id: Some(&cli_agent_session_id),
+                            reason,
+                            network_log_session: network_log_session.take(),
+                            network_log_drain: network_log_drain.clone(),
+                        },
+                    )
+                    .await;
+                    let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                        &held_session_snapshot,
+                        Some(&cli_agent_session_id),
+                        &profile_name,
+                        &completed_at,
+                        destroy_result.workspace_cache_promoted,
+                    );
+                    record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
+                    return mark_session_affinity_refresh(
+                        CompletionReady::new(
+                            completion_payload,
+                            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
+                                budget_lease,
+                            )),
+                        ),
+                        workspace_cache_promoted,
+                    );
+                }
+                IdleParkFailureParts::Parked {
+                    rejected,
+                    reason,
+                    error,
+                } => {
+                    warn!(
+                        run_id = %run_id,
+                        session_id = %cli_agent_session_id,
+                        reason,
+                        error,
+                        "parked sandbox failed idle admission, destroying instead of reusing"
+                    );
+                    close_network_log_session(
                         run_id,
-                        sandbox_id,
-                        profile_name: &profile_name,
-                        cli_agent_session_id: Some(&cli_agent_session_id),
-                        reason: failure.reason,
-                        network_log_session: network_log_session.take(),
-                        network_log_drain: network_log_drain.clone(),
-                    },
-                )
-                .await;
-                let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
-                    &held_session_snapshot,
-                    Some(&cli_agent_session_id),
-                    &profile_name,
-                    &completed_at,
-                    destroy_result.workspace_cache_promoted,
-                );
-                record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
-                return mark_session_affinity_refresh(
-                    CompletionReady::new(
-                        completion_payload,
-                        BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
-                            budget_lease,
-                        )),
-                    ),
-                    workspace_cache_promoted,
-                );
-            }
+                        network_log_session.take(),
+                        &network_log_drain,
+                    )
+                    .await;
+                    let (payload, budget_lease) = rejected.into_active_destroy_parts();
+                    let destroy_result = destroy_active_owned_idle_payload(
+                        payload,
+                        budget_lease,
+                        reason,
+                        destroy_bookkeeping,
+                    )
+                    .await;
+                    let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                        &held_session_snapshot,
+                        Some(&cli_agent_session_id),
+                        &profile_name,
+                        &completed_at,
+                        destroy_result.workspace_cache_promoted,
+                    );
+                    return mark_session_affinity_refresh(
+                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        workspace_cache_promoted,
+                    );
+                }
+            },
         };
         let (candidate, non_reusable_reason) = park_outcome.into_parts();
         if cancel.is_cancelled() {
@@ -1010,7 +1053,8 @@ mod tests {
         .await;
 
         assert_eq!(completion_ready.result_for_test(), (0, None));
-        assert_eq!(overrides.park_call_count(), 0);
+        assert_eq!(overrides.park_call_count(), 1);
+        assert_eq!(overrides.unpark_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         let cache_states = cache.held_session_states().await;
@@ -1784,7 +1828,7 @@ mod tests {
         .park_for_idle()
         .await
         .unwrap_or_else(|failure| {
-            let error = failure.into_active_parts().error;
+            let error = failure.into_error();
             panic!("existing sandbox should park: {error}");
         })
         .expect_reusable()

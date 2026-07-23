@@ -2344,16 +2344,11 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       throw new Error("entitled actor is missing an organization");
     }
     const threadId = randomUUID();
-    const legacyPptx = {
-      name: "deck.pptx",
-      bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04]),
-    };
-
     // Gated off by default: the feature switch hides the endpoint.
-    const gated = await chat.requestUploadThreadArtifactGoogleSlides(
+    const gated = await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
       actor,
       threadId,
-      legacyPptx,
+      randomUUID(),
       [403],
     );
     expectApiError(gated.body);
@@ -2366,12 +2361,13 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     );
 
     // Enabled, but Google Drive is not connected yet.
-    const noDrive = await chat.requestUploadThreadArtifactGoogleSlides(
-      actor,
-      threadId,
-      legacyPptx,
-      [400],
-    );
+    const noDrive =
+      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
+        actor,
+        threadId,
+        randomUUID(),
+        [400],
+      );
     expectApiError(noDrive.body);
     expect(noDrive.body.error.message).toBe(
       "Connect Google Drive before uploading to Google Slides",
@@ -2457,20 +2453,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       stagedPptx.slice(0, 4),
     );
     expect(objectStore.deletedKeys).toContain(stagedKey);
-
-    // Old browser bundles can still send the PPTX inline during deployment.
-    const legacyUploaded = await chat.requestUploadThreadArtifactGoogleSlides(
-      actor,
-      threadId,
-      legacyPptx,
-      [200],
-    );
-    expect(legacyUploaded.body).toStrictEqual({
-      id: "slides-file-1",
-      name: "deck",
-      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
-    });
-    expect(uploadRecorder.uploadBodies[1]).toStrictEqual(legacyPptx.bytes);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

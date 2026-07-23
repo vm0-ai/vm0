@@ -237,13 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroScrape]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable the managed Firecrawl-backed Zero Scrape API and scrape:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroWebSearch]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -322,11 +315,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Vm0Model]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Show Auto in the workspace Add model selector.",
-    enabled: false,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -387,6 +375,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Prefetch chat thread messages into IndexedDB when message-created realtime events arrive outside the focused thread.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -398,13 +393,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SidebarManageIconCollapse]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -464,6 +452,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable favoriting artifacts on the Artifacts page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.HostedArtifactVersions]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Create immutable hosted artifact versions behind stable site aliases.",
+    enabled: false,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",

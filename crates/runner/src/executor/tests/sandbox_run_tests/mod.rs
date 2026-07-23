@@ -35,7 +35,8 @@ use super::support::{
     api_storage, assert_proxy_registry_empty, create_overridden_sandbox, default_params,
     make_reusable_idle_sandbox, minimal_context, run_new_sandbox_outcome, run_new_sandbox_status,
     sandbox_create_error, sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache,
-    test_budget_lease, test_device_rate_limits, test_executor_config, test_telemetry,
+    seed_workspace_image_cache_with_fingerprints, test_budget_lease, test_device_rate_limits,
+    test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
@@ -75,6 +76,39 @@ fn assert_no_telemetry_action(telemetry: &crate::telemetry::JobTelemetry, action
         ops.iter().all(|(op_action, _, _)| op_action != action),
         "unexpected telemetry action {action}, got: {ops:?}"
     );
+}
+
+async fn capture_sandbox_run_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: std::future::Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
+fn captured_events_named<'a>(events: &'a [CapturedEvent], message: &str) -> Vec<&'a CapturedEvent> {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .collect()
+}
+
+fn assert_captured_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = event
+        .fields
+        .get(field)
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+    assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
 }
 
 fn telemetry_action_outcomes(

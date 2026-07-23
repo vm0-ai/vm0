@@ -12,8 +12,8 @@ import {
 } from "../types";
 import {
   artifactEntrySchema,
+  legacyStorageManifestSchema,
   storageEntrySchema,
-  storageManifestSchema,
   storageMountEntrySchema,
 } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
@@ -261,7 +261,7 @@ describe("Rust type bindings", () => {
   });
 
   it("keeps storage manifest field overrides aligned with entry schemas", () => {
-    const manifestSchema = z.toJSONSchema(storageManifestSchema);
+    const manifestSchema = z.toJSONSchema(legacyStorageManifestSchema);
     const storageSchema = { ...z.toJSONSchema(storageEntrySchema) };
     const artifactSchema = { ...z.toJSONSchema(artifactEntrySchema) };
     delete storageSchema.$schema;

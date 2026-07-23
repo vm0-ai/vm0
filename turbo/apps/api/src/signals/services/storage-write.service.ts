@@ -275,7 +275,6 @@ async function findStorageForCommit(args: {
         eq(storages.orgId, args.orgId),
         eq(storages.userId, args.storageOwner),
         eq(storages.name, args.input.storageName),
-        eq(storages.type, args.input.storageType),
       ),
     )
     .limit(1);
@@ -322,7 +321,7 @@ async function upsertStorageForPrepare(args: {
       fileCount: 0,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      target: [storages.orgId, storages.userId, storages.name],
       set: { updatedAt: nowDate() },
     })
     .returning();
@@ -525,7 +524,7 @@ function commitExistingStorageVersion(args: {
 }): Computed<Promise<CommitStorageResponse>> {
   return computed(async (get): Promise<CommitStorageResponse> => {
     const explicitEmptyArtifact =
-      args.storage.type === "artifact" && args.version.fileCount === 0;
+      args.input.storageType === "artifact" && args.version.fileCount === 0;
     const verification = explicitEmptyArtifact
       ? null
       : await get(

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
+import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -21,6 +22,59 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
+  it("links Slack-origin user messages back to the original message", async () => {
+    const threadId = "thread-slack-message-origin";
+    const permalink =
+      "https://vm0.slack.com/archives/C12345678/p1753257600000100";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-slack-origin",
+          role: "user",
+          content: "Check the production rollout",
+          runId: "run-slack-origin",
+          triggerSource: "slack",
+          slackMessagePermalink: permalink,
+          createdAt: "2026-07-23T01:00:00Z",
+        },
+        {
+          id: "msg-slack-origin-assistant",
+          role: "assistant",
+          content: "The rollout is healthy.",
+          runId: "run-slack-origin",
+          createdAt: "2026-07-23T01:01:00Z",
+        },
+        {
+          id: "msg-slack-origin-without-link",
+          role: "user",
+          content: "This source link was unavailable",
+          runId: "run-slack-origin-without-link",
+          triggerSource: "slack",
+          createdAt: "2026-07-23T01:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Open message")).toBeInTheDocument();
+    });
+    const originLinks = queryAllByRoleFast("link").filter((link) => {
+      return (
+        link.getAttribute("aria-label") === "Open original message in Slack"
+      );
+    });
+    const originLink = originLinks[0];
+    expect(originLink).toBeDefined();
+    expect(originLink).toHaveAttribute("href", permalink);
+    expect(originLink).toHaveAttribute("target", "_blank");
+    expect(originLink).toHaveTextContent("Slack");
+    expect(originLink).toHaveTextContent("Open message");
+    expect(originLinks).toHaveLength(1);
+  });
+
   it("keeps an existing thread composer in its footer while idle and working", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000990";
@@ -205,9 +259,9 @@ describe("chat lifecycle", () => {
       throw new Error("Expected client thread id to be captured");
     }
 
-    await expect(
+    expect(
       context.store.get(eventDrivenChatThread(clientThreadId)),
-    ).resolves.toMatchObject({
+    ).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
     });
   });

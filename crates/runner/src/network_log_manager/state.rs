@@ -18,8 +18,16 @@ struct State {
 }
 
 enum SourceState {
-    Active { path: PathBuf, generation: u64 },
-    Draining { path: PathBuf, generation: u64 },
+    Active {
+        path: PathBuf,
+        generation: u64,
+        writer_backpressure_observed: bool,
+    },
+    Draining {
+        path: PathBuf,
+        generation: u64,
+        writer_backpressure_observed: bool,
+    },
 }
 
 impl SourceState {
@@ -37,6 +45,19 @@ impl SourceState {
 
     fn matches(&self, path: &Path, generation: u64) -> bool {
         self.generation() == generation && self.path() == path
+    }
+
+    fn writer_backpressure_observed(&self) -> bool {
+        match self {
+            Self::Active {
+                writer_backpressure_observed,
+                ..
+            }
+            | Self::Draining {
+                writer_backpressure_observed,
+                ..
+            } => *writer_backpressure_observed,
+        }
     }
 }
 
@@ -113,6 +134,7 @@ impl NetworkLogState {
             SourceState::Active {
                 path: path.clone(),
                 generation,
+                writer_backpressure_observed: false,
             },
         );
         SourceRegistration {
@@ -166,6 +188,30 @@ impl NetworkLogState {
         })
     }
 
+    pub(super) async fn mark_writer_backpressure(
+        &self,
+        source_ip: &str,
+        snapshot: &SourceSnapshot,
+    ) {
+        let mut state = self.state.lock().await;
+        let Some(source_state) = state.source_paths.get_mut(source_ip) else {
+            return;
+        };
+        if !source_state.matches(&snapshot.path, snapshot.generation) {
+            return;
+        }
+        match source_state {
+            SourceState::Active {
+                writer_backpressure_observed,
+                ..
+            }
+            | SourceState::Draining {
+                writer_backpressure_observed,
+                ..
+            } => *writer_backpressure_observed = true,
+        }
+    }
+
     pub(super) async fn begin_session_drain(
         &self,
         source_ip: &str,
@@ -179,24 +225,34 @@ impl NetworkLogState {
         if !source_state.matches(path, generation) {
             return false;
         }
+        let writer_backpressure_observed = source_state.writer_backpressure_observed();
         state.source_paths.insert(
             source_ip.to_string(),
             SourceState::Draining {
                 path: path.to_path_buf(),
                 generation,
+                writer_backpressure_observed,
             },
         );
         true
     }
 
-    pub(super) async fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) {
+    pub(super) async fn finalize_session(
+        &self,
+        source_ip: &str,
+        path: &Path,
+        generation: u64,
+    ) -> bool {
         let mut state = self.state.lock().await;
         let Some(source_state) = state.source_paths.get(source_ip) else {
-            return;
+            return false;
         };
-        if source_state.matches(path, generation) {
-            state.source_paths.remove(source_ip);
+        if !source_state.matches(path, generation) {
+            return false;
         }
+        let writer_backpressure_observed = source_state.writer_backpressure_observed();
+        state.source_paths.remove(source_ip);
+        writer_backpressure_observed
     }
 
     pub(super) async fn flush_path(&self, path: &Path) {

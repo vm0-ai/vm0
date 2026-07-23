@@ -1,5 +1,6 @@
 import { WORKFLOW_TEMPLATE_ITEMS, type WorkflowTemplateItem } from "@vm0/core";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
+import { ONBOARDING_WORKFLOW_DETAILS } from "./onboarding-workflow-details.ts";
 
 export interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
@@ -66,6 +67,8 @@ export interface OnboardingWorkflow {
   readonly connectors: readonly string[];
   readonly required: readonly string[];
   readonly steps: readonly string[];
+  readonly scenario: string;
+  readonly detailSteps: readonly { title: string; description: string }[];
 }
 
 export interface OnboardingWorkflowCategory {
@@ -341,15 +344,20 @@ function onboardingWorkflow(
   if (!template) {
     throw new Error(`Missing onboarding workflow template: ${id}`);
   }
+  const description =
+    WORKFLOW_DESCRIPTION_OVERRIDES[id] ?? template.description;
+  const details = ONBOARDING_WORKFLOW_DETAILS[id];
   return {
     id,
     categoryId,
     title: template.title,
-    description: WORKFLOW_DESCRIPTION_OVERRIDES[id] ?? template.description,
+    description,
     prompt: template.promptGuidance,
     connectors: template.connectors,
     required: requiredConnectors(template.promptGuidance, template.connectors),
     steps: workflowSteps(template.promptGuidance),
+    scenario: details?.scenario ?? description,
+    detailSteps: details?.steps ?? [],
   };
 }
 

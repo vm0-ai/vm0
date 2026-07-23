@@ -10,6 +10,7 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
@@ -46,13 +47,6 @@ const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
 });
-
-type UserExportStatusBody = Extract<
-  Awaited<
-    ReturnType<ReturnType<typeof createOpsLogsApi>["requestGetUserExport"]>
-  >["body"],
-  { job: unknown }
->;
 
 afterEach(() => {
   clearMockNow();
@@ -226,23 +220,15 @@ async function waitForUserExportJobStatus(
   api: ReturnType<typeof createOpsLogsApi>,
   actor: ApiTestUser,
   jobId: string,
-  status: "completed" | "failed" | "pending" | "running",
+  status: "completed" | "failed",
 ) {
-  let body: UserExportStatusBody | undefined;
-  await expect
-    .poll(async () => {
-      const response = await api.requestGetUserExport(actor, [200]);
-      if (!("job" in response.body)) {
-        return null;
-      }
-      body = response.body;
-      return body.job?.id === jobId ? body.job.status : null;
-    })
-    .toBe(status);
-  if (!body) {
+  await flushWaitUntilForTest();
+  const response = await api.requestGetUserExport(actor, [200]);
+  if (!("job" in response.body)) {
     throw new Error(`Expected user export job ${jobId} to become ${status}`);
   }
-  return body;
+  expect(response.body.job).toMatchObject({ id: jobId, status });
+  return response.body;
 }
 
 describe("BILL-02: model usage aggregation and public rankings", () => {

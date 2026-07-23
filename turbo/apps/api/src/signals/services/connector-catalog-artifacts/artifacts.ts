@@ -57,8 +57,13 @@ export function connectorCatalogReleaseArtifactKeys(
   };
 }
 
+// These schema-v1 limits mirror vm0-connectors output. Changing them requires
+// a new connector catalog artifact schema generation in both repositories.
+const CONNECTOR_SKILL_MAX_FILES = 64;
+const CONNECTOR_SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
+const CONNECTOR_SKILL_MAX_ARCHIVE_BYTES = CONNECTOR_SKILL_MAX_TOTAL_BYTES * 2;
 const CONNECTOR_SKILL_STORAGE_NAME_PREFIX = "connector-skill@";
-const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
+export const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
 
 const artifactHeaderShape = Object.freeze({
   artifactSchemaVersion: z.literal(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION),
@@ -301,6 +306,13 @@ const privateConnectorSkillSchema = z.discriminatedUnion("kind", [
       kind: z.literal("bundled"),
       storageName: connectorSkillStorageNameSchema,
       versionId: connectorSkillVersionIdSchema,
+      size: z.number().int().nonnegative().max(CONNECTOR_SKILL_MAX_TOTAL_BYTES),
+      archiveSize: z
+        .number()
+        .int()
+        .positive()
+        .max(CONNECTOR_SKILL_MAX_ARCHIVE_BYTES),
+      fileCount: z.number().int().positive().max(CONNECTOR_SKILL_MAX_FILES),
       frontmatter: connectorSkillFrontmatterSchema,
       manifest: privateSkillManifestReferenceSchema,
       archive: privateSkillArchiveReferenceSchema,

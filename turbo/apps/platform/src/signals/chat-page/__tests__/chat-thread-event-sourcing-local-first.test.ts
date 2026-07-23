@@ -515,9 +515,7 @@ describe("chat thread event sourcing local-first list", () => {
       createdAt: "2026-07-03T05:00:00.000Z",
     });
 
-    await expect(
-      context.store.get(eventDrivenChatThread(THREAD_ID)),
-    ).resolves.toMatchObject({
+    expect(context.store.get(eventDrivenChatThread(THREAD_ID))).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
       sortAt: "2026-07-03T02:00:00.000Z",
       updatedAt: "2026-07-03T05:00:00.000Z",
@@ -589,9 +587,7 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(
       context.store.get(sidebarChatThreadIds$),
     ).resolves.toStrictEqual([THREAD_ID, OTHER_THREAD_ID]);
-    await expect(
-      context.store.get(eventDrivenChatThread(THREAD_ID)),
-    ).resolves.toMatchObject({
+    expect(context.store.get(eventDrivenChatThread(THREAD_ID))).toMatchObject({
       sortAt: "2026-07-03T05:00:00.000Z",
     });
   });
@@ -661,9 +657,7 @@ describe("chat thread event sourcing local-first list", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     ]);
-    await expect(
-      context.store.get(threadMeta(OPTIMISTIC_THREAD_ID)),
-    ).resolves.toStrictEqual({
+    expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
       id: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
       title: null,

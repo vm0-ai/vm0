@@ -43,6 +43,10 @@ pub(super) fn make_host_device_iptables_pattern(pool_idx: &str) -> String {
     format!("{HOST_PREFIX}{pool_idx}-+")
 }
 
+pub(crate) fn make_pool_dns_filter_comment(pool_index: u32) -> String {
+    format!("{NS_PREFIX}{}-dns", format_hex_index(pool_index))
+}
+
 /// Generate a unique /30 IP pair for a veth link.
 ///
 /// Each namespace gets a /30 subnet from the `10.200.0.0/16` range:
@@ -130,6 +134,11 @@ mod tests {
     #[test]
     fn make_host_device_formats_correctly() {
         assert_eq!(make_host_device("01", "ff"), "vm0-ve-01-ff");
+    }
+
+    #[test]
+    fn make_pool_dns_filter_comment_formats_correctly() {
+        assert_eq!(make_pool_dns_filter_comment(12), "vm0-ns-0c-dns");
     }
 
     #[test]

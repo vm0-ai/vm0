@@ -1,5 +1,73 @@
 # Changelog
 
+## [8.453.1](https://github.com/vm0-ai/vm0/compare/core-v8.453.0...core-v8.453.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+
+## [8.453.0](https://github.com/vm0-ai/vm0/compare/core-v8.452.1...core-v8.453.0) (2026-07-23)
+
+
+### Features
+
+* prefetch chat thread messages from realtime events ([#22622](https://github.com/vm0-ai/vm0/issues/22622)) ([95b85f6](https://github.com/vm0-ai/vm0/commit/95b85f66924ed19ffd0a57791835735b8a63a0f5))
+
+
+### Refactoring
+
+* **platform:** remove sidebar manage icon collapse experiment ([#22623](https://github.com/vm0-ai/vm0/issues/22623)) ([9bc3aca](https://github.com/vm0-ai/vm0/commit/9bc3aca9916af9d0af1a90290e9d101b90088a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.1
+    * @vm0/connectors bumped to 1.181.0
+
+## [8.452.1](https://github.com/vm0-ai/vm0/compare/core-v8.452.0...core-v8.452.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.0
+
+## [8.452.0](https://github.com/vm0-ai/vm0/compare/core-v8.451.0...core-v8.452.0) (2026-07-22)
+
+
+### Features
+
+* enable zero scrape for all organizations ([#22599](https://github.com/vm0-ai/vm0/issues/22599)) ([3f0755a](https://github.com/vm0-ai/vm0/commit/3f0755a059742f6c1585b9452dac01c75733abe6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+
+## [8.451.0](https://github.com/vm0-ai/vm0/compare/core-v8.450.0...core-v8.451.0) (2026-07-22)
+
+
+### Features
+
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+
 ## [8.450.0](https://github.com/vm0-ai/vm0/compare/core-v8.449.0...core-v8.450.0) (2026-07-22)
 
 

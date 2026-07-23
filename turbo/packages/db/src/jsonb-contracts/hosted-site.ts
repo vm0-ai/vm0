@@ -10,7 +10,9 @@ export interface HostedSiteManifest {
   readonly version: 1;
   readonly deploymentId: string;
   readonly siteId: string;
+  readonly site?: string;
   readonly publicSlug: string;
+  readonly deploymentVersion?: number;
   readonly createdAt: string;
   readonly artifactKind?: "hosted-site" | "presentation-html";
   readonly spaFallback: boolean;

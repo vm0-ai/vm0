@@ -346,6 +346,39 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
   });
 
+  it("normalizes retired Auto policy writes to Luna", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+
+    const response = await accept(
+      apiClient().update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            {
+              model: "vm0-model",
+              isDefault: true,
+              defaultProviderType: "vm0",
+              credentialScope: "org",
+              modelProviderId: null,
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(response.body.policies).toHaveLength(1);
+    expect(response.body.policies[0]).toMatchObject({
+      model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      isDefault: true,
+      defaultProviderType: "vm0",
+    });
+  });
+
   it("removes supported models omitted from an update", async () => {
     const fixture = await seedFixture();
     useSession(fixture);

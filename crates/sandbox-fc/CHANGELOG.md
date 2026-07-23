@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.37.146](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.145...sandbox-fc-v0.37.146) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** move reused mount validation to idle admission ([#22610](https://github.com/vm0-ai/vm0/issues/22610)) ([710f9da](https://github.com/vm0-ai/vm0/commit/710f9da64fbb6d86a1588df02da2077dfb7c938a))
+
+## [0.37.145](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.144...sandbox-fc-v0.37.145) (2026-07-23)
+
+## [0.37.144](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.143...sandbox-fc-v0.37.144) (2026-07-22)
+
+
+### Bug Fixes
+
+* **runner:** classify guest dns readiness failures ([#22547](https://github.com/vm0-ai/vm0/issues/22547)) ([12fd057](https://github.com/vm0-ai/vm0/commit/12fd057dfb23604891fce86ca7c6f4915e896249))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** batch firewall mutations ([#22589](https://github.com/vm0-ai/vm0/issues/22589)) ([8433c4c](https://github.com/vm0-ai/vm0/commit/8433c4c3057b08c4c548adc0c50125a118077719))
+* **sandbox-fc:** bound namespace cleanup concurrency ([#22607](https://github.com/vm0-ai/vm0/issues/22607)) ([3d56c19](https://github.com/vm0-ai/vm0/commit/3d56c192c04c3ae7f66dfb63919ba05f841452f6))
+
+## [0.37.143](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.142...sandbox-fc-v0.37.143) (2026-07-22)
+
+
+### Refactoring
+
+* **sandbox-fc:** encapsulate creation completions ([#22534](https://github.com/vm0-ai/vm0/issues/22534)) ([e4c1ae9](https://github.com/vm0-ai/vm0/commit/e4c1ae97b03bdec272a5e5c148b1a64069c1df0d))
+
 ## [0.37.142](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.141...sandbox-fc-v0.37.142) (2026-07-22)
 
 

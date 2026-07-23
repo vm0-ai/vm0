@@ -162,8 +162,8 @@ function PresentationTemplateCard({
   return (
     <article
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:border-primary hover:shadow-md",
-        selected && "border-primary shadow-md",
+        "group relative overflow-hidden rounded-xl border bg-background shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        selected && "border-primary",
       )}
     >
       <button
@@ -208,8 +208,7 @@ export function OnboardingPresentationTemplatePage() {
   const previewTemplate = PRESENTATION_TEMPLATES.find((template) => {
     return template.slug === ui.presentationPreviewSlug;
   });
-  const selectedSlug =
-    draft.presentationTemplateSlug ?? PRESENTATION_TEMPLATES[0]?.slug ?? "";
+  const selectedSlug = draft.presentationTemplateSlug ?? "";
 
   const continueToRun = (): void => {
     if (!selectedSlug) {
@@ -303,8 +302,8 @@ function IllustrationTemplateCard({
       aria-pressed={selected}
       aria-label={`Select ${template.title} illustration template`}
       className={cn(
-        "mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:border-primary hover:shadow-md",
-        selected && "border-primary shadow-md",
+        "mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border bg-background shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        selected && "border-primary",
       )}
       onClick={onSelect}
       onKeyDown={(event) => {
@@ -370,8 +369,7 @@ export function OnboardingImageTemplatePage() {
   const setDraft = useSet(updateOnboardingDraft$);
   const setImageVariant = useSet(setOnboardingImageVariant$);
   const { navigateTo } = useOnboardingNavigation();
-  const selectedSlug =
-    draft.imageTemplateSlug ?? ILLUSTRATION_TEMPLATE_ITEMS[0]?.slug ?? "";
+  const selectedSlug = draft.imageTemplateSlug ?? "";
 
   const continueToRun = (): void => {
     if (!selectedSlug) {
@@ -453,8 +451,8 @@ function VideoTemplateCard({
       aria-pressed={selected}
       aria-label={`Select ${template.title} video template`}
       className={cn(
-        "overflow-hidden rounded-xl border bg-background text-left shadow-sm transition-all hover:border-primary hover:shadow-md",
-        selected && "border-primary shadow-md",
+        "overflow-hidden rounded-xl border bg-background text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        selected && "border-primary",
       )}
       onClick={onSelect}
       onFocus={previewVideo}
@@ -488,8 +486,7 @@ export function OnboardingVideoTemplatePage() {
   const draft = useGet(onboardingDraft$);
   const setDraft = useSet(updateOnboardingDraft$);
   const { navigateTo } = useOnboardingNavigation();
-  const selectedSlug =
-    draft.videoTemplateSlug ?? VIDEO_TEMPLATE_ITEMS[0]?.slug ?? "";
+  const selectedSlug = draft.videoTemplateSlug ?? "";
 
   const continueToRun = (): void => {
     if (!selectedSlug) {

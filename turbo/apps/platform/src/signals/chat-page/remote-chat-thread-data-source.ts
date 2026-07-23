@@ -67,14 +67,18 @@ type ChatRealtimeSubscription =
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, attachments }: PatchDraftArgs,
+    { threadId, content, structuredPrompt, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
     await accept(
       client.patch({
         params: { id: threadId },
-        body: { draftContent: content, draftAttachments: attachments },
+        body: {
+          draftContent: content,
+          draftStructuredPrompt: structuredPrompt,
+          draftAttachments: attachments,
+        },
         fetchOptions: { signal },
       }),
       [200, 204],
@@ -91,8 +95,7 @@ const patchModelSelection$ = command(
     signal: AbortSignal,
   ) => {
     const eventId = crypto.randomUUID();
-    const threadMeta = (await get(chatThreadMetaMap$)).get(threadId);
-    signal.throwIfAborted();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
     if (threadMeta) {
       set(registerOptimisticChatThreadEvent$, {
         id: eventId,
@@ -222,7 +225,7 @@ const recallMessage$ = command(
   },
 );
 
-const listMessagesAfter$ = command(
+export const listMessagesAfter$ = command(
   async (
     { get },
     { threadId, sinceId }: ListMessagesAfterArgs,
@@ -261,7 +264,7 @@ const listMessagesAfter$ = command(
   },
 );
 
-const listMessagesBefore$ = command(
+export const listMessagesBefore$ = command(
   async (
     { get },
     { threadId, beforeId }: ListMessagesBeforeArgs,

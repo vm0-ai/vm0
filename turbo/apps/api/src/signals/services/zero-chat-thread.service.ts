@@ -40,12 +40,16 @@ import {
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { alias } from "drizzle-orm/pg-core";
 import {
   and,
@@ -91,7 +95,6 @@ import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups
 import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
-import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
@@ -103,12 +106,9 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
-const nullableIntegerDecoder = nullableDriverValueDecoder(pgIntegerDecoder);
-const nullableTimestampDecoder = nullableDriverValueDecoder(
-  zeroWorkflowAutomations.atTime,
-);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");
+const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -128,6 +128,7 @@ type ChatMessageRow = {
   readonly runId: string | null;
   readonly runGroupId: string | null;
   readonly triggerSource: TriggerSource | null;
+  readonly slackMessagePermalink: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
@@ -238,12 +239,6 @@ const messageColumns = {
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
-  triggerSource: sql`(
-    SELECT "zero_runs"."trigger_source"
-    FROM "zero_runs"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTriggerSourceDecoder),
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
@@ -258,168 +253,131 @@ const messageColumns = {
   recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  workflowId: sql`(
-    SELECT "zero_workflows"."id"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAgentId: sql`(
-    SELECT "zero_workflows"."agent_id"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowName: sql`(
-    SELECT "zero_workflows"."name"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowDisplayName: sql`(
-    SELECT "zero_workflows"."display_name"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowDescription: sql`(
-    SELECT "zero_workflows"."description"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationId: sql`(
-    SELECT "zero_workflow_automations"."id"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationBrief: sql`(
-    SELECT COALESCE(
-      "zero_runs"."trigger_brief",
-      CASE
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'gmail-label-applied'
-          THEN 'Gmail label applied'
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'gmail-new-message'
-          THEN 'Gmail new message'
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-created'
-          THEN 'Google Calendar event created'
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-updated'
-          THEN 'Google Calendar event updated'
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-cancelled'
-          THEN 'Google Calendar event cancelled'
-        WHEN "zero_workflow_automations"."kind" = 'event'
-          AND "zero_workflow_automations"."event_type" = 'webhook-received'
-          THEN 'Webhook received'
-        ELSE NULL
-      END
-    )
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationKind: sql`(
-    SELECT "zero_workflow_automations"."kind"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationScheduleType: sql`(
-    SELECT "zero_workflow_automations"."schedule_type"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationCronExpression: sql`(
-    SELECT "zero_workflow_automations"."cron_expression"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationIntervalSeconds: sql`(
-    SELECT "zero_workflow_automations"."interval_seconds"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableIntegerDecoder),
-  workflowAutomationAtTime: sql`(
-    SELECT "zero_workflow_automations"."at_time"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTimestampDecoder),
-  workflowAutomationTimezone: sql`(
-    SELECT "zero_workflow_automations"."timezone"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
-  workflowAutomationUserTimezone: sql`(
-    SELECT "org_members_metadata"."timezone"
-    FROM "zero_runs"
-    INNER JOIN "zero_workflow_automations"
-      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
-    LEFT JOIN "org_members_metadata"
-      ON "org_members_metadata"."org_id" = "zero_workflow_automations"."org_id"
-      AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
-    WHERE "zero_runs"."id" = "chat_messages"."run_id"
-    LIMIT 1
-  )`.mapWith(nullableTextDecoder),
 } as const;
 
-function selectedMessageColumns(db: Pick<Db, "select">) {
-  return {
-    ...messageColumns,
-    isGoalRun: exists(
-      db
-        .select({ id: zeroRuns.id })
-        .from(zeroRuns)
-        .where(
-          and(eq(zeroRuns.id, chatMessages.runId), isNotNull(zeroRuns.goalId)),
-        ),
-    ).mapWith(pgBooleanDecoder),
-  } as const;
+function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
+  return db
+    .select({
+      triggerSource: sql`${zeroRuns.triggerSource}`
+        .mapWith(nullableTriggerSourceDecoder)
+        .as("trigger_source"),
+      workflowId: sql`${zeroWorkflows.id}`
+        .mapWith(zeroWorkflows.id)
+        .as("workflow_id"),
+      workflowAgentId: zeroWorkflows.agentId,
+      workflowName: zeroWorkflows.name,
+      workflowDisplayName: zeroWorkflows.displayName,
+      workflowDescription: zeroWorkflows.description,
+      workflowAutomationId: sql`${zeroWorkflowAutomations.id}`
+        .mapWith(zeroWorkflowAutomations.id)
+        .as("workflow_automation_id"),
+      workflowAutomationBrief: sql`CASE
+        WHEN ${isNull(zeroWorkflowAutomations.id)} THEN NULL
+        ELSE COALESCE(
+          ${zeroRuns.triggerBrief},
+          CASE
+            WHEN ${eq(zeroWorkflowAutomations.kind, "event")} THEN CASE
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "gmail-label-applied",
+              )} THEN 'Gmail label applied'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "gmail-new-message",
+              )} THEN 'Gmail new message'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "google-calendar-event-created",
+              )} THEN 'Google Calendar event created'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "google-calendar-event-updated",
+              )} THEN 'Google Calendar event updated'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "google-calendar-event-cancelled",
+              )} THEN 'Google Calendar event cancelled'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
+                "webhook-received",
+              )} THEN 'Webhook received'
+              ELSE NULL
+            END
+            ELSE NULL
+          END
+        )
+      END`
+        .mapWith(nullableTextDecoder)
+        .as("workflow_automation_brief"),
+      workflowAutomationKind: zeroWorkflowAutomations.kind,
+      workflowAutomationScheduleType: zeroWorkflowAutomations.scheduleType,
+      workflowAutomationCronExpression: zeroWorkflowAutomations.cronExpression,
+      workflowAutomationIntervalSeconds:
+        zeroWorkflowAutomations.intervalSeconds,
+      workflowAutomationAtTime: zeroWorkflowAutomations.atTime,
+      workflowAutomationTimezone: zeroWorkflowAutomations.timezone,
+      workflowAutomationUserTimezone: sql`${orgMembersMetadata.timezone}`
+        .mapWith(orgMembersMetadata.timezone)
+        .as("workflow_automation_user_timezone"),
+      goalId: zeroRuns.goalId,
+    })
+    .from(zeroRuns)
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, zeroRuns.workflowAutomationId),
+    )
+    .leftJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
+    )
+    .leftJoin(
+      orgMembersMetadata,
+      and(
+        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
+        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
+      ),
+    )
+    .where(eq(zeroRuns.id, chatMessages.runId))
+    .limit(1)
+    .as("chat_message_metadata");
+}
+
+function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
+  const metadata = chatMessageMetadataSubquery(db);
+  return db
+    .select({
+      ...messageColumns,
+      triggerSource: metadata.triggerSource,
+      slackMessagePermalink: sql`COALESCE(
+        ${chatMessages.slackMessagePermalink},
+        ${revokedChatMessage.slackMessagePermalink}
+      )`
+        .mapWith(nullableTextDecoder)
+        .as("slack_message_permalink"),
+      workflowId: metadata.workflowId,
+      workflowAgentId: metadata.workflowAgentId,
+      workflowName: metadata.workflowName,
+      workflowDisplayName: metadata.workflowDisplayName,
+      workflowDescription: metadata.workflowDescription,
+      workflowAutomationId: metadata.workflowAutomationId,
+      workflowAutomationBrief: metadata.workflowAutomationBrief,
+      workflowAutomationKind: metadata.workflowAutomationKind,
+      workflowAutomationScheduleType: metadata.workflowAutomationScheduleType,
+      workflowAutomationCronExpression:
+        metadata.workflowAutomationCronExpression,
+      workflowAutomationIntervalSeconds:
+        metadata.workflowAutomationIntervalSeconds,
+      workflowAutomationAtTime: metadata.workflowAutomationAtTime,
+      workflowAutomationTimezone: metadata.workflowAutomationTimezone,
+      workflowAutomationUserTimezone: metadata.workflowAutomationUserTimezone,
+      isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
+    })
+    .from(chatMessages)
+    .leftJoinLateral(metadata, sql`true`)
+    .leftJoin(
+      revokedChatMessage,
+      eq(revokedChatMessage.id, chatMessages.revokesMessageId),
+    );
 }
 
 const searchMessageColumns = {
@@ -628,52 +586,6 @@ function workflowSnapshotFromRow(
   };
 }
 
-function recordFromJson(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function goalEventFromRow(event: unknown): ChatMessageGoalEvent | undefined {
-  const record = recordFromJson(event);
-  if (!record) {
-    return undefined;
-  }
-  if (record.type === "cleared") {
-    return { type: "cleared" };
-  }
-  if (record.type !== "state") {
-    return undefined;
-  }
-  if (record.status === "active") {
-    return {
-      type: "state",
-      status: "active",
-      objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
-    };
-  }
-  if (
-    record.status === "paused" ||
-    record.status === "blocked" ||
-    record.status === "complete"
-  ) {
-    return { type: "state", status: record.status };
-  }
-  return undefined;
-}
-
-function goalSnapshotFromRow(
-  snapshot: unknown,
-): ChatMessageGoalSnapshot | undefined {
-  const record = recordFromJson(snapshot);
-  if (!record || !("objectiveBrief" in record)) {
-    return undefined;
-  }
-  return {
-    objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
-  };
-}
-
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
@@ -690,11 +602,12 @@ function toPagedMessage(
       runId: row.runId ?? undefined,
       runGroupId: row.runGroupId ?? undefined,
       triggerSource: row.triggerSource ?? undefined,
+      slackMessagePermalink: row.slackMessagePermalink ?? undefined,
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
-      goalEvent: goalEventFromRow(row.goalEvent),
-      goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
+      goalEvent: row.goalEvent ?? undefined,
+      goalSnapshot: row.goalSnapshot ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,
@@ -1847,9 +1760,7 @@ export function zeroChatThreadMessagesPage(args: {
     let hasHistoryBefore = false;
 
     if (args.sinceId === undefined && args.beforeId === undefined) {
-      const latestRows = await db
-        .select(selectedMessageColumns(db))
-        .from(chatMessages)
+      const latestRows = await selectChatMessagesWithMetadata(db)
         .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
@@ -1890,9 +1801,7 @@ export function zeroChatThreadMessagesPage(args: {
       )`;
 
       if (args.sinceId !== undefined) {
-        rows = await db
-          .select(selectedMessageColumns(db))
-          .from(chatMessages)
+        rows = await selectChatMessagesWithMetadata(db)
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
@@ -1901,9 +1810,7 @@ export function zeroChatThreadMessagesPage(args: {
           )
           .limit(args.limit);
       } else {
-        const previousRows = await db
-          .select(selectedMessageColumns(db))
-          .from(chatMessages)
+        const previousRows = await selectChatMessagesWithMetadata(db)
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
@@ -1939,9 +1846,7 @@ export function zeroChatThreadMessageById(args: {
     }
 
     const db = get(db$);
-    const [row] = await db
-      .select(selectedMessageColumns(db))
-      .from(chatMessages)
+    const [row] = await selectChatMessagesWithMetadata(db)
       .where(
         and(
           eq(chatMessages.id, args.messageId),

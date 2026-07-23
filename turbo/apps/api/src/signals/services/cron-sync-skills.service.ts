@@ -395,7 +395,7 @@ async function upsertSkillStorage(args: {
       fileCount: args.context.files.length,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      target: [storages.orgId, storages.userId, storages.name],
       set: {
         size: args.context.totalSize,
         fileCount: args.context.files.length,

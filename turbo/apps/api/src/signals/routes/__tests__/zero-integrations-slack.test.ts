@@ -11,10 +11,6 @@ import { http, HttpResponse } from "msw";
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import {
-  deleteUnsupportedHistoricalConnectors,
-  seedUnsupportedHistoricalConnectors,
-} from "../../../test-fixtures/historical-connectors";
 import { now } from "../../external/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { ROUTES } from "../../route";
@@ -138,19 +134,12 @@ async function deleteSlackConnection(fixture: SlackFixture): Promise<void> {
 
 describe("GET /api/zero/integrations/slack", () => {
   let fixture: SlackFixture;
-  const historicalConnectorFixtures: SlackFixture[] = [];
 
   beforeEach(async () => {
     fixture = await seedSlackFixture();
   });
 
   afterEach(async () => {
-    while (historicalConnectorFixtures.length > 0) {
-      const historicalFixture = historicalConnectorFixtures.pop();
-      if (historicalFixture) {
-        await deleteUnsupportedHistoricalConnectors(historicalFixture);
-      }
-    }
     await cleanupSlackFixture(fixture);
   });
 
@@ -355,34 +344,6 @@ describe("GET /api/zero/integrations/slack", () => {
         "SEC_A",
       ]);
       expect(response.body.environment!.missingVars).toStrictEqual(["VAR_A"]);
-    });
-
-    it("ignores unsupported historical connectors when loading environment", async () => {
-      await seedEnvironmentVersion();
-
-      await seedUnsupportedHistoricalConnectors(fixture);
-      historicalConnectorFixtures.push(fixture);
-
-      mockAdminAuth();
-
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
-      const response = await accept(
-        client.getStatus({
-          headers: { authorization: "Bearer clerk-session" },
-        }),
-        [200],
-      );
-
-      expect(response.body).toMatchObject({
-        isConnected: true,
-        defaultAgentName: "Slack Bot",
-        environment: {
-          requiredSecrets: ["SEC_A"],
-          requiredVars: ["VAR_A"],
-          missingSecrets: ["SEC_A"],
-          missingVars: ["VAR_A"],
-        },
-      });
     });
 
     it("omits environment when isConnected is false", async () => {

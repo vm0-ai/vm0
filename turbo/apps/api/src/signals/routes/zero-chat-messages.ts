@@ -8,8 +8,8 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import {
@@ -54,7 +54,6 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
-import { executeRawRows } from "../../lib/db-raw-rows";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -103,6 +102,7 @@ import {
   updateChatMessage,
 } from "../services/zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
+import { activeChatRunExists } from "../services/zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
@@ -134,7 +134,7 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
-  readonly model?: string;
+  readonly model?: SupportedRunModel;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;
@@ -363,7 +363,6 @@ const sendBody$ = bodyResultOf(chatMessagesContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
-const idRowSchema = z.object({ id: z.string() });
 const replacementChatMessage = alias(chatMessages, "replacement_chat_message");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
 
@@ -832,7 +831,7 @@ async function latestSessionForThread(
     // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (zero-goal-continuation.service.ts) — keep them in sync. This is a
-    // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
+    // continuity filter ONLY; it must NOT be copied into activeChatRunExists.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
@@ -936,40 +935,6 @@ async function getLatestRunsByThreadId(
       messages: messagesByRunId.get(run.runId) ?? [],
     };
   });
-}
-
-async function activeRunExistsForThread(
-  db: Db,
-  threadId: string,
-): Promise<boolean> {
-  const runs = await executeRawRows(
-    db,
-    sql`
-      SELECT ${zeroRuns.id} AS "id"
-      FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${eq(agentRuns.id, zeroRuns.id)}
-      WHERE ${eq(zeroRuns.chatThreadId, threadId)}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM ${agentRunCallbacks}
-            WHERE ${eq(agentRunCallbacks.runId, zeroRuns.id)}
-              AND ${agentRunCallbacks.internalKind} = 'chat'
-              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              AND ${chatMessages.role} = 'user'
-          )
-        )
-      LIMIT 1
-    `,
-    idRowSchema,
-  );
-  return runs[0] !== undefined;
 }
 
 async function resolveClientMessageSend(params: {
@@ -3284,10 +3249,9 @@ const sendNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_check_active_run",
       "nested",
       async () => {
-        return await activeRunExistsForThread(
-          prepared.db,
-          prepared.thread.threadId,
-        );
+        return await activeChatRunExists(prepared.db, {
+          threadId: prepared.thread.threadId,
+        });
       },
     );
     signal.throwIfAborted();
@@ -3346,7 +3310,7 @@ const sendQueueFirstNormalMessage$ = command(
       "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
       "nested",
       async (): Promise<"self" | "wait" | "drain"> => {
-        if (await activeRunExistsForThread(prepared.db, threadId)) {
+        if (await activeChatRunExists(prepared.db, { threadId })) {
           return "wait";
         }
         const head = await loadNextUnclaimedQueuedUserMessage(

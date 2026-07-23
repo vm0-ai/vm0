@@ -789,7 +789,7 @@ async function getSearchRunMetadata(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
     )
-    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(
       and(
@@ -801,7 +801,7 @@ async function getSearchRunMetadata(
 
   for (const row of rows) {
     result.set(row.runId, {
-      agentName: row.displayName ?? row.composeId ?? "unknown",
+      agentName: row.displayName ?? row.composeId,
       framework: extractFramework(row.composeContent),
     });
   }

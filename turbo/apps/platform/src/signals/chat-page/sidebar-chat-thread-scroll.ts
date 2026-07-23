@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { animationFrame } from "signal-timers";
-import { createDeferredPromise } from "../utils.ts";
+import { createDeferredPromise, onRef } from "../utils.ts";
 import {
   CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
@@ -11,7 +11,11 @@ import {
   scrollChatThreadVirtualListToIndex$,
   type ChatThreadVirtualListScrollAlign,
 } from "../zero-page/zero-sidebar-state.ts";
-import { chatThreads$, currentChatThreadListIds$ } from "../agent-chat.ts";
+import {
+  chatThreads$,
+  currentChatThreadId$,
+  currentChatThreadListIds$,
+} from "../agent-chat.ts";
 
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 
@@ -60,6 +64,16 @@ function getFixedVirtualRange({
 export const sidebarChatThreadCount$ = computed(
   async (get): Promise<number> => {
     return (await get(currentChatThreadListIds$)).length;
+  },
+);
+
+export const currentChatThreadListed$ = computed(
+  async (get): Promise<boolean> => {
+    const threadId = get(currentChatThreadId$);
+    if (!threadId) {
+      return false;
+    }
+    return (await get(currentChatThreadListIds$)).includes(threadId);
   },
 );
 
@@ -131,4 +145,14 @@ export const scrollToThread$ = command(
     signal.throwIfAborted();
     return set(scrollChatThreadVirtualListToIndex$, index, align);
   },
+);
+
+export const scrollCurrentChatThreadOnRef$ = onRef(
+  command(async ({ set }, element: HTMLSpanElement, signal: AbortSignal) => {
+    const threadId = element.dataset.chatThreadId;
+    if (!threadId) {
+      return;
+    }
+    await set(scrollToThread$, { threadId, align: "top" }, signal);
+  }),
 );

@@ -871,6 +871,84 @@ async fn ready_for_park_boundary_preserves_non_reusable_outcome() {
 }
 
 #[tokio::test]
+async fn final_preparation_runs_after_operation_admission_closes() {
+    let coordinator = ParkCoordinator::new();
+    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let operation_gate = GuestOperationStartGate::new(guest, coordinator.clone());
+    let (preparation_entered_tx, preparation_entered_rx) = tokio::sync::oneshot::channel();
+    let (release_preparation_tx, release_preparation_rx) = tokio::sync::oneshot::channel();
+
+    let transition = super::park_with_ready_for_park_and_preparation(
+        "test-sandbox",
+        &coordinator,
+        || async move {
+            preparation_entered_tx.send(()).unwrap();
+            release_preparation_rx.await.unwrap();
+            Ok((TestNormalOperationFence, "prepared"))
+        },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    );
+    tokio::pin!(transition);
+
+    tokio::select! {
+        _ = &mut transition => panic!("park completed before final preparation was released"),
+        result = preparation_entered_rx => result.unwrap(),
+    }
+
+    assert!(matches!(
+        operation_gate
+            .begin_sandbox_operation(|| SandboxState::Running)
+            .await,
+        Err(GuestOperationStartError::GateClosed { .. })
+    ));
+    assert!(matches!(
+        operation_gate.begin_control_operation().await,
+        Err(GuestOperationStartError::GateClosed { .. })
+    ));
+
+    release_preparation_tx.send(()).unwrap();
+    let (_fence, outcome, preparation) = transition.await.unwrap();
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    assert_eq!(preparation, "prepared");
+    assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+}
+
+#[tokio::test]
+async fn final_preparation_transport_failure_marks_dirty_without_quiesce_or_pause() {
+    let coordinator = ParkCoordinator::new();
+    let events = event_log();
+    let quiesce_events = Arc::clone(&events);
+    let park_events = Arc::clone(&events);
+
+    let result = super::park_with_ready_for_park_and_preparation(
+        "test-sandbox",
+        &coordinator,
+        || async {
+            Err::<(TestNormalOperationFence, ()), _>(ParkNormalOperationFenceError::FinalOperation(
+                io::Error::new(io::ErrorKind::ConnectionReset, "final exec disconnected"),
+            ))
+        },
+        || async move {
+            quiesce_events.lock().unwrap().push("guest_quiesce");
+            Ok(())
+        },
+        || async move {
+            park_events.lock().unwrap().push("firecracker_park");
+            Ok(SandboxParkOutcome::Reusable)
+        },
+    )
+    .await;
+
+    assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+    assert!(logged_events(&events).is_empty());
+    assert!(matches!(
+        coordinator.state(),
+        CoordinatorState::Dirty { .. }
+    ));
+}
+
+#[tokio::test]
 async fn ready_for_park_boundary_fences_before_quiesce_and_holds_until_returned() {
     let coordinator = ParkCoordinator::new();
     let events = event_log();

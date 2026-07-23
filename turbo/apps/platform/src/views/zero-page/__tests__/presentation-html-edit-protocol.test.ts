@@ -546,6 +546,9 @@ describe("presentation element offsets", () => {
             <script>window.sourceScriptRan = true;</script>
           </div>
         </section>
+        <script id="vm0-deck-metadata" type="application/json">
+          {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+        </script>
       </body>
     </html>
   `;
@@ -681,6 +684,9 @@ describe("presentation element offsets", () => {
               <article data-vm0-element-id="authored-id">Card</article>
             </div>
           </section>
+          <script id="vm0-deck-metadata" type="application/json">
+            {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+          </script>
         </body>
       </html>
     `);
@@ -767,6 +773,9 @@ describe("presentation element offsets", () => {
           <script id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
             window.sourceScriptRan = true;
           </script>
+          <script id="vm0-deck-metadata" type="application/json">
+            {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+          </script>
         </body>
       </html>
     `);
@@ -802,6 +811,9 @@ describe("presentation element offsets", () => {
           </div>
           <script id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
             window.sourceScriptRan = true;
+          </script>
+          <script id="vm0-deck-metadata" type="application/json">
+            {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
           </script>
         </body>
       </html>
@@ -839,6 +851,9 @@ describe("presentation element offsets", () => {
           <section data-vm0-slide data-slide-id="slide-1">
             <div class="stage"><div>Card</div></div>
           </section>
+          <script id="vm0-deck-metadata" type="application/json">
+            {"kind":"presentation-html","editProtocolVersion":1,"slides":{}}
+          </script>
         </body>
       </html>
     `);

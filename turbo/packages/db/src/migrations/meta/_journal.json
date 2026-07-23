@@ -4502,6 +4502,41 @@
       "when": 1784714181337,
       "tag": "0642_remarkable_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 643,
+      "version": "7",
+      "when": 1784716611918,
+      "tag": "0643_groovy_runaways",
+      "breakpoints": true
+    },
+    {
+      "idx": 644,
+      "version": "7",
+      "when": 1784723388156,
+      "tag": "0644_remove_legacy_fallback_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 645,
+      "version": "7",
+      "when": 1784723416731,
+      "tag": "0645_remove_legacy_fallback_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 646,
+      "version": "7",
+      "when": 1784760922085,
+      "tag": "0646_rainy_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 647,
+      "version": "7",
+      "when": 1784774416471,
+      "tag": "0647_fearless_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

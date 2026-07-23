@@ -163,6 +163,32 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("exposes the workspace switcher in the onboarding shell", async () => {
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      org: {
+        activeOrg: { id: "org_switcher", name: "Acme Workspace", slug: "acme" },
+        memberships: [{ id: "org_switcher" }],
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "What do you want to make first",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    // The compact switcher (mobile layout) is wired into the onboarding shell.
+    expect(buttonByAriaLabel("Switch workspace")).toBeInTheDocument();
+
+    // The desktop switcher shows the active workspace name in the top-left.
+    await waitFor(() => {
+      expect(queryButtonByText("Acme Workspace")).not.toBeNull();
+    });
+  });
+
   it("renders workflow connector marks from catalog metadata", async () => {
     mockGithubCatalogItem({
       url: "https://icons.example.test/onboarding-github.svg",
@@ -222,7 +248,7 @@ describe("onboarding flow", () => {
         .getAttribute("aria-label")
         ?.startsWith("Auto-merge GitHub PRs");
     });
-    expect(workflowButton).toHaveAttribute("aria-pressed", "true");
+    expect(workflowButton).toHaveAttribute("aria-pressed", "false");
 
     const previewButton = buttonsByAriaLabel("Preview workflow details")[0];
     if (!previewButton) {
@@ -251,6 +277,27 @@ describe("onboarding flow", () => {
     expect(context.store.get(searchParams$).get("workflow")).toBe(
       "auto-merge-github-prs",
     );
+  });
+
+  it("sends the custom workflow choice straight into the product", async () => {
+    await openMakePage();
+    chooseMakeOption("Workflow automation");
+
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Engineer"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Engineer workflows" }),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonByText("Talk to Zero and make my own"));
+    click(buttonByText("Continue"));
+
+    await waitFor(() => {
+      expect(pathname()).not.toMatch(/^\/onboarding/u);
+    });
   });
 
   it("starts the standard connector flow from onboarding", async () => {
@@ -379,7 +426,7 @@ describe("onboarding flow", () => {
     const templateButton = buttonByAriaLabel(
       `Select ${template.title} presentation template`,
     );
-    expect(templateButton).toHaveAttribute("aria-pressed", "true");
+    expect(templateButton).toHaveAttribute("aria-pressed", "false");
 
     click(buttonByAriaLabel(`View ${template.title} presentation`));
     const preview = await screen.findByRole("dialog", {

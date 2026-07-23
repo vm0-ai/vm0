@@ -32,15 +32,13 @@ export const currentChatThreadId$ = computed((get): string | null => {
   return typeof threadId === "string" ? threadId : null;
 });
 
-const currentChatThreadAgentId$ = computed(
-  async (get): Promise<string | null> => {
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-    return (await get(chatThreadMetaMap$)).get(threadId)?.agentId ?? null;
-  },
-);
+const currentChatThreadAgentId$ = computed((get): string | null => {
+  const threadId = get(currentChatThreadId$);
+  if (!threadId) {
+    return null;
+  }
+  return get(chatThreadMetaMap$).get(threadId)?.agentId ?? null;
+});
 
 export const currentChatAgentId$ = computed(
   async (get): Promise<string | null> => {

@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -11,6 +12,7 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
+  type StorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -25,7 +27,6 @@ import {
   eq,
   gt,
   inArray,
-  isNull,
   lt,
   notInArray,
   or,
@@ -385,23 +386,10 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
-  // Legacy senders remain last-arrival-wins during rolling deployments and
-  // intentionally leave any ordered watermark untouched.
-  const snapshotOrder =
-    body.data.snapshotGeneration === undefined ||
-    body.data.snapshotSequence === undefined
-      ? undefined
-      : {
-          generation: body.data.snapshotGeneration,
-          sequence: body.data.snapshotSequence,
-        };
-  const snapshotOrderValues =
-    snapshotOrder === undefined
-      ? {}
-      : {
-          heartbeatGeneration: snapshotOrder.generation,
-          heartbeatSequence: snapshotOrder.sequence,
-        };
+  const snapshotOrder = {
+    generation: body.data.snapshotGeneration,
+    sequence: body.data.snapshotSequence,
+  };
   const db = set(writeDb$);
   await db
     .insert(runnerState)
@@ -409,7 +397,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      ...snapshotOrderValues,
+      heartbeatGeneration: snapshotOrder.generation,
+      heartbeatSequence: snapshotOrder.sequence,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
@@ -426,7 +415,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        ...snapshotOrderValues,
+        heartbeatGeneration: snapshotOrder.generation,
+        heartbeatSequence: snapshotOrder.sequence,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
@@ -438,18 +428,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
-      ...(snapshotOrder === undefined
-        ? {}
-        : {
-            setWhere: or(
-              isNull(runnerState.heartbeatGeneration),
-              lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
-              and(
-                eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
-                lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
-              ),
-            ),
-          }),
+      setWhere: or(
+        lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
+        and(
+          eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
+          lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
+        ),
+      ),
     });
   signal.throwIfAborted();
 
@@ -1501,6 +1486,7 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly capabilities: readonly string[];
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1569,6 +1555,8 @@ async function buildClaimResponseBody(args: {
       args.signal.throwIfAborted();
       const {
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
+        storageManifest: _legacyStorageManifest,
+        storageMounts: _storedStorageMounts,
         ...runnerStoredContext
       } = args.storedContext;
       return {
@@ -1582,6 +1570,10 @@ async function buildClaimResponseBody(args: {
           connectorVars: args.storedContext.vars,
         }),
         checkpointId: args.run.resumedFromCheckpointId ?? null,
+        storageManifest: storageManifestForRunner(
+          args.storedContext,
+          args.capabilities,
+        ),
         resumeSession,
         sandboxToken,
         secretValues,
@@ -1592,6 +1584,24 @@ async function buildClaimResponseBody(args: {
   );
 }
 
+function storageManifestForRunner(
+  storedContext: StoredExecutionContext,
+  capabilities: readonly string[],
+): StorageManifest | null {
+  if (
+    storedContext.storageMounts !== undefined &&
+    capabilities.includes(RUNNER_STORAGE_MOUNTS_CAPABILITY)
+  ) {
+    return {
+      storageMounts: storedContext.storageMounts.map((storedMount) => {
+        const { orgId: _orgId, userId: _userId, ...mount } = storedMount;
+        return mount;
+      }),
+    };
+  }
+  return storedContext.storageManifest;
+}
+
 const buildClaimResponseBodyForClaim$ = command(
   async (
     { set },
@@ -1599,6 +1609,7 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly db: Db;
       readonly run: ClaimedRun;
       readonly storedContext: StoredExecutionContext;
+      readonly capabilities: readonly string[];
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1607,6 +1618,7 @@ const buildClaimResponseBodyForClaim$ = command(
       db: args.db,
       run: args.run,
       storedContext: args.storedContext,
+      capabilities: args.capabilities,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2016,6 +2028,7 @@ const claimAuthorizedJob$ = command(
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
+      readonly capabilities: readonly string[];
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
@@ -2057,6 +2070,7 @@ const claimAuthorizedJob$ = command(
         db,
         run,
         storedContext,
+        capabilities: args.capabilities,
         timing: claimRouteTiming,
         signal,
       }),
@@ -2151,6 +2165,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     jobWithRun,
     telemetry: body.data.telemetry,
+    capabilities: body.data.capabilities ?? [],
     claimRequestStartedAtMs,
     claimRouteTiming,
     signal,

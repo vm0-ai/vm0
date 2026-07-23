@@ -5,6 +5,7 @@ use sandbox::SandboxId;
 
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
@@ -15,6 +16,23 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
     runner_paths: &RunnerPaths,
     session_id: &str,
     workspace_disk_mb: u32,
+) -> PathBuf {
+    seed_workspace_image_cache_with_fingerprints(
+        cache,
+        runner_paths,
+        session_id,
+        workspace_disk_mb,
+        &StorageFingerprints::default(),
+    )
+    .await
+}
+
+pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerprints(
+    cache: &SessionWorkspaceCache,
+    runner_paths: &RunnerPaths,
+    session_id: &str,
+    workspace_disk_mb: u32,
+    storage_fingerprints: &StorageFingerprints,
 ) -> PathBuf {
     let sandbox_id = SandboxId::new_v4();
     let run_id = RunId::new_v4();
@@ -50,7 +68,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
                 None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-06-01T00:00:00.000Z".into(),
-                &crate::storage_fingerprints::StorageFingerprints::default(),
+                storage_fingerprints,
             )
             .await
             .unwrap()

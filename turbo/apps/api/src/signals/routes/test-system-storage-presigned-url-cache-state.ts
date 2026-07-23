@@ -55,7 +55,6 @@ function storageIdentityCondition(body: {
     eq(storages.orgId, body.org_id),
     eq(storages.userId, body.user_id),
     eq(storages.name, body.storage_name),
-    eq(storages.type, "volume"),
   );
 }
 
@@ -144,7 +143,7 @@ async function seedStorageVersionForAction(
       fileCount: 1,
     })
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      target: [storages.orgId, storages.userId, storages.name],
       set: {
         s3Prefix: sql`excluded.s3_prefix`,
         size: sql`excluded.size`,

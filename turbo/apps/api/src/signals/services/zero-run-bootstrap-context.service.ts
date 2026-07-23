@@ -103,7 +103,6 @@ export interface UserInfo {
 export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
   readonly workflows: readonly RunWorkflowRef[];
@@ -419,10 +418,6 @@ export function materializeZeroRunBootstrapContext(
   return {
     userInfo,
     featureSwitchContext,
-    zeroScrapeEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroScrape,
-      featureSwitchContext,
-    ),
     zeroWebSearchEnabled: isFeatureEnabled(
       FeatureSwitchKey.ZeroWebSearch,
       featureSwitchContext,

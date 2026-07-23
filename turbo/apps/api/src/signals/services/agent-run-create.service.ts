@@ -5,7 +5,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   type SecretConnectorMetadata,
-  type StorageManifest,
+  type LegacyStorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
@@ -21,8 +21,6 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
-  getVm0ModelCodexRuntimeConfig,
-  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -103,6 +101,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { PersistedStorageMount } from "@vm0/db/types";
 import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -152,6 +151,7 @@ import {
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
+  type PreparedAgentRunStorageManifest,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
@@ -218,7 +218,7 @@ import {
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
-  StorageManifest["artifacts"][number]["missingRootPolicy"]
+  LegacyStorageManifest["artifacts"][number]["missingRootPolicy"]
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
@@ -366,6 +366,10 @@ interface ResolvedCompose {
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
+  readonly persistedStorageMounts?: {
+    readonly mounts: readonly PersistedStorageMount[];
+    readonly mode: "complete" | "writeback";
+  };
   readonly agentSessionId?: string;
   readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
@@ -398,6 +402,7 @@ interface RunRecord {
   readonly id: string;
   readonly createdAt: Date;
   readonly sessionId: string;
+  readonly shouldCreateSession: boolean;
   readonly status: "pending" | "queued";
 }
 
@@ -433,6 +438,8 @@ interface CustomConnectorAuthRef {
 interface PreparedRunnerLaunch {
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
+  readonly runStorageMounts: readonly PersistedStorageMount[];
+  readonly sessionStorageMounts: readonly PersistedStorageMount[];
   readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
 }
 
@@ -542,6 +549,7 @@ interface StoredExecutionSecrets {
 
 interface BuiltStoredExecutionContext {
   readonly context: StoredExecutionContext;
+  readonly persistedStorageMounts: readonly PersistedStorageMount[];
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
@@ -549,9 +557,12 @@ interface BuiltStoredExecutionContext {
 
 type BuiltStoredExecutionContextDraft = Omit<
   BuiltStoredExecutionContext,
-  "context"
+  "context" | "persistedStorageMounts"
 > & {
-  readonly context: Omit<StoredExecutionContext, "storageManifest">;
+  readonly context: Omit<
+    StoredExecutionContext,
+    "storageManifest" | "storageMounts"
+  >;
 };
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
@@ -1793,33 +1804,6 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
-  }
-
-  if (selectedModel === "vm0-model") {
-    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
-    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
-    if (!proxyToken || !proxyHost) {
-      return null;
-    }
-    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
-    return {
-      id: null,
-      type: "vm0",
-      concreteType,
-      environment: {
-        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
-        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
-        OPENAI_MODEL: selectedModel,
-      },
-      secrets: {
-        OPENAI_API_KEY: proxyToken,
-        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
-      },
-      selectedModel,
-      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
-      firewall: vm0ModelConfig.firewall,
-      inlineFirewall: true,
-    };
   }
 
   return {
@@ -4233,6 +4217,44 @@ function resumeSessionFromSnapshot(
   return undefined;
 }
 
+function writebackArtifactsFromPersistedStorageMounts(
+  mounts: readonly PersistedStorageMount[],
+): readonly ContextArtifact[] {
+  return mounts.flatMap((mount) => {
+    if (!mount.writeback) {
+      return [];
+    }
+    return [
+      {
+        name: mount.name,
+        ...(mount.version === undefined ? {} : { version: mount.version }),
+        mountPath: mount.mountPath,
+        ...(mount.missingRootPolicy === undefined
+          ? {}
+          : { missingRootPolicy: mount.missingRootPolicy }),
+      },
+    ];
+  });
+}
+
+function resolvedSessionStorage(session: {
+  readonly artifacts: readonly ContextArtifact[] | null;
+  readonly storageMounts: readonly PersistedStorageMount[] | null;
+}): Pick<ResolvedCompose, "artifacts" | "persistedStorageMounts"> {
+  if (!session.storageMounts) {
+    return { artifacts: session.artifacts ?? [] };
+  }
+  return {
+    artifacts: writebackArtifactsFromPersistedStorageMounts(
+      session.storageMounts,
+    ),
+    persistedStorageMounts: {
+      mounts: session.storageMounts,
+      mode: "writeback",
+    },
+  };
+}
+
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -4251,6 +4273,7 @@ function resolveBySessionId(
             session: {
               id: agentSessions.id,
               artifacts: agentSessions.artifacts,
+              storageMounts: agentSessions.storageMounts,
             },
             compose: {
               id: agentComposes.id,
@@ -4344,7 +4367,7 @@ function resolveBySessionId(
       agentName: snapshot.compose.name || undefined,
       orgId: snapshot.compose.orgId,
       content: snapshot.version.content as AgentComposeContent,
-      artifacts: snapshot.session.artifacts ?? [],
+      ...resolvedSessionStorage(snapshot.session),
       vars:
         (snapshot.previousRun?.vars as Record<string, string> | null) ??
         undefined,
@@ -4374,6 +4397,7 @@ function resolveByCheckpointId(
               snapshot: checkpoints.agentComposeSnapshot,
               artifacts: checkpoints.artifactSnapshots,
               volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+              storageMounts: checkpoints.storageMounts,
               conversationId: checkpoints.conversationId,
               runUserId: agentRuns.userId,
               runOrgId: agentRuns.orgId,
@@ -4410,7 +4434,18 @@ function resolveByCheckpointId(
 
       return {
         ...resolved,
+        // Keep the legacy projection available for requests that explicitly
+        // override checkpoint Storage declarations. The canonical snapshot is
+        // used when there are no overrides.
         artifacts: row.artifacts ?? [],
+        ...(row.storageMounts
+          ? {
+              persistedStorageMounts: {
+                mounts: row.storageMounts,
+                mode: "complete" as const,
+              },
+            }
+          : {}),
         vars: snapshot.vars ?? {},
         volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
         additionalVolumes: parseAdditionalVolumesSnapshot(
@@ -4657,6 +4692,7 @@ function runRecordFromLaunchIdentity(
     id: identity.runId,
     createdAt,
     sessionId: identity.sessionId,
+    shouldCreateSession: identity.shouldCreateSession,
     status,
   };
 }
@@ -4747,6 +4783,8 @@ async function insertLaunchRunRows(
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
+    readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
@@ -4762,6 +4800,9 @@ async function insertLaunchRunRows(
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
       artifacts: [...args.artifacts],
+      storageMounts: args.sessionStorageMounts
+        ? [...args.sessionStorageMounts]
+        : null,
       conversationId: null,
     });
   }
@@ -4782,6 +4823,7 @@ async function insertLaunchRunRows(
     additionalVolumes: args.additionalVolumes
       ? [...args.additionalVolumes]
       : null,
+    storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
     resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
     sessionId: args.identity.sessionId,
@@ -4840,6 +4882,8 @@ async function insertRunRecord(
     body: args.body,
     artifacts: args.artifacts,
     additionalVolumes: args.additionalVolumes,
+    runStorageMounts: undefined,
+    sessionStorageMounts: undefined,
     modelProvider: args.modelProvider,
     callbackRows,
     chatThreadId: args.chatThreadId,
@@ -4891,6 +4935,8 @@ async function insertQueuedRunRecord(
     body: args.body,
     artifacts: args.artifacts,
     additionalVolumes: args.additionalVolumes,
+    runStorageMounts: undefined,
+    sessionStorageMounts: undefined,
     modelProvider: args.modelProvider,
     callbackRows,
     chatThreadId: args.chatThreadId,
@@ -5001,7 +5047,7 @@ async function buildStoredExecutionContextDraft(args: {
 }
 
 async function resolveBuiltStoredExecutionContext(
-  storageManifestPromise: Promise<StorageManifest>,
+  storageManifestPromise: Promise<PreparedAgentRunStorageManifest>,
   builtContextDraftPromise: Promise<BuiltStoredExecutionContextDraft>,
 ): Promise<BuiltStoredExecutionContext> {
   const [storageManifestResult, builtContextDraftResult] =
@@ -5017,9 +5063,13 @@ async function resolveBuiltStoredExecutionContext(
   }
   return {
     ...builtContextDraftResult.value,
+    persistedStorageMounts: [
+      ...storageManifestResult.value.persistedStorageMounts,
+    ],
     context: {
       ...builtContextDraftResult.value.context,
-      storageManifest: storageManifestResult.value,
+      storageManifest: storageManifestResult.value.storageManifest,
+      storageMounts: [...storageManifestResult.value.storageMounts],
     },
   };
 }
@@ -5085,7 +5135,7 @@ function buildRunContextSnapshot(args: {
   readonly builtContext: BuiltStoredExecutionContext;
 }): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
-  const manifest = storedContext.storageManifest;
+  const manifest: LegacyStorageManifest | null = storedContext.storageManifest;
   const sanitizedEnvironment = sanitizeEnvironment(
     storedContext.environment,
     args.builtContext.secretValues,
@@ -5373,33 +5423,73 @@ async function markRunFailed(
   return true;
 }
 
+function sessionStorageMountsForPersistence(args: {
+  readonly resolvedMounts: readonly PersistedStorageMount[];
+  readonly artifacts: readonly ContextArtifact[];
+}): readonly PersistedStorageMount[] {
+  const artifactsByName = new Map<string, ContextArtifact>();
+  for (const artifact of args.artifacts) {
+    artifactsByName.set(artifact.name, artifact);
+  }
+
+  return args.resolvedMounts.flatMap((mount) => {
+    if (!mount.writeback) {
+      return [];
+    }
+    const artifact = artifactsByName.get(mount.name);
+    if (!artifact || artifact.mountPath !== mount.mountPath) {
+      throw new Error(
+        `Resolved writeback Storage "${mount.name}" has no source declaration`,
+      );
+    }
+    const {
+      version: _resolvedVersion,
+      missingRootPolicy: _resolvedMissingRootPolicy,
+      ...mountBase
+    } = mount;
+    return [
+      {
+        ...mountBase,
+        ...(artifact.version === undefined
+          ? {}
+          : { version: artifact.version }),
+        ...(artifact.missingRootPolicy === undefined
+          ? {}
+          : { missingRootPolicy: artifact.missingRootPolicy }),
+      },
+    ];
+  });
+}
+
+interface BuildRunnerJobPayloadInput {
+  readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly resolved: ResolvedCompose;
+  readonly body: CreateRunBody;
+  readonly artifacts: readonly ContextArtifact[];
+  readonly framework: SupportedFramework;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
+  readonly apiStartTime: number;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly includeZeroTokenSecret: boolean | undefined;
+  readonly zeroTokenComputerUseHostId: string | undefined;
+  readonly chatThreadId: string | undefined;
+  readonly extraEnvironment: Record<string, string> | undefined;
+  readonly userTimezone: string | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing?: ApiDispatchTimingCollector;
+}
+
 function buildRunnerJobPayload(
   db: Db,
-  args: {
-    readonly run: Pick<RunRecord, "id">;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly framework: SupportedFramework;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly customConnectorContext: CustomConnectorRuntimeContext;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly billableFirewalls: readonly string[];
-    readonly modelUsageProvider: string | undefined;
-    readonly apiStartTime: number;
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly additionalVolumeSources: AdditionalVolumeSources;
-    readonly includeZeroTokenSecret: boolean | undefined;
-    readonly zeroTokenComputerUseHostId: string | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-    readonly userTimezone: string | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly timing?: ApiDispatchTimingCollector;
-  },
+  args: BuildRunnerJobPayloadInput,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group =
@@ -5455,6 +5545,7 @@ function buildRunnerJobPayload(
             additionalVolumes: args.additionalVolumes,
             additionalVolumeSources: args.additionalVolumeSources,
             framework: args.framework,
+            persistedStorageMounts: args.resolved.persistedStorageMounts,
             timing: args.timing,
             stats: storageManifestStats,
           }),
@@ -5496,12 +5587,17 @@ function buildRunnerJobPayload(
         executionContext: storedContext,
       }),
       runContextSnapshot,
+      runStorageMounts: builtContext.persistedStorageMounts,
+      sessionStorageMounts: sessionStorageMountsForPersistence({
+        resolvedMounts: builtContext.persistedStorageMounts,
+        artifacts: args.artifacts,
+      }),
       customConnectorAuthRefs: args.customConnectorContext.authRefs,
     };
   });
 }
 
-type BuildRunnerJobPayloadArgs = Parameters<typeof buildRunnerJobPayload>[1];
+type BuildRunnerJobPayloadArgs = BuildRunnerJobPayloadInput;
 type DispatchRunArgs = BuildRunnerJobPayloadArgs & {
   readonly timing: ApiDispatchTimingCollector;
   readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
@@ -5582,11 +5678,38 @@ async function persistRunCustomConnectorAuthRefs(
   );
 }
 
+async function persistCanonicalStorageMounts(
+  tx: DbTransaction,
+  args: {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly shouldCreateSession: boolean;
+    readonly runStorageMounts: readonly PersistedStorageMount[];
+    readonly sessionStorageMounts: readonly PersistedStorageMount[];
+  },
+): Promise<void> {
+  await tx
+    .update(agentRuns)
+    .set({ storageMounts: [...args.runStorageMounts] })
+    .where(eq(agentRuns.id, args.runId));
+  if (!args.shouldCreateSession) {
+    return;
+  }
+  await tx
+    .update(agentSessions)
+    .set({ storageMounts: [...args.sessionStorageMounts] })
+    .where(eq(agentSessions.id, args.sessionId));
+}
+
 async function persistRunnerJobQueueForDispatch(
   db: Db,
   args: {
     readonly runId: string;
     readonly payload: RunnerJobPayload;
+    readonly sessionId: string;
+    readonly shouldCreateSession: boolean;
+    readonly runStorageMounts: readonly PersistedStorageMount[];
+    readonly sessionStorageMounts: readonly PersistedStorageMount[];
     readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -5611,6 +5734,14 @@ async function persistRunnerJobQueueForDispatch(
         if (currentRun.status !== "pending") {
           return currentRun;
         }
+
+        await persistCanonicalStorageMounts(tx, {
+          runId: args.runId,
+          sessionId: args.sessionId,
+          shouldCreateSession: args.shouldCreateSession,
+          runStorageMounts: args.runStorageMounts,
+          sessionStorageMounts: args.sessionStorageMounts,
+        });
 
         await measureApiDispatchTiming(
           args.timing,
@@ -5694,6 +5825,10 @@ function dispatchRun(
     const persisted = await persistRunnerJobQueueForDispatch(db, {
       runId: args.run.id,
       payload,
+      sessionId: args.run.sessionId,
+      shouldCreateSession: args.run.shouldCreateSession,
+      runStorageMounts: launch.runStorageMounts,
+      sessionStorageMounts: launch.sessionStorageMounts,
       customConnectorAuthRefs: launch.customConnectorAuthRefs,
       timing: args.timing,
     });
@@ -5773,6 +5908,14 @@ function enqueueRunForConcurrency(
             ? { status: currentRun.status, sandboxId: currentRun.sandboxId }
             : { status: currentRun.status };
         }
+
+        await persistCanonicalStorageMounts(tx, {
+          runId: args.run.id,
+          sessionId: args.run.sessionId,
+          shouldCreateSession: args.run.shouldCreateSession,
+          runStorageMounts: launch.runStorageMounts,
+          sessionStorageMounts: launch.sessionStorageMounts,
+        });
 
         await persistRunCustomConnectorAuthRefs(tx, {
           runId: args.run.id,
@@ -5870,6 +6013,8 @@ async function commitFailedLaunch(args: {
       body: args.context.body,
       artifacts: args.context.artifacts,
       additionalVolumes: args.context.additionalVolumes,
+      runStorageMounts: undefined,
+      sessionStorageMounts: undefined,
       modelProvider: args.context.modelProvider,
       callbackRows: args.callbackRows,
       chatThreadId: args.createArgs.chatThreadId,
@@ -5926,6 +6071,8 @@ async function insertAtomicLaunchRunRecord(args: {
         body: args.commit.context.body,
         artifacts: args.commit.context.artifacts,
         additionalVolumes: args.commit.context.additionalVolumes,
+        runStorageMounts: args.commit.launch.runStorageMounts,
+        sessionStorageMounts: args.commit.launch.sessionStorageMounts,
         modelProvider: args.commit.context.modelProvider,
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
@@ -6078,7 +6225,7 @@ function buildAtomicLaunchPayload(
   args: {
     readonly createArgs: CreateAgentRunArgs;
     readonly context: PreparedRunContext;
-    readonly run: Pick<RunRecord, "id">;
+    readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
     readonly timing: ApiDispatchTimingCollector;
   },
 ): Computed<Promise<PreparedRunnerLaunch>> {
@@ -6939,6 +7086,31 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
+function resolvedForStorageCompatibility(args: {
+  readonly initialBody: CreateRunBody;
+  readonly resolved: ResolvedCompose;
+}): ResolvedCompose {
+  if (args.resolved.persistedStorageMounts?.mode !== "complete") {
+    return args.resolved;
+  }
+
+  const hasLegacyOverride =
+    (args.initialBody.artifacts?.length ?? 0) > 0 ||
+    args.initialBody.additionalVolumes !== undefined ||
+    args.initialBody.volumeVersions !== undefined;
+  if (!hasLegacyOverride) {
+    return args.resolved;
+  }
+
+  // The legacy checkpoint projection records which read-only mounts came
+  // from compose volumes versus additional volumes. Persisted canonical
+  // mounts intentionally do not retain that source distinction, so explicit
+  // legacy overrides must stay on the compatibility reader during rollout.
+  const { persistedStorageMounts: _persistedStorageMounts, ...resolved } =
+    args.resolved;
+  return resolved;
+}
+
 function prepareRunContext(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
@@ -6996,6 +7168,10 @@ function prepareRunContext(input: {
         return runtimeContext;
       }
       const body = bodyContext.body;
+      const resolved = resolvedForStorageCompatibility({
+        initialBody,
+        resolved: bodyContext.resolved,
+      });
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -7003,7 +7179,7 @@ function prepareRunContext(input: {
         async () => {
           return await Promise.resolve(
             validateRunEnvironmentReferences({
-              resolved: bodyContext.resolved,
+              resolved,
               body,
               modelProvider: runtimeContext.modelProvider,
               connectorContext: runtimeContext.connectorContext,
@@ -7039,7 +7215,7 @@ function prepareRunContext(input: {
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
-              resolved: bodyContext.resolved,
+              resolved,
             }),
           );
         },
@@ -7047,7 +7223,7 @@ function prepareRunContext(input: {
 
       return {
         body,
-        resolved: bodyContext.resolved,
+        resolved,
         framework: runtimeContext.framework,
         modelProvider: runtimeContext.modelProvider,
         connectorContext: runtimeContext.connectorContext,
@@ -7454,13 +7630,17 @@ async function committedAtomicLaunchResponse(args: {
   return createdRunResponse(args.committed.run, { status: "pending" });
 }
 
-function createAtomicLaunchRun(input: {
+interface CreateAtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly signal: AbortSignal;
   readonly timing: ApiDispatchTimingCollector;
-}): Computed<Promise<CreateRunRouteResult>> {
+}
+
+function createAtomicLaunchRun(
+  input: CreateAtomicLaunchRunInput,
+): Computed<Promise<CreateRunRouteResult>> {
   return computed(async (get): Promise<CreateRunRouteResult> => {
     const identity = prepareLaunchRunIdentity({
       resolved: input.context.resolved,
@@ -7494,7 +7674,11 @@ function createAtomicLaunchRun(input: {
             buildAtomicLaunchPayload(input.db, {
               createArgs: input.args,
               context: input.context,
-              run: { id: identity.runId },
+              run: {
+                id: identity.runId,
+                sessionId: identity.sessionId,
+                shouldCreateSession: identity.shouldCreateSession,
+              },
               timing: input.timing,
             }),
           );

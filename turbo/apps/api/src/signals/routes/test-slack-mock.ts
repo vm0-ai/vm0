@@ -154,6 +154,31 @@ const conversationMessages$ = staticSlackMockHandler(() => {
   return { ok: true, messages: [], has_more: false };
 });
 
+const chatGetPermalink$ = command(async ({ get }, signal: AbortSignal) => {
+  const request = get(request$);
+  if (!isTestEndpointAllowed(request)) {
+    return testEndpointNotFoundResponse();
+  }
+
+  const parsed = await readSlackMockBody(
+    request.raw,
+    request.header("content-type") ?? "",
+  );
+  signal.throwIfAborted();
+  const channel = parsed.channelId ?? SLACK_E2E_FIXTURES.channelId;
+  const messageTs = parsed.bodyJson
+    ? (stringField(parsed.bodyJson, "message_ts") ?? "0.000000")
+    : "0.000000";
+  return {
+    status: 200 as const,
+    body: {
+      ok: true,
+      channel,
+      permalink: `https://e2e-mock.slack.com/archives/${encodeURIComponent(channel)}/p${messageTs.replace(".", "")}`,
+    },
+  };
+});
+
 const chatPostMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -250,6 +275,10 @@ export const testSlackMockRoutes: readonly RouteEntry[] = [
   {
     route: testSlackMockContract.chatPostEphemeral,
     handler: chatPostEphemeral$,
+  },
+  {
+    route: testSlackMockContract.chatGetPermalink,
+    handler: chatGetPermalink$,
   },
   {
     route: testSlackMockContract.chatPostMessage,

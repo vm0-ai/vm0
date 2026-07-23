@@ -3,6 +3,7 @@ import { vi } from "vitest";
 
 import {
   getAuthTokenHistory,
+  hasChannelSubscription,
   hasSubscription,
   rejectNextAblySubscribe,
   triggerAblyConnectionClosed,
@@ -273,6 +274,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,
       rejectNextSubscribe: rejectNextAblySubscribe,
+      hasChannelSubscription,
       hasSubscription,
       getAuthTokenHistory,
     },

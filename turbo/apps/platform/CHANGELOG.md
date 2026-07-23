@@ -1,5 +1,110 @@
 # Changelog
 
+## [0.620.0](https://github.com/vm0-ai/vm0/compare/app-v0.619.0...app-v0.620.0) (2026-07-23)
+
+
+### Features
+
+* link slack chat messages to their source ([#22633](https://github.com/vm0-ai/vm0/issues/22633)) ([83351c6](https://github.com/vm0-ai/vm0/commit/83351c64b87880a39ba90103754b350f491281d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+
+## [0.619.0](https://github.com/vm0-ai/vm0/compare/app-v0.618.1...app-v0.619.0) (2026-07-23)
+
+
+### Features
+
+* **platform:** simplify gmail automation match conditions ([#22596](https://github.com/vm0-ai/vm0/issues/22596)) ([b19a3a6](https://github.com/vm0-ai/vm0/commit/b19a3a660c3824126dc352d0bc4856230973e54a))
+* prefetch chat thread messages from realtime events ([#22622](https://github.com/vm0-ai/vm0/issues/22622)) ([95b85f6](https://github.com/vm0-ai/vm0/commit/95b85f66924ed19ffd0a57791835735b8a63a0f5))
+
+
+### Bug Fixes
+
+* expose org switcher in top-left of onboarding page ([#22574](https://github.com/vm0-ai/vm0/issues/22574)) ([97bc5ac](https://github.com/vm0-ai/vm0/commit/97bc5ac8d459d63f5a8f9a0b24020e13aa074ab6))
+* match settings nav selected state to sidebar gray, drop orange ([#22471](https://github.com/vm0-ai/vm0/issues/22471)) ([6324e00](https://github.com/vm0-ai/vm0/commit/6324e00064ecd1323feec18658dd7b6d03aec3f0))
+
+
+### Refactoring
+
+* **platform:** remove sidebar manage icon collapse experiment ([#22623](https://github.com/vm0-ai/vm0/issues/22623)) ([9bc3aca](https://github.com/vm0-ai/vm0/commit/9bc3aca9916af9d0af1a90290e9d101b90088a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.1
+    * @vm0/connectors bumped to 1.181.0
+    * @vm0/core bumped to 8.453.0
+
+## [0.618.1](https://github.com/vm0-ai/vm0/compare/app-v0.618.0...app-v0.618.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.0
+    * @vm0/core bumped to 8.452.1
+
+## [0.618.0](https://github.com/vm0-ai/vm0/compare/app-v0.617.0...app-v0.618.0) (2026-07-22)
+
+
+### Features
+
+* **chat:** persist and restore structured composer drafts ([#22560](https://github.com/vm0-ai/vm0/issues/22560)) ([c7b17fb](https://github.com/vm0-ai/vm0/commit/c7b17fb7f5422f9b17774d6d57691d6a8bce0a6d))
+* **onboarding:** drop card defaults, lighten shadows, send custom workflow into the product ([#22579](https://github.com/vm0-ai/vm0/issues/22579)) ([de803bd](https://github.com/vm0-ai/vm0/commit/de803bd24b4524dbda190cba1d83f43f7eb14fa8))
+
+
+### Refactoring
+
+* **platform:** initialize thread data with synchronous projections ([#22567](https://github.com/vm0-ai/vm0/issues/22567)) ([dcf6eee](https://github.com/vm0-ai/vm0/commit/dcf6eee7ede423abba0a0614c378f2a0ee623aad))
+* **platform:** let ccstate own resource lifetimes ([#22598](https://github.com/vm0-ai/vm0/issues/22598)) ([d65191a](https://github.com/vm0-ai/vm0/commit/d65191af7790a23a34a7777f5af705d8edcaf9ec))
+* remove obsolete platform and api compatibility fallbacks ([#22573](https://github.com/vm0-ai/vm0/issues/22573)) ([427124a](https://github.com/vm0-ai/vm0/commit/427124a7d9afa3f174a86b33d213d8ba143e35e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+    * @vm0/core bumped to 8.452.0
+
+## [0.617.0](https://github.com/vm0-ai/vm0/compare/app-v0.616.0...app-v0.617.0) (2026-07-22)
+
+
+### Features
+
+* **chat:** make structured prompts authoritative on send ([#22537](https://github.com/vm0-ai/vm0/issues/22537)) ([454772b](https://github.com/vm0-ai/vm0/commit/454772bcd57c585e7ac0fbe64615b04c6862fcb7))
+* restore designed workflow-preview diagram and step details in onboarding ([#22562](https://github.com/vm0-ai/vm0/issues/22562)) ([3a82008](https://github.com/vm0-ai/vm0/commit/3a82008deab9266965fd25a925108f24e80cf0c4))
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### Bug Fixes
+
+* **platform:** refresh connector state from ably ([#22582](https://github.com/vm0-ai/vm0/issues/22582)) ([7147b6b](https://github.com/vm0-ai/vm0/commit/7147b6bed037f5d648944e3f434b99902c2b0f3b))
+
+
+### CI
+
+* remove per-pr www preview infrastructure ([#22539](https://github.com/vm0-ai/vm0/issues/22539)) ([1aacb72](https://github.com/vm0-ai/vm0/commit/1aacb72ed6b6d22db3f161608e263087123ba9ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+    * @vm0/core bumped to 8.451.0
+
 ## [0.616.0](https://github.com/vm0-ai/vm0/compare/app-v0.615.2...app-v0.616.0) (2026-07-22)
 
 
