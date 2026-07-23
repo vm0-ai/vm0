@@ -435,7 +435,7 @@ describe("GET /api/zero/artifacts", () => {
     },
   );
 
-  it("lists chat-thread artifacts for the active organization and hides uploads shadowed by hosted artifacts", async () => {
+  it("isolates artifacts and favorites by organization and hides shadowed uploads", async () => {
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ userId, orgId: `org_${randomUUID()}` });
     const otherOrgActor = bdd.user({
@@ -527,6 +527,15 @@ describe("GET /api/zero/artifacts", () => {
         return artifact.fileId === otherOrgArtifact.fileId;
       }),
     ).toBeFalsy();
+    const favorite = await chat.requestFavoriteArtifact(
+      actor,
+      otherOrgArtifact.url,
+      [404],
+    );
+    if (favorite.status !== 404) {
+      throw new Error("Expected other-organization favorite request to 404");
+    }
+    expect(favorite.body.error.code).toBe("NOT_FOUND");
     expect(response.truncated).toBeFalsy();
   }, 120_000);
 

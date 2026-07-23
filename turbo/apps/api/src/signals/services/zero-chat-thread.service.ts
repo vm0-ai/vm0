@@ -83,6 +83,7 @@ import {
 import {
   nullableDriverValueDecoder,
   pgBooleanDecoder,
+  pgInt8ToSafeIntegerDecoder,
   pgIntegerDecoder,
   pgTextDecoder,
   zodEnumDriverValueDecoder,
@@ -195,7 +196,10 @@ const artifactListSqlRowSchema = z.object({
 });
 type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
 
-const artifactVisibilityRowSchema = z.object({ visible: z.boolean() });
+type ArtifactListRow = Omit<ArtifactListSqlRow, "url"> & {
+  readonly url: string | null;
+};
+
 const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 
 type ChatSearchMessageRow = {
@@ -1222,7 +1226,24 @@ function artifactVisibilityConditions(
   ];
 }
 
-function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
+function artifactChatThreadId(db: Pick<Db, "select">): SQL {
+  const earliestThread = db
+    .select({ threadId: chatMessages.chatThreadId })
+    .from(chatMessages)
+    .where(eq(chatMessages.runId, runUploadedFiles.runId))
+    .orderBy(asc(chatMessages.seqId))
+    .limit(1);
+
+  return sql`COALESCE(${zeroRuns.chatThreadId}, (${earliestThread}))`;
+}
+
+function toArtifactItem(row: ArtifactListRow): ArtifactItem {
+  if (row.url === null) {
+    throw new Error(
+      "artifact list invariant violated: URL is null despite isNotNull filter",
+    );
+  }
+
   const filename = row.filename ?? row.external_id;
   const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
   const canonical =
@@ -1501,69 +1522,57 @@ async function listArtifactHistory(args: {
   readonly syncUntil: string;
   readonly signal: AbortSignal;
 }): Promise<ZeroArtifactsResult> {
-  // The full path returns raw visible rows. IndexedDB owns stable-ID merging
-  // and hosted-run shadowing, so this query avoids a history-wide URL sort.
-  const keysetClause = args.cursor
-    ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql.empty();
+  // The full path returns visible rows. IndexedDB owns stable-ID merging and
+  // hosted-run shadowing, so this query avoids a history-wide URL sort.
+  const keysetCondition = args.cursor
+    ? sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : undefined;
   const conditions = artifactVisibilityConditions(args.db, args.query);
-  const rows = await executeRawRows(
-    args.db,
-    sql`
-      SELECT
-        ${runUploadedFiles.id} AS row_id,
-        ${runUploadedFiles.assetVersion} AS asset_version,
-        ${runUploadedFiles.runId} AS run_id,
-        ${runUploadedFiles.externalId} AS external_id,
-        ${runUploadedFiles.filename} AS filename,
-        ${runUploadedFiles.contentType} AS content_type,
-        ${runUploadedFiles.sizeBytes} AS size_bytes,
-        ${runUploadedFiles.url} AS url,
-        ${runUploadedFiles.previewImageUrl} AS preview_image_url,
-        ${runUploadedFiles.metadata} AS metadata,
-        ${runUploadedFiles.classification} AS classification,
-        ${runUploadedFiles.accessLevel} AS access_level,
-        ${runUploadedFiles.materializationStatus} AS materialization_status,
-        ${runUploadedFiles.materializationError} AS materialization_error,
-        ${runUploadedFiles.provenance} AS provenance,
-        ${runUploadedFiles.createdAt} AS created_at,
-        ${runUploadedFiles.updatedAt} AS updated_at,
-        ${chatThreads.id} AS thread_id,
-        ${chatThreads.title} AS thread_title,
-        ${zeroAgents.id} AS agent_id,
-        COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
-        ${zeroAgents.avatarUrl} AS agent_avatar_url,
-        to_char(
-          ${runUploadedFiles.createdAt},
-          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-        ) AS cursor_created_at
-      FROM ${runUploadedFiles}
-      INNER JOIN ${agentRuns}
-        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${zeroRuns}
-        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${chatThreads}
-        ON ${chatThreads.id} = COALESCE(
-          ${zeroRuns.chatThreadId},
-          (
-            SELECT ${chatMessages.chatThreadId}
-            FROM ${chatMessages}
-            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.seqId)}
-            LIMIT 1
-          )
-        )
-      INNER JOIN ${agentComposes}
-        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-      INNER JOIN ${zeroAgents}
-        ON ${eq(zeroAgents.id, agentComposes.id)}
-      WHERE ${sql.join(conditions, sql` AND `)}
-      ${keysetClause}
-    ORDER BY ${desc(runUploadedFiles.createdAt)}, ${desc(runUploadedFiles.id)}
-      LIMIT ${args.limit + 1}
-    `,
-    artifactListSqlRowSchema,
-  );
+  const rows: ArtifactListRow[] = await args.db
+    .select({
+      row_id: runUploadedFiles.id,
+      asset_version: runUploadedFiles.assetVersion,
+      run_id: agentRuns.id,
+      external_id: runUploadedFiles.externalId,
+      filename: runUploadedFiles.filename,
+      content_type: runUploadedFiles.contentType,
+      size_bytes: sql`${runUploadedFiles.sizeBytes}`
+        .mapWith(nullableDriverValueDecoder(pgInt8ToSafeIntegerDecoder))
+        .as("size_bytes"),
+      url: runUploadedFiles.url,
+      preview_image_url: runUploadedFiles.previewImageUrl,
+      metadata: runUploadedFiles.metadata,
+      classification: runUploadedFiles.classification,
+      access_level: runUploadedFiles.accessLevel,
+      materialization_status: runUploadedFiles.materializationStatus,
+      materialization_error: runUploadedFiles.materializationError,
+      provenance: runUploadedFiles.provenance,
+      created_at: runUploadedFiles.createdAt,
+      updated_at: runUploadedFiles.updatedAt,
+      thread_id: chatThreads.id,
+      thread_title: chatThreads.title,
+      agent_id: zeroAgents.id,
+      agent_name:
+        sql`COALESCE(${zeroAgents.displayName}, ${agentComposes.name})`
+          .mapWith(nullableTextDecoder)
+          .as("agent_name"),
+      agent_avatar_url: zeroAgents.avatarUrl,
+      cursor_created_at: sql`to_char(
+        ${runUploadedFiles.createdAt},
+        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+      )`
+        .mapWith(pgTextDecoder)
+        .as("cursor_created_at"),
+    })
+    .from(runUploadedFiles)
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(args.db)))
+    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
+    .where(and(...conditions, keysetCondition))
+    .orderBy(desc(runUploadedFiles.createdAt), desc(runUploadedFiles.id))
+    .limit(args.limit + 1);
   args.signal.throwIfAborted();
 
   const hasMore = rows.length > args.limit;
@@ -1658,43 +1667,23 @@ export const artifactFavoriteUrls$ = command(
 );
 
 async function artifactUrlIsVisible(
-  db: Pick<Db, "execute" | "select">,
+  db: Pick<Db, "select">,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
     ...artifactVisibilityConditions(db, args),
     eq(runUploadedFiles.url, args.artifactUrl),
   ];
-  const rows = await executeRawRows(
-    db,
-    sql`
-      SELECT EXISTS (
-      SELECT 1
-      FROM ${runUploadedFiles}
-      INNER JOIN ${agentRuns}
-        ON ${eq(agentRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${zeroRuns}
-        ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
-      INNER JOIN ${chatThreads}
-        ON ${chatThreads.id} = COALESCE(
-          ${zeroRuns.chatThreadId},
-          (
-            SELECT ${chatMessages.chatThreadId}
-            FROM ${chatMessages}
-            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.seqId)}
-            LIMIT 1
-          )
-        )
-      INNER JOIN ${agentComposes}
-        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
-      WHERE ${sql.join(conditions, sql` AND `)}
-      LIMIT 1
-      ) AS visible
-    `,
-    artifactVisibilityRowSchema,
-  );
-  return rows[0]?.visible === true;
+  const rows = await db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(db)))
+    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .where(and(...conditions))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export const favoriteArtifact$ = command(
