@@ -43,9 +43,9 @@ pub enum NetworkError {
     #[error("failed to detect default network interface from: {0}")]
     NoDefaultInterface(String),
 
-    /// A lock file needed for namespace pool coordination could not be opened.
-    #[error("failed to open lock file: {0}")]
-    LockOpen(String),
+    /// A lock file needed for namespace pool coordination was unsafe or failed.
+    #[error("pool index lock error: {0}")]
+    PoolLock(String),
 
     /// A required host or network prerequisite failed while preparing namespaces.
     #[error("prerequisite check failed: {0}")]

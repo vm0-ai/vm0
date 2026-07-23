@@ -91,7 +91,8 @@ REAL_IPTABLES_RESTORE=$(command -v iptables-restore)
 REAL_IP6TABLES_SAVE=$(command -v ip6tables-save)
 REAL_IP6TABLES_RESTORE=$(command -v ip6tables-restore)
 
-# Reserve four pool indexes before the runner starts. Two become clean
+# Reserve four legacy-only pool indexes before the runner starts, modeling the
+# runner version deployed before the private-lock bridge. Two become clean
 # historical indexes, one owns a synthetic firewall-only orphan, and one
 # remains active throughout reconciliation. The first three locks are released
 # during own-index cleanup, after the runner has captured their resources and
@@ -171,7 +172,7 @@ find_own_pool_hex() {
   for fd in /proc/"$PPID"/fd/*; do
     target=$(readlink "$fd" 2>/dev/null || true)
     case "$target" in
-      */vm0-netns-pool-*.lock)
+      /var/lock/vm0-netns-pool-*.lock)
         index=${target##*/vm0-netns-pool-}
         index=${index%.lock}
         case "$index" in
@@ -378,6 +379,14 @@ assert_reconcile_count() {
     || fail "expected $expected reconciliation $name call(s), found $actual"
 }
 
+assert_pool_lock_held() {
+  local path=$1
+  sudo test -f "$path" || fail "pool lock does not exist: $path"
+  if sudo flock -n "$path" true; then
+    fail "runner does not hold pool lock: $path"
+  fi
+}
+
 # Pause the runner at the cross-pool mutation boundary. This keeps later
 # warm-up or namespace failure cleanup from being mistaken for another startup
 # discovery pass while also proving that the target pool lock is still held.
@@ -388,6 +397,12 @@ for _ in $(seq 1 1200); do
 done
 [ -e "$RECONCILE_FIREWALL_DELETE_STARTED" ] \
   || fail "startup reconciliation did not reach the firewall cleanup checkpoint"
+
+OWN_POOL_HEX=$(<"$RECONCILE_COUNT_DIR/own-pool")
+OWN_POOL_INDEX=$((16#$OWN_POOL_HEX))
+assert_pool_lock_held "/var/lock/vm0-netns-pool-${OWN_POOL_INDEX}.lock"
+assert_pool_lock_held "/run/vm0/netns-locks/vm0-netns-pool-${OWN_POOL_INDEX}.lock"
+echo "PASS: runner holds the complete legacy/private pool lock bridge"
 
 echo "--- Test: startup reconciliation uses one host snapshot ---"
 # Failed snapshot sources stay abandoned instead of triggering a per-namespace

@@ -51,11 +51,16 @@ impl RuntimePaths {
     }
 }
 
-/// Lock file paths under `/var/lock` for flock-based coordination.
+/// Lock file paths for flock-based host coordination.
 ///
-/// `/var/lock` is the FHS-standard location for lock files (mode 1777).
+/// Netns pool ownership temporarily bridges the legacy shared `/var/lock`
+/// namespace and the owner-only `/run/vm0/netns-locks` namespace. Both paths
+/// are required until every rollback-eligible runner understands the private
+/// namespace.
 pub struct LockPaths {
-    base_dir: PathBuf,
+    legacy_base_dir: PathBuf,
+    runtime_base_dir: PathBuf,
+    private_base_dir: PathBuf,
 }
 
 impl Default for LockPaths {
@@ -65,24 +70,45 @@ impl Default for LockPaths {
 }
 
 impl LockPaths {
-    /// Creates lock path helpers rooted at `/var/lock`.
+    /// Creates legacy and private netns lock path helpers.
     ///
-    /// This only records the lock root; it does not create, validate, or
-    /// canonicalize filesystem entries.
+    /// This only records the `/var/lock` and `/run/vm0/netns-locks` roots; it
+    /// does not create, validate, or canonicalize filesystem entries.
     pub fn new() -> Self {
+        let runtime_base_dir = PathBuf::from(RUNTIME_DIR);
         Self {
-            base_dir: PathBuf::from("/var/lock"),
+            legacy_base_dir: PathBuf::from("/var/lock"),
+            private_base_dir: runtime_base_dir.join("netns-locks"),
+            runtime_base_dir,
         }
     }
 
     #[cfg(test)]
-    pub fn with_dir(base_dir: PathBuf) -> Self {
-        Self { base_dir }
+    pub(crate) fn with_dirs(legacy_base_dir: PathBuf, runtime_base_dir: PathBuf) -> Self {
+        Self {
+            legacy_base_dir,
+            private_base_dir: runtime_base_dir.join("netns-locks"),
+            runtime_base_dir,
+        }
     }
 
-    /// Lock file for netns pool index allocation.
+    /// Legacy lock file for netns pool index allocation.
     pub fn netns_pool(&self, index: u32) -> PathBuf {
-        self.base_dir.join(format!("vm0-netns-pool-{index}.lock"))
+        self.legacy_base_dir
+            .join(format!("vm0-netns-pool-{index}.lock"))
+    }
+
+    pub(crate) fn private_netns_pool(&self, index: u32) -> PathBuf {
+        self.private_base_dir
+            .join(format!("vm0-netns-pool-{index}.lock"))
+    }
+
+    pub(crate) fn runtime_base(&self) -> &Path {
+        &self.runtime_base_dir
+    }
+
+    pub(crate) fn private_base(&self) -> &Path {
+        &self.private_base_dir
     }
 }
 

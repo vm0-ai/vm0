@@ -1,5 +1,4 @@
 use std::collections::{HashSet, VecDeque};
-use std::fs::File;
 #[cfg(test)]
 use std::future::Future;
 use std::sync::Arc;
@@ -7,9 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::future::join_all;
-use nix::fcntl::Flock;
-#[cfg(test)]
-use nix::fcntl::FlockArg;
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 
@@ -29,10 +25,10 @@ use super::completion::{
 #[cfg(test)]
 use super::host::ConntrackFlushOutcome;
 use super::host::{
-    NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
-    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
-    setup_dns_input_filter,
+    NamespaceDeleteOutcome, NetnsLifecycleOps, create_single_namespace, enable_host_ip_forwarding,
+    get_default_interface, reconcile_orphan_namespaces, setup_dns_input_filter,
 };
+use super::lock::{PoolIndexLock, acquire_pool_lock};
 use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
     CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
@@ -152,17 +148,13 @@ struct NetnsPoolState {
     #[cfg(test)]
     acquire_waiting_notify: Option<Arc<tokio::sync::Notify>>,
     /// Held for the lifetime of the pool to reserve the pool index.
-    _lock: Flock<File>,
+    _lock: PoolIndexLock,
 }
 
 impl NetnsPoolState {
     #[cfg(test)]
     pub(crate) fn inactive_for_test() -> Self {
-        let file = tempfile::tempfile().expect("create test netns pool lock file");
-        let lock = match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-            Ok(lock) => lock,
-            Err((_, errno)) => panic!("lock test netns pool file: {errno}"),
-        };
+        let lock = PoolIndexLock::for_test(0);
         Self {
             active: false,
             plain_queue: VecDeque::new(),
@@ -206,7 +198,8 @@ impl NetnsPoolState {
     async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
         let config = config.inner;
         let lock_paths = LockPaths::new();
-        let (index, lock) = acquire_pool_lock(&lock_paths)?;
+        let lock = acquire_pool_lock(&lock_paths)?;
+        let index = lock.index();
 
         info!(index, buffer = BUFFER_SIZE, "initializing namespace pool");
 
@@ -217,7 +210,7 @@ impl NetnsPoolState {
         // This is the correctness guarantee for kernel-side cleanup —
         // `NetnsPool::cleanup` is best-effort and cannot survive SIGKILL,
         // panic, OOM, or aborted in-flight creation tasks (issue #10625).
-        reconcile_orphan_namespaces(&lock_paths, index, &lock).await;
+        reconcile_orphan_namespaces(&lock_paths, &lock).await;
 
         let default_iface = get_default_interface().await?;
         let dns_input_filter_comment = match config.dns_port {

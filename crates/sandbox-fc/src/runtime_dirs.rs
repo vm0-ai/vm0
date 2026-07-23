@@ -35,6 +35,14 @@ pub(crate) fn ensure_traversable_runtime_dir(path: &Path) -> io::Result<()> {
     ensure_runtime_dir_with_mode(path, TRAVERSABLE_RUNTIME_DIR_MODE)
 }
 
+pub(crate) fn validate_private_runtime_dir(path: &Path) -> io::Result<()> {
+    validate_runtime_dir(path, PRIVATE_RUNTIME_DIR_MODE, false)
+}
+
+pub(crate) fn validate_traversable_runtime_dir(path: &Path) -> io::Result<()> {
+    validate_runtime_dir(path, TRAVERSABLE_RUNTIME_DIR_MODE, false)
+}
+
 pub(crate) fn prepare_runtime_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
     ensure_traversable_runtime_dir(sock_paths.dir())?;
     ensure_private_runtime_dir(&sock_paths.vsock_dir())
@@ -116,7 +124,7 @@ fn invalid_vsock_dir_shape(sock_base: &Path, vsock_bind_dir: &Path) -> io::Error
 
 fn ensure_runtime_dir_with_mode(path: &Path, mode: u32) -> io::Result<()> {
     create_runtime_dir_if_missing(path, mode)?;
-    validate_runtime_dir(path, mode)
+    validate_runtime_dir(path, mode, true)
 }
 
 fn create_runtime_dir_if_missing(path: &Path, mode: u32) -> io::Result<()> {
@@ -132,7 +140,7 @@ fn create_runtime_dir_if_missing(path: &Path, mode: u32) -> io::Result<()> {
     }
 }
 
-fn validate_runtime_dir(path: &Path, expected_mode: u32) -> io::Result<()> {
+fn validate_runtime_dir(path: &Path, expected_mode: u32, normalize_mode: bool) -> io::Result<()> {
     let metadata = std::fs::symlink_metadata(path).map_err(|e| {
         io::Error::new(
             e.kind(),
@@ -163,7 +171,7 @@ fn validate_runtime_dir(path: &Path, expected_mode: u32) -> io::Result<()> {
     }
 
     let mode = metadata.permissions().mode() & 0o7777;
-    if mode != expected_mode {
+    if mode != expected_mode && normalize_mode {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(expected_mode)).map_err(
             |e| {
                 io::Error::new(
@@ -176,6 +184,14 @@ fn validate_runtime_dir(path: &Path, expected_mode: u32) -> io::Result<()> {
                 )
             },
         )?;
+    } else if mode != expected_mode {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "runtime dir {} has mode {mode:04o}, expected {expected_mode:04o}",
+                path.display()
+            ),
+        ));
     }
 
     eaccess(path, AccessFlags::W_OK | AccessFlags::X_OK).map_err(|e| {

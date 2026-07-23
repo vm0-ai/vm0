@@ -34,17 +34,20 @@
 //!   pool, or creates one on-demand as fallback
 //! - [`NetnsPool::release`] takes `&mut Option<NetnsLease>` so cancellation
 //!   before the final commit point leaves cleanup ownership with the caller
-//! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
+//! - Pool index (0–63) is auto-allocated through a temporary dual-lock bridge:
+//!   the legacy `/var/lock` path plus an owner-only `/run/vm0` path
 //! - Orphans from abnormally-exited prior runners (SIGKILL, panic, OOM,
 //!   power loss, aborted in-flight creation tasks) are reconciled at
 //!   startup via flock-based liveness probe.
 
 mod completion;
 mod host;
+mod lock;
 mod naming;
 mod state;
 mod types;
 
+pub use lock::{NetnsPoolLockStatus, probe_netns_pool_lock};
 pub(crate) use naming::make_pool_dns_filter_comment;
 pub use naming::{ParsedNetnsName, parse_netns_name};
 pub use state::NetnsPool;

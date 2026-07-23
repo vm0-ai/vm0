@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::fmt::Write as _;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -99,6 +100,8 @@ enum Warning {
     NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
+    /// A pool whose ownership cannot be verified without trusting unsafe state.
+    NetnsPoolLockUnverifiable { pool_idx: u32, error: String },
     /// An NBD device whose recorded owner task has exited and whose lock is free.
     OrphanNbdDevice { device_index: u32, pid: u32 },
     /// The NBD orphan scan task panicked (bug in find_nbd_orphans).
@@ -162,6 +165,12 @@ impl fmt::Display for Warning {
             }
             Self::OrphanNamespace { ns_name, .. } => {
                 write!(f, "orphan namespace {ns_name} (pool lock not held)")
+            }
+            Self::NetnsPoolLockUnverifiable { pool_idx, error } => {
+                write!(
+                    f,
+                    "netns pool {pool_idx} lock ownership is unverifiable: {error}"
+                )
             }
             Self::OrphanNbdDevice { device_index, pid } => {
                 write!(
@@ -285,8 +294,10 @@ impl Warning {
                 pid_exists(*pid) && process::is_orphan(*pid, runner_pids).await
             }
             Self::OrphanNamespace { pool_idx, .. } => {
-                let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-                is_lock_free(&lock_path).await
+                netns_lock_anomaly_persists(probe_netns_pool_lock_status(*pool_idx).await)
+            }
+            Self::NetnsPoolLockUnverifiable { pool_idx, .. } => {
+                netns_lock_anomaly_persists(probe_netns_pool_lock_status(*pool_idx).await)
             }
             Self::OrphanNbdDevice { device_index, pid } => {
                 let idx = *device_index;
@@ -1087,30 +1098,67 @@ async fn detect_orphan_firecrackers(
 
 /// List `vm0-ns-*` namespaces and check if their pool locks are held.
 async fn detect_orphan_namespaces() -> Vec<Warning> {
-    let mut warnings = Vec::new();
-
     let output = match tokio::process::Command::new("ip")
         .args(["netns", "list"])
         .output()
         .await
     {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
-        _ => return warnings,
+        _ => return Vec::new(),
     };
 
-    for line in output.lines() {
-        if let Some((ns_name, pool_idx)) = parse_netns_list_line(line) {
-            let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-            if is_lock_free(&lock_path).await {
-                warnings.push(Warning::OrphanNamespace {
-                    ns_name: ns_name.to_string(),
-                    pool_idx,
-                });
-            }
+    let mut pools: Vec<(u32, Vec<String>)> = Vec::new();
+    for (name, index) in output.lines().filter_map(parse_netns_list_line) {
+        if let Some((_, names)) = pools
+            .iter_mut()
+            .find(|(pool_index, _)| *pool_index == index)
+        {
+            names.push(name.to_string());
+        } else {
+            pools.push((index, vec![name.to_string()]));
         }
     }
 
+    let mut warnings = Vec::new();
+    for (index, names) in pools {
+        let observation = match probe_netns_pool_lock_status(index).await {
+            Ok(sandbox_fc::NetnsPoolLockStatus::Active) => NetnsPoolLockObservation::Active,
+            Ok(sandbox_fc::NetnsPoolLockStatus::Idle) => NetnsPoolLockObservation::Idle,
+            Err(error) => NetnsPoolLockObservation::Unverifiable(error.to_string()),
+        };
+        warnings.extend(classify_namespace_lock_observation(
+            index,
+            &names,
+            observation,
+        ));
+    }
     warnings
+}
+
+enum NetnsPoolLockObservation {
+    Active,
+    Idle,
+    Unverifiable(String),
+}
+
+fn classify_namespace_lock_observation(
+    pool_idx: u32,
+    namespaces: &[String],
+    observation: NetnsPoolLockObservation,
+) -> Vec<Warning> {
+    match observation {
+        NetnsPoolLockObservation::Active => Vec::new(),
+        NetnsPoolLockObservation::Idle => namespaces
+            .iter()
+            .map(|ns_name| Warning::OrphanNamespace {
+                ns_name: ns_name.clone(),
+                pool_idx,
+            })
+            .collect(),
+        NetnsPoolLockObservation::Unverifiable(error) => {
+            vec![Warning::NetnsPoolLockUnverifiable { pool_idx, error }]
+        }
+    }
 }
 
 /// Parse `ip netns list` output line and return the namespace plus pool index.
@@ -1137,27 +1185,16 @@ async fn detect_nbd_orphans() -> Vec<Warning> {
         .collect()
 }
 
-/// Try non-blocking flock to check if a lock file is free (not held by anyone).
-async fn is_lock_free(lock_path: &str) -> bool {
-    let lock_path = lock_path.to_string();
-    tokio::task::spawn_blocking(move || {
-        use std::fs::File;
-        let file = match File::open(&lock_path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
-            Err(e) => {
-                tracing::warn!("cannot open lock file {lock_path}: {e}, assuming held");
-                return false;
-            }
-        };
-        // Try exclusive lock without blocking
-        match nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock) {
-            Ok(_lock) => true, // lock acquired → was free → orphaned
-            Err(_) => false,   // lock held → pool is active
-        }
-    })
-    .await
-    .unwrap_or(false) // if task panics, assume lock is held (don't false-positive)
+async fn probe_netns_pool_lock_status(
+    pool_idx: u32,
+) -> io::Result<sandbox_fc::NetnsPoolLockStatus> {
+    tokio::task::spawn_blocking(move || sandbox_fc::probe_netns_pool_lock(pool_idx))
+        .await
+        .map_err(|error| io::Error::other(format!("netns pool lock probe panicked: {error}")))?
+}
+
+fn netns_lock_anomaly_persists(result: io::Result<sandbox_fc::NetnsPoolLockStatus>) -> bool {
+    !matches!(result, Ok(sandbox_fc::NetnsPoolLockStatus::Active))
 }
 
 // ---------------------------------------------------------------------------
@@ -2317,6 +2354,15 @@ mod tests {
             "stale mitmproxy PID 555 on port 32821 (runner stopped)"
         );
 
+        let w = Warning::NetnsPoolLockUnverifiable {
+            pool_idx: 7,
+            error: "unsafe path".into(),
+        };
+        assert_eq!(
+            w.to_string(),
+            "netns pool 7 lock ownership is unverifiable: unsafe path"
+        );
+
         let w = Warning::OrphanNbdDevice {
             device_index: 3,
             pid: 12345,
@@ -3165,29 +3211,56 @@ mod tests {
         assert!(!is_test_tld("https://example.com?q=.test"));
     }
 
-    #[tokio::test]
-    async fn is_lock_free_returns_true_when_file_not_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("no-such-file.lock");
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+    #[test]
+    fn namespace_lock_warnings_distinguish_and_deduplicate_states() {
+        assert!(
+            classify_namespace_lock_observation(
+                0,
+                &["vm0-ns-00-00".to_string()],
+                NetnsPoolLockObservation::Active,
+            )
+            .is_empty()
+        );
+
+        let warnings = classify_namespace_lock_observation(
+            1,
+            &["vm0-ns-01-00".to_string()],
+            NetnsPoolLockObservation::Idle,
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            Warning::OrphanNamespace {
+                ns_name,
+                pool_idx: 1
+            } if ns_name == "vm0-ns-01-00"
+        ));
+
+        let warnings = classify_namespace_lock_observation(
+            2,
+            &["vm0-ns-02-00".to_string(), "vm0-ns-02-01".to_string()],
+            NetnsPoolLockObservation::Unverifiable("unsafe lock".to_string()),
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            Warning::NetnsPoolLockUnverifiable {
+                pool_idx: 2,
+                error
+            } if error == "unsafe lock"
+        ));
     }
 
-    #[tokio::test]
-    async fn is_lock_free_returns_true_when_lock_not_held() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("free.lock");
-        std::fs::File::create(&path).unwrap();
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
-    }
-
-    #[tokio::test]
-    async fn is_lock_free_returns_false_when_lock_held() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("held.lock");
-        let file = std::fs::File::create(&path).unwrap();
-        // Hold an exclusive lock for the duration of the test.
-        let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
-            .expect("failed to acquire test lock");
-        assert!(!super::is_lock_free(path.to_str().unwrap()).await);
+    #[test]
+    fn namespace_lock_warning_rechecks_remain_conservative() {
+        assert!(!netns_lock_anomaly_persists(Ok(
+            sandbox_fc::NetnsPoolLockStatus::Active
+        )));
+        assert!(netns_lock_anomaly_persists(Ok(
+            sandbox_fc::NetnsPoolLockStatus::Idle
+        )));
+        assert!(netns_lock_anomaly_persists(Err(io::Error::other(
+            "unsafe lock"
+        ))));
     }
 }

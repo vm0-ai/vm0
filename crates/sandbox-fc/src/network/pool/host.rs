@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fs::File;
 use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
@@ -7,7 +6,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
 use crate::command::{
@@ -18,6 +16,7 @@ use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
+use super::lock::{PoolIndexLock, try_claim_reconciliation_lock};
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, NS_PREFIX, format_hex_index, generate_veth_ip_pair,
     make_host_device, make_host_device_iptables_pattern, make_ns_name,
@@ -705,53 +704,6 @@ fn conntrack_command_missing(src: IgnoredCommandOutcome, dst: IgnoredCommandOutc
 }
 
 // ---------------------------------------------------------------------------
-// Pool index lock
-// ---------------------------------------------------------------------------
-
-/// Try to acquire an exclusive flock on a pool index file (0..MAX_POOLS).
-///
-/// Returns the first successfully locked `(index, Flock<File>)`. The lock is
-/// held for the lifetime of the returned `Flock` — when the process exits or
-/// the `Flock` is dropped, the OS releases the lock automatically.
-pub(super) fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
-    for index in 0..MAX_POOLS {
-        let path = locks.netns_pool(index);
-        // Open for writing without O_CREAT first, fall back to create.
-        // This avoids EACCES from fs.protected_regular=2 on sticky-bit
-        // directories (/var/lock) when the file is owned by another user.
-        let file = match File::options().write(true).open(&path).or_else(|_| {
-            File::options()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(&path)
-        }) {
-            Ok(f) => f,
-            Err(e) => {
-                // Skip indices whose lock file is inaccessible (e.g. owned by
-                // another user under fs.protected_regular=2).
-                warn!(index, %e, "cannot open pool lock, skipping index");
-                continue;
-            }
-        };
-        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-            Ok(lock) => {
-                info!(index, "acquired pool index lock");
-                return Ok((index, lock));
-            }
-            Err((_, errno)) => {
-                if errno != nix::errno::Errno::EWOULDBLOCK {
-                    warn!(index, %errno, "unexpected flock error, skipping index");
-                }
-                continue;
-            }
-        }
-    }
-
-    Err(NetworkError::NoPoolIndexAvailable)
-}
-
-// ---------------------------------------------------------------------------
 // Namespace creation
 // ---------------------------------------------------------------------------
 
@@ -1291,14 +1243,11 @@ async fn cleanup_namespaces_from_snapshot(
 /// acquired index before reuse. Captured resources under other indexes are
 /// deleted only after their flock proves that they have no active owner.
 ///
-/// `_own_lock` is a borrow witness — taking it proves the caller holds a
-/// pool-index flock, which is the permission required to do kernel-side
-/// cleanup on `own_index` without first re-flocking it.
-pub(super) async fn reconcile_orphan_namespaces(
-    locks: &LockPaths,
-    own_index: u32,
-    _own_lock: &Flock<File>,
-) {
+/// `own_lock` is both the index source and a borrow witness: taking it proves
+/// the caller holds the complete bridge claim required to do kernel-side
+/// cleanup on that index without first re-flocking it.
+pub(super) async fn reconcile_orphan_namespaces(locks: &LockPaths, own_lock: &PoolIndexLock) {
+    let own_index = own_lock.index();
     let snapshot = ReconciliationSnapshot::capture().await;
     let candidate_indexes = snapshot.candidate_pool_indexes(own_index);
     let candidate_count = candidate_indexes.len();
@@ -1316,15 +1265,24 @@ pub(super) async fn reconcile_orphan_namespaces(
     // authority to mutate resources for an index. A missed or failed cleanup
     // is retried when a future runner directly acquires that index.
     let mut reconciled = 1_usize;
-    let mut skipped = 0_usize;
+    let mut active = 0_usize;
+    let mut unsafe_locks = 0_usize;
     let mut abandoned = usize::from(matches!(own_outcome, NamespaceDeleteOutcome::Abandoned));
     for index in candidate_indexes {
         if index == own_index {
             continue;
         }
-        let Some(_guard) = try_claim_idle_pool_lock(locks, index) else {
-            skipped += 1;
-            continue;
+        let _guard = match try_claim_reconciliation_lock(locks, index) {
+            Ok(Some(guard)) => guard,
+            Ok(None) => {
+                active += 1;
+                continue;
+            }
+            Err(error) => {
+                unsafe_locks += 1;
+                warn!(index, %error, "cannot safely claim orphaned pool index");
+                continue;
+            }
         };
         info!(index, "reconciling orphaned namespaces from idle pool");
         let outcome = cleanup_namespaces_from_snapshot(&snapshot, index).await;
@@ -1337,24 +1295,11 @@ pub(super) async fn reconcile_orphan_namespaces(
         own_index,
         candidate_count,
         reconciled,
-        skipped,
+        active,
+        unsafe_locks,
         abandoned,
         "startup namespace reconciliation complete"
     );
-}
-
-/// Try to acquire a non-blocking flock on an existing pool lock file.
-///
-/// Returns `None` when the file is missing (index never used, no orphans
-/// possible) or when the lock is held by another runner (active owner,
-/// off-limits). Returns `Some(guard)` otherwise; dropping the guard
-/// releases the lock.
-fn try_claim_idle_pool_lock(locks: &LockPaths, index: u32) -> Option<Flock<File>> {
-    let path = locks.netns_pool(index);
-    // Do NOT create the file — a missing lock file means this index was
-    // never used, so there is nothing to reconcile.
-    let file = File::options().write(true).open(&path).ok()?;
-    Flock::lock(file, FlockArg::LockExclusiveNonblock).ok()
 }
 
 #[cfg(test)]
@@ -1790,93 +1735,5 @@ touch "{}"
                 "trusted right-side outcome: {outcome:?}"
             );
         }
-    }
-
-    #[test]
-    fn acquire_pool_lock_returns_first_available() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        let (index, _lock) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(index, 0);
-    }
-
-    #[test]
-    fn acquire_pool_lock_skips_held_indices() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        let (i0, _hold0) = acquire_pool_lock(&locks).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
-        let (i2, _hold2) = acquire_pool_lock(&locks).unwrap();
-
-        assert_eq!(i0, 0);
-        assert_eq!(i1, 1);
-        assert_eq!(i2, 2);
-    }
-
-    #[test]
-    fn acquire_pool_lock_reuses_released_index() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        let (i0, hold0) = acquire_pool_lock(&locks).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(i0, 0);
-        assert_eq!(i1, 1);
-
-        // Drop lock 0 → index 0 becomes available again.
-        drop(hold0);
-
-        let (reused, _hold) = acquire_pool_lock(&locks).unwrap();
-        assert_eq!(reused, 0);
-    }
-
-    #[test]
-    fn try_claim_idle_pool_lock_returns_none_when_file_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-        // No lock file has ever been created for index 0.
-        assert!(try_claim_idle_pool_lock(&locks, 0).is_none());
-    }
-
-    #[test]
-    fn try_claim_idle_pool_lock_returns_none_when_held() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        let (idx, _held) = acquire_pool_lock(&locks).unwrap();
-        assert!(try_claim_idle_pool_lock(&locks, idx).is_none());
-    }
-
-    #[test]
-    fn try_claim_idle_pool_lock_returns_some_when_idle() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        // Create the lock file by acquiring then releasing — simulates a
-        // prior runner that exited.
-        let (idx, held) = acquire_pool_lock(&locks).unwrap();
-        drop(held);
-
-        let claimed = try_claim_idle_pool_lock(&locks, idx);
-        assert!(claimed.is_some());
-    }
-
-    #[test]
-    fn acquire_pool_lock_exhausted() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks = LockPaths::with_dir(dir.path().to_path_buf());
-
-        // Hold all 64 slots.
-        let _locks: Vec<_> = (0..MAX_POOLS)
-            .map(|_| acquire_pool_lock(&locks).unwrap())
-            .collect();
-
-        let err = acquire_pool_lock(&locks).unwrap_err();
-        assert!(
-            matches!(err, NetworkError::NoPoolIndexAvailable),
-            "expected NoPoolIndexAvailable, got: {err}"
-        );
     }
 }

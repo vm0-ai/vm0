@@ -196,6 +196,29 @@ the canonical shape immediately while the guest reader temporarily accepts both
 representations. Remove the legacy readers and the capability only after the
 canonical API output has been stable across the fully upgraded Runner fleet.
 
+### Netns pool lock migration
+
+Netns pool indexes temporarily use a two-file ownership bridge. Bridge runners
+acquire the legacy `/var/lock/vm0-netns-pool-<index>.lock` first, then acquire
+the matching owner-only
+`/run/vm0/netns-locks/vm0-netns-pool-<index>.lock`, and retain both flocks for
+the pool lifetime. Allocation and orphan reconciliation never proceed with a
+partial claim.
+
+The bridge supports these deployment pairs:
+
+- legacy-only and bridge runners coordinate through the legacy lock;
+- bridge runners coordinate through both locks; and
+- bridge and private-only runners coordinate through the private lock after the
+  cleanup gate is satisfied.
+
+Legacy-only and private-only runners have no common authority and must never be
+active together. Do not remove the legacy side or permit rollback to a
+legacy-only release until the bridge is healthy in production, no active runner
+is legacy-only, and every version retained by `runner gc --keep-latest 6` plus
+every manually supported rollback target contains the bridge. The private-only
+cleanup is tracked by #22632.
+
 ### Firewall hostname policy
 
 The backend is the single owner of firewall configuration hostname policy.
