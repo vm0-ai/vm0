@@ -278,9 +278,6 @@ describe("chat message persistence", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: false,
-        },
         user: { id: userId, fullName: "IndexedDB Event User" },
         org: {
           activeOrg: { id: orgId, name: "IndexedDB Event Org" },

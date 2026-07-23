@@ -66,6 +66,12 @@ impl NbdCowDevice {
         &self.cow_file
     }
 
+    fn relocate_cow_file_after_rename(&mut self, cow_file: PathBuf) -> Result<()> {
+        self.cow.relocate_cow_file_after_rename(cow_file.clone())?;
+        self.cow_file = cow_file;
+        Ok(())
+    }
+
     /// Log COW device status for debugging.
     pub async fn log_status(&self) {
         match self.cow.status().await {
