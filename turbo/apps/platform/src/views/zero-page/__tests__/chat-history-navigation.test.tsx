@@ -44,9 +44,9 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
-  it("publishes initial and older pages together after full history sync", async () => {
+  it("publishes the initial page before batching the remaining history", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000730";
-    const messages = Array.from({ length: 60 }, (_, index) => {
+    const messages = Array.from({ length: 70 }, (_, index) => {
       const itemNumber = index + 1;
       return {
         id: `00000000-0000-4000-8000-${String(itemNumber).padStart(12, "0")}`,
@@ -77,10 +77,16 @@ describe("chat lifecycle", () => {
       async ({ query, respond }) => {
         if (query.beforeId) {
           beforeIds.push(query.beforeId);
-          await beforePageGate.promise;
+          if (query.beforeId === messages[10]!.id) {
+            await beforePageGate.promise;
+            return respond(200, {
+              messages: messages.slice(0, 10),
+              hasHistoryBefore: false,
+            });
+          }
           return respond(200, {
-            messages: messages.slice(0, 10),
-            hasHistoryBefore: false,
+            messages: messages.slice(10, 20),
+            hasHistoryBefore: true,
           });
         }
         if (query.sinceId) {
@@ -91,7 +97,7 @@ describe("chat lifecycle", () => {
         initialPageRequested = true;
         await initialPageGate.promise;
         return respond(200, {
-          messages: messages.slice(10),
+          messages: messages.slice(20),
           hasHistoryBefore: true,
         });
       },
@@ -111,12 +117,13 @@ describe("chat lifecycle", () => {
 
       initialPageGate.resolve();
       await waitFor(() => {
-        expect(beforeIds).toStrictEqual([messages[10]!.id]);
+        expect(beforeIds).toStrictEqual([messages[20]!.id, messages[10]!.id]);
       });
+      expect(screen.getByText("Delayed history reply 70")).toBeInTheDocument();
       expect(
-        screen.queryByText("Delayed history reply 60"),
+        screen.queryByText("Delayed history reply 11"),
       ).not.toBeInTheDocument();
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
 
       beforePageGate.resolve();
     } finally {
@@ -149,7 +156,7 @@ describe("chat lifecycle", () => {
         latestMessageId,
       ]);
     });
-    expect(beforeIds).toStrictEqual([messages[10]!.id]);
+    expect(beforeIds).toStrictEqual([messages[20]!.id, messages[10]!.id]);
   });
 
   it("skips the forward sync when the created event watermark is already loaded", async () => {
@@ -220,7 +227,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("automatically loads older chat history before publishing messages", async () => {
+  it("automatically loads older chat history after publishing recent messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
     const beforeHistoryGate = context.mocks.deferred<void>();
     let initialPageReturned = false;
@@ -261,8 +268,8 @@ describe("chat lifecycle", () => {
         expect(initialPageReturned).toBeTruthy();
       });
       expect(
-        screen.queryByText("Current launch risks are ready."),
-      ).not.toBeInTheDocument();
+        screen.getByText("Current launch risks are ready."),
+      ).toBeInTheDocument();
       expect(queryButtonByText("Load history")).toBeNull();
       expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
 

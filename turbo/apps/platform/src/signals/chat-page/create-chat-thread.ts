@@ -2149,10 +2149,12 @@ function createSyncRemoteMessagesCommand({
     const accumulatedMessages: PagedChatMessage[] = [];
     let sinceId = persistentMessages.at(-1)?.message.id;
     const startedWithoutCursor = sinceId === undefined;
+    let initialPageOldestMessageId: string | undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
       const requestedSinceId = sinceId;
+      const isInitialPage = requestedSinceId === undefined;
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId: requestedSinceId },
@@ -2165,7 +2167,7 @@ function createSyncRemoteMessagesCommand({
         gotCount: result.messages.length,
       });
 
-      if (requestedSinceId === undefined) {
+      if (isInitialPage) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2173,9 +2175,14 @@ function createSyncRemoteMessagesCommand({
         return;
       }
 
-      accumulatedMessages.push(...result.messages);
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
+      if (isInitialPage) {
+        initialPageOldestMessageId = result.messages[0]!.id;
+        set(mergePersistentMessages$, result.messages);
+      } else {
+        accumulatedMessages.push(...result.messages);
+      }
       sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
@@ -2185,7 +2192,9 @@ function createSyncRemoteMessagesCommand({
 
     if (!get(hasReachedOldestMessage$)) {
       const oldestMessageId =
-        persistentMessages[0]?.message.id ?? accumulatedMessages[0]?.id;
+        persistentMessages[0]?.message.id ??
+        initialPageOldestMessageId ??
+        accumulatedMessages[0]?.id;
       if (
         (startedWithoutCursor && initialHasHistoryBefore === false) ||
         oldestMessageId === undefined
