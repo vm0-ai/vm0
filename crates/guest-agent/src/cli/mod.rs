@@ -71,7 +71,7 @@ use tokio::time::Sleep;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
-const ZERO_WEB_SEARCH_FEATURE_KEY: &str = "zeroWebSearch";
+const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///
@@ -323,7 +323,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     codex_runtime_config: Option<codex_runtime_config::CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
-    zero_web_search_enabled: bool,
+    disable_builtin_web_search: bool,
     stuck_tool_timeout_secs: u64,
     post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
@@ -343,18 +343,18 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let zero_web_search_enabled = zero_web_search_enabled_for_runtime(
-            config.framework,
-            &config.feature_flags,
-            &config.user_env,
-        )?;
+        let disable_builtin_web_search = config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
+        let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
+            &config.disallowed_tools,
+            disable_builtin_web_search,
+        );
         Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
             prompt: Cow::Borrowed(&config.prompt),
             resume_session_id: Cow::Borrowed(&config.resume_session_id),
             append_system_prompt: Cow::Borrowed(&config.append_system_prompt),
-            disallowed_tools: Cow::Borrowed(&config.disallowed_tools),
+            disallowed_tools,
             tools: Cow::Borrowed(&config.tools),
             settings: Cow::Borrowed(&config.settings),
             use_mock_claude: config.use_mock_claude,
@@ -375,7 +375,7 @@ impl<'a> CliRuntimeConfig<'a> {
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
                 && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
-            zero_web_search_enabled,
+            disable_builtin_web_search,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 config.post_result_sigterm_grace,
@@ -400,7 +400,7 @@ impl<'a> CliRuntimeConfig<'a> {
             self.codex_runtime_config.as_ref(),
             Path::new(&codex_home),
         );
-        if self.zero_web_search_enabled {
+        if self.disable_builtin_web_search {
             overrides.push(CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string());
         }
         overrides
@@ -436,23 +436,21 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
     user_env.get(key).map(String::as_str).unwrap_or("")
 }
 
-fn zero_web_search_enabled_for_runtime(
-    framework: env::Framework,
-    feature_flags: &str,
-    user_env: &HashMap<String, String>,
-) -> Result<bool, AgentError> {
-    if !matches!(framework, env::Framework::Codex)
-        || !user_env.contains_key(ZERO_AGENT_ID_ENV_KEY)
-        || feature_flags.is_empty()
+fn disallowed_tools_with_builtin_web_search_disabled(
+    disallowed_tools: &str,
+    disable_builtin_web_search: bool,
+) -> Cow<'_, str> {
+    if !disable_builtin_web_search
+        || disallowed_tools
+            .split(',')
+            .any(|tool| tool.trim() == WEB_SEARCH_TOOL_NAME)
     {
-        return Ok(false);
+        return Cow::Borrowed(disallowed_tools);
     }
-
-    let feature_flags: HashMap<String, bool> = serde_json::from_str(feature_flags)?;
-    Ok(feature_flags
-        .get(ZERO_WEB_SEARCH_FEATURE_KEY)
-        .copied()
-        .unwrap_or(false))
+    if disallowed_tools.is_empty() {
+        return Cow::Borrowed(WEB_SEARCH_TOOL_NAME);
+    }
+    Cow::Owned(format!("{disallowed_tools},{WEB_SEARCH_TOOL_NAME}"))
 }
 
 enum ParsedEventAction {
@@ -1537,8 +1535,9 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason, zero_web_search_enabled_for_runtime,
+        codex_runtime_config, command, disallowed_tools_with_builtin_web_search_disabled,
+        exec_boundary, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1579,7 +1578,7 @@ mod tests {
             codex_runtime_config: None,
             codex_oauth_mode: false,
             codex_fast_mode: false,
-            zero_web_search_enabled: false,
+            disable_builtin_web_search: false,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 Duration::from_secs(constants::POST_RESULT_SIGTERM_GRACE_SECS),
@@ -1601,56 +1600,33 @@ mod tests {
     }
 
     #[test]
-    fn zero_web_search_requires_codex_feature_and_zero_marker() {
-        let enabled_flags = r#"{"zeroWebSearch":true}"#;
-        let disabled_flags = r#"{"zeroWebSearch":false}"#;
-        let missing_flags = r#"{"anotherFeature":true}"#;
-        let mut user_env = HashMap::new();
-
-        assert!(
-            !zero_web_search_enabled_for_runtime(env::Framework::Codex, enabled_flags, &user_env,)
-                .unwrap()
+    fn zero_web_search_policy_disables_claude_builtin_search() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_exec_boundary_test(
+            env::Framework::ClaudeCode,
+            "prompt",
+            "",
+            false,
+            &user_env,
         );
+        runtime.disallowed_tools =
+            disallowed_tools_with_builtin_web_search_disabled("CronCreate", true);
 
-        user_env.insert("ZERO_AGENT_ID".to_string(), "agent-1".to_string());
+        let command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let disallowed_tools_index = command
+            .iter()
+            .position(|arg| arg == "--disallowed-tools")
+            .unwrap();
 
-        assert!(
-            zero_web_search_enabled_for_runtime(env::Framework::Codex, enabled_flags, &user_env,)
-                .unwrap()
+        assert_eq!(command[disallowed_tools_index + 1], "CronCreate");
+        assert_eq!(command[disallowed_tools_index + 2], "WebSearch");
+        assert_eq!(
+            disallowed_tools_with_builtin_web_search_disabled("CronCreate,WebSearch", true),
+            "CronCreate,WebSearch"
         );
-        assert!(
-            !zero_web_search_enabled_for_runtime(
-                env::Framework::ClaudeCode,
-                enabled_flags,
-                &user_env,
-            )
-            .unwrap()
-        );
-        assert!(
-            !zero_web_search_enabled_for_runtime(env::Framework::Codex, disabled_flags, &user_env,)
-                .unwrap()
-        );
-        assert!(
-            !zero_web_search_enabled_for_runtime(env::Framework::Codex, missing_flags, &user_env,)
-                .unwrap()
-        );
-        assert!(
-            !zero_web_search_enabled_for_runtime(env::Framework::Codex, "", &user_env).unwrap()
-        );
-    }
-
-    #[test]
-    fn zero_web_search_rejects_malformed_flags_only_for_zero_codex() {
-        let mut zero_user_env = HashMap::new();
-        zero_user_env.insert("ZERO_AGENT_ID".to_string(), "agent-1".to_string());
-
-        let error = zero_web_search_enabled_for_runtime(env::Framework::Codex, "{", &zero_user_env)
-            .unwrap_err();
-
-        assert!(error.to_string().starts_with("json:"));
-        assert!(
-            !zero_web_search_enabled_for_runtime(env::Framework::Codex, "{", &HashMap::new(),)
-                .unwrap()
+        assert_eq!(
+            disallowed_tools_with_builtin_web_search_disabled("CronCreate", false),
+            "CronCreate"
         );
     }
 
@@ -1666,7 +1642,7 @@ mod tests {
                 .is_none()
         );
 
-        runtime.zero_web_search_enabled = true;
+        runtime.disable_builtin_web_search = true;
 
         let new_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
         let new_config_index =
@@ -1691,7 +1667,7 @@ mod tests {
         let user_env = HashMap::new();
         let mut runtime =
             runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", true, &user_env);
-        runtime.zero_web_search_enabled = true;
+        runtime.disable_builtin_web_search = true;
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
             provider_id: "minimax".to_string(),
             name: "MiniMax".to_string(),

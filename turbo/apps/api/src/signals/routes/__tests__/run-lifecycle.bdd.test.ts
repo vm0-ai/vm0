@@ -8185,9 +8185,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroWebSearch]: true,
-    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
@@ -8365,13 +8362,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroWebSearch]: true,
-    });
-    expect(claim.disallowedTools).toStrictEqual([
-      ...EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-      "WebSearch",
-    ]);
+    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
+    expect(claim.disallowedTools).toStrictEqual(
+      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+    );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
@@ -8404,7 +8398,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("advertises scrape when web search is disabled", async () => {
+  it("advertises managed web search without rollout enrollment", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -8416,9 +8410,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.appendSystemPrompt ?? "").not.toContain(
-      "zero web-search --help",
+    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
+    expect(claim.disallowedTools).toStrictEqual(
+      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
+    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8490,9 +8486,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
   it("keeps goal tools allowed with callback guidance", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {});
 
     const run = await api.createRun(actor, {
       agentId,
@@ -8502,18 +8496,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).toMatchObject({});
+    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
-    expect(claim.disallowedTools).not.toContain("WebSearch");
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain(
-      "zero web-search --help",
-    );
+    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("--callback-prompt");
 
     await api.requestCancelRun(actor, run.runId, [200]);
