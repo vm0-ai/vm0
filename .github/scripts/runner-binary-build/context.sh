@@ -20,10 +20,14 @@ is_safe_git_path() {
 is_excluded_path() {
   local path=$1
 
+  # Keep this denylist limited to audited paths outside the build entry points.
   if [[ "$path" == crates/runner/mitm-addon/tests/* ]]; then
     return 0
   fi
-  [[ "$path" =~ ^crates/[^/]+/(tests|benches|examples)/ ]]
+  if [[ "$path" =~ ^crates/[^/]+/(tests|benches|examples)/ ]]; then
+    return 0
+  fi
+  return 1
 }
 
 emit_inventory() {
