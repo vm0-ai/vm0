@@ -210,6 +210,12 @@ export {
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
 
+// Domain modules - Zero Weather
+export {
+  callZeroWeather,
+  type ZeroWeatherResponse,
+} from "./domains/zero-weather";
+
 // Domain modules - Zero Scrape
 export { callZeroScrape, type ZeroScrapeResponse } from "./domains/zero-scrape";
 export {

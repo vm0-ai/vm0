@@ -244,6 +244,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroWeather]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the managed Google-backed Zero Weather and Air Quality APIs and weather:read ZERO_TOKEN capability.",
+    enabled: true,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

@@ -62,6 +62,7 @@ export const ZERO_CAPABILITIES = [
   "billing:write",
   "banking:read",
   "maps:read",
+  "weather:read",
   "scrape:read",
   "web-search:read",
   "computer-use:write",
@@ -153,6 +154,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Read enabled banking accounts",
     },
     "maps:read": { group: "Maps", label: "Use managed maps services" },
+    "weather:read": {
+      group: "Weather",
+      label: "Use managed weather and air quality services",
+    },
     "scrape:read": {
       group: "Scrape",
       label: "Use managed web scraping",

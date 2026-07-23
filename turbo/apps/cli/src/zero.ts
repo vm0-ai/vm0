@@ -52,6 +52,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   video: null,
   host: ["host:read", "host:write"],
   maps: "maps:read",
+  weather: "weather:read",
   scrape: "scrape:read",
   "web-search": "web-search:read",
   banking: "banking:read",
@@ -284,6 +285,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "weather",
+    description: "Use managed Zero weather services",
+    load: async () => {
+      return (await import("./commands/zero/weather")).zeroWeatherCommand;
+    },
+  },
+  {
     name: "scrape",
     description: "Scrape public web pages through managed zero scrape",
     load: async () => {
@@ -436,6 +444,11 @@ export function buildZeroHelpText(
       ? []
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
+        ]),
+    ...(shouldHideCommand("weather", payload)
+      ? []
+      : [
+          "  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json",
         ]),
     ...(shouldHideCommand("scrape", payload)
       ? []

@@ -125,6 +125,23 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
+  it("gates the default-on weather capability behind its feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const disabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ZeroWeather]: false },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
+      "weather:read",
+    );
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
+      "weather:read",
+    );
+  });
+
   it("includes chat thread read and write capabilities in zero-scoped tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 

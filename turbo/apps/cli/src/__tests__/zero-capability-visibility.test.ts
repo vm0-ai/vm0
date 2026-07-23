@@ -36,6 +36,7 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("weather"),
     new Command("scrape"),
     new Command("web-search"),
     new Command("banking"),
@@ -172,6 +173,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "host",
       "maps",
+      "weather",
       "scrape",
       "web-search",
       "banking",
@@ -489,6 +491,31 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("maps");
   });
 
+  it("should show weather when weather:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["weather:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("weather");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide weather when weather:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("weather");
+  });
+
   it("should show banking when banking:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -632,6 +659,28 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get directions?",
+    );
+  });
+
+  it("should show the weather help example when weather:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["weather:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Check weather?",
+    );
+  });
+
+  it("should hide the weather help example when weather:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Check weather?",
     );
   });
 

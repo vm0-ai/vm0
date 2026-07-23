@@ -341,6 +341,7 @@ function buildAgentToolsPrompt(args: {
     "- Slack messages: when the task explicitly asks to send or post to Slack, use `zero slack message send --help` for channels, DMs, and thread replies.",
     ...buildIntegrationToolsPrompt(args.triggerSource, args.zeroMailEnabled),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",
+    "- Current weather, forecasts, and recent history: use `zero weather --help`.",
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",

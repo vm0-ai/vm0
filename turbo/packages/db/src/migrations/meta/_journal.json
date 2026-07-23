@@ -4551,6 +4551,13 @@
       "when": 1784788419485,
       "tag": "0649_common_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 650,
+      "version": "7",
+      "when": 1784788562522,
+      "tag": "0650_add_zero_weather_usage_pricing",
+      "breakpoints": true
     }
   ]
 }
