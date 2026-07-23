@@ -268,13 +268,9 @@ describe("POST /api/zero/email/inbound", () => {
     });
   });
 
-  it("keeps bounced and complained recipients out of transactional sends", async () => {
+  it("keeps bounced recipients out of transactional sends", async () => {
     const bouncedActor = bdd.user();
-    const complainedActor = bdd.user();
     const controlActor = bdd.user();
-    context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [clerkUserListEntry(complainedActor.userId, complainedActor.email)],
-    });
 
     await postInbound({
       type: "email.bounced",
@@ -283,6 +279,21 @@ describe("POST /api/zero/email/inbound", () => {
         to: [bouncedActor.email],
       },
     });
+
+    await email.enqueueDataExportEmail(bouncedActor);
+    await email.enqueueDataExportEmail(controlActor);
+    const drain = await email.drainEmailOutboxCron(true);
+    expect(drain.status).toBe(200);
+    expect(sendCallsTo(bouncedActor.email)).toBe(0);
+    expect(sendCallsTo(controlActor.email)).toBe(1);
+  });
+
+  it("keeps complained recipients out of transactional sends", async () => {
+    const complainedActor = bdd.user();
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [clerkUserListEntry(complainedActor.userId, complainedActor.email)],
+    });
+
     await postInbound({
       type: "email.complained",
       data: {
@@ -291,14 +302,10 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
 
-    await email.enqueueDataExportEmail(bouncedActor);
     await email.enqueueDataExportEmail(complainedActor);
-    await email.enqueueDataExportEmail(controlActor);
     const drain = await email.drainEmailOutboxCron(true);
     expect(drain.status).toBe(200);
-    expect(sendCallsTo(bouncedActor.email)).toBe(0);
     expect(sendCallsTo(complainedActor.email)).toBe(0);
-    expect(sendCallsTo(controlActor.email)).toBe(1);
   });
 
   it("acknowledges new and reply-address email without creating Agent runs", async () => {
