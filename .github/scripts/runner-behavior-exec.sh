@@ -1005,6 +1005,7 @@ POOL_LOCK_GUARD_DIR=$(mktemp -d "/tmp/vm0-${SVC}-pool-lock.XXXXXX") \
 POOL_LOCK_READY="$POOL_LOCK_GUARD_DIR/ready"
 POOL_LOCK_RELEASE_FIFO="$POOL_LOCK_GUARD_DIR/release"
 POOL_LOCK_ERROR="$POOL_LOCK_GUARD_DIR/error"
+POOL_LOCK_TARGET="$POOL_LOCK_GUARD_DIR/target"
 mkfifo "$POOL_LOCK_RELEASE_FIFO" \
   || fail "failed to create pool-lock release FIFO"
 exec {POOL_LOCK_RELEASE_FD}<>"$POOL_LOCK_RELEASE_FIFO" \
@@ -1015,6 +1016,7 @@ sudo python3 - \
   "$RUNNER_POOL_INDEX" \
   "$POOL_LOCK_READY" \
   "$POOL_LOCK_RELEASE_FIFO" \
+  "$POOL_LOCK_TARGET" \
   {POOL_LOCK_RELEASE_FD}>&- >"$POOL_LOCK_ERROR" 2>&1 <<'PY' &
 import ctypes
 import errno
@@ -1028,6 +1030,7 @@ runner_pid = int(sys.argv[1])
 pool_index = int(sys.argv[2])
 ready_path = Path(sys.argv[3])
 release_fifo = Path(sys.argv[4])
+target_path = Path(sys.argv[5])
 lock_name = f"vm0-netns-pool-{pool_index}.lock"
 
 
@@ -1076,6 +1079,7 @@ try:
         )
     release_fd = os.open(release_fifo, os.O_RDONLY)
     try:
+        target_path.write_text(target)
         ready_path.touch()
         while os.read(release_fd, 1):
             pass
@@ -1098,9 +1102,19 @@ if [ ! -e "$POOL_LOCK_READY" ]; then
   [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
   fail "failed to retain runner pool lock before stop"
 fi
+POOL_LOCK_PATH=$(cat "$POOL_LOCK_TARGET") \
+  || fail "failed to read retained pool lock path"
+[ -n "$POOL_LOCK_PATH" ] || fail "retained pool lock path is empty"
 
 # Stop transient service (kills sandbox, submit terminates naturally).
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+if sudo flock -n "$POOL_LOCK_PATH" true; then
+  fail "pool lock released before cleanup assertions"
+else
+  POOL_LOCK_PROBE_STATUS=$?
+fi
+[ "$POOL_LOCK_PROBE_STATUS" -eq 1 ] \
+  || fail "failed to probe retained pool lock: status $POOL_LOCK_PROBE_STATUS"
 if sudo iptables-save -t filter \
   | grep -F -- "--comment ${DNS_FILTER_COMMENT}" >/dev/null; then
   fail "IPv4 DNS INPUT filter leaked after runner stop"
