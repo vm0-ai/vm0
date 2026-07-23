@@ -103,13 +103,15 @@ function OnboardingConnectorRow({
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
         <ConnectorIcon icon={item?.icon} size={22} />
       </span>
-      {variant === "workflow" ? (
-        <span className="w-14 shrink-0 text-xs font-normal text-muted-foreground">
-          {required ? "Required" : "Optional"}
-        </span>
-      ) : null}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{label}</p>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <p className="min-w-0 truncate text-sm font-medium">{label}</p>
+          {variant === "workflow" ? (
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+              {required ? "Required" : "Optional"}
+            </span>
+          ) : null}
+        </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {promptHelpText(item?.description)}
         </p>
