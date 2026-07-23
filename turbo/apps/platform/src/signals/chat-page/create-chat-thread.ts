@@ -1328,7 +1328,10 @@ function compareServerMessageOrder(
     return leftSequence - rightSequence;
   }
 
-  return compareCursorString(left.id, right.id);
+  // The API exposes createdAt at millisecond precision, so messages that are
+  // distinct on the server can appear tied here. Preserve their stable source
+  // order instead of inventing an ID order that can reverse queued messages.
+  return 0;
 }
 
 function mergeRegisteredMessages(
@@ -2406,7 +2409,7 @@ function createIndexedDbMessageMergeCommands({
         return registerChatMessage(message, registerBodyBlocks);
       });
       set(persistentMessages$, (previous) => {
-        return mergeRegisteredMessages([registeredMessages, previous]);
+        return mergeRegisteredMessages([previous, registeredMessages]);
       });
     },
   );
