@@ -578,7 +578,32 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
       code: `${structuredSelectionPreamble}
         import { sql } from "drizzle-orm";
         const messageColumns = {
-          lastMessageId: ${mappedScalarQuery},
+          workflowAutomationBrief: sql\`(
+            SELECT COALESCE(
+              "zero_runs"."trigger_brief",
+              CASE
+                WHEN "zero_workflow_automations"."kind" = 'event'
+                  THEN 'Webhook received'
+                ELSE NULL
+              END
+            )
+            FROM "zero_runs"
+            INNER JOIN "zero_workflow_automations"
+              ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
+            WHERE "zero_runs"."id" = "chat_messages"."run_id"
+            LIMIT 1
+          )\`.mapWith(users.name),
+          workflowAutomationUserTimezone: sql\`(
+            SELECT "org_members_metadata"."timezone"
+            FROM "zero_runs"
+            INNER JOIN "zero_workflow_automations"
+              ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
+            LEFT JOIN "org_members_metadata"
+              ON "org_members_metadata"."org_id" = "zero_workflow_automations"."org_id"
+              AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
+            WHERE "zero_runs"."id" = "chat_messages"."run_id"
+            LIMIT 1
+          )\`.mapWith(users.name),
         } as const;
         function selectedMessageColumns(database: DrizzleDatabase) {
           return {
@@ -589,7 +614,10 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         db.select(selectedMessageColumns(db)).from(users);
         db.select(selectedMessageColumns(db)).from(users);
       `,
-      errors: [{ messageId: "structuredScalarQuery" }],
+      errors: [
+        { messageId: "structuredScalarQuery" },
+        { messageId: "structuredScalarQuery" },
+      ],
     },
     {
       code: `${structuredSelectionPreamble}
