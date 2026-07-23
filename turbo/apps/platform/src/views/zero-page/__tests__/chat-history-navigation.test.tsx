@@ -151,6 +151,74 @@ describe("chat lifecycle", () => {
     expect(beforeIds).toStrictEqual([messages[10]!.id]);
   });
 
+  it("skips the forward sync when the created event watermark is already loaded", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000731";
+    const messages = [
+      {
+        id: "00000000-0000-4000-8000-000000000741",
+        role: "assistant" as const,
+        content: "Loaded reply one",
+        createdAt: "2026-06-09T10:00:00.000Z",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000742",
+        role: "assistant" as const,
+        content: "Loaded reply two",
+        createdAt: "2026-06-09T10:01:00.000Z",
+      },
+    ] satisfies PagedChatMessage[];
+    const sinceIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Watermark skip",
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (query.sinceId) {
+        sinceIds.push(query.sinceId);
+        return respond(200, { messages: [] });
+      }
+      return respond(200, { messages, hasHistoryBefore: false });
+    });
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadAt: null, unreads: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Loaded reply two")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageCreated:${threadId}`,
+        ),
+      ).toBeTruthy();
+    });
+    const forwardRequestCount = sinceIds.length;
+
+    // The app-level background IndexedDB sync also handles both events and
+    // issues one cursor fetch each. The open thread must skip its own fetch
+    // for the watermark event and fetch once for the payload-less event, so
+    // the two events add exactly three cursor requests; a broken skip adds a
+    // fourth.
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {
+      syncThroughMessageId: messages[1]!.id,
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+    await waitFor(() => {
+      expect(sinceIds).toHaveLength(forwardRequestCount + 3);
+    });
+  });
+
   it("automatically loads older chat history before publishing messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
     const beforeHistoryGate = context.mocks.deferred<void>();

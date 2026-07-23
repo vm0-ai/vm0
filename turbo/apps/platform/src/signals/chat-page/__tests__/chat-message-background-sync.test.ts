@@ -61,6 +61,26 @@ const newMessage = assistantMessage(
   "2026-07-23T10:03:00.000Z",
 );
 
+const SKIP_THREAD_ID = "b0000000-0000-4000-a000-000000000811";
+const SKIP_FIRST_ID = "00000000-0000-4000-8000-000000000812";
+const SKIP_LAST_ID = "00000000-0000-4000-8000-000000000813";
+const SKIP_NEW_ID = "00000000-0000-4000-8000-000000000814";
+const skipFirstCached = assistantMessage(
+  SKIP_FIRST_ID,
+  "First cached message",
+  "2026-07-23T10:01:00.000Z",
+);
+const skipLastCached = assistantMessage(
+  SKIP_LAST_ID,
+  "Last cached message",
+  "2026-07-23T10:02:00.000Z",
+);
+const skipNewMessage = assistantMessage(
+  SKIP_NEW_ID,
+  "New remote message",
+  "2026-07-23T10:03:00.000Z",
+);
+
 function mockSignedInUser(): void {
   mockUser(
     {
@@ -151,6 +171,77 @@ describe("chat message background sync", () => {
       expect(requests).toStrictEqual([
         { sinceId: LAST_CACHED_MESSAGE_ID, beforeId: undefined },
         { sinceId: NEW_MESSAGE_ID, beforeId: undefined },
+      ]);
+    } finally {
+      subscriber.abort(abortError("test done"));
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+      appDb.close();
+    }
+  });
+
+  it("skips the fetch when the event watermark is already cached", async () => {
+    mockSignedInUser();
+    const appDb = await context.store.get(chatIdb$);
+    await context.store.set(
+      writeIndexedDbChatMessages$,
+      SKIP_THREAD_ID,
+      [skipFirstCached, skipLastCached],
+      context.signal,
+    );
+
+    const requests: { readonly sinceId: string | undefined }[] = [];
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      requests.push({ sinceId: query.sinceId });
+      if (query.sinceId === SKIP_LAST_ID) {
+        return respond(200, {
+          messages: [skipNewMessage],
+          hasHistoryBefore: true,
+        });
+      }
+      return respond(200, {
+        messages: [],
+        hasHistoryBefore: false,
+      });
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriber = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatMessageBackgroundSync$,
+      subscriber.signal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      // Watermark already cached: the event must not trigger any fetch.
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${SKIP_THREAD_ID}`, {
+        syncThroughMessageId: SKIP_LAST_ID,
+      });
+      // Watermark not cached: the forward sync runs. Events process in
+      // order, so requests observed here prove the first event fetched
+      // nothing.
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${SKIP_THREAD_ID}`, {
+        syncThroughMessageId: SKIP_NEW_ID,
+      });
+
+      await waitFor(async () => {
+        await expect(
+          appDb.get(CHAT_MESSAGES_STORE, SKIP_NEW_ID),
+        ).resolves.toMatchObject({
+          id: SKIP_NEW_ID,
+          threadId: SKIP_THREAD_ID,
+        });
+      });
+
+      expect(requests).toStrictEqual([
+        { sinceId: SKIP_LAST_ID },
+        { sinceId: SKIP_NEW_ID },
       ]);
     } finally {
       subscriber.abort(abortError("test done"));

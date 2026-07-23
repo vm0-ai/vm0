@@ -89,6 +89,28 @@ export const loadIndexedDbChatMessageBounds$ = command(
   },
 );
 
+export const hasIndexedDbChatMessage$ = command(
+  async (
+    { get },
+    threadId: string,
+    messageId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const stores = await get(chatMessageStores$);
+    signal.throwIfAborted();
+    const found = await chatIdbReadOr(
+      "indexedDbMessages:hasMessage",
+      () => {
+        return stores.readStore.hasMessage(threadId, messageId, signal);
+      },
+      false,
+      signal,
+    );
+    signal.throwIfAborted();
+    return found;
+  },
+);
+
 export const writeIndexedDbChatMessages$ = command(
   async (
     { get },

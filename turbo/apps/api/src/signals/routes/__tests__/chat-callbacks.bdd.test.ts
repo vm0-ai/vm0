@@ -937,7 +937,7 @@ describe("CHAT-02: completed chat callback", () => {
       .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      { syncThroughMessageId: expect.any(String) },
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${first.threadId}`,
@@ -2050,7 +2050,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       await flushWaitUntilForTest();
       expect(context.mocks.ably.publish).toHaveBeenCalledWith(
         `chatThreadMessageCreated:${run.threadId}`,
-        null,
+        { syncThroughMessageId: expect.any(String) },
       );
       expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
         `chatThreadRunCreated:${run.threadId}`,

@@ -36,6 +36,11 @@ interface ChatMessageReadStore {
     threadId: string,
     signal?: AbortSignal,
   ): Promise<PagedChatMessage[]>;
+  hasMessage(
+    threadId: string,
+    messageId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean>;
 }
 
 export interface ChatMessageBounds {
@@ -161,6 +166,19 @@ function createMessageReadStore(
       const messages = storedMessages.map(validateMessage);
       L.debug("readLatest:done", { threadId, count: messages.length });
       return messages;
+    },
+    async hasMessage(threadId, messageId, signal) {
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const stored: unknown = await db.get(storeName, messageId);
+      signal?.throwIfAborted();
+      const found =
+        stored !== null &&
+        typeof stored === "object" &&
+        "threadId" in stored &&
+        stored.threadId === threadId;
+      L.debug("hasMessage:done", { threadId, messageId, found });
+      return found;
     },
   };
 }
