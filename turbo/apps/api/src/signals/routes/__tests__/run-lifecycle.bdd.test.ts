@@ -1752,18 +1752,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
-    const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
-      version: "1",
-      agents: {
-        [composeName]: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-        },
-      },
-    });
-    await api.heartbeatRunner(runnerGroup);
-
     const readOnlyStorageName = `bdd-phase3-volume-${randomUUID().slice(0, 8)}`;
     const readOnlyFile = storageTextFile(
       "phase3.txt",
@@ -1780,14 +1768,57 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       versionId: preparedReadOnlyStorage.versionId,
       files: [readOnlyFile],
     });
+    const additionalStorageName = `bdd-phase3-additional-${randomUUID().slice(0, 8)}`;
+    const additionalFile = storageTextFile(
+      "additional.txt",
+      `canonical additional Storage ${additionalStorageName}`,
+    );
+    const preparedAdditionalStorage = await storages.prepareStorage(actor, {
+      storageName: additionalStorageName,
+      storageType: "volume",
+      files: [additionalFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: additionalStorageName,
+      storageType: "volume",
+      versionId: preparedAdditionalStorage.versionId,
+      files: [additionalFile],
+    });
+    const customArtifactName = `bdd-phase3-artifact-${randomUUID().slice(0, 8)}`;
+    const customArtifactMountPath = "/phase3-writeback";
+    const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        checkpoint: {
+          name: readOnlyStorageName,
+          version: preparedReadOnlyStorage.versionId,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: ["checkpoint:/phase3-compose"],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
     const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: compose.versionId,
       prompt: "persist canonical storage mounts",
+      artifacts: [
+        {
+          name: customArtifactName,
+          mountPath: customArtifactMountPath,
+        },
+      ],
       additionalVolumes: [
         {
-          name: readOnlyStorageName,
-          version: preparedReadOnlyStorage.versionId,
-          mountPath: "/phase3-read-only",
+          name: additionalStorageName,
+          version: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
         },
       ],
     });
@@ -1808,9 +1839,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         name: readOnlyStorageName,
         versionId: preparedReadOnlyStorage.versionId,
-        mountPath: "/phase3-read-only",
+        mountPath: "/phase3-compose",
       }),
     );
+    expect(initialManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: additionalStorageName,
+        versionId: preparedAdditionalStorage.versionId,
+        mountPath: "/phase3-additional",
+      }),
+    );
+    const initialCustomArtifact = initialManifest.storageMounts.find(
+      (mount) => {
+        return mount.name === customArtifactName;
+      },
+    );
+    if (!initialCustomArtifact) {
+      throw new Error("Expected the custom canonical writeback mount");
+    }
 
     const memoryFile = storageTextFile(
       "MEMORY.md",
@@ -1826,6 +1872,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       storageType: "artifact",
       versionId: preparedMemory.versionId,
       files: [memoryFile],
+    });
+    const customArtifactFile = storageTextFile(
+      "checkpoint.txt",
+      `canonical custom writeback ${initialRun.runId}`,
+    );
+    const preparedCustomArtifact = await storages.prepareStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      files: [customArtifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      versionId: preparedCustomArtifact.versionId,
+      files: [customArtifactFile],
     });
 
     const historyHash = createHash("sha256")
@@ -1845,6 +1906,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
             ...(initialMemory.missingRootPolicy === undefined
               ? {}
               : { missingRootPolicy: initialMemory.missingRootPolicy }),
+          },
+          {
+            name: initialCustomArtifact.name,
+            version: preparedCustomArtifact.versionId,
+            mountPath: initialCustomArtifact.mountPath,
+            ...(initialCustomArtifact.missingRootPolicy === undefined
+              ? {}
+              : {
+                  missingRootPolicy: initialCustomArtifact.missingRootPolicy,
+                }),
           },
         ],
       },
@@ -1896,6 +1967,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           mountPath: initialMemory.mountPath,
           writeback: true,
         }),
+        expect.objectContaining({
+          name: customArtifactName,
+          storageId: initialCustomArtifact.storageId,
+          versionId: preparedCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+          writeback: true,
+        }),
       ]),
     );
 
@@ -1923,13 +2001,103 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect.objectContaining({
           name: readOnlyStorageName,
           versionId: preparedReadOnlyStorage.versionId,
-          mountPath: "/phase3-read-only",
+          mountPath: "/phase3-compose",
+        }),
+        expect.objectContaining({
+          name: additionalStorageName,
+          versionId: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
+        }),
+        expect.objectContaining({
+          name: customArtifactName,
+          storageId: initialCustomArtifact.storageId,
+          versionId: preparedCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+
+    const overriddenReadOnlyFile = storageTextFile(
+      "phase3.txt",
+      `overridden canonical volume ${readOnlyStorageName}`,
+    );
+    const overriddenReadOnlyStorage = await storages.prepareStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      files: [overriddenReadOnlyFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      versionId: overriddenReadOnlyStorage.versionId,
+      files: [overriddenReadOnlyFile],
+    });
+    const overriddenArtifactFile = storageTextFile(
+      "checkpoint.txt",
+      `overridden canonical artifact ${customArtifactName}`,
+    );
+    const overriddenCustomArtifact = await storages.prepareStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      files: [overriddenArtifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      versionId: overriddenCustomArtifact.versionId,
+      files: [overriddenArtifactFile],
+    });
+    const overrideRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "override canonical checkpoint Storage",
+      artifacts: [
+        {
+          name: customArtifactName,
+          version: overriddenCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+        },
+      ],
+      volumeVersions: {
+        checkpoint: overriddenReadOnlyStorage.versionId,
+      },
+    });
+    const overrideClaim = await api.claimRunnerJob(overrideRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const overrideManifest = overrideClaim.storageManifest;
+    if (!overrideManifest || !("storageMounts" in overrideManifest)) {
+      throw new Error("Expected canonical mounts after Storage overrides");
+    }
+    expect(overrideManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          versionId: preparedMemory.versionId,
+          writeback: true,
+        }),
+        expect.objectContaining({
+          name: customArtifactName,
+          versionId: overriddenCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+          writeback: true,
+        }),
+        expect.objectContaining({
+          name: readOnlyStorageName,
+          versionId: overriddenReadOnlyStorage.versionId,
+          mountPath: "/phase3-compose",
+        }),
+        expect.objectContaining({
+          name: additionalStorageName,
+          versionId: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
         }),
       ]),
     );
 
-    await api.requestCancelRun(actor, sessionRun.runId, [200]);
-    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+    await api.requestCancelRun(actor, overrideRun.runId, [200]);
   });
 
   it("skips a persisted optional Storage missing during checkpoint resume", async () => {

@@ -151,6 +151,7 @@ import {
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
+  projectLegacyCheckpointStorageInputs,
   type PreparedAgentRunStorageManifest,
   StorageManifestBuildStats,
   type StorageManifestSource,
@@ -4410,13 +4411,22 @@ function resolveByCheckpointId(
       if (isRouteError(resolved)) {
         return resolved;
       }
+      const canonicalStorageInputs = row.storageMounts
+        ? projectLegacyCheckpointStorageInputs({
+            content: resolved.content,
+            vars: snapshot.vars,
+            mounts: row.storageMounts,
+          })
+        : null;
 
       return {
         ...resolved,
         // Keep the legacy projection available for requests that explicitly
         // override checkpoint Storage declarations. The canonical snapshot is
         // used when there are no overrides.
-        artifacts: row.artifacts ?? [],
+        artifacts: row.storageMounts
+          ? projectLegacyWritebackArtifacts(row.storageMounts)
+          : (row.artifacts ?? []),
         ...(row.storageMounts
           ? {
               persistedStorageMounts: {
@@ -4426,10 +4436,12 @@ function resolveByCheckpointId(
             }
           : {}),
         vars: snapshot.vars ?? {},
-        volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
-        additionalVolumes: parseAdditionalVolumesSnapshot(
-          row.volumeVersionsSnapshot,
-        ),
+        volumeVersions: row.storageMounts
+          ? canonicalStorageInputs?.volumeVersions
+          : parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
+        additionalVolumes: row.storageMounts
+          ? canonicalStorageInputs?.additionalVolumes
+          : parseAdditionalVolumesSnapshot(row.volumeVersionsSnapshot),
         resumedFromCheckpointId: checkpointId,
         resumeSession: await measureApiDispatchTiming(
           timing,
@@ -7065,10 +7077,9 @@ function resolvedForStorageCompatibility(args: {
     return args.resolved;
   }
 
-  // The legacy checkpoint projection records which read-only mounts came
-  // from compose volumes versus additional volumes. Persisted canonical
-  // mounts intentionally do not retain that source distinction, so explicit
-  // legacy overrides must stay on the compatibility reader during rollout.
+  // resolveByCheckpointId reconstructs alias-keyed compose versions and
+  // additional-volume declarations from the canonical checkpoint snapshot,
+  // so explicit legacy overrides can stay on the compatibility reader.
   const { persistedStorageMounts: _persistedStorageMounts, ...resolved } =
     args.resolved;
   return resolved;
