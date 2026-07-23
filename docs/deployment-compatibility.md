@@ -192,9 +192,19 @@ compose-volume versus additional-volume distinction. The short-lived runner job
 queue also retains its legacy claim projection until old Runner output is
 removed.
 
-Remove the legacy columns and readers only after historical rows have been
-backfilled and verification finds zero legacy writes, zero unmigrated rows, and
-no lossy conversion.
+Phase 4A contracts the migration denominator to the latest state used by
+session continuation. Every session continuation head must have canonical
+writeback mounts, and projecting those mounts back to the legacy artifact shape
+must be lossless. Omitted and `latest` version declarations retain their
+dynamic-HEAD behavior. Historical run and checkpoint rows are not converted
+into resumable snapshots: arbitrary checkpoint resume remains a separate
+legacy path that will be retired, while a successful continuation naturally
+emits a fully resolved canonical run and checkpoint.
+
+Remove the remaining legacy columns and readers only after verification finds
+zero legacy writes, zero unmigrated session continuation heads, and no lossy
+session conversion. Malformed, ambiguous, or unresolvable latest session state
+must block contraction rather than being silently rewritten.
 
 Runner and guest binaries ship together, so the Runner-to-guest manifest uses
 the canonical shape immediately while the guest reader temporarily accepts both
