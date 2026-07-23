@@ -151,4 +151,53 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
       scriptText.indexOf("await materializeComplexSlideBackgrounds(nodes)"),
     ).toBeLessThan(scriptText.indexOf("window.domToPptx.exportToPptx"));
   });
+
+  it("reveals hidden staged slide ancestors before exporting", async () => {
+    const exportHtml = await buildPresentationHtmlPptxExportHtml({
+      baseUrl: "https://presentation.example.test/index.html",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              .slide {
+                display: none;
+              }
+              .slide.active {
+                display: flex;
+              }
+            </style>
+          </head>
+          <body>
+            <section class="slide">
+              <div class="stage" data-vm0-slide>
+                <h1>Hidden slide</h1>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+      options: {
+        fileName: "deck.pptx",
+        layout: "LAYOUT_WIDE",
+        skipDownload: true,
+        svgAsVector: true,
+      },
+      signal: AbortSignal.any([]),
+    });
+    const doc = new DOMParser().parseFromString(exportHtml, "text/html");
+    const scriptText = Array.from(doc.querySelectorAll("script"))
+      .map((script) => {
+        return script.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(scriptText).toContain("revealElement(ancestor, false)");
+    expect(scriptText).toContain(
+      'window.getComputedStyle(element).display === "none"',
+    );
+    expect(scriptText.indexOf("revealSlideNodes(nodes)")).toBeLessThan(
+      scriptText.indexOf("window.domToPptx.exportToPptx"),
+    );
+  });
 });

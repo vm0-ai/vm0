@@ -425,14 +425,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationElementDragging]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable selecting and dragging presentation elements in the HTML presentation editor.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
     description:
