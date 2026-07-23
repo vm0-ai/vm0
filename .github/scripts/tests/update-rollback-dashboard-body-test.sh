@@ -35,6 +35,30 @@ This issue is automatically maintained by CI. Do not edit manually.
 ### legacy entry
 | Component | Version |
 | api | v1.0.0 |
+<!-- ROLLBACK_ENTRY_START aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -->
+## 07-22-2026 07:39:39 Asia/Singapore · 07-21-2026 16:39:39 SF · RollbackId: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
+
+### [legacy-app](https://example.test/legacy-app): `1.0.0`
+
+**Change Log**
+
+#### Dependencies
+
+* old dependency
+
+#### Bug Fixes
+
+* retained fix
+
+### [legacy-core](https://example.test/legacy-core): `2.0.0`
+
+**Change Log**
+
+#### Dependencies
+
+* trailing dependency
+
+<!-- ROLLBACK_ENTRY_END -->
 <!-- ROLLBACK_ENTRIES_END -->
 EOF
 
@@ -52,7 +76,7 @@ jq -n --arg target "$target_commit" '[
     target_commitish: $target,
     html_url: "https://github.com/vm0-ai/vm0/releases/tag/core-v8.452.0",
     published_at: "2026-07-22T23:39:31Z",
-    body: "## [8.452.0](https://example.test/core) (2026-07-22)\n\n### Bug Fixes\n\n* core fix"
+    body: "## [8.452.0](https://example.test/core) (2026-07-22)\n\n### Dependencies\n\n* core dependency"
   },
   {
     tag_name: "runner-rs-v0.147.2",
@@ -73,7 +97,7 @@ jq -n --arg target "$target_commit" '[
     target_commitish: $target,
     html_url: "https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0",
     published_at: "2026-07-22T23:39:34Z",
-    body: "## [0.618.0](https://example.test/app) (2026-07-22)\n\n### Features\n\n* app feature"
+    body: "## [0.618.0](https://example.test/app) (2026-07-22)\n\n### Features\n\n* app feature\n\n### Dependencies\n\n* app dependency"
   },
   {
     tag_name: "unrelated-v9.9.9",
@@ -90,7 +114,8 @@ PATH="${fake_bin}:$PATH" \
   "$TARGET" "$body_file" "$target_commit" "$rollback_url" >"$output_file"
 
 grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
-grep -Fqx -- "## 07-23-2026 07:39:40 Asia/Singapore · 07-22-2026 16:39:40 SF · RollbackId: \`${target_commit}\`" "$output_file"
+grep -Fqx -- "<summary>07-23-2026 07:39:40 SGT</summary>" "$output_file"
+grep -Fqx -- "* PDT 07-22-2026 16:39:40" "$output_file"
 grep -Fqx -- "### [app](https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0): \`0.618.0\`" "$output_file"
 grep -Fqx -- "### [api](https://github.com/vm0-ai/vm0/releases/tag/api-v1.303.0): \`1.303.0\`" "$output_file"
 grep -Fqx -- "### [runner-rs](https://github.com/vm0-ai/vm0/releases/tag/runner-rs-v0.147.2): \`0.147.2\`" "$output_file"
@@ -100,8 +125,10 @@ grep -Fqx -- "#### Features" "$output_file"
 grep -Fqx -- "* app feature" "$output_file"
 grep -Fqx -- "* api feature" "$output_file"
 grep -Fqx -- "* runner improvement" "$output_file"
-grep -Fqx -- "* core fix" "$output_file"
 grep -Fqx -- "* zeta feature" "$output_file"
+grep -Fqx -- "<summary>07-22-2026 07:39:39 SGT</summary>" "$output_file"
+grep -Fqx -- "* PDT 07-21-2026 16:39:39" "$output_file"
+grep -Fqx -- "* retained fix" "$output_file"
 
 app_line=$(grep -n '^### \[app\]' "$output_file" | cut -d: -f1)
 api_line=$(grep -n '^### \[api\]' "$output_file" | cut -d: -f1)
@@ -123,6 +150,28 @@ if grep -Fq 'must not appear' "$output_file"; then
 fi
 if grep -Fq '## [0.618.0]' "$output_file"; then
   fail "duplicate release title was not removed"
+fi
+if grep -Fq 'RollbackId:' "$output_file"; then
+  fail "rollback commit should not be visible in entry headings"
+fi
+if grep -Fq '#### Dependencies' "$output_file" || \
+  grep -Fq 'app dependency' "$output_file" || \
+  grep -Fq 'core dependency' "$output_file" || \
+  grep -Fq 'old dependency' "$output_file" || \
+  grep -Fq 'trailing dependency' "$output_file"; then
+  fail "dependency-only changelog sections were not removed"
+fi
+if sed -n '/^### \[core\]/,/^### \[zeta\]/p' "$output_file" |
+  grep -Fq '**Change Log**'; then
+  fail "dependency-only release retained an empty changelog heading"
+fi
+if grep -Eq '^<details[[:space:]]+open' "$output_file"; then
+  fail "rollback entries should be collapsed by default"
+fi
+initial_details_count=$(grep -c '^<details>$' "$output_file")
+initial_details_end_count=$(grep -c '^</details>$' "$output_file")
+if [ "$initial_details_count" -ne "$initial_details_end_count" ]; then
+  fail "legacy dashboard migration left an unclosed details block"
 fi
 
 write_single_release() {
@@ -159,6 +208,10 @@ done
 entry_count=$(grep -c '^<!-- ROLLBACK_ENTRY_START [0-9a-f]\{40\} -->$' "$output_file")
 if [ "$entry_count" -ne 7 ]; then
   fail "expected 7 dashboard entries, found $entry_count"
+fi
+details_count=$(grep -c '^<details>$' "$output_file")
+if [ "$details_count" -ne "$entry_count" ]; then
+  fail "expected every dashboard entry to be a collapsible details block"
 fi
 
 latest_commit=0000000000000000000000000000000000000008
