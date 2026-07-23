@@ -988,15 +988,15 @@ describe("CHAT-02: completed chat callback", () => {
 
   it.each([
     {
-      timingSource: "original Web API start",
+      behavior: "preserves the original Web API start",
       clearQueuedApiStart: false,
     },
     {
-      timingSource: "dequeue fallback for a mixed-version row",
+      behavior: "skips timing for a mixed-version queue row",
       clearQueuedApiStart: true,
     },
   ])(
-    "uses the $timingSource when a queued message auto-sends",
+    "$behavior when a queued message auto-sends",
     async ({ clearQueuedApiStart }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1096,13 +1096,17 @@ describe("CHAT-02: completed chat callback", () => {
       );
       await flushWaitUntilForTest();
 
-      expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual([
-        expect.objectContaining({
-          _time: new Date(acknowledgedAt).toISOString(),
-          duration_ms: acknowledgedAt - expectedApiStartTime,
-          run_id: claimed.runId,
-        }),
-      ]);
+      expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual(
+        clearQueuedApiStart
+          ? []
+          : [
+              expect.objectContaining({
+                _time: new Date(acknowledgedAt).toISOString(),
+                duration_ms: acknowledgedAt - expectedApiStartTime,
+                run_id: claimed.runId,
+              }),
+            ],
+      );
 
       await api.requestCancelRun(actor, claimed.runId, [200]);
       await waitForRunStatus(actor, claimed.runId, "cancelled");

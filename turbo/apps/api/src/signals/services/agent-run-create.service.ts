@@ -637,6 +637,8 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
+  // Omit to use apiStartTime; null skips first-assistant timing.
+  readonly firstAssistantTimingStartedAt?: Date | null;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -4590,6 +4592,7 @@ async function insertLaunchRunRows(
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
     readonly apiStartTime: number;
+    readonly firstAssistantTimingStartedAt: Date | null | undefined;
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
@@ -4639,7 +4642,10 @@ async function insertLaunchRunRows(
     zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
-    apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
+    apiStartedAt:
+      args.firstAssistantTimingStartedAt === undefined
+        ? new Date(args.apiStartTime)
+        : args.firstAssistantTimingStartedAt,
   });
 
   if (args.callbackRows.length > 0) {
@@ -5384,6 +5390,8 @@ async function commitFailedLaunch(args: {
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
         apiStartTime: args.createArgs.apiStartTime,
+        firstAssistantTimingStartedAt:
+          args.createArgs.firstAssistantTimingStartedAt,
         runnerGroup: undefined,
         error: message,
       });
@@ -5455,6 +5463,8 @@ async function insertAtomicLaunchRunRecord(args: {
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
         apiStartTime: args.commit.createArgs.apiStartTime,
+        firstAssistantTimingStartedAt:
+          args.commit.createArgs.firstAssistantTimingStartedAt,
         runnerGroup: args.runnerGroup,
         error: undefined,
       });

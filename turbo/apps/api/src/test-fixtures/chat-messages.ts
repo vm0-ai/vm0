@@ -49,6 +49,27 @@ export async function clearQueuedApiStartFixture(
   }
 }
 
+/**
+ * Simulates a queued workflow event written before durable API timing.
+ */
+export async function clearWorkflowQueueApiStartFixture(
+  automationId: string,
+): Promise<void> {
+  const cleared = await db()
+    .update(chatMessageQueue)
+    .set({ apiStartedAt: null })
+    .where(
+      and(
+        eq(chatMessageQueue.automationId, automationId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    )
+    .returning({ id: chatMessageQueue.id });
+  if (cleared.length !== 1) {
+    throw new Error("Expected one queued workflow event fixture");
+  }
+}
+
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {
