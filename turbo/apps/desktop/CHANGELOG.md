@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.28.19](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.18...desktop-v0.28.19) (2026-07-23)
+
+
+### Bug Fixes
+
+* **desktop:** retire intel mac downloads and builds ([#22711](https://github.com/vm0-ai/vm0/issues/22711)) ([b24adec](https://github.com/vm0-ai/vm0/commit/b24adec5910023d8a0feec76fb1428d3aad6d87c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.6
+
 ## [0.28.18](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.17...desktop-v0.28.18) (2026-07-23)
 
 

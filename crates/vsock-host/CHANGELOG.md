@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.66](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.65...vsock-host-v0.17.66) (2026-07-23)
+
+
+### Refactoring
+
+* **vsock-host:** split connection core ([#22722](https://github.com/vm0-ai/vm0/issues/22722)) ([bd7d41e](https://github.com/vm0-ai/vm0/commit/bd7d41e0d2b33a4e80799143e747fe545539bbee))
+
 ## [0.17.65](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.64...vsock-host-v0.17.65) (2026-07-23)
 
 

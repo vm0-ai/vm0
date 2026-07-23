@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.149](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.148...sandbox-fc-v0.37.149) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** classify dns readiness network boundary ([#22724](https://github.com/vm0-ai/vm0/issues/22724)) ([628b0c8](https://github.com/vm0-ai/vm0/commit/628b0c83a0f7da5f02452b962d976aac42475cc0))
+
 ## [0.37.148](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.147...sandbox-fc-v0.37.148) (2026-07-23)
 
 
