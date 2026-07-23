@@ -34,6 +34,10 @@ DNS_ISOLATION_HOST_IF=""
 DNS_ISOLATION_LOCK_FD=""
 SPOOF_NS=""
 SPOOF_IP=""
+POOL_LOCK_GUARD_DIR=""
+POOL_LOCK_HOLDER_PID=""
+POOL_LOCK_RELEASE_FD=""
+POOL_LOCK_ERROR=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -101,6 +105,22 @@ cleanup_spoof_address() {
   SPOOF_IP=""
 }
 
+cleanup_pool_lock_guard() {
+  if [ -n "$POOL_LOCK_RELEASE_FD" ]; then
+    exec {POOL_LOCK_RELEASE_FD}>&-
+    POOL_LOCK_RELEASE_FD=""
+  fi
+  if [ -n "$POOL_LOCK_HOLDER_PID" ]; then
+    kill "$POOL_LOCK_HOLDER_PID" 2>/dev/null || true
+    wait "$POOL_LOCK_HOLDER_PID" 2>/dev/null || true
+    POOL_LOCK_HOLDER_PID=""
+  fi
+  if [ -n "$POOL_LOCK_GUARD_DIR" ]; then
+    rm -rf "$POOL_LOCK_GUARD_DIR"
+    POOL_LOCK_GUARD_DIR=""
+  fi
+}
+
 rule_values() {
   local option=$1
   awk -v option="$option" '
@@ -155,6 +175,7 @@ cleanup() {
   echo "--- Cleanup ---"
   cleanup_spoof_address
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+  cleanup_pool_lock_guard
   cleanup_submit_pid "$SUBMIT_PID"
   if [ -n "$DNS_ISOLATION_NS" ]; then
     sudo ip netns delete "$DNS_ISOLATION_NS" 2>/dev/null || true
@@ -475,6 +496,9 @@ DNS_FILTER_COMMENT=$(printf '%s\n' "$FILTER_RULES" \
 [ -n "$DNS_FILTER_COMMENT" ] || fail "DNS INPUT filter comment missing"
 DNS_FILTER_POOL=${DNS_FILTER_COMMENT#vm0-ns-}
 DNS_FILTER_POOL=${DNS_FILTER_POOL%-dns}
+[ "$RUNNER_POOL_PREFIX" = "vm0-ns-${DNS_FILTER_POOL}-" ] \
+  || fail "DNS filter and namespace pool identities differ"
+RUNNER_POOL_INDEX=$((16#$DNS_FILTER_POOL))
 DNS_FILTER_INTERFACE="vm0-ve-${DNS_FILTER_POOL}-+"
 
 assert_dns_input_filter_family() {
@@ -964,7 +988,118 @@ exec {DNS_ISOLATION_LOCK_FD}>&-
 DNS_ISOLATION_LOCK_FD=""
 echo "PASS: DNS resolution"
 
-# Stop transient service (kills sandbox, submit terminates naturally)
+# Retain the runner's existing pool flock across stop and cleanup assertions.
+# The owned Rust guard releases by final close, so pidfd_getfd can preserve the
+# same open file description without a handoff window.
+RUNNER_MAIN_PID=$(sudo systemctl show "$UNIT" \
+  --property=MainPID --value 2>/dev/null) \
+  || fail "failed to read runner MainPID before stop"
+case "$RUNNER_MAIN_PID" in
+  "" | 0 | *[!0-9]*)
+    fail "invalid runner MainPID before stop: ${RUNNER_MAIN_PID:-missing}"
+    ;;
+esac
+
+POOL_LOCK_GUARD_DIR=$(mktemp -d "/tmp/vm0-${SVC}-pool-lock.XXXXXX") \
+  || fail "failed to create pool-lock guard directory"
+POOL_LOCK_READY="$POOL_LOCK_GUARD_DIR/ready"
+POOL_LOCK_RELEASE_FIFO="$POOL_LOCK_GUARD_DIR/release"
+POOL_LOCK_ERROR="$POOL_LOCK_GUARD_DIR/error"
+mkfifo "$POOL_LOCK_RELEASE_FIFO" \
+  || fail "failed to create pool-lock release FIFO"
+exec {POOL_LOCK_RELEASE_FD}<>"$POOL_LOCK_RELEASE_FIFO" \
+  || fail "failed to open pool-lock release FIFO"
+
+sudo python3 - \
+  "$RUNNER_MAIN_PID" \
+  "$RUNNER_POOL_INDEX" \
+  "$POOL_LOCK_READY" \
+  "$POOL_LOCK_RELEASE_FIFO" \
+  {POOL_LOCK_RELEASE_FD}>&- >"$POOL_LOCK_ERROR" 2>&1 <<'PY' &
+import ctypes
+import errno
+import os
+import platform
+from pathlib import Path
+import signal
+import sys
+
+runner_pid = int(sys.argv[1])
+pool_index = int(sys.argv[2])
+ready_path = Path(sys.argv[3])
+release_fifo = Path(sys.argv[4])
+lock_name = f"vm0-netns-pool-{pool_index}.lock"
+
+
+def handle_timeout(_signum, _frame):
+    raise TimeoutError("timed out retaining the runner pool lock")
+
+
+signal.signal(signal.SIGALRM, handle_timeout)
+signal.alarm(360)
+
+machine = platform.machine()
+if machine not in {"aarch64", "x86_64"}:
+    raise RuntimeError(f"unsupported pidfd_getfd architecture: {machine}")
+
+matches = []
+for entry in Path(f"/proc/{runner_pid}/fd").iterdir():
+    try:
+        target = os.readlink(entry)
+    except FileNotFoundError:
+        continue
+    if Path(target).name == lock_name:
+        matches.append((int(entry.name), target))
+
+if len(matches) != 1:
+    raise RuntimeError(
+        f"expected one {lock_name} descriptor on pid {runner_pid}, "
+        f"found {len(matches)}"
+    )
+
+target_fd, target = matches[0]
+pidfd = os.pidfd_open(runner_pid)
+try:
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    duplicated_fd = libc.syscall(438, pidfd, target_fd, 0)
+    if duplicated_fd < 0:
+        error = ctypes.get_errno()
+        raise OSError(error, errno.errorcode.get(error, os.strerror(error)))
+finally:
+    os.close(pidfd)
+
+try:
+    if Path(os.readlink(f"/proc/self/fd/{duplicated_fd}")).name != lock_name:
+        raise RuntimeError(
+            f"duplicated descriptor target changed from {target}"
+        )
+    release_fd = os.open(release_fifo, os.O_RDONLY)
+    try:
+        ready_path.touch()
+        while os.read(release_fd, 1):
+            pass
+    finally:
+        os.close(release_fd)
+finally:
+    os.close(duplicated_fd)
+
+signal.alarm(0)
+PY
+POOL_LOCK_HOLDER_PID=$!
+
+for _ in $(seq 1 200); do
+  [ -e "$POOL_LOCK_READY" ] && break
+  kill -0 "$POOL_LOCK_HOLDER_PID" 2>/dev/null \
+    || break
+  sleep 0.05
+done
+if [ ! -e "$POOL_LOCK_READY" ]; then
+  [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
+  fail "failed to retain runner pool lock before stop"
+fi
+
+# Stop transient service (kills sandbox, submit terminates naturally).
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 if sudo iptables-save -t filter \
   | grep -F -- "--comment ${DNS_FILTER_COMMENT}" >/dev/null; then
@@ -999,6 +1134,22 @@ LEAKED_HOST_VETHS=$(printf '%s\n' "$LINKS_AFTER_STOP" \
     ') || fail "failed to inspect network links after runner stop"
 [ -z "$LEAKED_HOST_VETHS" ] \
   || fail "host veth devices leaked after runner stop: $LEAKED_HOST_VETHS"
+
+exec {POOL_LOCK_RELEASE_FD}>&-
+POOL_LOCK_RELEASE_FD=""
+if wait "$POOL_LOCK_HOLDER_PID"; then
+  :
+else
+  POOL_LOCK_HOLDER_STATUS=$?
+  POOL_LOCK_HOLDER_PID=""
+  [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
+  fail "pool-lock holder exited with status $POOL_LOCK_HOLDER_STATUS"
+fi
+POOL_LOCK_HOLDER_PID=""
+rm -rf "$POOL_LOCK_GUARD_DIR"
+POOL_LOCK_GUARD_DIR=""
+POOL_LOCK_ERROR=""
+
 cleanup_submit_pid "$SUBMIT_PID"
 SUBMIT_PID=""
 trap - EXIT
