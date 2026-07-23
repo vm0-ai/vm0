@@ -86,6 +86,25 @@ const deletePreamble = `
   declare const cutoff: Date;
 `;
 
+const upsertPreamble = `
+  import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const orgMetadata = pgTable("org_metadata", {
+    orgId: text("org_id").primaryKey(),
+    credits: integer("credits").notNull(),
+    tier: text("tier").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      orgMetadata: typeof orgMetadata;
+    }>;
+  declare const db: DrizzleDatabase;
+  declare const orgId: string;
+  declare const amount: number;
+`;
+
 const scalarQuery = `
   sql\`(
     SELECT "message"."id"
@@ -233,6 +252,181 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         await db.execute(sql\`
           DELETE FROM \${notATable}
           WHERE \${eq(cleanupRows.id, 1)}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql\`
+          INSERT INTO org_metadata (
+            org_id,
+            credits,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = org_metadata.credits + \${amount},
+            updated_at = now()
+        \`;
+        await db.execute(query);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          async execute(query: unknown) {
+            return query;
+          },
+        };
+        await fakeDb.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        function sql(
+          strings: TemplateStringsArray,
+          ...values: readonly unknown[]
+        ) {
+          return { strings, values };
+        }
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          WITH incoming AS (SELECT \${orgId} AS org_id)
+          INSERT INTO org_metadata (org_id, credits)
+          SELECT org_id, \${amount} FROM incoming
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          SELECT \${orgId}, \${amount}
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO public.org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata AS target (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = target.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO "org_metadata" ("org_id", "credits")
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT ("org_id")
+          DO UPDATE SET "credits" = "org_metadata"."credits" + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount}), ('other', \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata DEFAULT VALUES
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT ON CONSTRAINT org_metadata_pkey
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id) DO NOTHING
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (lower(org_id))
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (\${orgMetadata.orgId})
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id) WHERE org_id IS NOT NULL
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+          WHERE org_metadata.credits >= 0
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
+          RETURNING org_id
+        \`);
+        await db.execute(sql\`
+          INSERT INTO org_metadata (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount};
+          SELECT 1
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql } from "drizzle-orm";
+        const notATable = sql\`org_metadata\`;
+        await db.execute(sql\`
+          INSERT INTO \${notATable} (org_id, credits)
+          VALUES (\${orgId}, \${amount})
+          ON CONFLICT (org_id)
+          DO UPDATE SET credits = org_metadata.credits + \${amount}
         \`);
       `,
     },
@@ -827,6 +1021,46 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
         void rowCount;
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql as query } from "drizzle-orm";
+        await db.execute(query\`
+          INSERT INTO org_metadata (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (\${orgId}, \${amount}, 'free', now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = org_metadata.credits + \${amount},
+            updated_at = now(),
+            tier = 'free';
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
+    },
+    {
+      code: `${upsertPreamble}
+        import * as drizzle from "drizzle-orm";
+        await db["execute"](drizzle.sql\`
+          INSERT INTO \${orgMetadata} (org_id, credits, created_at, updated_at)
+          VALUES (\${orgId}, \${amount}, now(), now())
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = COALESCE((
+              SELECT credits
+              FROM org_metadata
+              WHERE org_id = \${orgId}
+                AND 'RETURNING ignored' = 'RETURNING ignored'
+            ), 0) + \${amount},
+            updated_at = now()
+        \`);
+      `,
+      errors: [{ messageId: "upsertQueryBuilder" }],
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
