@@ -1689,6 +1689,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expect(repeatedHistory.body).toStrictEqual({
       existing: true,
       encoding: "identity",
+      acceptsCodexRolloutPath: true,
     });
 
     const ghostRunId = randomUUID();
