@@ -56,6 +56,9 @@ import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
+import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
+import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
+import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
@@ -140,6 +143,9 @@ export const schema = {
   ...teamsOrgConnectionSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
+  ...feishuOrgInstallationSchema,
+  ...feishuOrgConnectionSchema,
+  ...feishuOrgThreadSessionSchema,
   ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,
   ...variableSchema,

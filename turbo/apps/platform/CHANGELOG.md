@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.624.2](https://github.com/vm0-ai/vm0/compare/app-v0.624.1...app-v0.624.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* **chat:** preserve structured prompt templates ([#22753](https://github.com/vm0-ai/vm0/issues/22753)) ([c1fe3a0](https://github.com/vm0-ai/vm0/commit/c1fe3a006d545712686087f0e4c61206844a79da))
+* use app url for connector action links ([#22748](https://github.com/vm0-ai/vm0/issues/22748)) ([0121552](https://github.com/vm0-ai/vm0/commit/01215521ae72717b37e746480c84e9bbc7fca3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.457.1
+
 ## [0.624.1](https://github.com/vm0-ai/vm0/compare/app-v0.624.0...app-v0.624.1) (2026-07-23)
 
 

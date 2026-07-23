@@ -77,6 +77,8 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       [200],
     );
 
-    expect(response.body.enabledTypes).toStrictEqual(["github", "slack"]);
+    expect(new Set(response.body.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
   });
 });

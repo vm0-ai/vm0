@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.308.1](https://github.com/vm0-ai/vm0/compare/api-v1.308.0...api-v1.308.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* use app url for connector action links ([#22748](https://github.com/vm0-ai/vm0/issues/22748)) ([0121552](https://github.com/vm0-ai/vm0/commit/01215521ae72717b37e746480c84e9bbc7fca3d9))
+
+
+### Refactoring
+
+* **api:** replace atomic org credit upserts with builders ([#22756](https://github.com/vm0-ai/vm0/issues/22756)) ([53146a3](https://github.com/vm0-ai/vm0/commit/53146a3223c115f9743aebeb890bcae51441ebc1))
+
+
+### Performance Improvements
+
+* **api:** reduce chat thread read query overhead ([#22747](https://github.com/vm0-ai/vm0/issues/22747)) ([aa4568c](https://github.com/vm0-ai/vm0/commit/aa4568c098898080cdd6a6e2f049f4c78548c4f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.457.1
+    * @vm0/db bumped to 1.130.1
+
 ## [1.308.0](https://github.com/vm0-ai/vm0/compare/api-v1.307.0...api-v1.308.0) (2026-07-23)
 
 

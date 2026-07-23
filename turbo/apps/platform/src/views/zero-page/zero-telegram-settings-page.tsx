@@ -210,7 +210,7 @@ function TelegramSettingsSkeleton() {
 }
 
 function AddTelegramBotButtonSkeleton() {
-  return <Skeleton className="h-8 w-[105px] shrink-0 rounded-md" />;
+  return <Skeleton className="h-8 w-[88px] shrink-0 rounded-md" />;
 }
 
 function telegramConnectedUserLabel(bot: TelegramBot): string | null {
@@ -890,13 +890,8 @@ function AddTelegramBotDialogFrame({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className="h-8 gap-2 rounded-lg px-3 text-sm"
-        >
-          <IconPlus size={14} stroke={1.8} />
+        <Button type="button" size="sm" disabled={disabled}>
+          <IconPlus size={16} />
           Add bot
         </Button>
       </DialogTrigger>

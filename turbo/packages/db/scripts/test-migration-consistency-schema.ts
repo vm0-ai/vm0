@@ -1249,8 +1249,8 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
-const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 650;
-const SESSION_STORAGE_BACKFILL_MIGRATION = 651;
+const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
+const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
 const sessionStorageBackfillFixture = {
   orgId: "session-storage-backfill-org",
@@ -1735,7 +1735,7 @@ async function validateSessionStorageBackfill(): Promise<void> {
       const migrationRecord = await client.query<{ count: number }>(`
         SELECT count(*)::integer AS "count"
         FROM "__drizzle_migrations"
-        WHERE "hash" = '0651_backfill_session_continuation_storage_mounts'
+        WHERE "hash" = '0654_backfill_session_continuation_storage_mounts'
       `);
       assert.equal(migrationRecord.rows[0]?.count, 0);
     } finally {
