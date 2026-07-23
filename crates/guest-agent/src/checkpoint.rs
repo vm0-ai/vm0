@@ -1276,13 +1276,14 @@ mod tests {
 
     const REQUEST_OVERLAP_TIMEOUT: Duration = Duration::from_secs(5);
 
-    async fn start_artifact_checkpoint_test_server()
-    -> (String, tokio::task::JoinHandle<Vec<String>>) {
+    async fn start_artifact_checkpoint_test_server(
+        artifact_count: usize,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let handle = tokio::spawn(async move {
-            let mut prepare_requests = Vec::with_capacity(ARTIFACT_CHECKPOINT_CONCURRENCY);
-            for _ in 0..ARTIFACT_CHECKPOINT_CONCURRENCY {
+            let mut prepare_requests = Vec::with_capacity(artifact_count);
+            for _ in 0..artifact_count {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let (path, payload) = read_test_json_request(&mut socket).await;
                 assert_eq!(path, "/api/webhooks/agent/storages/prepare");
@@ -1303,7 +1304,7 @@ mod tests {
                 )
                 .await;
             }
-            for _ in 0..ARTIFACT_CHECKPOINT_CONCURRENCY {
+            for _ in 0..artifact_count {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let (path, _) = read_test_json_request(&mut socket).await;
                 assert_eq!(path, "/api/webhooks/agent/storages/commit");
@@ -1598,10 +1599,6 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_pipelines_overlap_and_preserve_result_order() {
-        let (base_url, server) = start_artifact_checkpoint_test_server().await;
-        let http =
-            HttpClient::with_api_config(base_url, "test-token", "", "test-run-001", Duration::ZERO)
-                .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let workspace_mount = dir.path().join("workspace");
         let memory_mount = dir.path().join("memory");
@@ -1625,6 +1622,10 @@ mod tests {
                 missing_root_policy: None,
             },
         ];
+        let (base_url, server) = start_artifact_checkpoint_test_server(entries.len()).await;
+        let http =
+            HttpClient::with_api_config(base_url, "test-token", "", "test-run-001", Duration::ZERO)
+                .unwrap();
 
         let snapshots = tokio::time::timeout(
             REQUEST_OVERLAP_TIMEOUT,
