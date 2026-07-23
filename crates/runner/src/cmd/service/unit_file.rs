@@ -110,8 +110,8 @@ WantedBy=multi-user.target
 ///
 /// Bare newlines / carriage returns / NUL bytes anywhere in an assignment break the
 /// `Environment=` directive even with proper quote/backslash escaping
-/// (a literal newline terminates the directive line). Reject these at
-/// install time rather than letting `daemon-reload` fail obscurely later.
+/// (a literal newline terminates the directive line). Reject these before
+/// service setup rather than allowing systemd to fail obscurely later.
 pub(super) fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     for entry in vars {
         // Check directive-breaking bytes before parsing key/value syntax.
