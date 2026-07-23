@@ -394,11 +394,65 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(2);
   });
 
+  it("renders canonical connector actions on alternate production origins", async () => {
+    const previousUrl = window.location.href;
+    const threadId = `${THREAD_ID}-alternate-production-origin`;
+    window.location.href = `https://app.okou.ai/chats/${threadId}`;
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+
+    const canonicalUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    const untrustedUrl = `https://evil.example.test/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "slack",
+        label: "Slack",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Alternate production origin",
+      chatMessages: [
+        {
+          id: "msg-user-alternate-production-origin",
+          role: "user",
+          content: "Authorize Slack",
+          runId: "run-alternate-production-origin",
+          createdAt: "2026-07-23T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-alternate-production-origin",
+          role: "assistant",
+          content: `${canonicalUrl}\n\n[Untrusted connector](${untrustedUrl})`,
+          runId: "run-alternate-production-origin",
+          createdAt: "2026-07-23T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
+    const untrustedLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "Untrusted connector";
+    });
+    expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
+  });
+
   it("connects a single OAuth connector directly and resumes the chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-direct-oauth`;
     const callbackPrompt = "Re-check GitHub access, then continue";
-    const connectorUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const connectorUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: string[] = [];
     let connected = false;
     let authorized = false;
@@ -515,7 +569,7 @@ describe("chat message action cards", () => {
   it("enables a single no-auth connector directly", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-direct-no-auth`;
-    const connectorUrl = `https://app.vm0.ai/connectors/stripe/authorize?agentId=${AGENT_ID}`;
+    const connectorUrl = `${window.location.origin}/connectors/stripe/authorize?agentId=${AGENT_ID}`;
     let connected = false;
     let authorized = false;
     let connectCalls = 0;
@@ -747,7 +801,7 @@ describe("chat message action cards", () => {
   it("shares connector state across assistant messages and confirms permissions", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
+    const connectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedPermissionGrantBody: unknown = null;
 
@@ -1156,7 +1210,7 @@ describe("chat message action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-single-connector`;
     const callbackPrompt = "Re-check GitHub access, then continue";
-    const connectorUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const connectorUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: string[] = [];
 
     context.mocks.data.connectors([
@@ -1220,8 +1274,8 @@ describe("chat message action cards", () => {
   });
 
   it("omits connector action cards when catalog metadata is hidden", async () => {
-    const hiddenConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
-    const visibleConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    const hiddenConnectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
+    const visibleConnectorAuthorizeUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
         connectorRef: "slack",
@@ -1274,7 +1328,7 @@ describe("chat message action cards", () => {
 
   it("completes catalog-visible connectors without a bundled type", async () => {
     const user = userEvent.setup({ delay: null });
-    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
+    const connectorAuthorizeUrl = `${window.location.origin}/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
     let connected = false;
     let authorized = false;
     context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
@@ -1712,7 +1766,7 @@ describe("chat message action cards", () => {
   });
 
   it("renders custom connector proposal links as configure cards", async () => {
-    const proposalUrl = `https://app.vm0.ai/connectors/custom/proposal?p=${encodeBase64UrlJson(
+    const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=${encodeBase64UrlJson(
       {
         operation: "create",
         displayName: "Acme Internal API",
