@@ -48,7 +48,6 @@ export function getUILabel(type: ModelProviderType): string {
 
 const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
   Object.freeze({
-    "vm0-model": "vm0",
     "claude-fable-5": "anthropic-api-key",
     "claude-opus-4-8": "anthropic-api-key",
     "claude-opus-4-7": "anthropic-api-key",

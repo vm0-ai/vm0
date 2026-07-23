@@ -14,7 +14,6 @@ import {
 } from "./model-provider-types";
 export {
   getModelProviderFirewall,
-  getVm0ModelProviderConfig,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
@@ -84,63 +83,6 @@ export type ModelProviderCodexRuntimeConfig = z.infer<
   typeof modelProviderCodexRuntimeConfigSchema
 >;
 
-export function getVm0ModelCodexRuntimeConfig(
-  baseUrl: string,
-): ModelProviderCodexRuntimeConfig {
-  return {
-    providerId: "vm0-model",
-    name: "Auto",
-    baseUrl,
-    envKey: "OPENAI_API_KEY",
-    wireApi: "responses",
-    supportsWebsockets: false,
-    modelCatalog: {
-      models: [
-        {
-          slug: "vm0-model",
-          display_name: "Auto",
-          description: "Automatically routes each task to a VM0 model.",
-          default_reasoning_level: null,
-          supported_reasoning_levels: [],
-          shell_type: "shell_command",
-          visibility: "list",
-          supported_in_api: true,
-          priority: 0,
-          additional_speed_tiers: [],
-          service_tiers: [],
-          default_service_tier: null,
-          availability_nux: null,
-          upgrade: null,
-          base_instructions: "",
-          model_messages: null,
-          include_skills_usage_instructions: false,
-          supports_reasoning_summaries: false,
-          default_reasoning_summary: "none",
-          support_verbosity: true,
-          default_verbosity: null,
-          apply_patch_tool_type: "freeform",
-          web_search_tool_type: "text_and_image",
-          truncation_policy: { mode: "tokens", limit: 10_000 },
-          supports_parallel_tool_calls: true,
-          supports_image_detail_original: true,
-          context_window: 1_000_000,
-          max_context_window: 1_000_000,
-          auto_compact_token_limit: null,
-          comp_hash: null,
-          effective_context_window_percent: 95,
-          experimental_supported_tools: [],
-          input_modalities: ["text", "image"],
-          supports_search_tool: true,
-          use_responses_lite: false,
-          auto_review_model_override: null,
-          tool_mode: null,
-          multi_agent_version: null,
-        },
-      ],
-    },
-  };
-}
-
 /**
  * The org slug authorized to use the VM0 managed provider.
  */
@@ -163,6 +105,25 @@ export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
+const RETIRED_VM0_AUTO_MODEL = "vm0-model";
+
+export const requestedRunModelSchema = z
+  .string()
+  .min(1)
+  .superRefine((model, ctx) => {
+    if (model !== RETIRED_VM0_AUTO_MODEL && !isSupportedRunModel(model)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Invalid model selection",
+      });
+    }
+  })
+  .transform((model): SupportedRunModel => {
+    return model === RETIRED_VM0_AUTO_MODEL
+      ? DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
+      : supportedRunModelSchema.parse(model);
+  });
+
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
 
 export type ModelProviderCredentialScope = z.infer<
@@ -178,7 +139,6 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
-  "vm0-model": "Auto",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
@@ -283,10 +243,6 @@ interface Vm0ModelConfig {
 // `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
-  "vm0-model": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-  },
   "claude-fable-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -389,7 +345,6 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
-  "vm0-model",
   "claude-sonnet-5",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -971,7 +926,6 @@ export const MODEL_PROVIDER_TYPES = {
 } as const satisfies Record<ModelProviderType, unknown>;
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
-  "vm0-model": ["vm0"],
   "claude-fable-5": [
     "vm0",
     "claude-code-oauth-token",
@@ -1515,6 +1469,10 @@ export const updateOrgModelPolicySchema = z.object({
 
 export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
 
+const requestedOrgModelPolicySchema = updateOrgModelPolicySchema.extend({
+  model: z.union([supportedRunModelSchema, z.literal(RETIRED_VM0_AUTO_MODEL)]),
+});
+
 export const orgModelPoliciesResponseSchema = z.object({
   policies: z.array(orgModelPolicySchema),
   workspaceDefaultModel: supportedRunModelSchema.nullable(),
@@ -1525,9 +1483,58 @@ export type OrgModelPoliciesResponse = z.infer<
   typeof orgModelPoliciesResponseSchema
 >;
 
-export const updateOrgModelPoliciesRequestSchema = z.object({
-  policies: z.array(updateOrgModelPolicySchema),
-});
+export const updateOrgModelPoliciesRequestSchema = z
+  .object({
+    policies: z.array(requestedOrgModelPolicySchema),
+  })
+  .transform(({ policies }) => {
+    const retiredDefault = policies.some((policy) => {
+      return (
+        policy.model === RETIRED_VM0_AUTO_MODEL && policy.isDefault === true
+      );
+    });
+    const activePolicies = policies.flatMap(
+      (policy): UpdateOrgModelPolicy[] => {
+        if (policy.model === RETIRED_VM0_AUTO_MODEL) {
+          return [];
+        }
+        return [
+          {
+            model: policy.model,
+            isDefault: policy.isDefault,
+            defaultProviderType: policy.defaultProviderType,
+            credentialScope: policy.credentialScope,
+            modelProviderId: policy.modelProviderId,
+          },
+        ];
+      },
+    );
+    if (!retiredDefault) {
+      return { policies: activePolicies };
+    }
+
+    const replacementExists = activePolicies.some((policy) => {
+      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    const normalizedPolicies = activePolicies.map(
+      (policy): UpdateOrgModelPolicy => {
+        return {
+          ...policy,
+          isDefault: policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        };
+      },
+    );
+    if (!replacementExists) {
+      normalizedPolicies.push({
+        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      });
+    }
+    return { policies: normalizedPolicies };
+  });
 
 export type UpdateOrgModelPoliciesRequest = z.infer<
   typeof updateOrgModelPoliciesRequestSchema

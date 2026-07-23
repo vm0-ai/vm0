@@ -315,11 +315,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Vm0Model]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Show Auto in the workspace Add model selector.",
-    enabled: false,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
