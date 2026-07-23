@@ -268,9 +268,17 @@ describe("POST /api/zero/email/inbound", () => {
     });
   });
 
+  it("sends data-export email to eligible recipients", async () => {
+    const controlActor = bdd.user();
+
+    await email.enqueueDataExportEmail(controlActor);
+    const drain = await email.drainEmailOutboxCron(true);
+    expect(drain.status).toBe(200);
+    expect(sendCallsTo(controlActor.email)).toBe(1);
+  });
+
   it("keeps bounced recipients out of transactional sends", async () => {
     const bouncedActor = bdd.user();
-    const controlActor = bdd.user();
 
     await postInbound({
       type: "email.bounced",
@@ -281,11 +289,9 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     await email.enqueueDataExportEmail(bouncedActor);
-    await email.enqueueDataExportEmail(controlActor);
     const drain = await email.drainEmailOutboxCron(true);
     expect(drain.status).toBe(200);
     expect(sendCallsTo(bouncedActor.email)).toBe(0);
-    expect(sendCallsTo(controlActor.email)).toBe(1);
   });
 
   it("keeps complained recipients out of transactional sends", async () => {
