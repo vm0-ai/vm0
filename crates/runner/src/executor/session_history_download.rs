@@ -640,9 +640,7 @@ impl SessionHistoryDownloadTaskResult {
         Self {
             elapsed: started_at.elapsed(),
             timings: SessionHistoryDownloadTimings::for_metadata(metadata),
-            result: Err(RunnerError::Internal(
-                "session history download cancelled".into(),
-            )),
+            result: Err(RunnerError::Cancelled),
         }
     }
 }
@@ -916,7 +914,7 @@ async fn download_body(
 }
 
 fn session_history_download_cancelled_error() -> RunnerError {
-    RunnerError::Internal("session history download cancelled".into())
+    RunnerError::Cancelled
 }
 
 async fn download_body_once(
@@ -2793,7 +2791,7 @@ mod tests {
 
         match result {
             SessionHistoryMaterialization::Failed { error, timings, .. } => {
-                assert!(error.to_string().contains("cancelled"));
+                assert!(matches!(error, RunnerError::Cancelled));
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
@@ -2905,7 +2903,7 @@ mod tests {
         let result = materializer.finish(&CancellationToken::new()).await;
         match result {
             SessionHistoryMaterialization::Failed { error, timings, .. } => {
-                assert!(error.to_string().contains("cancelled"));
+                assert!(matches!(error, RunnerError::Cancelled));
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
@@ -2947,7 +2945,7 @@ mod tests {
         let result = materializer.finish(&cancel).await;
         match result {
             SessionHistoryMaterialization::Failed { error, timings, .. } => {
-                assert!(error.to_string().contains("cancelled"));
+                assert!(matches!(error, RunnerError::Cancelled));
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
@@ -2995,7 +2993,7 @@ mod tests {
         let result = materializer.finish(&cancel).await;
         match result {
             SessionHistoryMaterialization::Failed { error, .. } => {
-                assert!(error.to_string().contains("cancelled"));
+                assert!(matches!(error, RunnerError::Cancelled));
             }
             _ => panic!("expected cancelled download"),
         }
@@ -3033,7 +3031,7 @@ mod tests {
         let result = materializer.finish(&cancel).await;
         match result {
             SessionHistoryMaterialization::Failed { error, .. } => {
-                assert!(error.to_string().contains("cancelled"));
+                assert!(matches!(error, RunnerError::Cancelled));
             }
             _ => panic!("expected cancelled download"),
         }
