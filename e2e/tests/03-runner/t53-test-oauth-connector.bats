@@ -242,31 +242,13 @@ connect_test_oauth_via_authorization_code() {
         return 1
     }
 
-    local handoff_headers="$BATS_FILE_TMPDIR/test-oauth-handoff.headers"
-    local handoff_body="$BATS_FILE_TMPDIR/test-oauth-handoff.body"
-    local curl_args=(-sS -D "$handoff_headers" -o "$handoff_body" -w "%{http_code}")
-    append_test_oauth_bypass_headers curl_args
-    local handoff_status
-    handoff_status=$(curl "${curl_args[@]}" "$authorization_url")
-    if [[ "$handoff_status" != "307" ]]; then
-        echo "# test-oauth handoff returned HTTP $handoff_status"
-        cat "$handoff_body"
-        return 1
-    fi
-
-    authorization_url=$(header_location "$handoff_headers")
-    [ -n "$authorization_url" ] || {
-        echo "# Missing provider Location from test-oauth handoff"
-        cat "$handoff_headers"
-        return 1
-    }
     if [[ -n "$scenario" ]]; then
         authorization_url="${authorization_url}&scenario=${scenario}"
     fi
 
     local authorize_headers="$BATS_FILE_TMPDIR/test-oauth-authorize.headers"
     local authorize_body="$BATS_FILE_TMPDIR/test-oauth-authorize.body"
-    curl_args=(-sS -D "$authorize_headers" -o "$authorize_body" -w "%{http_code}")
+    local curl_args=(-sS -D "$authorize_headers" -o "$authorize_body" -w "%{http_code}")
     append_test_oauth_bypass_headers curl_args
     local authorize_status
     authorize_status=$(curl "${curl_args[@]}" "$authorization_url")

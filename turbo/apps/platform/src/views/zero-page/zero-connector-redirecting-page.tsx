@@ -1,7 +1,17 @@
-import { IconAlertCircle, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconArrowLeft,
+  IconLoader2,
+} from "@tabler/icons-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
-import type { ConnectorRedirectingStatus } from "../../signals/connectors-page/connector-redirecting.ts";
+import { useGet } from "ccstate-react";
+import {
+  connectorRedirectingMobileWarningVisible$,
+  type ConnectorRedirectingStatus,
+} from "../../signals/connectors-page/connector-redirecting.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { Link } from "../router/link.tsx";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
 
 export function ZeroConnectorRedirectingPage({
@@ -14,6 +24,7 @@ export function ZeroConnectorRedirectingPage({
   readonly status: ConnectorRedirectingStatus;
 }) {
   const hasError = status === "error";
+  const showMobileWarning = useGet(connectorRedirectingMobileWarningVisible$);
 
   return (
     <ZeroConnectorFlowCard
@@ -29,27 +40,35 @@ export function ZeroConnectorRedirectingPage({
           : `You’ll continue on ${connectorLabel} to authorize VM0.`
       }
     >
-      {hasError ? (
-        <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-4">
+        {hasError ? (
           <div className="flex items-center gap-2 text-sm text-destructive">
             <IconAlertCircle size={16} aria-hidden="true" />
             <span>Unable to start the connection</span>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              window.close();
-            }}
-          >
-            Close window
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
-          <span>Preparing a secure connection</span>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <IconLoader2
+              size={16}
+              className="animate-spin"
+              aria-hidden="true"
+            />
+            <span>Preparing a secure connection</span>
+          </div>
+        )}
+        {!hasError && showMobileWarning && (
+          <p className="w-72 max-w-full text-sm text-amber-600 dark:text-amber-400">
+            The {connectorLabel} app may not support this OAuth link. Please
+            complete this connection in the VM0 web app on a computer.
+          </p>
+        )}
+        <Button variant="outline" asChild>
+          <Link pathname={ROUTES.home}>
+            <IconArrowLeft size={16} aria-hidden="true" />
+            Back to VM0
+          </Link>
+        </Button>
+      </div>
     </ZeroConnectorFlowCard>
   );
 }
