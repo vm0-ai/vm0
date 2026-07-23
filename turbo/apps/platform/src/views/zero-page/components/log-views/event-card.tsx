@@ -5,9 +5,9 @@ import {
   IconRobot,
   IconTerminal,
 } from "@tabler/icons-react";
-import { nowDate } from "../../../../lib/time.ts";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
+import { formatActivityEventTime } from "../../../../signals/activity-page/activity-time.ts";
 
 type ModelUsage = Record<
   string,
@@ -19,31 +19,11 @@ type ModelUsage = Record<
 >;
 
 // Exported for reuse
-export function formatEventTime(isoString: string): string {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) {
-    return isoString.trim().length > 0 ? isoString : "—";
-  }
-  const now = nowDate();
-  const isToday = date.toDateString() === now.toDateString();
-
-  if (isToday) {
-    return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  }
-
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+export function formatEventTime(
+  isoString: string,
+  startedAt?: string | null,
+): string {
+  return formatActivityEventTime(isoString, startedAt);
 }
 
 // Exported for reuse

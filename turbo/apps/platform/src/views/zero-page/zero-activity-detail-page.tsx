@@ -441,6 +441,7 @@ function ActivityStepsContent({
         messages={messages}
         stepSearch={stepSearch}
         isLoading={visibleMessagesLoading}
+        startedAt={detail.startedAt}
       />
     </div>
   );
@@ -820,12 +821,14 @@ export function StepsList({
   messages,
   stepSearch,
   isLoading,
+  startedAt,
 }: {
   prompt: string;
   appendSystemPrompt: string;
   messages: GroupedMessage[];
   stepSearch: string;
   isLoading: boolean;
+  startedAt?: string | null;
 }) {
   const normalizedStepSearch = stepSearch.trim();
   const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
@@ -867,6 +870,7 @@ export function StepsList({
               message={message}
               searchTerm={normalizedStepSearch}
               showConnector={index < messages.length - 1}
+              startedAt={startedAt}
             />
           );
         })
