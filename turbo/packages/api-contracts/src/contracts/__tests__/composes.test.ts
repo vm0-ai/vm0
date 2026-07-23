@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 33 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(33);
+  it("should have exactly 34 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(34);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -58,6 +58,10 @@ describe("ZERO_CAPABILITIES", () => {
   it("should use slack:write not integration-slack:write", () => {
     expect(ZERO_CAPABILITIES).toContain("slack:write");
     expect(ZERO_CAPABILITIES).not.toContain("integration-slack:write");
+  });
+
+  it("should include Feishu messaging capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("feishu:write");
   });
 
   it("should include telegram read and write capabilities", () => {

@@ -1,18 +1,24 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
+import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
+import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
+import { tapError } from "../utils";
 
 const REDIRECT_STATUS = 307;
+const L = logger("FeishuBrowserConnect");
 
 function redirect(url: string): Response {
   return new Response(null, {
@@ -81,7 +87,10 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
         feishuOrgConnections.installationId,
       ],
     })
-    .returning({ vm0UserId: feishuOrgConnections.vm0UserId });
+    .returning({
+      id: feishuOrgConnections.id,
+      vm0UserId: feishuOrgConnections.vm0UserId,
+    });
   signal.throwIfAborted();
   if (!inserted) {
     const [existing] = await db
@@ -100,6 +109,43 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
         feishuError: "This Feishu account is already connected",
       });
     }
+  }
+  await db
+    .delete(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.installationId, installationId),
+        eq(feishuOrgConnections.vm0UserId, auth.userId),
+        ne(feishuOrgConnections.feishuOpenId, openId),
+      ),
+    );
+  signal.throwIfAborted();
+  await publishFeishuOrgChanged(
+    db,
+    installation.orgId,
+    installation.ownerUserId,
+    [auth.userId],
+  );
+  signal.throwIfAborted();
+  if (inserted) {
+    waitUntil(
+      tapError(
+        notifyFeishuConnect({
+          db,
+          installationId,
+          connectionId: inserted.id,
+          openId,
+          signal,
+        }),
+        (error) => {
+          L.warn("Failed to send Feishu connect welcome", {
+            error,
+            installationId,
+            openId,
+          });
+        },
+      ),
+    );
   }
   return worksRedirect({ feishu: "connected" });
 });

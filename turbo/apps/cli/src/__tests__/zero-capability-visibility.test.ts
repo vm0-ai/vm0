@@ -27,6 +27,7 @@ function buildCommands(): Command[] {
     new Command("secret"),
     new Command("github"),
     new Command("slack"),
+    new Command("feishu"),
     new Command("teams"),
     new Command("telegram"),
     new Command("phone"),
@@ -168,6 +169,7 @@ describe("registerZeroCommands", () => {
       "secret",
       "github",
       "slack",
+      "feishu",
       "teams",
       "telegram",
       "phone",
@@ -296,6 +298,18 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("slack");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show feishu when feishu:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["feishu:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+    expect(visibleCommandNames(prog)).toContain("feishu");
+    expect(hiddenCommandNames(prog)).not.toContain("feishu");
   });
 
   it("should show github when github:read capability is present", () => {

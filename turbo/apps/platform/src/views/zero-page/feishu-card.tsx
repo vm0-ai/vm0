@@ -93,6 +93,23 @@ const feishuIconImg = settingsIconAssetUrl("lark");
 const FEISHU_DEVELOPER_CONSOLE_URL =
   "https://open.feishu.cn/page/launcher?from=backend_oneclick";
 const FEISHU_APP_CONSOLE_URL = "https://open.feishu.cn/app";
+const FEISHU_PERMISSION_CONFIG = JSON.stringify(
+  {
+    scopes: {
+      tenant: [
+        "im:message.p2p_msg:readonly",
+        "im:message.group_at_msg:readonly",
+        "im:message.group_msg",
+        "im:message:readonly",
+        "im:message.reactions:write_only",
+        "im:message:send_as_bot",
+      ],
+      user: [],
+    },
+  },
+  null,
+  2,
+);
 
 type FeishuDialogData = FeishuBotInstallation;
 
@@ -210,6 +227,7 @@ const FEISHU_SETUP_STEPS = [
   { key: "create", label: "Create" },
   { key: "credentials", label: "Credentials" },
   { key: "tokens", label: "Tokens" },
+  { key: "permissions", label: "Permissions" },
   { key: "redirect", label: "Redirect" },
   { key: "events", label: "Events" },
   { key: "publish", label: "Publish" },
@@ -238,7 +256,7 @@ function FeishuSetupProgress({ step }: { step: FeishuSetupStep }) {
           );
         })}
       </div>
-      <div className="grid grid-cols-6 gap-2 text-xs">
+      <div className="grid grid-cols-7 gap-2 text-xs">
         {FEISHU_SETUP_STEPS.map((item, index) => {
           return (
             <div
@@ -565,7 +583,12 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
         <p className="leading-relaxed">
           Open Event Configuration. Under Subscription mode, select “Send
           notifications to developer&apos;s server”. Then open Callback
-          Configuration and paste the callback URL.
+          Configuration and paste the callback URL. After Feishu verifies it,
+          add the “Receive message v1” event (
+          <code className="font-mono text-xs text-foreground">
+            im.message.receive_v1
+          </code>
+          ).
         </p>
       </div>
       <div className="flex gap-2">
@@ -576,9 +599,42 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
       </div>
       {!data?.callbackVerified ? (
         <p className="text-sm text-muted-foreground">
-          This step advances automatically after Feishu verifies the callback.
+          Continue after Feishu verifies the callback URL and the message event
+          is subscribed.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function FeishuPermissionsStep() {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          Import the required permissions
+        </div>
+        <p className="leading-relaxed">
+          Open Permission Management in the Feishu developer console, choose
+          batch import, and paste the JSON below. These permissions enable
+          direct messages, group mentions, conversation history, replies, and
+          the thinking indicator.
+        </p>
+      </div>
+      <div className="space-y-2 rounded-lg border border-border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-foreground">
+            Permission JSON
+          </span>
+          <CopyButton
+            value={FEISHU_PERMISSION_CONFIG}
+            label="Permission JSON"
+          />
+        </div>
+        <pre className="max-h-56 overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
+          {FEISHU_PERMISSION_CONFIG}
+        </pre>
+      </div>
     </div>
   );
 }
@@ -721,6 +777,9 @@ function FeishuSetupStepContent({
     case "tokens": {
       return <FeishuTokensStep form={form} saving={saving} />;
     }
+    case "permissions": {
+      return <FeishuPermissionsStep />;
+    }
     case "redirect": {
       return <FeishuRedirectStep data={data} />;
     }
@@ -779,6 +838,9 @@ function canContinueFeishuSetup(args: {
     }
     case "tokens": {
       return canSubmitFeishuSetup(args.form, args.saving);
+    }
+    case "permissions": {
+      return true;
     }
     case "redirect": {
       return Boolean(args.data?.oauthRedirectUrl);
@@ -1093,22 +1155,20 @@ function FeishuBotMenu({
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {bot.canManage ? (
           <>
-            {!bot.setupCompleted ? (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                onClick={() => {
-                  open({
-                    appId: bot.appId,
-                    defaultAgentId: bot.defaultAgentId,
-                    step: initialFeishuSetupStep(bot),
-                    installationId: bot.id,
-                  });
-                }}
-              >
-                Manage
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              onClick={() => {
+                open({
+                  appId: bot.appId,
+                  defaultAgentId: bot.defaultAgentId,
+                  step: "permissions",
+                  installationId: bot.id,
+                });
+              }}
+            >
+              {bot.setupCompleted ? "Setup guide" : "Manage"}
+            </button>
             <button
               type="button"
               disabled={!bot.id}
@@ -1463,13 +1523,6 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
       </DialogContent>
     </Dialog>
   );
-}
-
-function initialFeishuSetupStep(data: FeishuBotInstallation): FeishuSetupStep {
-  if (!data.callbackVerified) {
-    return "redirect";
-  }
-  return "publish";
 }
 
 interface LoadableLike<T> {

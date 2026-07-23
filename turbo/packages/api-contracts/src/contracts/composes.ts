@@ -49,6 +49,7 @@ export const ZERO_CAPABILITIES = [
   "github:read",
   "github:write",
   "slack:write",
+  "feishu:write",
   "teams:write",
   "phone:read",
   "phone:write",
@@ -112,6 +113,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Send GitHub comments and files",
     },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
+    "feishu:write": {
+      group: "Integrations",
+      label: "Send Feishu messages",
+    },
     "teams:write": {
       group: "Integrations",
       label: "Send Microsoft Teams messages and files",

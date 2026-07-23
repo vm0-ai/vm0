@@ -17,6 +17,7 @@ export const feishuOrgInstallations = pgTable(
     orgId: text("org_id").notNull(),
     ownerUserId: text("owner_user_id"),
     appId: varchar("app_id", { length: 255 }).notNull(),
+    botOpenId: varchar("bot_open_id", { length: 255 }),
     botName: varchar("bot_name", { length: 255 }),
     botAvatarUrl: text("bot_avatar_url"),
     encryptedAppSecret: text("encrypted_app_secret").notNull(),

@@ -59,6 +59,89 @@ export type IntegrationsSlackMessageContract =
   typeof integrationsSlackMessageContract;
 
 /**
+ * Integration Feishu message contract
+ * POST /api/zero/integrations/feishu/message
+ *
+ * Sends a Feishu message via an org-owned custom app.
+ * Requires `feishu:write` capability (via ZERO_TOKEN).
+ */
+const feishuCardSchema = z.record(z.string(), z.unknown());
+
+const sendFeishuMessageBodySchema = z
+  .object({
+    installationId: z.string().uuid().optional(),
+    chat: z.string().min(1, "Chat ID is required").optional(),
+    user: z.string().min(1, "Feishu open ID is required").optional(),
+    replyToMessageId: z.string().min(1, "Message ID is required").optional(),
+    replyInThread: z.boolean().optional(),
+    text: z.string().min(1, "Message text is required").optional(),
+    card: feishuCardSchema.optional(),
+  })
+  .refine(
+    (body) => {
+      return (
+        [body.chat, body.user, body.replyToMessageId].filter(Boolean).length ===
+        1
+      );
+    },
+    {
+      message: "Exactly one of chat, user, or replyToMessageId is required",
+      path: ["chat"],
+    },
+  )
+  .refine(
+    (body) => {
+      return Boolean(body.text) !== Boolean(body.card);
+    },
+    {
+      message: "Exactly one of text or card is required",
+      path: ["text"],
+    },
+  )
+  .refine(
+    (body) => {
+      return !body.replyInThread || Boolean(body.replyToMessageId);
+    },
+    {
+      message: "replyInThread requires replyToMessageId",
+      path: ["replyInThread"],
+    },
+  );
+
+export type SendFeishuMessageBody = z.infer<typeof sendFeishuMessageBodySchema>;
+
+const sendFeishuMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  messageId: z.string(),
+  chatId: z.string().nullable(),
+});
+
+export type SendFeishuMessageResponse = z.infer<
+  typeof sendFeishuMessageResponseSchema
+>;
+
+export const integrationsFeishuMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/feishu/message",
+    headers: authHeadersSchema,
+    body: sendFeishuMessageBodySchema,
+    responses: {
+      200: sendFeishuMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send a Feishu message via an organization custom app",
+  },
+});
+
+export type IntegrationsFeishuMessageContract =
+  typeof integrationsFeishuMessageContract;
+
+/**
  * Integration Telegram message contract
  * POST /api/zero/integrations/telegram/message
  *
