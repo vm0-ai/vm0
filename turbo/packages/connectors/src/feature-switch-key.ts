@@ -67,7 +67,7 @@ export enum FeatureSwitchKey {
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
   ImageEditing = "imageEditing",
-  PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
+  PresentationExport = "presentationExport",
   Artifacts = "artifacts",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",
