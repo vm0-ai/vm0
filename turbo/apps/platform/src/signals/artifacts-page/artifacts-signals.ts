@@ -357,6 +357,20 @@ interface InitialRemoteArtifactsPage extends RemoteArtifactsData {
   readonly updatedAfter: string | undefined;
 }
 
+interface FetchRemainingArtifactPagesInput {
+  readonly initialArtifacts: readonly ArtifactItem[];
+  readonly initialCursor: string | undefined;
+  readonly initialSyncUntil: string | undefined;
+  readonly mergeCachedArtifacts: boolean;
+  readonly reload: number;
+  readonly updatedAfter: string | undefined;
+}
+
+interface RemoteArtifactsSnapshot {
+  readonly artifacts: ArtifactItem[];
+  readonly syncUntil: string | undefined;
+}
+
 // The first remote page resolves independently so the view can render it while
 // later cursor pages continue loading.
 const initialRemoteArtifactsPage$ = computed(
@@ -416,6 +430,57 @@ export const remoteArtifacts$ = computed(
   },
 );
 
+const fetchRemainingArtifactPages$ = command(
+  async (
+    { get, set },
+    input: FetchRemainingArtifactPagesInput,
+    signal: AbortSignal,
+  ): Promise<RemoteArtifactsSnapshot | null> => {
+    const client = get(zeroClient$)(artifactsContract);
+    let artifacts = [...input.initialArtifacts];
+    let cursor = input.initialCursor;
+    let syncUntil = input.initialSyncUntil;
+    set(internalRemoteArtifactsProgress$, {
+      artifacts,
+      mergeCachedArtifacts: input.mergeCachedArtifacts,
+      reload: input.reload,
+    });
+
+    for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
+      const result = await accept(
+        client.list({
+          query: {
+            limit: ARTIFACTS_PAGE_SIZE,
+            cursor,
+            updatedAfter: input.updatedAfter,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      syncUntil ??= result.body.syncUntil;
+      artifacts = mergeArtifactItems(
+        artifacts,
+        result.body.artifacts.map((item) => {
+          return artifactItemSchema.parse(item);
+        }),
+      );
+      if (get(internalArtifactsReload$) !== input.reload) {
+        return null;
+      }
+      set(internalRemoteArtifactsProgress$, {
+        artifacts,
+        mergeCachedArtifacts: input.mergeCachedArtifacts,
+        reload: input.reload,
+      });
+      cursor = result.body.nextCursor ?? undefined;
+    }
+
+    return { artifacts, syncUntil };
+  },
+);
+
 // Continue the remote cursor walk after first-page paint. Cache persistence is
 // deliberately last so it never gates data already published to the view.
 export const syncArtifacts$ = command(
@@ -427,66 +492,17 @@ export const syncArtifacts$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(artifactsContract);
-    const fetchRemainingArtifactPages = async (
-      initialArtifacts: readonly ArtifactItem[],
-      initialCursor: string | undefined,
-      updatedAfter: string | undefined,
-      initialSyncUntil: string | undefined,
-      mergeCachedArtifacts: boolean,
-    ): Promise<{
-      readonly artifacts: ArtifactItem[];
-      readonly syncUntil: string | undefined;
-    } | null> => {
-      let artifacts = [...initialArtifacts];
-      let cursor = initialCursor;
-      let syncUntil = initialSyncUntil;
-      set(internalRemoteArtifactsProgress$, {
-        artifacts,
-        mergeCachedArtifacts,
+    const incrementalSnapshot = await set(
+      fetchRemainingArtifactPages$,
+      {
+        initialArtifacts: initial.artifacts,
+        initialCursor: initial.nextCursor ?? undefined,
+        initialSyncUntil: initial.syncUntil,
+        mergeCachedArtifacts: initial.mergeCachedArtifacts,
         reload: initial.reload,
-      });
-
-      for (let page = 1; cursor && page < ARTIFACTS_MAX_PAGES; page += 1) {
-        const result = await accept(
-          client.list({
-            query: {
-              limit: ARTIFACTS_PAGE_SIZE,
-              cursor,
-              updatedAfter,
-            },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        signal.throwIfAborted();
-        syncUntil ??= result.body.syncUntil;
-        artifacts = mergeArtifactItems(
-          artifacts,
-          result.body.artifacts.map((item) => {
-            return artifactItemSchema.parse(item);
-          }),
-        );
-        if (get(internalArtifactsReload$) !== initial.reload) {
-          return null;
-        }
-        set(internalRemoteArtifactsProgress$, {
-          artifacts,
-          mergeCachedArtifacts,
-          reload: initial.reload,
-        });
-        cursor = result.body.nextCursor ?? undefined;
-      }
-
-      return { artifacts, syncUntil };
-    };
-
-    const incrementalSnapshot = await fetchRemainingArtifactPages(
-      initial.artifacts,
-      initial.nextCursor ?? undefined,
-      initial.updatedAfter,
-      initial.syncUntil,
-      initial.mergeCachedArtifacts,
+        updatedAfter: initial.updatedAfter,
+      },
+      signal,
     );
     if (!incrementalSnapshot) {
       return;
@@ -518,7 +534,7 @@ export const syncArtifacts$ = command(
         // recover with an authoritative server snapshot instead of silently
         // leaving the view capped at its 60-item first-paint window.
         const result = await accept(
-          client.list({
+          get(zeroClient$)(artifactsContract).list({
             query: { limit: ARTIFACTS_PAGE_SIZE },
             fetchOptions: { signal },
           }),
@@ -528,17 +544,22 @@ export const syncArtifacts$ = command(
         if (get(internalArtifactsReload$) !== initial.reload) {
           return;
         }
-        const fullSnapshot = await fetchRemainingArtifactPages(
-          mergeArtifactItems(
-            [],
-            result.body.artifacts.map((item) => {
-              return artifactItemSchema.parse(item);
-            }),
-          ),
-          result.body.nextCursor ?? undefined,
-          undefined,
-          result.body.syncUntil,
-          false,
+        const fullSnapshot = await set(
+          fetchRemainingArtifactPages$,
+          {
+            initialArtifacts: mergeArtifactItems(
+              [],
+              result.body.artifacts.map((item) => {
+                return artifactItemSchema.parse(item);
+              }),
+            ),
+            initialCursor: result.body.nextCursor ?? undefined,
+            initialSyncUntil: result.body.syncUntil,
+            mergeCachedArtifacts: false,
+            reload: initial.reload,
+            updatedAfter: undefined,
+          },
+          signal,
         );
         if (!fullSnapshot) {
           return;
