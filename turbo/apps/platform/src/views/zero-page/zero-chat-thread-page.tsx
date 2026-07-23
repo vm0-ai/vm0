@@ -55,6 +55,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconBrandSlack,
   IconWorld,
 } from "@tabler/icons-react";
 import {
@@ -6284,6 +6285,31 @@ function UserMessageGenerationTemplate({
   );
 }
 
+function SlackUserMessageOrigin({
+  permalink,
+}: {
+  permalink: string | undefined;
+}) {
+  if (!permalink) {
+    return null;
+  }
+  return (
+    <a
+      href={permalink}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original message in Slack"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open message</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
 const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
@@ -6678,6 +6704,7 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}

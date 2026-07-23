@@ -21,6 +21,7 @@ import {
 import {
   createSlackClient,
   createSlackUserInfoResolver,
+  getMessagePermalink,
 } from "../external/slack-message-client";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
@@ -262,7 +263,7 @@ async function persistClaimedCanonicalSlackIngress(
   const client = createSlackClient(botToken);
   const userInfoResolver = createSlackUserInfoResolver(client);
   const messageContent = stripBotMention(event.text, ingress.botUserId);
-  const [enriched, context] = await Promise.all([
+  const [enriched, context, permalinkResult] = await Promise.all([
     enrichMessageContent({
       messageContent,
       files: event.files,
@@ -277,8 +278,17 @@ async function persistClaimedCanonicalSlackIngress(
       event.ts,
       { userInfoResolver },
     ),
+    getMessagePermalink(client, event.channel, event.ts),
   ]);
   signal.throwIfAborted();
+  const messagePermalink =
+    permalinkResult.kind === "ok" ? permalinkResult.permalink : null;
+  if (permalinkResult.kind === "slack_error") {
+    L.warn("Failed to resolve canonical Slack message permalink", {
+      ingressId,
+      error: permalinkResult.error,
+    });
+  }
 
   const encryptedParams = await encryptQueuedUserMessageRunParams(
     {
@@ -310,6 +320,7 @@ async function persistClaimedCanonicalSlackIngress(
         role: "user",
         content: enriched.displayContent,
         runId: null,
+        slackMessagePermalink: messagePermalink,
         createdAt: ingress.createdAt,
       },
       "id",

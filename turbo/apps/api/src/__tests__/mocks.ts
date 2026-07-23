@@ -121,6 +121,7 @@ export interface ApiTestMocks {
       };
     };
     readonly chat: {
+      readonly getPermalink: AsyncMock;
       readonly postMessage: AsyncMock;
       readonly postEphemeral: AsyncMock;
     };
@@ -277,6 +278,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       },
     },
     chat: {
+      getPermalink: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       postMessage: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       postEphemeral: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
@@ -782,6 +784,7 @@ vi.mock("@slack/web-api", () => {
           },
         },
         chat: {
+          getPermalink: apiTestMocks.slack.chat.getPermalink,
           postMessage: apiTestMocks.slack.chat.postMessage,
           postEphemeral: apiTestMocks.slack.chat.postEphemeral,
         },
@@ -953,6 +956,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.resend.attachmentsList.mockReset();
   apiTestMocks.signalTimers.delay.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
+  apiTestMocks.slack.chat.getPermalink.mockReset();
   apiTestMocks.slack.chat.postMessage.mockReset();
   apiTestMocks.slack.chat.postEphemeral.mockReset();
   apiTestMocks.slack.conversations.list.mockReset();
