@@ -429,6 +429,8 @@ mod tests {
         })?;
         loop {
             let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::uninit();
+            // SAFETY: `pid` is the direct child still owned by the helper, and
+            // WNOWAIT observes its exit without releasing that identity.
             let result = unsafe {
                 libc::waitid(
                     libc::P_PID,
@@ -449,6 +451,8 @@ mod tests {
 
     fn assert_child_reaped(pid: u32) {
         let mut status = 0;
+        // SAFETY: the lifecycle helper has already returned this direct
+        // child's status; WNOHANG only verifies that no waitable child remains.
         let result = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG) };
         assert_eq!(result, -1);
         assert_eq!(
