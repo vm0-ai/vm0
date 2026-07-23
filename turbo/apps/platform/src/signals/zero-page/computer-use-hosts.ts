@@ -11,8 +11,6 @@ import { onRef, tapError } from "../utils.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
-const ZERO_DESKTOP_INTEL_DMG_DOWNLOAD_PATH =
-  "/api/zero/desktop/updates/stable/darwin/x64/dmg";
 
 export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_DMG_DOWNLOAD_PATH,
@@ -20,15 +18,10 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
 ).toString();
 
 export const ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL =
-  "Requires macOS 14 or newer.";
-
-export const ZERO_DESKTOP_INTEL_DOWNLOAD_URL = new URL(
-  ZERO_DESKTOP_INTEL_DMG_DOWNLOAD_PATH,
-  resolveApiBaseForNavigation("api"),
-).toString();
+  "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.";
 
 export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
-  "Requires Apple Silicon Mac";
+  "Requires an Apple silicon Mac";
 
 export type ZeroDesktopDownloadSupportStatus =
   | "available"

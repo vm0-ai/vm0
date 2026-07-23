@@ -61,7 +61,6 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
-  DesktopX64Download = "desktopX64Download",
   AgentUnreadIndicators = "agentUnreadIndicators",
   ChatThreadMessageBackgroundSync = "chatThreadMessageBackgroundSync",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",

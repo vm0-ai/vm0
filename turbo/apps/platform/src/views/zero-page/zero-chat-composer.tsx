@@ -141,7 +141,6 @@ import {
   type WebsiteTemplateItem,
   type WorkflowTemplateItem,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
@@ -165,11 +164,9 @@ import {
   codexFastModeEnabled$,
   composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
-  featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
-  ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
   ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -6026,9 +6023,6 @@ function ComputerUseDownloadDialog({
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
       : "checking";
-  const features = useGet(featureSwitch$);
-  const showIntelDownload =
-    features[FeatureSwitchKey.DesktopX64Download] ?? false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -6053,39 +6047,7 @@ function ComputerUseDownloadDialog({
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
-          {showIntelDownload ? (
-            <div className="flex flex-col items-center gap-3">
-              <Button asChild size="lg" className="w-full">
-                <a
-                  href={downloadUrl}
-                  aria-label="Download for Mac Apple Silicon"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    onOpenChange(false);
-                  }}
-                >
-                  <IconDownload size={16} stroke={1.5} />
-                  Download for Mac (Apple Silicon)
-                </a>
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                On an Intel Mac?{" "}
-                <a
-                  href={ZERO_DESKTOP_INTEL_DOWNLOAD_URL}
-                  aria-label="Download for Mac Intel"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => {
-                    onOpenChange(false);
-                  }}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Download here
-                </a>
-              </p>
-            </div>
-          ) : downloadSupportStatus === "unsupported-intel-mac" ? (
+          {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
               {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
