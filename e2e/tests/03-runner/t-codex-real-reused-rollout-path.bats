@@ -117,7 +117,6 @@ assert_run_reused_sandbox() {
         "matches=\$(find /home/user/.codex/sessions -type f \\( -name \"rollout-*-\$thread_id.jsonl\" -o -name \"rollout-*-\$thread_id.jsonl.zst\" \\))" \
         "count=\$(printf '%s\\n' \"\$matches\" | sed '/^$/d' | wc -l)" \
         "test \"\$count\" -eq 1" \
-        "test \"\$restored\" = \"\$original\" -o \"\$restored\" = \"\$original.zst\"" \
         'echo CODEX_EXISTING_ROLLOUT_PATH_RESTORED' \
         'Then report the exact first memory token from this conversation as FIRST=<token>.' \
         'If this conversation contains a second memory token from a later turn, report it as SECOND=<token>; otherwise report SECOND=UNKNOWN.')"

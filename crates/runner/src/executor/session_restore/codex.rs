@@ -137,6 +137,8 @@ fn parse_codex_cleanup_output(
     result: &ExecResult,
     session_id: &str,
 ) -> RunnerResult<Option<String>> {
+    // Helper stdout crosses the guest trust boundary and becomes a write
+    // destination, so validate it independently of the shell classifier.
     if result.stdout_truncated {
         return Err(RunnerError::Internal(INVALID_CODEX_CLEANUP_OUTPUT.into()));
     }

@@ -97,7 +97,7 @@ fi
 scan_error_file=""
 matching_entries_file=""
 candidate_path_file=""
-cleanup_scan_error_file() {
+cleanup_temp_files() {
   if [ -n "$scan_error_file" ]; then
     rm -f -- "$scan_error_file"
   fi
@@ -108,12 +108,12 @@ cleanup_scan_error_file() {
     rm -f -- "$candidate_path_file"
   fi
 }
-cleanup_scan_error_file_and_exit() {
-  cleanup_scan_error_file
+cleanup_temp_files_and_exit() {
+  cleanup_temp_files
   exit 1
 }
-trap cleanup_scan_error_file EXIT
-trap cleanup_scan_error_file_and_exit HUP INT TERM
+trap cleanup_temp_files EXIT
+trap cleanup_temp_files_and_exit HUP INT TERM
 collect_matching_session_entries() {
   : > "$scan_error_file" || {
     echo "failed to reset codex session cleanup temp file" >&2
