@@ -2763,7 +2763,7 @@ describe("zero artifact sidebar", () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: false,
+        [FeatureSwitchKey.PresentationExport]: false,
       },
     });
 
@@ -2795,7 +2795,7 @@ describe("zero artifact sidebar", () => {
     const downloads = captureDownloads(context.signal);
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: true,
+        [FeatureSwitchKey.PresentationExport]: true,
       },
     });
 
@@ -2858,7 +2858,7 @@ describe("zero artifact sidebar", () => {
     });
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: true,
+        [FeatureSwitchKey.PresentationExport]: true,
       },
     });
 
@@ -2912,7 +2912,7 @@ describe("zero artifact sidebar", () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: true,
+        [FeatureSwitchKey.PresentationExport]: true,
       },
     });
 
@@ -2995,7 +2995,7 @@ describe("zero artifact sidebar", () => {
       artifactFiles,
       content: `[Quarterly roadmap](${presentationUrl})`,
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: true,
+        [FeatureSwitchKey.PresentationExport]: true,
       },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
     });
@@ -3036,7 +3036,7 @@ describe("zero artifact sidebar", () => {
       presentationHtmlWithDeckBackground(),
       {
         featureSwitches: {
-          [FeatureSwitchKey.PresentationPptxExport]: true,
+          [FeatureSwitchKey.PresentationExport]: true,
         },
       },
     );
@@ -3084,7 +3084,7 @@ describe("zero artifact sidebar", () => {
       responsivePresentationHtml(),
       {
         featureSwitches: {
-          [FeatureSwitchKey.PresentationPptxExport]: true,
+          [FeatureSwitchKey.PresentationExport]: true,
         },
       },
     );
@@ -3415,7 +3415,7 @@ ${openFencedHostedSiteUrl}`,
       assetBackedPresentationHtml(assetPath, externalAssetUrl),
       {
         featureSwitches: {
-          [FeatureSwitchKey.PresentationPptxExport]: true,
+          [FeatureSwitchKey.PresentationExport]: true,
         },
         hostedResources: {
           [expectedAssetUrl]: {
@@ -4321,7 +4321,7 @@ ${openFencedHostedSiteUrl}`,
     );
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationPptxExport]: true,
+        [FeatureSwitchKey.PresentationExport]: true,
       },
     });
 

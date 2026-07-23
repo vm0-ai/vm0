@@ -753,13 +753,13 @@ function startArtifactDownloadWithCleanup(params: {
   );
 }
 
-function shouldShowPresentationPptxExport(
+function shouldShowPresentationExport(
   artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
   features: Record<string, boolean | undefined>,
 ): boolean {
   return (
     artifactKind === "presentation-html" &&
-    (features[FeatureSwitchKey.PresentationPptxExport] ?? false)
+    (features[FeatureSwitchKey.PresentationExport] ?? false)
   );
 }
 
@@ -786,7 +786,7 @@ export function ArtifactDownloadMenu({
   const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
   const downloadPending = pendingKey === artifactDownloadKey;
   const downloadName = artifactDownloadFilename(artifactKind, filename, url);
-  const showPresentationPptxExport = shouldShowPresentationPptxExport(
+  const showPresentationExport = shouldShowPresentationExport(
     artifactKind,
     features,
   );
@@ -852,7 +852,7 @@ export function ArtifactDownloadMenu({
           <IconDownload size={14} stroke={1.5} />
           Download
         </ArtifactDownloadMenuItem>
-        {showPresentationPptxExport && (
+        {showPresentationExport && (
           <ArtifactDownloadMenuItem
             onClick={() => {
               startArtifactDownloadWithCleanup({
@@ -873,7 +873,7 @@ export function ArtifactDownloadMenu({
             Download (.pptx)
           </ArtifactDownloadMenuItem>
         )}
-        {showPresentationPptxExport && syncTarget && (
+        {showPresentationExport && syncTarget && (
           <GoogleSlidesMenuItem
             closeMenu={closeMenu}
             filename={downloadName}

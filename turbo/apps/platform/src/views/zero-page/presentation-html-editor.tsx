@@ -2058,7 +2058,7 @@ function PresentationEditorReady({
   filename,
   movementEnabled,
   onClose,
-  pptxExportEnabled,
+  presentationExportEnabled,
   sourceUrl,
   title,
 }: {
@@ -2067,7 +2067,7 @@ function PresentationEditorReady({
   filename: string;
   movementEnabled: boolean;
   onClose: (publishedUrl?: string) => void;
-  pptxExportEnabled: boolean;
+  presentationExportEnabled: boolean;
   sourceUrl: string;
   title: string;
 }) {
@@ -2124,7 +2124,7 @@ function PresentationEditorReady({
   const downloadPptx = createEditedPptxDownloadAction({
     controller,
     draft,
-    enabled: pptxExportEnabled,
+    enabled: presentationExportEnabled,
     filename,
     pageSignal,
     publishingRef,
@@ -2187,8 +2187,8 @@ export function PresentationHtmlEditor({
   const movementFeatureEnabled = Boolean(
     features?.[FeatureSwitchKey.PresentationElementDragging],
   );
-  const pptxExportEnabled = Boolean(
-    features?.[FeatureSwitchKey.PresentationPptxExport],
+  const presentationExportEnabled = Boolean(
+    features?.[FeatureSwitchKey.PresentationExport],
   );
 
   if (loadable.state === "loading") {
@@ -2219,7 +2219,7 @@ export function PresentationHtmlEditor({
         movementFeatureEnabled && loadable.data.movementSupported
       }
       onClose={onClose}
-      pptxExportEnabled={pptxExportEnabled}
+      presentationExportEnabled={presentationExportEnabled}
       sourceUrl={url}
       title={title}
     />

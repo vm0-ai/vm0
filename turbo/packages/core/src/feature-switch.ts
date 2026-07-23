@@ -418,7 +418,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationPptxExport]: {
+  [FeatureSwitchKey.PresentationExport]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
