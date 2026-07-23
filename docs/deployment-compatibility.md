@@ -201,6 +201,22 @@ the canonical shape immediately while the guest reader temporarily accepts both
 representations. Remove the legacy readers and the capability only after the
 canonical API output has been stable across the fully upgraded Runner fleet.
 
+### Codex rollout path resume
+
+Codex resume snapshots may include an optional `codexRolloutPath`. The guest
+only sends this field after checkpoint history preparation returns
+`acceptsCodexRolloutPath: true`, so a new runner artifact can still checkpoint
+against an old backend. The API stores the field in a nullable conversation
+column and only includes it in a claim response when the runner advertises
+`codex-rollout-path-v1`; old runners continue receiving the previous resume
+shape. Historical rows without the field retain the timestamp-based restore
+fallback.
+
+The persisted value is the canonical logical path relative to
+`~/.codex/sessions` and ends in `.jsonl`. A zstd history blob is restored to the
+same path with the physical `.zst` sibling suffix (`.jsonl.zst`). Runner
+validation binds the relative path to the Codex thread id before using it.
+
 ### Firewall hostname policy
 
 The backend is the single owner of firewall configuration hostname policy.

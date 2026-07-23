@@ -30,17 +30,19 @@ pub(crate) fn build_final_session_history_identity(
     history_hash: &str,
     history_size_bytes: u64,
     history_marker_payload: &str,
+    codex_rollout_path: Option<&str>,
 ) -> Result<FinalSessionHistoryIdentity, FinalSessionHistoryIdentityBuildError> {
     let session_id_hash = session_id_hash(framework, cli_agent_session_id)
         .ok_or(FinalSessionHistoryIdentityBuildError::InvalidSessionId)?;
     let framework = final_framework(framework);
-    FinalSessionHistoryIdentity::new(
+    FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
         framework,
         session_id_hash,
         FinalSessionHistoryRefKind::Blob,
         history_hash,
         history_size_bytes,
         history_marker_payload,
+        codex_rollout_path.map(|path| hex::encode(Sha256::digest(path.as_bytes()))),
     )
     .map_err(FinalSessionHistoryIdentityBuildError::InvalidMetadata)
 }
@@ -166,6 +168,11 @@ fn verify_final_session_history_digest(
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
     if digest.sha256_hex != identity.history_hash {
+        return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
+    }
+    if identity.codex_rollout_path_hash.is_some()
+        && identity.codex_rollout_path_hash != digest.codex_rollout_path_sha256
+    {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
     Ok(())

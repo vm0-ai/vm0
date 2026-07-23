@@ -42,11 +42,13 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 1],
+    capabilities: [ClaimCapability; 2],
 }
 
 #[derive(Serialize)]
 enum ClaimCapability {
+    #[serde(rename = "codex-rollout-path-v1")]
+    CodexRolloutPathV1,
     #[serde(rename = "storage-mounts-v1")]
     StorageMountsV1,
 }
@@ -1093,7 +1095,10 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [ClaimCapability::StorageMountsV1],
+        capabilities: [
+            ClaimCapability::StorageMountsV1,
+            ClaimCapability::CodexRolloutPathV1,
+        ],
     }
 }
 
@@ -1955,10 +1960,10 @@ mod tests {
         assert!(!body.to_string().contains("sessionId"));
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
-        assert!(!body.to_string().contains("path"));
+        assert!(!body["telemetry"].to_string().contains("path"));
         assert_eq!(
             body["capabilities"],
-            serde_json::json!(["storage-mounts-v1"])
+            serde_json::json!(["storage-mounts-v1", "codex-rollout-path-v1"])
         );
     }
 

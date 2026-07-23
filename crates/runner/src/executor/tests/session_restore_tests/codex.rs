@@ -8,7 +8,9 @@ fn restore_session_writes_codex_session() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = codex_context();
     let history = codex_session_meta_history(CODEX_SESSION_ID);
-    ctx.resume_session = Some(resume_ref_for_history(CODEX_SESSION_ID, history.as_bytes()));
+    let mut resume_session = resume_ref_for_history(CODEX_SESSION_ID, history.as_bytes());
+    resume_session.codex_rollout_path = Some(CODEX_PERSISTED_ROLLOUT_RELATIVE_PATH.into());
+    ctx.resume_session = Some(resume_session);
     let session = materialized_text_session(CODEX_SESSION_ID, history.clone());
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -16,11 +18,7 @@ fn restore_session_writes_codex_session() {
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert!(
-        writes[0].path.ends_with(CODEX_CANONICAL_ROLLOUT_SUFFIX),
-        "codex resume history must be restored as a canonical rollout jsonl, got {}",
-        writes[0].path
-    );
+    assert_eq!(writes[0].path, CODEX_PERSISTED_ROLLOUT_PATH);
     assert_eq!(writes[0].content, session.history_bytes());
     assert_eq!(diagnostics.bytes_in, history.len());
 }
@@ -28,13 +26,16 @@ fn restore_session_writes_codex_session() {
 #[test]
 fn restore_session_writes_codex_zstd_session() {
     let sandbox = MockSandbox::new("test");
-    let ctx = codex_context();
+    let mut ctx = codex_context();
     let history = codex_session_meta_history(CODEX_SESSION_ID);
     let compressed = zstd::encode_all(history.as_bytes(), 0).unwrap();
     let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-04T07:18:08.000Z")
         .unwrap()
         .with_timezone(&chrono::Utc);
     let session = materialized_codex_zstd_session(CODEX_SESSION_ID, &compressed, timestamp);
+    let mut resume_session = resume_ref_for_history(CODEX_SESSION_ID, history.as_bytes());
+    resume_session.codex_rollout_path = Some(CODEX_PERSISTED_ROLLOUT_RELATIVE_PATH.into());
+    ctx.resume_session = Some(resume_session);
 
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -42,15 +43,30 @@ fn restore_session_writes_codex_zstd_session() {
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert!(
-        writes[0]
-            .path
-            .ends_with(&format!("{CODEX_CANONICAL_ROLLOUT_SUFFIX}.zst")),
-        "codex zstd resume history must be restored as canonical rollout jsonl.zst, got {}",
-        writes[0].path
+    assert_eq!(
+        writes[0].path,
+        format!("{CODEX_PERSISTED_ROLLOUT_PATH}.zst")
     );
     assert_eq!(writes[0].content, compressed);
     assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+}
+
+#[test]
+fn restore_session_rejects_invalid_codex_rollout_path() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let mut resume_session = resume_ref_for_history(CODEX_SESSION_ID, history.as_bytes());
+    resume_session.codex_rollout_path = Some("../outside.jsonl".into());
+    ctx.resume_session = Some(resume_session);
+    let session = materialized_text_session(CODEX_SESSION_ID, history);
+
+    let error = run_restore_session(restore_session(&sandbox, &ctx, &session))
+        .expect_err("unsafe rollout path must be rejected");
+
+    assert!(error.to_string().contains("invalid codex rollout path"));
+    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.write_file_calls().is_empty());
 }
 
 #[test]

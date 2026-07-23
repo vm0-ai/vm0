@@ -220,6 +220,7 @@ mod tests {
         let mut context = execution_context_for_test(RunId::new_v4());
         context.resume_session = Some(ResumeSession {
             cli_agent_session_id: "sess-restore-plan".into(),
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -326,13 +327,22 @@ mod tests {
         }
     }
 
-    #[test]
-    fn restore_plan_skips_matching_codex_checkpointed_final_identity() {
+    #[tokio::test]
+    async fn restore_plan_uses_codex_rollout_path_in_reuse_identity() {
+        const ROLLOUT_PATH: &str = concat!(
+            "2026/07/23/rollout-2026-07-23T04-01-04-",
+            "019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+        );
+        const OTHER_ROLLOUT_PATH: &str = concat!(
+            "2026/07/23/rollout-2026-07-23T05-02-05-",
+            "019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+        );
         let history_hash = "a".repeat(64);
         let mut context = execution_context_for_test(RunId::new_v4());
         context.cli_agent_type = "codex".into();
         context.resume_session = Some(ResumeSession {
             cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
+            codex_rollout_path: Some(ROLLOUT_PATH.into()),
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -350,13 +360,14 @@ mod tests {
         let metadata_path =
             "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
         let runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
-        let metadata = FinalSessionHistoryIdentity::new(
+        let metadata = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
             FinalSessionHistoryFramework::Codex,
             hex::encode(Sha256::digest(canonical_thread_id.as_bytes())),
             FinalSessionHistoryRefKind::Blob,
             history_hash,
             12,
             format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{canonical_thread_id}"),
+            Some(hex::encode(Sha256::digest(ROLLOUT_PATH.as_bytes()))),
         )
         .unwrap();
         let restored_identity =
@@ -378,6 +389,38 @@ mod tests {
             }
             _ => panic!("matching Codex checkpointed final identity should skip restore"),
         }
+
+        context.resume_session.as_mut().unwrap().codex_rollout_path =
+            Some(OTHER_ROLLOUT_PATH.into());
+        let plan = build_plan(
+            true,
+            &context,
+            SandboxReuseResult::Reused,
+            Some(&restored_identity),
+        );
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::CodexRolloutPath
+                    )))
+                );
+            }
+            _ => panic!("different Codex rollout paths must restore history"),
+        }
+
+        context.resume_session.as_mut().unwrap().codex_rollout_path = None;
+        let plan = build_plan(
+            true,
+            &context,
+            SandboxReuseResult::Reused,
+            Some(&restored_identity),
+        );
+        assert!(
+            matches!(plan, SessionHistoryRestorePlan::SkipVerified(_)),
+            "legacy pathless requests should retain reuse compatibility"
+        );
     }
 
     #[tokio::test]

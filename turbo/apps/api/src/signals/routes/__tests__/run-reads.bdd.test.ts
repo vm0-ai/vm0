@@ -1039,6 +1039,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(duplicatePrepared.body).toStrictEqual({
       existing: true,
       encoding: "gzip",
+      acceptsCodexRolloutPath: true,
     });
     const checkpointed = await webhooks.requestAgentCheckpoint(
       {
@@ -1146,6 +1147,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(duplicatePrepared.body).toStrictEqual({
       existing: true,
       encoding: "zstd",
+      acceptsCodexRolloutPath: true,
     });
     const checkpointed = await webhooks.requestAgentCheckpoint(
       {

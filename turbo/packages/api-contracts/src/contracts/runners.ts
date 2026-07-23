@@ -36,7 +36,9 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
+export const RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY = "codex-rollout-path-v1";
 export const RUNNER_STORAGE_MOUNTS_CAPABILITY = "storage-mounts-v1";
+export const codexRolloutPathSchema = z.string().min(1).max(255);
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -422,6 +424,7 @@ export const storageManifestSchema = z
 const inlineResumeSessionSchema = z.object({
   sessionId: z.string(),
   sessionHistory: z.string(),
+  codexRolloutPath: codexRolloutPathSchema.optional(),
 });
 
 const resumeSessionHistoryBlobRefSchema = z.object({
@@ -444,6 +447,7 @@ const resumeSessionHistoryEncodedSizeSchema = z
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
+  codexRolloutPath: codexRolloutPathSchema.optional(),
   historyGenerationRunId: z.uuid().optional(),
   historyRef: resumeSessionHistoryBlobRefSchema.extend({
     encoding: sessionHistoryEncodingSchema.optional(),
@@ -482,6 +486,7 @@ const resumeSessionZstdHistoryRefSchema = resumeSessionHistoryBlobRefSchema
 
 const resumeSessionRefSchema = z.object({
   sessionId: z.string(),
+  codexRolloutPath: codexRolloutPathSchema.optional(),
   historyRef: z.union([
     resumeSessionGzipHistoryRefSchema,
     resumeSessionZstdHistoryRefSchema,

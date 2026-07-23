@@ -7,6 +7,7 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use guest_contracts::codex_rollout_path::CodexRolloutPath;
 use guest_contracts::codex_thread_id::CodexThreadId;
 
 const CODEX_HOME: &str = "/home/user/.codex";
@@ -51,13 +52,31 @@ pub(super) async fn restore_codex_session(
     let session_id = thread_id.as_str();
     let session_filename_key = thread_id.filename_key();
 
-    let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
     let (session_history, extension) = if let Some(bytes) = session.codex_zstd_history() {
         (bytes, ".jsonl.zst")
     } else {
         (session.history_bytes(), ".jsonl")
     };
-    let session_path = codex_restore_rollout_path(session_id, timestamp, extension);
+    let session_path = match context
+        .resume_session
+        .as_ref()
+        .and_then(|resume_session| resume_session.codex_rollout_path.as_deref())
+    {
+        Some(raw_path) => {
+            let path = CodexRolloutPath::parse(raw_path, &thread_id)
+                .ok_or_else(|| RunnerError::Internal("invalid codex rollout path".into()))?;
+            let compressed_suffix = if extension.ends_with(".zst") {
+                ".zst"
+            } else {
+                ""
+            };
+            format!("{CODEX_HOME}/sessions/{}{compressed_suffix}", path.as_str())
+        }
+        None => {
+            let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
+            codex_restore_rollout_path(session_id, timestamp, extension)
+        }
+    };
 
     cleanup_existing_codex_session_files(
         sandbox,

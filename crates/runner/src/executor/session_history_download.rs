@@ -1261,6 +1261,7 @@ mod tests {
     fn ref_session(url: String, hash: String, raw_size: u64, encoded_size: u64) -> ResumeSession {
         ResumeSession {
             cli_agent_session_id: "sess-123".to_string(),
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -1314,6 +1315,7 @@ mod tests {
     ) -> ResumeSession {
         ResumeSession {
             cli_agent_session_id: "sess-123".to_string(),
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,

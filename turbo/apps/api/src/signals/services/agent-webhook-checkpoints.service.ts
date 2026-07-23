@@ -296,7 +296,11 @@ export const prepareCheckpointHistoryUpload$ = command(
       if (exists) {
         return {
           status: 200 as const,
-          body: { existing: true, encoding },
+          body: {
+            existing: true,
+            encoding,
+            acceptsCodexRolloutPath: true,
+          },
         };
       }
     }
@@ -334,6 +338,7 @@ export const prepareCheckpointHistoryUpload$ = command(
         presignedUrl,
         existing: false,
         encoding,
+        acceptsCodexRolloutPath: true,
       },
     };
   },
@@ -374,6 +379,10 @@ export const createAgentCheckpoint$ = command(
       });
     signal.throwIfAborted();
 
+    const codexRolloutPath =
+      input.body.cliAgentType === "codex"
+        ? (input.body.codexRolloutPath ?? null)
+        : null;
     const [conversation] = await db
       .insert(conversations)
       .values({
@@ -381,6 +390,7 @@ export const createAgentCheckpoint$ = command(
         cliAgentType: input.body.cliAgentType,
         cliAgentSessionId: input.body.cliAgentSessionId,
         cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+        codexRolloutPath,
       })
       .onConflictDoUpdate({
         target: conversations.runId,
@@ -388,6 +398,7 @@ export const createAgentCheckpoint$ = command(
           cliAgentType: input.body.cliAgentType,
           cliAgentSessionId: input.body.cliAgentSessionId,
           cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+          codexRolloutPath,
         },
       })
       .returning({ id: conversations.id });

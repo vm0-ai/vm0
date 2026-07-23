@@ -171,6 +171,7 @@ impl SessionHistoryIdentityReason {
             | FinalSessionHistoryIdentityError::InvalidHistoryRefKind
             | FinalSessionHistoryIdentityError::InvalidSessionIdHash
             | FinalSessionHistoryIdentityError::InvalidHistoryHash
+            | FinalSessionHistoryIdentityError::InvalidCodexRolloutPathHash
             | FinalSessionHistoryIdentityError::InvalidHistorySize
             | FinalSessionHistoryIdentityError::MissingHistoryMarker => {
                 Self::FinalizeInvalidMetadata
@@ -487,7 +488,10 @@ async fn verify_restored_session_identity_for_reuse(
         );
         return Err(SessionHistoryIdentityReason::VerifyRequestMissing);
     };
-    if identity != requested_identity {
+    if identity
+        .mismatch_reason_for_request(&requested_identity)
+        .is_some()
+    {
         debug!(
             run_id = %context.run_id,
             "restored session identity invalidated because it does not match the resume request"
@@ -501,30 +505,11 @@ async fn verify_restored_session_identity_for_reuse(
         );
         return Err(SessionHistoryIdentityReason::VerifyMissingVerifier);
     };
-    if !identity.is_verified_match_for_request(&requested_identity) {
-        return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
-    }
 
-    let RestoredSessionFinalMetadataVerification {
-        metadata_path,
-        runtime_dir,
-        framework,
-        session_id_hash,
-        history_ref_kind,
-        history_hash,
-        history_size_bytes,
-    } = verification;
-    let metadata_path = metadata_path.to_owned();
-    let runtime_dir = runtime_dir.to_owned();
-    let command = build_final_identity_verify_command(
-        guest::RUN_AGENT,
-        &metadata_path,
-        framework.as_str(),
-        session_id_hash,
-        history_ref_kind.as_str(),
-        history_hash,
-        history_size_bytes,
-    );
+    let metadata_path = verification.metadata_path.to_owned();
+    let runtime_dir = verification.runtime_dir.to_owned();
+    let command =
+        build_final_identity_verify_command(guest::RUN_AGENT, &metadata_path, &verification);
     verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
 }
 
@@ -612,22 +597,21 @@ fn session_history_identity_reason_from_helper_result(
 fn build_final_identity_verify_command(
     run_agent_path: &str,
     metadata_path: &str,
-    framework: &str,
-    session_id_hash: &str,
-    history_ref_kind: &str,
-    history_hash: &str,
-    history_size_bytes: u64,
+    verification: &RestoredSessionFinalMetadataVerification<'_>,
 ) -> String {
-    let args = [
+    let mut args = vec![
         quote_shell_arg(run_agent_path),
         "verify-session-history-identity".to_string(),
         quote_shell_arg(metadata_path),
-        quote_shell_arg(framework),
-        quote_shell_arg(session_id_hash),
-        quote_shell_arg(history_ref_kind),
-        quote_shell_arg(history_hash),
-        history_size_bytes.to_string(),
+        quote_shell_arg(verification.framework.as_str()),
+        quote_shell_arg(verification.session_id_hash),
+        quote_shell_arg(verification.history_ref_kind.as_str()),
+        quote_shell_arg(verification.history_hash),
+        verification.history_size_bytes.to_string(),
     ];
+    if let Some(codex_rollout_path_hash) = verification.codex_rollout_path_hash {
+        args.push(quote_shell_arg(codex_rollout_path_hash));
+    }
     args.join(" ")
 }
 

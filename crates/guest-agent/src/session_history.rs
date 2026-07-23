@@ -31,7 +31,8 @@
 use crate::error::AgentError;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
-use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
+use guest_contracts::codex_rollout_path::CodexRolloutPath;
+use guest_contracts::codex_thread_id::CodexThreadId;
 use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fs::File;
@@ -118,11 +119,23 @@ fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
 pub(crate) struct SessionHistoryDigest {
     pub(crate) size_bytes: u64,
     pub(crate) sha256_hex: String,
+    pub(crate) codex_rollout_path_sha256: Option<String>,
 }
 
 pub(crate) enum SessionHistoryCheckpointSource {
     Decoded(Vec<u8>),
     CodexZstd { encoded: Vec<u8> },
+}
+
+pub(crate) struct PreparedSessionHistoryCheckpoint {
+    source: SessionHistoryCheckpointSource,
+    codex_rollout_path: Option<String>,
+}
+
+impl PreparedSessionHistoryCheckpoint {
+    pub(crate) fn into_parts(self) -> (SessionHistoryCheckpointSource, Option<String>) {
+        (self.source, self.codex_rollout_path)
+    }
 }
 
 pub(crate) struct PreparedSessionHistorySidecar {
@@ -153,28 +166,38 @@ pub(crate) fn digest_session_history_from_payload_bounded(
     payload: &str,
     max_bytes: u64,
 ) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
-    resolve_session_history_source(payload)?.digest(max_bytes)
+    let source = resolve_session_history_source(payload)?;
+    let codex_rollout_path_sha256 = source.codex_rollout_path().map(sha256_text);
+    let mut digest = source.digest(max_bytes)?;
+    digest.codex_rollout_path_sha256 = codex_rollout_path_sha256;
+    Ok(digest)
 }
 
 pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
     payload: &str,
     max_bytes: u64,
-) -> Result<SessionHistoryCheckpointSource, AgentError> {
-    match resolve_session_history_source(payload)? {
+) -> Result<PreparedSessionHistoryCheckpoint, AgentError> {
+    let source = resolve_session_history_source(payload)?;
+    let codex_rollout_path = source.codex_rollout_path().map(str::to_owned);
+    let source = match source {
         ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
             if session.encoded_len()? <= max_bytes {
                 let encoded = session.into_zstd_bytes(max_bytes)?;
-                Ok(SessionHistoryCheckpointSource::CodexZstd { encoded })
+                SessionHistoryCheckpointSource::CodexZstd { encoded }
             } else {
                 ResolvedSessionHistorySource::Codex(session)
                     .read(Some(max_bytes))
-                    .map(SessionHistoryCheckpointSource::Decoded)
+                    .map(SessionHistoryCheckpointSource::Decoded)?
             }
         }
         source => source
             .read(Some(max_bytes))
-            .map(SessionHistoryCheckpointSource::Decoded),
-    }
+            .map(SessionHistoryCheckpointSource::Decoded)?,
+    };
+    Ok(PreparedSessionHistoryCheckpoint {
+        source,
+        codex_rollout_path,
+    })
 }
 
 pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
@@ -182,25 +205,29 @@ pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
     max_decoded_bytes: u64,
     max_encoded_bytes: u64,
 ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
-    match resolve_session_history_source(payload)? {
+    let source = resolve_session_history_source(payload)?;
+    let codex_rollout_path_sha256 = source.codex_rollout_path().map(sha256_text);
+    let mut prepared = match source {
         ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
             if session.encoded_len()? <= max_encoded_bytes {
                 let encoded = session.into_zstd_bytes(max_encoded_bytes)?;
                 let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
-                Ok(PreparedSessionHistorySidecar {
+                PreparedSessionHistorySidecar {
                     digest,
                     source: SessionHistoryCheckpointSource::CodexZstd { encoded },
-                })
+                }
             } else {
                 ResolvedSessionHistorySource::Codex(session)
                     .open_decoded_reader()?
-                    .prepare_sidecar(max_decoded_bytes)
+                    .prepare_sidecar(max_decoded_bytes)?
             }
         }
         source => source
             .open_decoded_reader()?
-            .prepare_sidecar(max_decoded_bytes),
-    }
+            .prepare_sidecar(max_decoded_bytes)?,
+    };
+    prepared.digest.codex_rollout_path_sha256 = codex_rollout_path_sha256;
+    Ok(prepared)
 }
 
 fn read_session_history_from_payload_impl(
@@ -235,6 +262,13 @@ enum ResolvedSessionHistorySource {
 }
 
 impl ResolvedSessionHistorySource {
+    fn codex_rollout_path(&self) -> Option<&str> {
+        match self {
+            Self::Literal(_) => None,
+            Self::Codex(session) => session.codex_rollout_path.as_deref(),
+        }
+    }
+
     fn read(self, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
         self.open_decoded_reader()?.read(max_bytes)
     }
@@ -281,13 +315,19 @@ fn resolve_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
 ) -> Result<Option<ResolvedCodexSession>, AgentError> {
-    let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
+    let Some(thread_id) = CodexThreadId::parse(thread_id) else {
         return Ok(None);
     };
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
-    resolve_codex_session_history_impl(sessions_dir, &id_norm)
+    let mut session = resolve_codex_session_history_impl(sessions_dir, &thread_id.filename_key())?;
+    if let Some(session) = &mut session {
+        session.codex_rollout_path =
+            CodexRolloutPath::from_session_file(sessions_dir, &session.path, &thread_id)
+                .map(CodexRolloutPath::into_string);
+    }
+    Ok(session)
 }
 
 fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {
@@ -506,7 +546,11 @@ impl CodexSessionDir {
         if !metadata.file_type().is_file() {
             return Ok(None);
         }
-        Ok(Some(ResolvedCodexSession { path, file }))
+        Ok(Some(ResolvedCodexSession {
+            path,
+            codex_rollout_path: None,
+            file,
+        }))
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -515,7 +559,10 @@ impl CodexSessionDir {
         _name: &OsStr,
         path: PathBuf,
     ) -> Result<Option<ResolvedCodexSession>, AgentError> {
-        Ok(Some(ResolvedCodexSession { path }))
+        Ok(Some(ResolvedCodexSession {
+            path,
+            codex_rollout_path: None,
+        }))
     }
 }
 
@@ -546,6 +593,7 @@ impl CodexSessionDateLevel {
 
 struct ResolvedCodexSession {
     path: PathBuf,
+    codex_rollout_path: Option<String>,
     #[cfg(target_os = "linux")]
     file: File,
 }
@@ -833,6 +881,7 @@ fn digest_history_reader(
     Ok(SessionHistoryDigest {
         size_bytes,
         sha256_hex: hex::encode(hasher.finalize()),
+        codex_rollout_path_sha256: None,
     })
 }
 
@@ -880,9 +929,14 @@ fn prepare_session_history_sidecar_reader(
         digest: SessionHistoryDigest {
             size_bytes,
             sha256_hex: hex::encode(hasher.finalize()),
+            codex_rollout_path_sha256: None,
         },
         source: SessionHistoryCheckpointSource::Decoded(raw_bytes),
     })
+}
+
+fn sha256_text(value: &str) -> String {
+    hex::encode(Sha256::digest(value.as_bytes()))
 }
 
 #[cfg(test)]
@@ -1032,11 +1086,12 @@ mod tests {
         std::fs::write(path, compressed).unwrap();
         let payload = codex_marker_payload(&sessions_dir, thread_id);
 
-        let source = read_session_history_checkpoint_source_from_payload_bounded(
+        let prepared = read_session_history_checkpoint_source_from_payload_bounded(
             &payload,
             history.len() as u64,
         )
         .unwrap();
+        let (source, _) = prepared.into_parts();
 
         match source {
             SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),

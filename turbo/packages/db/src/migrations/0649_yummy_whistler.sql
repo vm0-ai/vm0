@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "codex_rollout_path" varchar(255);

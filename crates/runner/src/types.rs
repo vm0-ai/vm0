@@ -1230,6 +1230,8 @@ pub struct NetworkPolicyRefreshBatchResponse {
 pub struct ResumeSession {
     #[serde(rename = "sessionId")]
     pub cli_agent_session_id: String,
+    #[serde(default)]
+    pub codex_rollout_path: Option<String>,
     #[serde(flatten)]
     pub history: ResumeSessionHistory,
 }
@@ -1294,6 +1296,7 @@ impl ResumeSession {
     pub fn inline(cli_agent_session_id: String, session_history: String) -> Self {
         Self {
             cli_agent_session_id,
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Inline {
                 session_history: Arc::new(session_history),
             },
@@ -1926,6 +1929,7 @@ mod tests {
             Some("{}")
         );
         let session = ctx.resume_session.as_ref().unwrap();
+        assert!(session.codex_rollout_path.is_none());
         let first = session.shared_session_history().unwrap();
         let second = session.shared_session_history().unwrap();
         assert!(Arc::ptr_eq(&first, &second));
@@ -2031,14 +2035,20 @@ mod tests {
     }
 
     #[test]
-    fn cli_agent_session_id_returns_id_from_zstd_resume_session_history_ref() {
+    fn codex_resume_session_accepts_rollout_path_with_zstd_history_ref() {
+        let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let codex_rollout_path = concat!(
+            "2026/07/23/rollout-2026-07-23T04-01-04-",
+            "019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+        );
         let json = json!({
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "cliAgentType": "claude_code",
+            "cliAgentType": "codex",
             "resumeSession": {
-                "sessionId": "sess-ref-123",
+                "sessionId": session_id,
+                "codexRolloutPath": codex_rollout_path,
                 "historyRef": {
                     "kind": "blob",
                     "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -2053,7 +2063,11 @@ mod tests {
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
         let history_ref = session.history_ref().unwrap();
-        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert_eq!(ctx.cli_agent_session_id(), Some(session_id));
+        assert_eq!(
+            session.codex_rollout_path.as_deref(),
+            Some(codex_rollout_path)
+        );
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
         assert_eq!(

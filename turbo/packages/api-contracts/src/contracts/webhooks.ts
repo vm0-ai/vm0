@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
+  codexRolloutPathSchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
@@ -492,6 +493,7 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
+        codexRolloutPath: codexRolloutPathSchema.optional(),
         // Multi-artifact snapshots validated by artifactSnapshotsSchema and
         // persisted to checkpoints.artifact_snapshots.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
@@ -545,6 +547,7 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
         presignedUrl: z.string().optional(),
         existing: z.boolean(),
         encoding: sessionHistoryEncodingSchema.optional(),
+        acceptsCodexRolloutPath: z.boolean().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

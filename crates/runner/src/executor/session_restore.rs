@@ -5,7 +5,10 @@ mod codex;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use guest_contracts::codex_rollout_path::CodexRolloutPath;
+use guest_contracts::codex_thread_id::CodexThreadId;
 use sandbox::Sandbox;
+use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
@@ -27,12 +30,24 @@ impl RestoredSessionIdentity {
             effective_framework,
             &resume_session.cli_agent_session_id,
         )?;
-        Some(Self::new(
+        let codex_rollout_path_hash = match effective_framework {
+            EffectiveCliFramework::ClaudeCode => None,
+            EffectiveCliFramework::Codex => match resume_session.codex_rollout_path.as_deref() {
+                Some(path) => {
+                    let thread_id = CodexThreadId::parse(&session_id)?;
+                    let path = CodexRolloutPath::parse(path, &thread_id)?;
+                    Some(hex::encode(Sha256::digest(path.as_str().as_bytes())))
+                }
+                None => None,
+            },
+        };
+        Some(Self::new_with_codex_rollout_path_hash(
             framework,
             &session_id,
             history_ref.kind,
             history_ref.hash.clone(),
             Some(history_ref.raw_size),
+            codex_rollout_path_hash,
         ))
     }
 }

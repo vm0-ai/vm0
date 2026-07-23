@@ -13,6 +13,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY,
   RUNNER_STORAGE_MOUNTS_CAPABILITY,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
@@ -3061,6 +3062,123 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, first.runId, [200]);
     const cancelled = await api.readRun(actor, first.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("persists Codex rollout paths and sends them only to capable runners", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const composeName = `bdd-codex-rollout-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "codex",
+          environment: { OPENAI_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "persist the original Codex rollout path",
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId);
+    const headers = {
+      authorization: `Bearer ${initialClaim.sandboxToken}`,
+    };
+    const threadId = randomUUID();
+    const codexRolloutPath = `2026/07/23/rollout-2026-07-23T04-01-04-${threadId}.jsonl`;
+    const history = `codex rollout history ${initialRun.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: initialRun.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: 24,
+        encoding: "zstd",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "zstd",
+      acceptsCodexRolloutPath: true,
+    });
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: initialRun.runId,
+        cliAgentType: "codex",
+        cliAgentSessionId: threadId,
+        cliAgentSessionHistoryHash: historyHash,
+        codexRolloutPath,
+      },
+      headers,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected Codex checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: initialRun.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const legacySessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "resume through a legacy runner",
+    });
+    const legacySessionClaim = await api.claimRunnerJob(legacySessionRun.runId);
+    expect(legacySessionClaim.resumeSession).toMatchObject({
+      sessionId: threadId,
+      historyRef: {
+        hash: historyHash,
+        encoding: "zstd",
+      },
+    });
+    expect(legacySessionClaim.resumeSession).not.toHaveProperty(
+      "codexRolloutPath",
+    );
+    await api.requestCancelRun(actor, legacySessionRun.runId, [200]);
+
+    const capableSessionRun = await api.createDirectRun(actor, {
+      sessionId: initialRun.sessionId,
+      prompt: "resume the Codex session at its original path",
+    });
+    const capableSessionClaim = await api.claimRunnerJob(
+      capableSessionRun.runId,
+      { capabilities: [RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY] },
+    );
+    expect(capableSessionClaim.resumeSession).toMatchObject({
+      sessionId: threadId,
+      codexRolloutPath,
+      historyRef: {
+        hash: historyHash,
+        encoding: "zstd",
+      },
+    });
+    await api.requestCancelRun(actor, capableSessionRun.runId, [200]);
+
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "resume the Codex checkpoint at its original path",
+    });
+    const checkpointClaim = await api.claimRunnerJob(checkpointRun.runId, {
+      capabilities: [RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY],
+    });
+    expect(checkpointClaim.resumeSession).toMatchObject({
+      sessionId: threadId,
+      codexRolloutPath,
+      historyRef: {
+        hash: historyHash,
+        encoding: "zstd",
+      },
+    });
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
   it("exposes same-session affinity metadata to runner poll responses", async () => {

@@ -148,13 +148,7 @@ fn final_session_history_identity_path_from_process_env() -> std::ffi::OsString 
 fn parse_session_history_identity_expectation(
     args: &[std::ffi::OsString],
 ) -> Result<Option<FinalSessionHistoryIdentityExpectation>, ()> {
-    let [
-        framework,
-        session_id_hash,
-        history_ref_kind,
-        history_hash,
-        history_size_bytes,
-    ] = match args {
+    let expectation = match args {
         [] => return Ok(None),
         [
             framework,
@@ -162,29 +156,31 @@ fn parse_session_history_identity_expectation(
             history_ref_kind,
             history_hash,
             history_size_bytes,
-        ] => [
+        ] => FinalSessionHistoryIdentityExpectation::from_cli_args([
+            framework.to_str().ok_or(())?,
+            session_id_hash.to_str().ok_or(())?,
+            history_ref_kind.to_str().ok_or(())?,
+            history_hash.to_str().ok_or(())?,
+            history_size_bytes.to_str().ok_or(())?,
+        ]),
+        [
             framework,
             session_id_hash,
             history_ref_kind,
             history_hash,
             history_size_bytes,
-        ],
+            codex_rollout_path_hash,
+        ] => FinalSessionHistoryIdentityExpectation::from_cli_args_with_codex_rollout_path_hash([
+            framework.to_str().ok_or(())?,
+            session_id_hash.to_str().ok_or(())?,
+            history_ref_kind.to_str().ok_or(())?,
+            history_hash.to_str().ok_or(())?,
+            history_size_bytes.to_str().ok_or(())?,
+            codex_rollout_path_hash.to_str().ok_or(())?,
+        ]),
         _ => return Err(()),
     };
-    let framework = framework.to_str().ok_or(())?;
-    let session_id_hash = session_id_hash.to_str().ok_or(())?;
-    let history_ref_kind = history_ref_kind.to_str().ok_or(())?;
-    let history_hash = history_hash.to_str().ok_or(())?;
-    let history_size_bytes = history_size_bytes.to_str().ok_or(())?;
-    FinalSessionHistoryIdentityExpectation::from_cli_args([
-        framework,
-        session_id_hash,
-        history_ref_kind,
-        history_hash,
-        history_size_bytes,
-    ])
-    .map(Some)
-    .map_err(|_| ())
+    expectation.map(Some).map_err(|_| ())
 }
 
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).

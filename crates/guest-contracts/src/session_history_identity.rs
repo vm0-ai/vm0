@@ -87,6 +87,9 @@ pub struct FinalSessionHistoryIdentity {
     pub history_hash: String,
     /// Exact final session-history byte length.
     pub history_size_bytes: u64,
+    /// SHA-256 hash of the logical Codex rollout path, when path-aware checkpointing was accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_rollout_path_hash: Option<String>,
     /// Private guest marker used to read final framework history.
     pub history_marker_payload: String,
 }
@@ -101,6 +104,27 @@ impl FinalSessionHistoryIdentity {
         history_size_bytes: u64,
         history_marker_payload: impl Into<String>,
     ) -> Result<Self, FinalSessionHistoryIdentityError> {
+        Self::new_with_codex_rollout_path_hash(
+            framework,
+            session_id_hash,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+            history_marker_payload,
+            None,
+        )
+    }
+
+    /// Build validated final identity metadata with optional Codex rollout path identity.
+    pub fn new_with_codex_rollout_path_hash(
+        framework: FinalSessionHistoryFramework,
+        session_id_hash: impl Into<String>,
+        history_ref_kind: FinalSessionHistoryRefKind,
+        history_hash: impl Into<String>,
+        history_size_bytes: u64,
+        history_marker_payload: impl Into<String>,
+        codex_rollout_path_hash: Option<String>,
+    ) -> Result<Self, FinalSessionHistoryIdentityError> {
         let identity = Self {
             version: FINAL_SESSION_HISTORY_IDENTITY_VERSION,
             framework,
@@ -108,6 +132,7 @@ impl FinalSessionHistoryIdentity {
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
+            codex_rollout_path_hash,
             history_marker_payload: history_marker_payload.into(),
         };
         identity.validate()?;
@@ -149,6 +174,13 @@ impl FinalSessionHistoryIdentity {
         }
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
+        }
+        if self
+            .codex_rollout_path_hash
+            .as_deref()
+            .is_some_and(|hash| !is_sha256_hex(hash))
+        {
+            return Err(FinalSessionHistoryIdentityError::InvalidCodexRolloutPathHash);
         }
         if self.history_marker_payload.trim().is_empty() {
             return Err(FinalSessionHistoryIdentityError::MissingHistoryMarker);
@@ -207,6 +239,8 @@ pub struct FinalSessionHistoryIdentityExpectation {
     pub history_hash: String,
     /// Exact final session-history byte length expected by runner.
     pub history_size_bytes: u64,
+    /// SHA-256 hash of the logical Codex rollout path expected by runner.
+    pub codex_rollout_path_hash: Option<String>,
 }
 
 impl fmt::Debug for FinalSessionHistoryIdentityExpectation {
@@ -217,6 +251,10 @@ impl fmt::Debug for FinalSessionHistoryIdentityExpectation {
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)
+            .field(
+                "codex_rollout_path_hash",
+                &self.codex_rollout_path_hash.as_ref().map(|_| "[redacted]"),
+            )
             .finish()
     }
 }
@@ -230,12 +268,32 @@ impl FinalSessionHistoryIdentityExpectation {
         history_hash: impl Into<String>,
         history_size_bytes: u64,
     ) -> Result<Self, FinalSessionHistoryIdentityError> {
+        Self::new_with_codex_rollout_path_hash(
+            framework,
+            session_id_hash,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+            None,
+        )
+    }
+
+    /// Build validated expected fields with optional Codex rollout path identity.
+    pub fn new_with_codex_rollout_path_hash(
+        framework: FinalSessionHistoryFramework,
+        session_id_hash: impl Into<String>,
+        history_ref_kind: FinalSessionHistoryRefKind,
+        history_hash: impl Into<String>,
+        history_size_bytes: u64,
+        codex_rollout_path_hash: Option<String>,
+    ) -> Result<Self, FinalSessionHistoryIdentityError> {
         let expectation = Self {
             framework,
             session_id_hash: session_id_hash.into(),
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
+            codex_rollout_path_hash,
         };
         expectation.validate()?;
         Ok(expectation)
@@ -255,6 +313,23 @@ impl FinalSessionHistoryIdentityExpectation {
         )
     }
 
+    /// Parse expected final identity fields including Codex rollout path identity.
+    pub fn from_cli_args_with_codex_rollout_path_hash(
+        args: [&str; 6],
+    ) -> Result<Self, FinalSessionHistoryIdentityError> {
+        let history_size_bytes = args[4]
+            .parse::<u64>()
+            .map_err(|_| FinalSessionHistoryIdentityError::InvalidHistorySize)?;
+        Self::new_with_codex_rollout_path_hash(
+            FinalSessionHistoryFramework::parse_cli_arg(args[0])?,
+            args[1],
+            FinalSessionHistoryRefKind::parse_cli_arg(args[2])?,
+            args[3],
+            history_size_bytes,
+            Some(args[5].to_owned()),
+        )
+    }
+
     /// Validate expected final identity invariants.
     pub fn validate(&self) -> Result<(), FinalSessionHistoryIdentityError> {
         if !is_sha256_hex(&self.session_id_hash) {
@@ -266,6 +341,13 @@ impl FinalSessionHistoryIdentityExpectation {
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
         }
+        if self
+            .codex_rollout_path_hash
+            .as_deref()
+            .is_some_and(|hash| !is_sha256_hex(hash))
+        {
+            return Err(FinalSessionHistoryIdentityError::InvalidCodexRolloutPathHash);
+        }
         Ok(())
     }
 
@@ -276,6 +358,10 @@ impl FinalSessionHistoryIdentityExpectation {
             && self.history_ref_kind == identity.history_ref_kind
             && self.history_hash == identity.history_hash
             && self.history_size_bytes == identity.history_size_bytes
+            && self
+                .codex_rollout_path_hash
+                .as_ref()
+                .is_none_or(|expected| identity.codex_rollout_path_hash.as_ref() == Some(expected))
     }
 }
 
@@ -288,6 +374,10 @@ impl fmt::Debug for FinalSessionHistoryIdentity {
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)
+            .field(
+                "codex_rollout_path_hash",
+                &self.codex_rollout_path_hash.as_ref().map(|_| "[redacted]"),
+            )
             .field("history_marker_payload", &"[redacted]")
             .finish()
     }
@@ -310,6 +400,8 @@ pub enum FinalSessionHistoryIdentityError {
     InvalidSessionIdHash,
     /// History hash is not a SHA-256 hex digest.
     InvalidHistoryHash,
+    /// Codex rollout path hash is not a SHA-256 hex digest.
+    InvalidCodexRolloutPathHash,
     /// History size is zero.
     InvalidHistorySize,
     /// History size exceeds a verifier work budget.
@@ -341,6 +433,9 @@ impl fmt::Display for FinalSessionHistoryIdentityError {
             }
             Self::InvalidHistoryHash => {
                 f.write_str("final session history identity history hash is invalid")
+            }
+            Self::InvalidCodexRolloutPathHash => {
+                f.write_str("final session history identity Codex rollout path hash is invalid")
             }
             Self::InvalidHistorySize => {
                 f.write_str("final session history identity history size is invalid")
@@ -433,6 +528,21 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistoryHash);
+
+        let err = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            12,
+            "CODEX_SEARCH:26:/home/user/.codex/sessions:session-id",
+            Some("not-a-hash".into()),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            FinalSessionHistoryIdentityError::InvalidCodexRolloutPathHash
+        );
     }
 
     #[test]
@@ -484,12 +594,23 @@ mod tests {
 
     #[test]
     fn final_identity_debug_redacts_sensitive_fields() {
-        let identity = valid_identity();
+        let rollout_path_hash = "c".repeat(64);
+        let identity = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            12,
+            "CODEX_SEARCH:26:/home/user/.codex/sessions:session-id",
+            Some(rollout_path_hash.clone()),
+        )
+        .unwrap();
         let debug = format!("{identity:?}");
 
         assert!(debug.contains("[redacted]"));
         assert!(!debug.contains(&identity.session_id_hash));
         assert!(!debug.contains(&identity.history_hash));
+        assert!(!debug.contains(&rollout_path_hash));
         assert!(!debug.contains(&identity.history_marker_payload));
     }
 
@@ -538,9 +659,38 @@ mod tests {
     }
 
     #[test]
-    fn final_identity_expectation_debug_redacts_sensitive_fields() {
-        let identity = valid_identity();
-        let expectation = FinalSessionHistoryIdentityExpectation::new(
+    fn final_identity_expectation_binds_requested_codex_rollout_path_hash() {
+        let rollout_path_hash = "c".repeat(64);
+        let identity = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            12,
+            "CODEX_SEARCH:26:/home/user/.codex/sessions:session-id",
+            Some(rollout_path_hash.clone()),
+        )
+        .unwrap();
+        let matching =
+            FinalSessionHistoryIdentityExpectation::from_cli_args_with_codex_rollout_path_hash([
+                identity.framework.as_str(),
+                &identity.session_id_hash,
+                identity.history_ref_kind.as_str(),
+                &identity.history_hash,
+                &identity.history_size_bytes.to_string(),
+                &rollout_path_hash,
+            ])
+            .unwrap();
+        let mismatched = FinalSessionHistoryIdentityExpectation::new_with_codex_rollout_path_hash(
+            identity.framework,
+            identity.session_id_hash.clone(),
+            identity.history_ref_kind,
+            identity.history_hash.clone(),
+            identity.history_size_bytes,
+            Some("d".repeat(64)),
+        )
+        .unwrap();
+        let legacy = FinalSessionHistoryIdentityExpectation::new(
             identity.framework,
             identity.session_id_hash.clone(),
             identity.history_ref_kind,
@@ -548,10 +698,30 @@ mod tests {
             identity.history_size_bytes,
         )
         .unwrap();
+
+        assert!(matching.matches_identity(&identity));
+        assert!(!mismatched.matches_identity(&identity));
+        assert!(legacy.matches_identity(&identity));
+    }
+
+    #[test]
+    fn final_identity_expectation_debug_redacts_sensitive_fields() {
+        let identity = valid_identity();
+        let rollout_path_hash = "c".repeat(64);
+        let expectation = FinalSessionHistoryIdentityExpectation::new_with_codex_rollout_path_hash(
+            identity.framework,
+            identity.session_id_hash.clone(),
+            identity.history_ref_kind,
+            identity.history_hash.clone(),
+            identity.history_size_bytes,
+            Some(rollout_path_hash.clone()),
+        )
+        .unwrap();
         let debug = format!("{expectation:?}");
 
         assert!(debug.contains("[redacted]"));
         assert!(!debug.contains(&identity.session_id_hash));
         assert!(!debug.contains(&identity.history_hash));
+        assert!(!debug.contains(&rollout_path_hash));
     }
 }

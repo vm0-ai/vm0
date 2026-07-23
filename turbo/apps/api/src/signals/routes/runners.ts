@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY,
   RUNNER_STORAGE_MOUNTS_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
@@ -1398,6 +1399,7 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
 
 async function resolveResumeSessionForClaim(args: {
   readonly resumeSession: StoredExecutionContext["resumeSession"];
+  readonly includeCodexRolloutPath: boolean;
   readonly timing: ClaimRouteTimingCollector;
   readonly loadIdentityRepresentation: (
     hash: string,
@@ -1413,14 +1415,24 @@ async function resolveResumeSessionForClaim(args: {
 }): Promise<ExecutionContext["resumeSession"]> {
   const resumeSession = args.resumeSession;
   if (!hasResumeSessionHistoryRef(resumeSession)) {
-    return resumeSession;
+    if (resumeSession === null) {
+      return null;
+    }
+    const { codexRolloutPath, ...legacyResumeSession } = resumeSession;
+    return args.includeCodexRolloutPath && codexRolloutPath
+      ? { ...legacyResumeSession, codexRolloutPath }
+      : legacyResumeSession;
   }
 
   return await args.timing.measure(
     "claim_route_response_resume_session",
     "nested",
     async () => {
-      const { sessionId, historyRef } = resumeSession;
+      const { sessionId, historyRef, codexRolloutPath } = resumeSession;
+      const rolloutPath =
+        args.includeCodexRolloutPath && codexRolloutPath
+          ? { codexRolloutPath }
+          : {};
       const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
       if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
         const compressedRepresentation =
@@ -1440,6 +1452,7 @@ async function resolveResumeSessionForClaim(args: {
         );
         return {
           sessionId,
+          ...rolloutPath,
           historyRef: {
             kind: historyRef.kind,
             hash: historyRef.hash,
@@ -1465,6 +1478,7 @@ async function resolveResumeSessionForClaim(args: {
       const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
       return {
         sessionId,
+        ...rolloutPath,
         historyRef: {
           kind: historyRef.kind,
           hash: historyRef.hash,
@@ -1511,6 +1525,9 @@ async function buildClaimResponseBody(args: {
         await Promise.allSettled([
           resolveResumeSessionForClaim({
             resumeSession: args.storedContext.resumeSession,
+            includeCodexRolloutPath: args.capabilities.includes(
+              RUNNER_CODEX_ROLLOUT_PATH_CAPABILITY,
+            ),
             timing: args.timing,
             loadIdentityRepresentation(hash: string) {
               return args.loadIdentityRepresentation(hash);

@@ -440,6 +440,35 @@ describe("runner resume session contract", () => {
     ).toBe(true);
   });
 
+  it("preserves optional Codex rollout paths in stored and claim resume sessions", () => {
+    const codexRolloutPath = [
+      "2026/07/23/rollout-2026-07-23T04-01-04",
+      "019e9154-c304-70f0-adde-36efb1be1701.jsonl",
+    ].join("-");
+    const storedResumeSession = {
+      sessionId: "019e9154-c304-70f0-adde-36efb1be1701",
+      codexRolloutPath,
+      historyRef: { kind: "blob" as const, hash: historyHash },
+    };
+    const claimResumeSession = {
+      ...storedResumeSession,
+      historyRef: {
+        ...storedResumeSession.historyRef,
+        url: "https://r2.example.com/blobs/history.blob.zst?sig=secret",
+        encoding: "zstd" as const,
+        rawSize: 1024,
+        encodedSize: 96,
+      },
+    };
+
+    expect(storedResumeSessionSchema.parse(storedResumeSession)).toEqual(
+      storedResumeSession,
+    );
+    expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
+      claimResumeSession,
+    );
+  });
+
   it("keeps generation metadata in stable discovery and reusable shapes", () => {
     const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {

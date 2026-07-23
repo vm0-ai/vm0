@@ -248,6 +248,9 @@ export const rustTypeBindings = [
           cliAgentSessionHistoryHash: [
             "SHA-256 hash of the uploaded CLI agent session history.",
           ],
+          codexRolloutPath: [
+            "Optional canonical Codex rollout path relative to the sessions root.",
+          ],
           artifactSnapshots: [
             "Optional artifact versions captured by the checkpoint.",
           ],

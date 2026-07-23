@@ -15,6 +15,7 @@ fn generated_checkpoint_request_omits_absent_snapshots() {
         cli_agent_type: "claude-code".to_string(),
         cli_agent_session_id: "session-1".to_string(),
         cli_agent_session_history_hash: history_hash.clone(),
+        codex_rollout_path: None,
         artifact_snapshots: None,
         volume_versions_snapshot: None,
     };
@@ -35,11 +36,16 @@ fn generated_checkpoint_request_omits_absent_snapshots() {
 
 #[test]
 fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
+    let codex_rollout_path = concat!(
+        "2026/07/23/rollout-2026-07-23T04-01-04-",
+        "019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
     let request = checkpoints::Request {
         run_id: "run-1".to_string(),
         cli_agent_type: "codex".to_string(),
         cli_agent_session_id: "session-1".to_string(),
         cli_agent_session_history_hash: "b".repeat(64),
+        codex_rollout_path: Some(codex_rollout_path.to_string()),
         artifact_snapshots: Some(vec![checkpoints::RequestArtifactSnapshot {
             name: "memory".to_string(),
             version: "version-1".to_string(),
@@ -59,6 +65,7 @@ fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
             "cliAgentType": "codex",
             "cliAgentSessionId": "session-1",
             "cliAgentSessionHistoryHash": "b".repeat(64),
+            "codexRolloutPath": codex_rollout_path,
             "artifactSnapshots": [{
                 "name": "memory",
                 "version": "version-1",

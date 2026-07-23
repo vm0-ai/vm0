@@ -54,6 +54,7 @@ struct PreparedSessionHistory {
     hash: String,
     raw_size: u64,
     upload_source: PreparedSessionHistoryUploadSource,
+    codex_rollout_path: Option<String>,
 }
 
 enum PreparedSessionHistoryUploadSource {
@@ -165,7 +166,7 @@ enum SessionHistoryServerAcceptedBytes {
 }
 
 enum SessionHistoryUploadAttempt {
-    Complete,
+    Complete { accepts_codex_rollout_path: bool },
     RetryLegacy(Vec<u8>),
 }
 
@@ -426,6 +427,10 @@ async fn upload_session_history_candidate(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
+    let accepts_codex_rollout_path = prep_resp
+        .get("acceptsCodexRolloutPath")
+        .and_then(|value| value.as_bool())
+        == Some(true);
     if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD
         && response_encoding != Some(SESSION_HISTORY_ENCODING_ZSTD)
     {
@@ -451,7 +456,9 @@ async fn upload_session_history_candidate(
             LOG_TAG,
             "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
         );
-        return Ok(SessionHistoryUploadAttempt::Complete);
+        return Ok(SessionHistoryUploadAttempt::Complete {
+            accepts_codex_rollout_path,
+        });
     }
 
     let presigned_url = prep_resp
@@ -493,7 +500,9 @@ async fn upload_session_history_candidate(
         None,
     );
     log_info!(LOG_TAG, "Session history uploaded to S3");
-    Ok(SessionHistoryUploadAttempt::Complete)
+    Ok(SessionHistoryUploadAttempt::Complete {
+        accepts_codex_rollout_path,
+    })
 }
 
 async fn build_and_upload_session_history(
@@ -502,16 +511,20 @@ async fn build_and_upload_session_history(
     history_hash: &str,
     history_size: u64,
     upload_source: PreparedSessionHistoryUploadSource,
-) -> Result<(), AgentError> {
+) -> Result<bool, AgentError> {
     let history_upload = upload_source.into_upload(history_size)?;
     match upload_session_history_candidate(http, run_id, history_hash, history_upload).await? {
-        SessionHistoryUploadAttempt::Complete => Ok(()),
+        SessionHistoryUploadAttempt::Complete {
+            accepts_codex_rollout_path,
+        } => Ok(accepts_codex_rollout_path),
         SessionHistoryUploadAttempt::RetryLegacy(history_bytes) => {
             let legacy_upload = build_legacy_session_history_upload(history_bytes)?;
             match upload_session_history_candidate(http, run_id, history_hash, legacy_upload)
                 .await?
             {
-                SessionHistoryUploadAttempt::Complete => Ok(()),
+                SessionHistoryUploadAttempt::Complete {
+                    accepts_codex_rollout_path,
+                } => Ok(accepts_codex_rollout_path),
                 SessionHistoryUploadAttempt::RetryLegacy(_) => Err(AgentError::Checkpoint(
                     "Legacy session history upload unexpectedly requested zstd fallback".into(),
                 )),
@@ -706,28 +719,32 @@ fn prepare_session_history(
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistory, AgentError> {
-    let source = match session_history::read_session_history_checkpoint_source_from_payload_bounded(
-        history_marker_payload,
-        RESUME_SESSION_HISTORY_MAX_BYTES,
-    ) {
-        Ok(source) => source,
-        Err(e) => {
-            return Err(fail(
-                mode,
-                "session_history_read",
-                history_read_start,
-                e.to_string(),
-            ));
-        }
-    };
-    match source {
+    let prepared =
+        match session_history::read_session_history_checkpoint_source_from_payload_bounded(
+            history_marker_payload,
+            RESUME_SESSION_HISTORY_MAX_BYTES,
+        ) {
+            Ok(prepared) => prepared,
+            Err(e) => {
+                return Err(fail(
+                    mode,
+                    "session_history_read",
+                    history_read_start,
+                    e.to_string(),
+                ));
+            }
+        };
+    let (source, codex_rollout_path) = prepared.into_parts();
+    let mut prepared = match source {
         session_history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
             prepare_raw_session_history(mode, history_read_start, history_bytes)
         }
         session_history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
             prepare_reused_zstd_session_history(mode, history_read_start, encoded)
         }
-    }
+    }?;
+    prepared.codex_rollout_path = codex_rollout_path;
+    Ok(prepared)
 }
 
 fn prepare_raw_session_history(
@@ -794,6 +811,7 @@ fn prepare_raw_session_history(
         hash: history_hash,
         raw_size: history_size,
         upload_source: PreparedSessionHistoryUploadSource::Raw(history_bytes),
+        codex_rollout_path: None,
     })
 }
 
@@ -869,6 +887,7 @@ fn prepare_reused_zstd_session_history(
         hash: analysis.sha256_hex,
         raw_size: analysis.raw_size,
         upload_source: PreparedSessionHistoryUploadSource::ReusedCodexZstd(zstd_bytes),
+        codex_rollout_path: None,
     })
 }
 
@@ -1037,6 +1056,7 @@ async fn create_checkpoint_impl(
         hash: history_hash,
         raw_size: history_size,
         upload_source,
+        codex_rollout_path,
     } = prepared_history;
 
     // History upload and artifact snapshots are independent pre-requisites
@@ -1044,7 +1064,7 @@ async fn create_checkpoint_impl(
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let (artifact_snapshots, _) = tokio::try_join!(
+    let (artifact_snapshots, accepts_codex_rollout_path) = tokio::try_join!(
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
         build_and_upload_session_history(
             http,
@@ -1062,6 +1082,9 @@ async fn create_checkpoint_impl(
         cli_agent_type: cli_agent_type.to_string(),
         cli_agent_session_id,
         cli_agent_session_history_hash: history_hash,
+        codex_rollout_path: accepts_codex_rollout_path
+            .then_some(codex_rollout_path)
+            .flatten(),
         artifact_snapshots,
         volume_versions_snapshot: None,
     };
@@ -1089,8 +1112,7 @@ async fn create_checkpoint_impl(
     if let Some(id) = checkpoint_id {
         write_final_session_history_identity(
             mode,
-            &payload.cli_agent_session_id,
-            &payload.cli_agent_session_history_hash,
+            &payload,
             history_size,
             &history_marker_payload,
             inputs.framework,
@@ -1111,8 +1133,7 @@ async fn create_checkpoint_impl(
 
 fn write_final_session_history_identity(
     mode: CheckpointMode,
-    cli_agent_session_id: &str,
-    history_hash: &str,
+    payload: &checkpoints::Request,
     history_size: u64,
     history_marker_payload: &str,
     framework: env::Framework,
@@ -1123,10 +1144,11 @@ fn write_final_session_history_identity(
     }
     let identity = match build_final_session_history_identity(
         framework,
-        cli_agent_session_id,
-        history_hash,
+        &payload.cli_agent_session_id,
+        &payload.cli_agent_session_history_hash,
         history_size,
         history_marker_payload,
+        payload.codex_rollout_path.as_deref(),
     ) {
         Ok(identity) => identity,
         Err(error) => {
@@ -1635,8 +1657,15 @@ mod tests {
             .join("07")
             .join("02");
         std::fs::create_dir_all(&codex_day_dir).unwrap();
+        let logical_rollout_path = concat!(
+            "2026/07/02/rollout-2026-07-02T10-00-00-",
+            "019e9154c30470f0adde36efb1be1701.jsonl"
+        );
         std::fs::write(
-            codex_day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst"),
+            home_dir
+                .join(".codex")
+                .join("sessions")
+                .join(format!("{logical_rollout_path}.zst")),
             &compressed,
         )
         .unwrap();
@@ -1655,7 +1684,9 @@ mod tests {
                 }));
             then.status(200).json_body(json!({
                 "presignedUrl": upload_url,
+                "existing": false,
                 "encoding": SESSION_HISTORY_ENCODING_ZSTD,
+                "acceptsCodexRolloutPath": true,
             }));
         });
         let expected_upload = compressed.clone();
@@ -1671,6 +1702,7 @@ mod tests {
                     "cliAgentType": "codex",
                     "cliAgentSessionId": thread_id,
                     "cliAgentSessionHistoryHash": history_hash,
+                    "codexRolloutPath": logical_rollout_path,
                 }));
             then.status(200)
                 .json_body(json!({"checkpointId": "checkpoint-codex-zstd"}));
@@ -1703,6 +1735,16 @@ mod tests {
         prepare.assert_calls(1);
         upload.assert_calls(1);
         checkpoint.assert_calls(1);
+        let final_identity = guest_contracts::session_history_identity::FinalSessionHistoryIdentity::from_json_slice(
+            &std::fs::read(guest_paths.final_session_history_identity_file()).unwrap(),
+        )
+        .unwrap();
+        let expected_rollout_path_hash =
+            hex::encode(Sha256::digest(logical_rollout_path.as_bytes()));
+        assert_eq!(
+            final_identity.codex_rollout_path_hash.as_deref(),
+            Some(expected_rollout_path_hash.as_str())
+        );
     }
 
     #[tokio::test]
@@ -1725,7 +1767,10 @@ mod tests {
             .join("02");
         std::fs::create_dir_all(&codex_day_dir).unwrap();
         std::fs::write(
-            codex_day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst"),
+            codex_day_dir.join(concat!(
+                "rollout-2026-07-02T10-00-00-",
+                "019e9154c30470f0adde36efb1be1701.jsonl.zst"
+            )),
             &compressed,
         )
         .unwrap();
@@ -1806,6 +1851,12 @@ mod tests {
         legacy_prepare.assert_calls(1);
         upload.assert_calls(1);
         checkpoint.assert_calls(1);
+        let final_identity =
+            guest_contracts::session_history_identity::FinalSessionHistoryIdentity::from_json_slice(
+                &std::fs::read(guest_paths.final_session_history_identity_file()).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(final_identity.codex_rollout_path_hash, None);
     }
 
     #[test]

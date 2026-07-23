@@ -4220,6 +4220,7 @@ interface ResumeSessionSnapshot {
   readonly cliAgentSessionId: string;
   readonly cliAgentSessionHistory: string | null;
   readonly cliAgentSessionHistoryHash: string | null;
+  readonly codexRolloutPath: string | null;
   readonly sessionHistoryBlobEncoding: string | null;
 }
 
@@ -4239,6 +4240,9 @@ function resumeSessionFromSnapshot(
   if (hash) {
     return {
       sessionId: snapshot.cliAgentSessionId,
+      ...(snapshot.codexRolloutPath
+        ? { codexRolloutPath: snapshot.codexRolloutPath }
+        : {}),
       historyGenerationRunId: snapshot.runId,
       historyRef: {
         kind: "blob",
@@ -4251,6 +4255,9 @@ function resumeSessionFromSnapshot(
     return {
       sessionId: snapshot.cliAgentSessionId,
       sessionHistory: snapshot.cliAgentSessionHistory,
+      ...(snapshot.codexRolloutPath
+        ? { codexRolloutPath: snapshot.codexRolloutPath }
+        : {}),
     };
   }
   return undefined;
@@ -4310,6 +4317,7 @@ function resolveBySessionId(
               cliAgentSessionHistory: conversations.cliAgentSessionHistory,
               cliAgentSessionHistoryHash:
                 conversations.cliAgentSessionHistoryHash,
+              codexRolloutPath: conversations.codexRolloutPath,
             },
             historyBlob: {
               hash: blobs.hash,
@@ -4506,6 +4514,7 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+          codexRolloutPath: conversations.codexRolloutPath,
           sessionHistoryBlobEncoding: blobs.encoding,
         })
         .from(conversations)

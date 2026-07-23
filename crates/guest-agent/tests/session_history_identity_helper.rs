@@ -145,6 +145,24 @@ fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
         "history-too-large-identity.json",
         &history_too_large_identity,
     )?;
+    let path_bound_identity = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
+        FinalSessionHistoryFramework::Codex,
+        "a".repeat(64),
+        FinalSessionHistoryRefKind::Blob,
+        "b".repeat(64),
+        1,
+        "CODEX_SEARCH:26:/home/user/.codex/sessions:session-id",
+        Some("c".repeat(64)),
+    )?;
+    let path_bound_metadata_path =
+        write_metadata(dir.path(), "path-bound-identity.json", &path_bound_identity)?;
+    let mut mismatched_path_expectation = expectation_args(
+        &path_bound_identity,
+        path_bound_identity.session_id_hash.clone(),
+    );
+    *mismatched_path_expectation
+        .last_mut()
+        .expect("path-bound expectation has rollout path hash") = OsString::from("d".repeat(64));
 
     let cases = [
         VerifyCase {
@@ -181,6 +199,12 @@ fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
             name: "expected identity mismatch",
             metadata_path: matching_metadata_path,
             expectation_args: expectation_args(&matching_identity, "b".repeat(64)),
+            expected_exit_code: SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+        },
+        VerifyCase {
+            name: "expected Codex rollout path mismatch",
+            metadata_path: path_bound_metadata_path,
+            expectation_args: mismatched_path_expectation,
             expected_exit_code: SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
         },
         VerifyCase {
@@ -406,13 +430,17 @@ fn expectation_args(
     identity: &FinalSessionHistoryIdentity,
     session_id_hash: String,
 ) -> Vec<OsString> {
-    vec![
+    let mut args = vec![
         OsString::from(identity.framework.as_str()),
         OsString::from(session_id_hash),
         OsString::from(identity.history_ref_kind.as_str()),
         OsString::from(&identity.history_hash),
         OsString::from(identity.history_size_bytes.to_string()),
-    ]
+    ];
+    if let Some(codex_rollout_path_hash) = &identity.codex_rollout_path_hash {
+        args.push(OsString::from(codex_rollout_path_hash));
+    }
+    args
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

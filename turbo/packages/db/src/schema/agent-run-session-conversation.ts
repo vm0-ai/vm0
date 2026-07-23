@@ -185,5 +185,7 @@ export const conversations = pgTable("conversations", {
   cliAgentSessionHistoryHash: varchar("cli_agent_session_history_hash", {
     length: 64,
   }),
+  /** Canonical Codex rollout path relative to ~/.codex/sessions */
+  codexRolloutPath: varchar("codex_rollout_path", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

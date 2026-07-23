@@ -156,6 +156,9 @@ pub mod webhooks {
                 pub cli_agent_session_id: String,
                 /// SHA-256 hash of the uploaded CLI agent session history.
                 pub cli_agent_session_history_hash: String,
+                /// Optional canonical Codex rollout path relative to the sessions root.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub codex_rollout_path: Option<String>,
                 /// Optional artifact versions captured by the checkpoint.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,

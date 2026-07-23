@@ -36,6 +36,7 @@ pub(crate) enum RestoredSessionIdentityMismatchReason {
     HistoryRefKind,
     HistoryHash(RestoredSessionHistoryHashSizeRelationship),
     HistorySize,
+    CodexRolloutPath,
     MissingRequestedIdentity,
 }
 
@@ -50,6 +51,7 @@ impl RestoredSessionIdentityMismatchReason {
             Self::HistoryRefKind => "session_history_identity_mismatch_history_ref_kind",
             Self::HistoryHash(_) => "session_history_identity_mismatch_history_hash",
             Self::HistorySize => "session_history_identity_mismatch_history_size",
+            Self::CodexRolloutPath => "session_history_identity_mismatch_codex_rollout_path",
             Self::MissingRequestedIdentity => {
                 "session_history_identity_mismatch_missing_requested_identity"
             }
@@ -97,6 +99,7 @@ pub(crate) struct RestoredSessionIdentity {
     history_ref_kind: ResumeSessionHistoryRefKind,
     history_hash: String,
     history_size_bytes: Option<u64>,
+    codex_rollout_path_hash: Option<String>,
     verifier: Option<RestoredSessionIdentityVerifier>,
 }
 
@@ -116,6 +119,7 @@ pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
     pub(crate) history_hash: &'a str,
     pub(crate) history_size_bytes: u64,
+    pub(crate) codex_rollout_path_hash: Option<&'a str>,
 }
 
 pub(crate) struct RestoredSessionIdentityFields<'a> {
@@ -133,12 +137,31 @@ pub(crate) struct RestoredSessionHistoryPrefixAttribution {
 }
 
 impl RestoredSessionIdentity {
+    #[cfg(test)]
     pub(crate) fn new(
         framework: RestoredSessionFramework,
         identity_session_id: &str,
         history_ref_kind: ResumeSessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
+    ) -> Self {
+        Self::new_with_codex_rollout_path_hash(
+            framework,
+            identity_session_id,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+            None,
+        )
+    }
+
+    pub(crate) fn new_with_codex_rollout_path_hash(
+        framework: RestoredSessionFramework,
+        identity_session_id: &str,
+        history_ref_kind: ResumeSessionHistoryRefKind,
+        history_hash: impl Into<String>,
+        history_size_bytes: Option<u64>,
+        codex_rollout_path_hash: Option<String>,
     ) -> Self {
         // Callers pass the framework-normalized identity id. Claude Code uses
         // the raw session id; Codex uses the canonical thread id.
@@ -149,6 +172,7 @@ impl RestoredSessionIdentity {
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
+            codex_rollout_path_hash,
             verifier: None,
         }
     }
@@ -168,6 +192,7 @@ impl RestoredSessionIdentity {
             history_ref_kind,
             history_hash: metadata.history_hash,
             history_size_bytes: Some(metadata.history_size_bytes),
+            codex_rollout_path_hash: metadata.codex_rollout_path_hash,
             verifier: Some(RestoredSessionIdentityVerifier::FinalIdentityMetadata {
                 metadata_path: metadata_path.into(),
                 runtime_dir: runtime_dir.into(),
@@ -229,6 +254,7 @@ impl RestoredSessionIdentity {
                     history_ref_kind: final_session_history_ref_kind(self.history_ref_kind),
                     history_hash: &self.history_hash,
                     history_size_bytes: expected_size,
+                    codex_rollout_path_hash: self.codex_rollout_path_hash.as_deref(),
                 })
             }
         }
@@ -271,7 +297,7 @@ impl RestoredSessionIdentity {
     }
 
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
-        self == requested
+        self.mismatch_reason_for_request(requested).is_none()
             && self.has_final_metadata_verification()
             && requested
                 .history_size_bytes
@@ -303,6 +329,11 @@ impl RestoredSessionIdentity {
             && self.history_size_bytes != Some(requested_size)
         {
             return Some(RestoredSessionIdentityMismatchReason::HistorySize);
+        }
+        if requested.codex_rollout_path_hash.is_some()
+            && self.codex_rollout_path_hash != requested.codex_rollout_path_hash
+        {
+            return Some(RestoredSessionIdentityMismatchReason::CodexRolloutPath);
         }
         None
     }
@@ -353,6 +384,7 @@ impl PartialEq for RestoredSessionIdentity {
             && self.session_id_hash == other.session_id_hash
             && self.history_ref_kind == other.history_ref_kind
             && self.history_hash == other.history_hash
+            && self.codex_rollout_path_hash == other.codex_rollout_path_hash
     }
 }
 
@@ -365,6 +397,10 @@ impl fmt::Debug for RestoredSessionIdentity {
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)
+            .field(
+                "codex_rollout_path_hash",
+                &self.codex_rollout_path_hash.as_ref().map(|_| "[redacted]"),
+            )
             .field(
                 "verifier",
                 &self.verifier.as_ref().map(|verifier| match verifier {

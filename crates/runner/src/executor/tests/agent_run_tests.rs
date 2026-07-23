@@ -185,6 +185,7 @@ fn context_with_checkpointed_session_identity(
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -354,6 +355,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1047,6 +1049,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-ref-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1098,6 +1101,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-gzip-ref-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1209,6 +1213,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-zstd-ref-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1321,6 +1326,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-prestarted-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1467,6 +1473,7 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-sidecar-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1540,6 +1547,7 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-sidecar-fallback-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1620,6 +1628,7 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
     ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1689,6 +1698,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1785,6 +1795,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-prestarted-failed-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1864,7 +1875,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
+async fn run_in_sandbox_reuses_pathful_codex_identity_for_legacy_pathless_request() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -1877,9 +1888,11 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         })
         .await;
     let mut ctx = minimal_context();
-    let session_id = "sess-final-skip-123";
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -1896,13 +1909,19 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     let previous_metadata_path =
         "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
     let previous_runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
-    let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+    let rollout_path = concat!(
+        "2026/07/23/rollout-2026-07-23T04-01-04-",
+        "019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    let rollout_path_hash = hex::encode(Sha256::digest(rollout_path.as_bytes()));
+    let metadata = FinalSessionHistoryIdentity::new_with_codex_rollout_path_hash(
+        FinalSessionHistoryFramework::Codex,
         hex::encode(Sha256::digest(session_id.as_bytes())),
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(&history)),
         history.len() as u64,
-        claude_history_path(session_id),
+        format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{session_id}"),
+        Some(rollout_path_hash.clone()),
     )
     .unwrap();
     let idle_identity = RestoredSessionIdentity::from_final_metadata(
@@ -1965,6 +1984,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         assert!(call.cmd.contains(metadata.history_ref_kind.as_str()));
         assert!(call.cmd.contains(&metadata.history_hash));
         assert!(call.cmd.contains(&metadata.history_size_bytes.to_string()));
+        assert!(call.cmd.contains(&rollout_path_hash));
         assert_eq!(
             call.env_keys,
             vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
@@ -2176,6 +2196,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
     let session_id = "sess-final-helper-mismatch-123";
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -2270,6 +2291,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     let session_id = "sess-final-helper-exec-errors-123";
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -2377,6 +2399,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-mismatch-skip-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -2392,6 +2415,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     let mut mismatched_ctx = minimal_context();
     mismatched_ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-other-skip-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -2508,6 +2532,7 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {
             cli_agent_session_id: "sess-fallback-123".into(),
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -2619,6 +2644,7 @@ async fn run_in_sandbox_records_requested_larger_prefix_outcomes_without_changin
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {
             cli_agent_session_id: "sess-prefix-attribution-123".into(),
+            codex_rollout_path: None,
             history: ResumeSessionHistory::Ref {
                 history_ref: ResumeSessionHistoryRef {
                     kind: ResumeSessionHistoryRefKind::Blob,
@@ -2736,6 +2762,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-missing-identity-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -2824,6 +2851,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     let session_id = "sess-final-mutated-123";
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
@@ -3090,6 +3118,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-ref-123".into(),
+        codex_rollout_path: None,
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
