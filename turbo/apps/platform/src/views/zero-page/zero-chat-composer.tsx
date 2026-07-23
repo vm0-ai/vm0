@@ -141,6 +141,7 @@ import {
   type WebsiteTemplateItem,
   type WorkflowTemplateItem,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
@@ -164,6 +165,7 @@ import {
   codexFastModeEnabled$,
   composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
+  featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
@@ -6442,6 +6444,71 @@ function toPersistedAttachments(
     });
 }
 
+function restoreChatClipboardPayload({
+  event,
+  structuredPromptEnabled,
+  visualAttachmentUnsupported,
+  insertPromptMarkdown,
+  restoreAttachments,
+  onTemplateChange,
+  onDraftChange,
+}: {
+  event: ComposerPasteEvent;
+  structuredPromptEnabled: boolean;
+  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
+  insertPromptMarkdown: (value: string) => void;
+  restoreAttachments: (attachments: PersistedAttachment[]) => void;
+  onTemplateChange:
+    | ((value: GenerationTemplateRequest | undefined) => void)
+    | undefined;
+  onDraftChange: (() => void) | undefined;
+}): boolean {
+  if (!event.clipboardData) {
+    return false;
+  }
+  const payload = readChatMessageFromClipboard(event.clipboardData);
+  if (!payload) {
+    return false;
+  }
+  const structuredPrompt = structuredPromptEnabled
+    ? payload.structuredPrompt
+    : undefined;
+  const persistedAttachments = toPersistedAttachments(payload.attachments);
+  if (!structuredPrompt && persistedAttachments.length === 0) {
+    return false;
+  }
+  const allowedAttachments = visualAttachmentUnsupported
+    ? persistedAttachments.filter((attachment) => {
+        return !isVisualAttachment({
+          contentType: attachment.contentType,
+          filename: attachment.filename,
+        });
+      })
+    : persistedAttachments;
+  if (
+    visualAttachmentUnsupported &&
+    allowedAttachments.length < persistedAttachments.length
+  ) {
+    showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+  }
+
+  event.preventDefault();
+  if (payload.text) {
+    insertPromptMarkdown(payload.text);
+  }
+  const templatePart = structuredPrompt?.parts.find((part) => {
+    return part.type === "template";
+  });
+  if (templatePart?.type === "template") {
+    onTemplateChange?.(templatePart.template);
+  }
+  if (allowedAttachments.length > 0) {
+    restoreAttachments(allowedAttachments);
+  }
+  onDraftChange?.();
+  return true;
+}
+
 type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
@@ -6734,6 +6801,9 @@ export function useZeroChatComposer({
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
+  const featureSwitches = useGet(featureSwitch$);
+  const structuredPromptEnabled =
+    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -6773,33 +6843,18 @@ export function useZeroChatComposer({
     if (!e.clipboardData) {
       return;
     }
-    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
-    if (chatPayload && chatPayload.attachments.length > 0) {
-      const persistedAttachments = toPersistedAttachments(
-        chatPayload.attachments,
-      );
-      if (persistedAttachments.length > 0) {
-        const allowedAttachments = visualAttachmentUnsupported
-          ? persistedAttachments.filter((attachment) => {
-              return !isVisualAttachment({
-                contentType: attachment.contentType,
-                filename: attachment.filename,
-              });
-            })
-          : persistedAttachments;
-        if (allowedAttachments.length < persistedAttachments.length) {
-          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
-        }
-        e.preventDefault();
-        if (chatPayload.text) {
-          insertPromptMarkdown(chatPayload.text);
-        }
-        if (allowedAttachments.length > 0) {
-          restoreAttachments(allowedAttachments);
-        }
-        onDraftChange?.();
-        return;
-      }
+    if (
+      restoreChatClipboardPayload({
+        event: e,
+        structuredPromptEnabled,
+        visualAttachmentUnsupported,
+        insertPromptMarkdown,
+        restoreAttachments,
+        onTemplateChange: templatePicker?.onChange,
+        onDraftChange,
+      })
+    ) {
+      return;
     }
 
     const items = e.clipboardData?.items;
