@@ -81,8 +81,9 @@ assert_run_reused_sandbox() {
         "case \"\$path\" in *-\"\$thread_id\".jsonl) ;; *) exit 1 ;; esac" \
         "printf '%s\\n' \"\$path\" > /home/user/.codex/vm0-e2e-rollout-path" \
         "printf '%s\\n' \"\$thread_id\" > /home/user/.codex/vm0-e2e-thread-id" \
+        "printf '%s\\n' \"${FIRST_MEMORY_TOKEN}\" > /home/user/.codex/vm0-e2e-first-token" \
         "test \"\$path_date\" != \"\$utc_date\"" \
-        'echo CODEX_LOCAL_DATE_PATH_RECORDED' \
+        "printf '%s%s\\n' 'CODEX_LOCAL_DATE_' 'PATH_RECORDED'" \
         'After the command succeeds, reply with exactly FIRST_MEMORY_STORED.')"
 
     run run_compose_fixture "$AGENT_NAME" "$first_prompt" "$overrides"
@@ -117,13 +118,27 @@ assert_run_reused_sandbox() {
         "matches=\$(find /home/user/.codex/sessions -type f \\( -name \"rollout-*-\$thread_id.jsonl\" -o -name \"rollout-*-\$thread_id.jsonl.zst\" \\))" \
         "count=\$(printf '%s\\n' \"\$matches\" | sed '/^$/d' | wc -l)" \
         "test \"\$count\" -eq 1" \
-        'echo CODEX_EXISTING_ROLLOUT_PATH_RESTORED' \
+        "first_token=\$(cat /home/user/.codex/vm0-e2e-first-token)" \
+        "case \"\$first_token\" in first-*) ;; *) exit 1 ;; esac" \
+        "second_token=\"second-\${first_token#first-}\"" \
+        'rollout_contains() {' \
+        "  token=\"\$1\"" \
+        "  case \"\$restored\" in" \
+        "    *.zst) zstd -dc -- \"\$restored\" | grep -Fq -- \"\$token\" ;;" \
+        "    *) grep -Fq -- \"\$token\" \"\$restored\" ;;" \
+        '  esac' \
+        '}' \
+        "rollout_contains \"\$first_token\"" \
+        "if rollout_contains \"\$second_token\"; then exit 1; fi" \
+        "printf '%s%s\\n' 'CODEX_EXISTING_ROLLOUT_' 'PATH_RESTORED'" \
+        "printf '%s%s\\n' 'CODEX_CHECKPOINT_HISTORY_' 'REWOUND'" \
         'Then report the exact first memory token from this conversation as FIRST=<token>.' \
         'If this conversation contains a second memory token from a later turn, report it as SECOND=<token>; otherwise report SECOND=UNKNOWN.')"
 
     run resume_run_fixture "$checkpoint_id" "$resume_prompt" "$overrides"
     assert_success
     assert_output --partial "CODEX_EXISTING_ROLLOUT_PATH_RESTORED"
+    assert_output --partial "CODEX_CHECKPOINT_HISTORY_REWOUND"
     assert_output --partial "FIRST=${FIRST_MEMORY_TOKEN}"
     assert_output --partial "SECOND=UNKNOWN"
     assert_output --partial '"type":"turn.completed"'
