@@ -123,7 +123,7 @@ async function requestOauthStart(
   });
 }
 
-async function continuationUrlFromResponse(response: Response): Promise<URL> {
+async function authorizationUrlFromResponse(response: Response): Promise<URL> {
   const body = connectorOauthStartResponseSchema.parse(await response.json());
   return new URL(body.authorizationUrl);
 }
@@ -146,16 +146,22 @@ async function requestOauthContinuation(
   return await app.request(continuationUrl.toString());
 }
 
-async function authorizationUrlFromResponse(response: Response): Promise<URL> {
-  return await providerAuthorizationUrl(
-    await continuationUrlFromResponse(response),
-  );
-}
-
 function expectOauthState(authorizationUrl: URL): string {
   const state = authorizationUrl.searchParams.get("state");
   expect(state).toMatch(/^[0-9a-f]{64}$/);
   return state!;
+}
+
+function legacyContinuationUrl(
+  connectorType: string,
+  authorizationUrl: URL,
+): URL {
+  const continuationUrl = new URL(
+    `/api/zero/connectors/${connectorType}/oauth/continue`,
+    API_ORIGIN,
+  );
+  continuationUrl.searchParams.set("state", expectOauthState(authorizationUrl));
+  return continuationUrl;
 }
 
 async function rejectProviderAuthorization(
@@ -264,7 +270,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("returns an API OAuth handoff that redirects to the provider authorization URL", async () => {
+  it("returns the provider authorization URL without an API redirect", async () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
@@ -273,13 +279,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
 
     expect(response.status).toBe(200);
-    const continuationUrl = await continuationUrlFromResponse(response);
-    expect(`${continuationUrl.origin}${continuationUrl.pathname}`).toBe(
-      `${API_ORIGIN}/api/zero/connectors/github/oauth/continue`,
-    );
-    const state = expectOauthState(continuationUrl);
-
-    const authorizationUrl = await providerAuthorizationUrl(continuationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://github.com/login/oauth/authorize",
     );
@@ -289,8 +289,25 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${WEB_ORIGIN}/api/connectors/github/callback`,
     );
-    expect(authorizationUrl.searchParams.get("state")).toBe(state);
+    expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("continues OAuth handoff URLs issued before deployment", async () => {
+    const response = await requestOauthStart("github", {
+      authenticated: true,
+      origin: API_ORIGIN,
+    });
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+
+    const redirectedAuthorizationUrl = await providerAuthorizationUrl(
+      legacyContinuationUrl("github", authorizationUrl),
+    );
+
+    expect(redirectedAuthorizationUrl.toString()).toBe(
+      authorizationUrl.toString(),
+    );
   });
 
   it("rejects an OAuth handoff whose state does not exist", async () => {
@@ -318,11 +335,8 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       origin: API_ORIGIN,
     });
     expect(response.status).toBe(200);
-    const continuationUrl = await continuationUrlFromResponse(response);
-    continuationUrl.pathname = continuationUrl.pathname.replace(
-      "/github/",
-      "/notion/",
-    );
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const continuationUrl = legacyContinuationUrl("notion", authorizationUrl);
 
     const continueResponse = await requestOauthContinuation(continuationUrl);
 
@@ -343,7 +357,8 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       origin: API_ORIGIN,
     });
     expect(response.status).toBe(200);
-    const continuationUrl = await continuationUrlFromResponse(response);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const continuationUrl = legacyContinuationUrl("github", authorizationUrl);
     mockNow(new Date(startedAt.getTime() + 15 * 60 * 1000));
 
     const continueResponse = await requestOauthContinuation(continuationUrl);
@@ -363,8 +378,8 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       origin: API_ORIGIN,
     });
     expect(response.status).toBe(200);
-    const continuationUrl = await continuationUrlFromResponse(response);
-    const authorizationUrl = await providerAuthorizationUrl(continuationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const continuationUrl = legacyContinuationUrl("github", authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
 
     const continueResponse = await requestOauthContinuation(continuationUrl);

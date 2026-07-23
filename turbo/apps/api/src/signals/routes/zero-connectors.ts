@@ -64,7 +64,6 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -557,16 +556,10 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    const continuationUrl = new URL(
-      `/api/zero/connectors/${resolved.connectorRef}/oauth/continue`,
-      getOAuthApiOrigin(request),
-    );
-    continuationUrl.searchParams.set("state", prepared.state);
-
     return {
       status: 200 as const,
       body: {
-        authorizationUrl: continuationUrl.toString(),
+        authorizationUrl: authResult.url,
       },
     };
   },
