@@ -6,11 +6,6 @@ import domToPptxBundleUrl from "../../../node_modules/dom-to-pptx/dist/dom-to-pp
 import JSZip from "jszip";
 import { createDeferredPromise, withCleanup } from "../../signals/utils.ts";
 import {
-  hasPresentationElementOffsets,
-  PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME,
-  presentationElementOffsetRuntimeSource,
-} from "./presentation-html-element-offsets.ts";
-import {
   materializePresentationThemeSwitcherDefaults,
   PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES,
 } from "./presentation-html-edit-protocol.ts";
@@ -504,6 +499,7 @@ function createExportSlideScript(): string {
       }
     }
   };
+
 `;
 }
 
@@ -1034,10 +1030,7 @@ function createExportLineBreakScript(): string {
 `;
 }
 
-function createExportRunnerScript(includeElementOffsets: boolean): string {
-  const applyElementOffsets = includeElementOffsets
-    ? `    window[${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME)}]();\n`
-    : "";
+function createExportRunnerScript(): string {
   return `
   void (async () => {
     await loadScript(scriptUrl);
@@ -1054,7 +1047,7 @@ function createExportRunnerScript(includeElementOffsets: boolean): string {
     await materializeComplexSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
     preserveBrowserTextLineBreaks(nodes);
-${applyElementOffsets}    const blob = await window.domToPptx.exportToPptx(nodes, options);
+    const blob = await window.domToPptx.exportToPptx(nodes, options);
     post({ status: "success", blob });
   })().catch((error) => {
     post({
@@ -1066,14 +1059,8 @@ ${applyElementOffsets}    const blob = await window.domToPptx.exportToPptx(nodes
 `;
 }
 
-function createExportScript(
-  options: DomToPptxOptions,
-  includeElementOffsets: boolean,
-): string {
+function createExportScript(options: DomToPptxOptions): string {
   return [
-    ...(includeElementOffsets
-      ? [`${presentationElementOffsetRuntimeSource({ autoStart: false })};\n`]
-      : []),
     createExportBootstrapScript(options),
     createExportSlideScript(),
     createExportBackgroundInheritanceScript(),
@@ -1084,7 +1071,7 @@ function createExportScript(
     createExportImageWaitScript(),
     createExportReadinessScript(),
     createExportLineBreakScript(),
-    createExportRunnerScript(includeElementOffsets),
+    createExportRunnerScript(),
   ].join("");
 }
 
@@ -1110,10 +1097,7 @@ async function htmlWithExportScript(
   base.href = baseUrl;
   doc.head.prepend(base);
   const script = doc.createElement("script");
-  script.textContent = createExportScript(
-    options,
-    hasPresentationElementOffsets(doc),
-  );
+  script.textContent = createExportScript(options);
   doc.body.append(script);
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }

@@ -37,9 +37,6 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
-    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -131,9 +128,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -163,9 +157,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -211,9 +202,6 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.PresentationElementDragging,
-    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroWebSearch,
     );
@@ -226,7 +214,6 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
-        [FeatureSwitchKey.PresentationElementDragging]: true,
         [FeatureSwitchKey.ZeroWebSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
