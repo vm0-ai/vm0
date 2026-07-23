@@ -135,15 +135,15 @@ class UsageEventBuffer:
                 atomic_source_key=atomic_source_key,
             )
             if accepted_count == 0:
-                return 0
-            if self._state.should_flush():
+                timer_to_start = self._schedule_timer_if_buffered_locked()
+            elif self._state.should_flush():
                 flush_now = True
             else:
                 timer_to_start = self._schedule_timer_locked()
             self._sync_buffered_counter_locked()
 
         if timer_to_start is not None:
-            timer_to_start.start()
+            self._start_timer(timer_to_start)
         if flush_now:
             self._flush_usage_events(trigger="threshold")
         return accepted_count
@@ -222,7 +222,7 @@ class UsageEventBuffer:
         if timer_to_cancel is not None:
             timer_to_cancel.cancel()
         if timer_to_start is not None:
-            timer_to_start.start()
+            self._start_timer(timer_to_start)
 
     def _flush_usage_events_owned(self, *, trigger: UsageFlushTrigger) -> int:
         flushed_batch_count = 0
@@ -253,7 +253,7 @@ class UsageEventBuffer:
                     self._sync_buffered_counter_locked()
 
             if timer_to_start is not None:
-                timer_to_start.start()
+                self._start_timer(timer_to_start)
             if pending_flush is None:
                 return flushed_batch_count
 
@@ -304,7 +304,7 @@ class UsageEventBuffer:
                     retain_result.dropped_batches,
                 )
             if timer_to_start is not None:
-                timer_to_start.start()
+                self._start_timer(timer_to_start)
             if admission_result.retained_batches:
                 return flushed_batch_count
 
@@ -320,8 +320,8 @@ class UsageEventBuffer:
         self._sync_buffered_counter_locked()
         return timer_to_start
 
-    @staticmethod
     def _finish_failed_flush_retention(
+        self,
         trigger: UsageFlushTrigger,
         pending_flush: _PendingFlush,
         retain_result: _RetainBatchesResult,
@@ -339,7 +339,7 @@ class UsageEventBuffer:
             retain_result.retained_batches,
         )
         if timer_to_start is not None:
-            timer_to_start.start()
+            self._start_timer(timer_to_start)
 
     def _enqueue_pending_flush(
         self,
@@ -431,7 +431,16 @@ class UsageEventBuffer:
                 completion.dropped_batches,
             )
         if timer_to_start is not None:
-            timer_to_start.start()
+            self._start_timer(timer_to_start)
+
+    def _start_timer(self, timer: _TimerHandle) -> None:
+        try:
+            timer.start()
+        except Exception:
+            with self._lock:
+                if self._timer is timer:
+                    self._timer = None
+            raise
 
     def _sync_buffered_counter_locked(self) -> None:
         set_buffered_usage_events(self._state.buffered_source_event_count())
