@@ -24,6 +24,9 @@ use super::{SessionWorkspaceCache, entry::CacheEntryPaths};
 
 const SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 1;
 
+// Sidecars cache verified history bytes and their representation, not guest
+// placement. On a hit, restore uses the current request's independently
+// validated destination, so a Codex rollout path does not belong in this key.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSessionHistorySidecarMetadata {

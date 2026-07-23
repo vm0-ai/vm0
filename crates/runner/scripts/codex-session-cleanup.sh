@@ -41,6 +41,14 @@ while [ -n "$remaining" ]; do
   current="$current/$component"
   check_restore_dir_component "$current"
 done
+if [ -L "$restore_path" ]; then
+  echo "codex restore target is a symlink" >&2
+  exit 1
+fi
+if [ -e "$restore_path" ] && [ ! -f "$restore_path" ]; then
+  echo "codex restore target is not a regular file" >&2
+  exit 1
+fi
 id="$VM0_CODEX_RESTORE_SESSION_ID"
 case "$id" in
   ""|*[!0123456789abcdefABCDEF-]*)
@@ -124,6 +132,7 @@ collect_matching_session_entries() {
       -v budget="$scan_budget" \
       -v id="$id_lc" \
       -v id_no_dashes="$id_no_dashes_lc" \
+      -v restore_path="$restore_path" \
       -v matches_file="$matching_entries_file" '
         function id_pattern_matches(name, key) {
           return name ~ key ".*\\.jsonl$" ||
@@ -141,7 +150,7 @@ collect_matching_session_entries() {
         NR > budget {
           exit 42
         }
-        filename_matches($0) {
+        filename_matches($0) && $0 != restore_path {
           printf "%s%c", $0, 0 >> matches_file
         }
       '

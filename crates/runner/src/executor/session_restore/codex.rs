@@ -321,6 +321,75 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_script_preserves_restore_target_and_deletes_other_matches() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        create_file(&restore_path);
+        fs::write(&restore_path, "original history").unwrap();
+        let compressed_sibling = restore_path.with_extension("jsonl.zst");
+        create_file(&compressed_sibling);
+        let other_match = codex_home
+            .join("sessions/2026/06/05")
+            .join(format!("rollout-other-{SESSION_ID}.jsonl"));
+        create_file(&other_match);
+
+        let output = run_cleanup(&codex_home, &restore_path);
+
+        assert_success(&output);
+        assert_eq!(
+            fs::read_to_string(&restore_path).unwrap(),
+            "original history"
+        );
+        assert!(!compressed_sibling.exists());
+        assert!(!other_match.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_symlink_restore_target_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let symlink_target = temp.path().join("outside-history.jsonl");
+        create_file(&symlink_target);
+        symlink(&symlink_target, &restore_path).unwrap();
+        let other_match = restore_dir.join(format!("rollout-other-{SESSION_ID}.jsonl"));
+        create_file(&other_match);
+
+        let output = run_cleanup(&codex_home, &restore_path);
+
+        assert_failure_contains(&output, "codex restore target is a symlink");
+        assert!(
+            fs::symlink_metadata(&restore_path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(other_match.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_non_regular_restore_target_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        fs::create_dir_all(&restore_path).unwrap();
+        let other_match = restore_path
+            .parent()
+            .unwrap()
+            .join(format!("rollout-other-{SESSION_ID}.jsonl"));
+        create_file(&other_match);
+
+        let output = run_cleanup(&codex_home, &restore_path);
+
+        assert_failure_contains(&output, "codex restore target is not a regular file");
+        assert!(restore_path.is_dir());
+        assert!(other_match.exists());
+    }
+
+    #[test]
     fn cleanup_script_fails_when_scan_budget_exceeded_without_deleting_sessions() {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");

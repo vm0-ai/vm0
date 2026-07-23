@@ -260,6 +260,10 @@ impl RestoredSessionIdentity {
         }
     }
 
+    /// Return byte-cache identity fields.
+    ///
+    /// Codex rollout placement is intentionally excluded: a sidecar hit is
+    /// materialized at the current request's separately validated path.
     pub(crate) fn cache_fields(&self) -> Option<RestoredSessionIdentityFields<'_>> {
         Some(RestoredSessionIdentityFields {
             framework: final_session_history_framework(self.framework),
@@ -330,6 +334,9 @@ impl RestoredSessionIdentity {
         {
             return Some(RestoredSessionIdentityMismatchReason::HistorySize);
         }
+        // A path-aware request requires an exact placement match. A legacy
+        // pathless request may reuse path-aware state because the final guest
+        // verifier still validates the stored path hash before restore is skipped.
         if requested.codex_rollout_path_hash.is_some()
             && self.codex_rollout_path_hash != requested.codex_rollout_path_hash
         {

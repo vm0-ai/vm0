@@ -209,13 +209,19 @@ only sends this field after checkpoint history preparation returns
 against an old backend. The API stores the field in a nullable conversation
 column and only includes it in a claim response when the runner advertises
 `codex-rollout-path-v1`; old runners continue receiving the previous resume
-shape. Historical rows without the field retain the timestamp-based restore
-fallback.
+shape.
 
 The persisted value is the canonical logical path relative to
 `~/.codex/sessions` and ends in `.jsonl`. A zstd history blob is restored to the
 same path with the physical `.zst` sibling suffix (`.jsonl.zst`). Runner
 validation binds the relative path to the Codex thread id before using it.
+
+For a historical row without path metadata, verified warm-sandbox reuse keeps
+the existing rollout at its original path. If that state cannot be verified,
+including on a cold sandbox, the runner retains the deterministic UTC
+timestamp-based fallback and does not guess from the current timezone.
+Workspace sidecars cache verified history bytes rather than placement metadata;
+a hit is materialized at the current request's independently validated path.
 
 ### Firewall hostname policy
 
