@@ -8,6 +8,7 @@ import {
   chatThreadRenameContract,
   chatThreadsContract,
   type PagedChatMessage,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
@@ -151,6 +152,7 @@ export function parseChatClipboardPayload(html: string): {
     contentType: string;
     size: number;
   }[];
+  structuredPrompt?: UserMessageDocument;
 } {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const encoded = doc.querySelector<HTMLElement>("[data-vm0-chat-message]")
@@ -167,6 +169,7 @@ export function parseChatClipboardPayload(html: string): {
       contentType: string;
       size: number;
     }[];
+    structuredPrompt?: UserMessageDocument;
   };
 }
 

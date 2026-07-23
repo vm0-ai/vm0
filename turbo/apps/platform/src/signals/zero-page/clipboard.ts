@@ -1,3 +1,7 @@
+import {
+  userMessageDocumentSchema,
+  type UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { jsonParseOr, throwIfAbort } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
@@ -13,6 +17,7 @@ export interface ChatClipboardAttachment {
 export interface ChatClipboardPayload {
   text: string;
   attachments: ChatClipboardAttachment[];
+  structuredPrompt?: UserMessageDocument;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,9 +53,19 @@ function parseChatClipboardPayload(
   if (!parsed.attachments.every(isChatClipboardAttachment)) {
     return null;
   }
+  const structuredPrompt =
+    parsed.structuredPrompt === undefined
+      ? undefined
+      : userMessageDocumentSchema.safeParse(parsed.structuredPrompt);
+  if (structuredPrompt !== undefined && !structuredPrompt.success) {
+    return null;
+  }
   return {
     text: parsed.text,
     attachments: parsed.attachments,
+    ...(structuredPrompt?.success
+      ? { structuredPrompt: structuredPrompt.data }
+      : {}),
   };
 }
 
@@ -162,7 +177,7 @@ export async function writeChatMessageToClipboard(
 ): Promise<boolean> {
   const plainText = formatPlainText(payload);
   if (
-    payload.attachments.length === 0 ||
+    (payload.attachments.length === 0 && !payload.structuredPrompt) ||
     typeof ClipboardItem === "undefined" ||
     !navigator.clipboard?.write
   ) {
