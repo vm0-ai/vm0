@@ -6,9 +6,27 @@ TARGET="${SCRIPT_DIR}/../update-rollback-dashboard-body.sh"
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
+fake_bin="${tmp_dir}/bin"
+mkdir -p "$fake_bin"
+
+fail() {
+  echo "FAIL: $1" >&2
+  exit 1
+}
+
+cat >"${fake_bin}/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${1:-}" = "api" ]
+[ "${2:-}" = "repos/vm0-ai/vm0/releases?per_page=100" ]
+jq . "$MOCK_RELEASES_FILE"
+SH
+chmod +x "${fake_bin}/gh"
 
 body_file="${tmp_dir}/body.md"
 output_file="${tmp_dir}/output.md"
+releases_file="${tmp_dir}/releases.json"
+rollback_url=https://github.com/vm0-ai/vm0/actions/workflows/rollback-production.yml
 
 cat >"$body_file" <<'EOF'
 This issue is automatically maintained by CI. Do not edit manually.
@@ -21,40 +39,187 @@ This issue is automatically maintained by CI. Do not edit manually.
 EOF
 
 target_commit=1111111111111111111111111111111111111111
-rollback_url=https://github.com/vm0-ai/vm0/actions/workflows/rollback-production.yml
+jq -n --arg target "$target_commit" '[
+  {
+    tag_name: "zeta-v2.0.0",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/zeta-v2.0.0",
+    published_at: "2026-07-22T23:39:32Z",
+    body: "## [2.0.0](https://example.test/zeta) (2026-07-22)\n\n### Features\n\n* zeta feature"
+  },
+  {
+    tag_name: "core-v8.452.0",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/core-v8.452.0",
+    published_at: "2026-07-22T23:39:31Z",
+    body: "## [8.452.0](https://example.test/core) (2026-07-22)\n\n### Bug Fixes\n\n* core fix"
+  },
+  {
+    tag_name: "runner-rs-v0.147.2",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/runner-rs-v0.147.2",
+    published_at: "2026-07-22T23:39:40Z",
+    body: "## [0.147.2](https://example.test/runner) (2026-07-22)\n\n### Performance Improvements\n\n* runner improvement"
+  },
+  {
+    tag_name: "api-v1.303.0",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/api-v1.303.0",
+    published_at: "2026-07-22T23:39:33Z",
+    body: "## [1.303.0](https://example.test/api) (2026-07-22)\n\n### Features\n\n* api feature"
+  },
+  {
+    tag_name: "app-v0.618.0",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0",
+    published_at: "2026-07-22T23:39:34Z",
+    body: "## [0.618.0](https://example.test/app) (2026-07-22)\n\n### Features\n\n* app feature"
+  },
+  {
+    tag_name: "unrelated-v9.9.9",
+    target_commitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    html_url: "https://example.test/unrelated",
+    published_at: "2026-07-22T23:39:59Z",
+    body: "must not appear"
+  }
+]' >"$releases_file"
 
-"$TARGET" "$body_file" "$target_commit" "$rollback_url" >"$output_file"
+PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_RELEASES_FILE="$releases_file" \
+  "$TARGET" "$body_file" "$target_commit" "$rollback_url" >"$output_file"
 
-grep -Fqx -- "- \`${target_commit}\` — [Rollback production](${rollback_url})" "$output_file"
-if grep -Fq 'legacy entry' "$output_file"; then
-  echo "legacy dashboard entries were not removed" >&2
-  exit 1
+grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
+grep -Fqx -- "## 07-23-2026 07:39:40 Asia/Singapore · 07-22-2026 16:39:40 SF · RollbackId: \`${target_commit}\`" "$output_file"
+grep -Fqx -- "### [app](https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0): \`0.618.0\`" "$output_file"
+grep -Fqx -- "### [api](https://github.com/vm0-ai/vm0/releases/tag/api-v1.303.0): \`1.303.0\`" "$output_file"
+grep -Fqx -- "### [runner-rs](https://github.com/vm0-ai/vm0/releases/tag/runner-rs-v0.147.2): \`0.147.2\`" "$output_file"
+grep -Fqx -- "### [core](https://github.com/vm0-ai/vm0/releases/tag/core-v8.452.0): \`8.452.0\`" "$output_file"
+grep -Fqx -- "### [zeta](https://github.com/vm0-ai/vm0/releases/tag/zeta-v2.0.0): \`2.0.0\`" "$output_file"
+grep -Fqx -- "#### Features" "$output_file"
+grep -Fqx -- "* app feature" "$output_file"
+grep -Fqx -- "* api feature" "$output_file"
+grep -Fqx -- "* runner improvement" "$output_file"
+grep -Fqx -- "* core fix" "$output_file"
+grep -Fqx -- "* zeta feature" "$output_file"
+
+app_line=$(grep -n '^### \[app\]' "$output_file" | cut -d: -f1)
+api_line=$(grep -n '^### \[api\]' "$output_file" | cut -d: -f1)
+runner_line=$(grep -n '^### \[runner-rs\]' "$output_file" | cut -d: -f1)
+core_line=$(grep -n '^### \[core\]' "$output_file" | cut -d: -f1)
+zeta_line=$(grep -n '^### \[zeta\]' "$output_file" | cut -d: -f1)
+if ! [ "$app_line" -lt "$api_line" ] || \
+  ! [ "$api_line" -lt "$runner_line" ] || \
+  ! [ "$runner_line" -lt "$core_line" ] || \
+  ! [ "$core_line" -lt "$zeta_line" ]; then
+  fail "release artifacts are not ordered by production priority"
 fi
 
-for digit in 1 2 3 4 5 6 7; do
+if grep -Fq 'legacy entry' "$output_file"; then
+  fail "legacy dashboard entries were not removed"
+fi
+if grep -Fq 'must not appear' "$output_file"; then
+  fail "release from another target was included"
+fi
+if grep -Fq '## [0.618.0]' "$output_file"; then
+  fail "duplicate release title was not removed"
+fi
+
+write_single_release() {
+  local commit=$1
+  local published_at=$2
+  local body_size=${3:-0}
+
+  jq -n \
+    --arg target "$commit" \
+    --arg published_at "$published_at" \
+    --argjson body_size "$body_size" \
+    '[{
+      tag_name: "app-v1.2.3",
+      target_commitish: $target,
+      html_url: "https://example.test/app-v1.2.3",
+      published_at: $published_at,
+      body: (
+        "## [1.2.3](https://example.test/app) (2026-07-22)\n\n### Features\n\n* "
+        + ("x" * $body_size)
+      )
+    }]' >"$releases_file"
+}
+
+for digit in 2 3 4 5 6 7 8; do
   commit=$(printf '%040d' "$digit")
-  "$TARGET" "$output_file" "$commit" "$rollback_url" >"${output_file}.next"
+  write_single_release "$commit" "2026-07-22T23:39:4${digit}Z"
+  PATH="${fake_bin}:$PATH" \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    MOCK_RELEASES_FILE="$releases_file" \
+    "$TARGET" "$output_file" "$commit" "$rollback_url" >"${output_file}.next"
   mv "${output_file}.next" "$output_file"
 done
 
-entry_count=$(grep -c "^- \`[0-9a-f]\\{40\\}\` — \\[Rollback production\\]" "$output_file")
+entry_count=$(grep -c '^<!-- ROLLBACK_ENTRY_START [0-9a-f]\{40\} -->$' "$output_file")
 if [ "$entry_count" -ne 7 ]; then
-  echo "expected 7 dashboard entries, found $entry_count" >&2
-  exit 1
+  fail "expected 7 dashboard entries, found $entry_count"
 fi
 
-latest_commit=0000000000000000000000000000000000000007
-grep -Fqx -- "- \`${latest_commit}\` — [Rollback production](${rollback_url})" "$output_file"
+latest_commit=0000000000000000000000000000000000000008
+grep -Fq -- "<!-- ROLLBACK_ENTRY_START ${latest_commit} -->" "$output_file"
 if grep -Fq "$target_commit" "$output_file"; then
-  echo "oldest dashboard entry was not trimmed" >&2
-  exit 1
+  fail "oldest dashboard entry was not trimmed"
 fi
 
-"$TARGET" "$output_file" "$latest_commit" "$rollback_url" >"${output_file}.next"
-duplicate_count=$(grep -c "$latest_commit" "${output_file}.next")
+write_single_release "$latest_commit" "2026-07-22T23:39:48Z"
+PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_RELEASES_FILE="$releases_file" \
+  "$TARGET" "$output_file" "$latest_commit" "$rollback_url" >"${output_file}.next"
+duplicate_count=$(grep -c "ROLLBACK_ENTRY_START ${latest_commit}" "${output_file}.next")
 if [ "$duplicate_count" -ne 1 ]; then
-  echo "duplicate target commit was not collapsed" >&2
-  exit 1
+  fail "duplicate target commit was not collapsed"
 fi
+
+printf '%s\n' \
+  'This issue is automatically maintained by CI. Do not edit manually.' \
+  '<!-- ROLLBACK_ENTRIES_START -->' \
+  '<!-- ROLLBACK_ENTRIES_END -->' >"$body_file"
+for digit in 1 2 3 4 5 6 7; do
+  commit=$(printf '%040d' "$digit")
+  write_single_release "$commit" "2026-07-22T23:40:0${digit}Z" 15000
+  PATH="${fake_bin}:$PATH" \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    MOCK_RELEASES_FILE="$releases_file" \
+    "$TARGET" "$body_file" "$commit" "$rollback_url" >"${body_file}.next"
+  mv "${body_file}.next" "$body_file"
+done
+
+body_bytes=$(wc -c <"$body_file")
+if [ "$body_bytes" -gt 65000 ]; then
+  fail "dashboard body exceeded the safe GitHub issue size"
+fi
+entry_count=$(grep -c '^<!-- ROLLBACK_ENTRY_START ' "$body_file")
+if [ "$entry_count" -ge 7 ]; then
+  fail "old entries were not removed to satisfy the body size limit"
+fi
+start_count=$entry_count
+end_count=$(grep -c '^<!-- ROLLBACK_ENTRY_END -->$' "$body_file")
+if [ "$start_count" -ne "$end_count" ]; then
+  fail "dashboard size trimming removed a partial entry"
+fi
+grep -Fq 'ROLLBACK_ENTRY_START 0000000000000000000000000000000000000007' "$body_file"
+
+jq -n '[{
+  tag_name: "app-v1.2.3",
+  target_commitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  html_url: "https://example.test/app-v1.2.3",
+  published_at: "2026-07-22T23:40:00Z",
+  body: "other target"
+}]' >"$releases_file"
+if PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_RELEASES_FILE="$releases_file" \
+  "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+  >"${tmp_dir}/missing.out" 2>"${tmp_dir}/missing.err"; then
+  fail "missing release artifacts should fail"
+fi
+grep -Fq "No release artifacts found for target ${target_commit}" "${tmp_dir}/missing.err"
 
 echo "update-rollback-dashboard-body tests passed"
