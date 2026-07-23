@@ -339,18 +339,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
+function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
     const dataset = call[0];
     const events = call[1];
     if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
       return [];
     }
-    return events.filter((event): event is Record<string, unknown> => {
-      return isRecord(event) && event.run_id === runId;
-    });
+    return events.filter(isRecord);
+  });
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEvents().filter((event) => {
+    return event.run_id === runId;
   });
 }
 
@@ -4869,6 +4873,115 @@ describe("CHAT-02: shared user message queue", () => {
     expect(claimed.content).toBe("recall races the appended claim");
 
     await cancelChatRun(actor, claimed.runId);
+  }, 90_000);
+
+  it("lets recall win without deadlocking an atomic queue-first drain", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue serialization");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "recall-first queue race anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const prompt = "recall wins the atomic queue-first race";
+    const messageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    const messageQueueLock = await holdChatMessageQueueItemFixture({
+      threadId: anchor.threadId,
+      messageId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      messageQueueLock.release();
+      await Promise.all([admissionLock.done, messageQueueLock.done]);
+    });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    const recall = chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: messageId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+
+    admissionLock.release();
+    await admissionLock.done;
+    await expect
+      .poll(messageQueueLock.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(2);
+    messageQueueLock.release();
+
+    const recalled = await recall;
+    expect(recalled.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+    await messageQueueLock.done;
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(() => {
+        return sandboxOperationEvents().some((event) => {
+          return (
+            event.op_type === "api_dispatch_claim_queue_first_message" &&
+            event.queue_first_claim_result === "lost" &&
+            event.queue_first_launch_outcome === "claim_lost"
+          );
+        });
+      })
+      .toBe(true);
+
+    const messages = await chat.listThreadMessages(actor, anchor.threadId);
+    expect(userMessages(messages.messages)).toContainEqual(
+      expect.objectContaining({
+        content: null,
+        revokesMessageId: messageId,
+      }),
+    );
+    expect(
+      userMessages(messages.messages).filter((message) => {
+        return message.revokesMessageId === messageId && message.runId;
+      }),
+    ).toHaveLength(0);
+
+    const runList = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runList.runs.filter((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toHaveLength(0);
   }, 90_000);
 
   it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {

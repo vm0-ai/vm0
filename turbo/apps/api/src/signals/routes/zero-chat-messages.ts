@@ -111,6 +111,7 @@ import {
   discardUnclaimedUserMessage,
   enqueueUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessageId,
+  lockUserMessageQueueThread,
 } from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -1705,6 +1706,7 @@ function appendRecallUserMessage(params: {
   readonly clientMessageId: string | undefined;
 }): Promise<AppendMessageResult> {
   return params.db.transaction(async (tx) => {
+    await lockUserMessageQueueThread(tx, params.threadId);
     // Deleting the queue item atomically wins the queued message. If a
     // concurrent claim wins first, its replacement remains linked and the
     // revoker check below rejects recall.
@@ -2664,6 +2666,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
   const userCreatedAt = nowDate();
   const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
   const createdAt = await params.prepared.db.transaction(async (tx) => {
+    await lockUserMessageQueueThread(tx, params.prepared.thread.threadId);
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,

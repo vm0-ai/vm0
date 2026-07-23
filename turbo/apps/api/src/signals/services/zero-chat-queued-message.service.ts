@@ -82,6 +82,22 @@ export type QueueFirstRunClaimResult =
   | { readonly kind: "claimed"; readonly createdAt: Date }
   | { readonly kind: "lost" };
 
+/**
+ * Establish the thread-first lock order shared by every user-message queue
+ * consumer before it locks or deletes a queue row.
+ */
+export async function lockUserMessageQueueThread(
+  db: Db,
+  threadId: string,
+): Promise<boolean> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .for("update");
+  return thread !== undefined;
+}
+
 export async function encryptQueuedUserMessageRunParams(
   params: QueuedUserMessageRunParams,
   ctx: { readonly orgId: string; readonly userId: string },
@@ -335,18 +351,14 @@ export async function claimQueueFirstRunAssociation(
     "api_dispatch_claim_queue_first_message",
     "nested",
     async () => {
-      const [thread] = await args.timing.measure(
+      const threadExists = await args.timing.measure(
         "api_dispatch_queue_first_thread_lock_wait",
         "nested",
         async () => {
-          return await db
-            .select({ id: chatThreads.id })
-            .from(chatThreads)
-            .where(eq(chatThreads.id, args.threadId))
-            .for("update");
+          return await lockUserMessageQueueThread(db, args.threadId);
         },
       );
-      if (!thread) {
+      if (!threadExists) {
         outcome = "lost";
         return { kind: "lost" };
       }
@@ -397,6 +409,9 @@ export async function discardUnclaimedUserMessage(
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+      return;
+    }
     const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
       threadId: args.threadId,
       messageId: args.messageId,
