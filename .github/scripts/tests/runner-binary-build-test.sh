@@ -52,35 +52,13 @@ mkdir -p \
   "${repo}/crates/runner/mitm-addon/tests" \
   "${repo}/crates/runner/scripts" \
   "${repo}/crates/structural-one/src" \
+  "${repo}/crates/structural-one/src/feature/tests" \
   "${repo}/crates/structural-one/tests" \
   "${TMPDIR}/bin"
 cp -a \
   "${REPO_ROOT}/.github/scripts/runner-binary-build" \
   "${repo}/.github/scripts/runner-binary-build"
 
-cat > "${repo}/.github/scripts/runner-binary-build/context.json" <<'JSON'
-{
-  "selectedPackages": [
-    {
-      "name": "guest-one",
-      "path": "crates/guest-one"
-    },
-    {
-      "name": "runner",
-      "path": "crates/runner"
-    }
-  ],
-  "structuralPackages": [
-    {
-      "name": "structural-one",
-      "path": "crates/structural-one",
-      "targetEntries": [
-        "src/lib.rs"
-      ]
-    }
-  ]
-}
-JSON
 cat > "${repo}/crates/runner/guest-binaries.json" <<'JSON'
 [
   {
@@ -142,7 +120,8 @@ printf 'pub fn guest() {}\n' > "${repo}/crates/guest-one/src/lib.rs"
 printf 'fn main() {}\n' > "${repo}/crates/runner/src/main.rs"
 printf 'fn main() {}\n' > "${repo}/crates/runner/build.rs"
 printf 'pub fn structural() {}\n' > "${repo}/crates/structural-one/src/lib.rs"
-printf 'pub fn ignored() {}\n' > "${repo}/crates/structural-one/src/ignored.rs"
+printf 'pub fn additional() {}\n' > "${repo}/crates/structural-one/src/additional.rs"
+printf 'nested source fixture\n' > "${repo}/crates/structural-one/src/feature/tests/input.txt"
 printf 'selected fixture\n' > "${repo}/crates/guest-one/fixtures/input.txt"
 printf 'integration test\n' > "${repo}/crates/guest-one/tests/integration.rs"
 printf 'example\n' > "${repo}/crates/guest-one/examples/example.rs"
@@ -178,7 +157,6 @@ printf 'changed example\n' >> "${repo}/crates/guest-one/examples/example.rs"
 printf 'changed bench\n' >> "${repo}/crates/guest-one/benches/bench.rs"
 printf 'changed runner test\n' >> "${repo}/crates/runner/tests/integration.rs"
 printf 'changed mitm test\n' >> "${repo}/crates/runner/mitm-addon/tests/test_runtime.py"
-printf 'changed structural source\n' >> "${repo}/crates/structural-one/src/ignored.rs"
 printf 'changed structural test\n' >> "${repo}/crates/structural-one/tests/integration.rs"
 printf 'changed unrelated\n' >> "${repo}/README.md"
 commit_all "$repo" excluded-changes
@@ -204,9 +182,13 @@ assert_text_change_affects_digest \
 assert_text_change_affects_digest \
   "$repo" "crates/.cargo/config.toml" "cargo-config-change"
 assert_text_change_affects_digest \
-  "$repo" "crates/structural-one/Cargo.toml" "structural-manifest-change"
+  "$repo" "crates/structural-one/Cargo.toml" "other-package-manifest-change"
 assert_text_change_affects_digest \
-  "$repo" "crates/structural-one/src/lib.rs" "structural-entry-change"
+  "$repo" "crates/structural-one/src/lib.rs" "other-package-entry-change"
+assert_text_change_affects_digest \
+  "$repo" "crates/structural-one/src/additional.rs" "other-package-source-change"
+assert_text_change_affects_digest \
+  "$repo" "crates/structural-one/src/feature/tests/input.txt" "nested-source-test-path-change"
 assert_text_change_affects_digest \
   "$repo" ".github/scripts/runner-binary-build/contract.env" "contract-change"
 
@@ -219,27 +201,12 @@ after=$(digest_value "$repo" aarch64-unknown-linux-musl)
 [ "$after" != "$before" ] || fail "guest inventory must affect the input digest"
 
 before=$after
-printf '\n' >> "${repo}/.github/scripts/runner-binary-build/context.json"
-commit_all "$repo" context-declaration-change
-after=$(digest_value "$repo" aarch64-unknown-linux-musl)
-[ "$after" != "$before" ] || fail "context declaration must affect the input digest"
-
-before=$after
 chmod -x "${repo}/crates/runner/scripts/tool.sh"
 commit_all "$repo" executable-mode-change
 after=$(digest_value "$repo" aarch64-unknown-linux-musl)
 [ "$after" != "$before" ] || fail "tracked executable mode must affect the input digest"
 
 valid_revision=$(git -C "$repo" rev-parse HEAD)
-cp "${repo}/.github/scripts/runner-binary-build/context.json" "${TMPDIR}/valid-context.json"
-jq '.selectedPackages[0].path = "../unsafe"' \
-  "${TMPDIR}/valid-context.json" > "${repo}/.github/scripts/runner-binary-build/context.json"
-commit_all "$repo" invalid-context-declaration
-if digest_value "$repo" aarch64-unknown-linux-musl >/dev/null 2>&1; then
-  fail "invalid context declarations must fail"
-fi
-cp "${TMPDIR}/valid-context.json" "${repo}/.github/scripts/runner-binary-build/context.json"
-commit_all "$repo" restore-context-declaration
 
 ln -s ../../README.md "${repo}/crates/guest-one/src/linked.rs"
 commit_all "$repo" selected-symlink
@@ -253,32 +220,6 @@ cat > "${TMPDIR}/bin/cargo" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "metadata" ]; then
-  jq -n --arg root "$PWD" '{
-    workspace_root: $root,
-    packages: [
-      {
-        name: "guest-one",
-        manifest_path: ($root + "/guest-one/Cargo.toml"),
-        dependencies: []
-      },
-      {
-        name: "runner",
-        manifest_path: ($root + "/runner/Cargo.toml"),
-        dependencies: [
-          {
-            name: "guest-one",
-            kind: null,
-            path: ($root + "/guest-one")
-          }
-        ]
-      },
-      {
-        name: "structural-one",
-        manifest_path: ($root + "/structural-one/Cargo.toml"),
-        dependencies: []
-      }
-    ]
-  }'
   exit
 fi
 
@@ -299,24 +240,6 @@ printf 'guest-output\n' > "${CARGO_TARGET_DIR}/${target}/${profile}/guest-one"
 printf 'runner-output\n' > "${CARGO_TARGET_DIR}/${target}/${profile}/runner"
 BASH
 chmod +x "${TMPDIR}/bin/cargo"
-
-cp "${repo}/.github/scripts/runner-binary-build/context.json" "${TMPDIR}/valid-context.json"
-jq '
-  .selectedPackages = [.selectedPackages[] | select(.name != "guest-one")] |
-  .structuralPackages = ([
-    {
-      name: "guest-one",
-      path: "crates/guest-one",
-      targetEntries: ["src/lib.rs"]
-    }
-  ] + .structuralPackages)
-' "${TMPDIR}/valid-context.json" > "${repo}/.github/scripts/runner-binary-build/context.json"
-if PATH="${TMPDIR}/bin:${PATH}" \
-  "${repo}/.github/scripts/runner-binary-build/context.sh" \
-  validate-workspace "$repo" >/dev/null 2>&1; then
-  fail "local non-dev dependency closure drift must fail"
-fi
-cp "${TMPDIR}/valid-context.json" "${repo}/.github/scripts/runner-binary-build/context.json"
 
 printf 'exit 99\n' > "${repo}/.github/scripts/runner-binary-build/compile.sh"
 printf 'untracked again\n' > "${repo}/crates/guest-one/src/untracked.rs"
@@ -354,9 +277,13 @@ jq -e \
 [ -f "${context_root}/crates/runner/mitm-addon/src/runtime.py" ] \
   || fail "expected selected mitm source"
 [ -f "${context_root}/crates/structural-one/Cargo.toml" ] \
-  || fail "expected structural package manifest"
+  || fail "expected other workspace package manifest"
 [ -f "${context_root}/crates/structural-one/src/lib.rs" ] \
-  || fail "expected structural target entry"
+  || fail "expected other workspace package entry"
+[ -f "${context_root}/crates/structural-one/src/additional.rs" ] \
+  || fail "default inclusion must retain other workspace package source"
+[ -f "${context_root}/crates/structural-one/src/feature/tests/input.txt" ] \
+  || fail "only package top-level test trees may be excluded"
 [ -f "${context_root}/${weird_relative}" ] \
   || fail "expected unusual tracked filename"
 [ ! -x "${context_root}/crates/runner/scripts/tool.sh" ] \
@@ -369,8 +296,8 @@ jq -e \
   || fail "materialization must exclude benches"
 [ ! -e "${context_root}/crates/runner/mitm-addon/tests/test_runtime.py" ] \
   || fail "materialization must exclude mitm tests"
-[ ! -e "${context_root}/crates/structural-one/src/ignored.rs" ] \
-  || fail "materialization must exclude structural non-entry content"
+[ ! -e "${context_root}/crates/structural-one/tests/integration.rs" ] \
+  || fail "materialization must exclude other package integration tests"
 [ ! -e "${context_root}/crates/guest-one/src/untracked.rs" ] \
   || fail "materialization must exclude untracked selected content"
 [ ! -e "${context_root}/README.md" ] \
@@ -417,9 +344,9 @@ RUNNER_BINARY_CONTEXT_ROOT="$actual_context" \
 [ ! -e "${actual_context}/crates/runner/mitm-addon/tests" ] \
   || fail "actual context must exclude runner mitm tests"
 [ -f "${actual_context}/crates/sandbox-mock/src/lib.rs" ] \
-  || fail "actual context must retain structural target entries"
-[ ! -e "${actual_context}/crates/sandbox-mock/src/call_records.rs" ] \
-  || fail "actual context must exclude structural non-entry source"
+  || fail "actual context must retain all workspace package entries"
+[ -f "${actual_context}/crates/sandbox-mock/src/call_records.rs" ] \
+  || fail "actual context must retain other workspace package source"
 
 workflow_toolchain=$(awk '
   /^  compile:$/ { in_compile = 1; next }
