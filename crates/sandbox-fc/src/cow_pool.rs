@@ -48,6 +48,7 @@ type SlotSpawner =
 struct CowPoolSnapshot {
     ready: usize,
     pending: usize,
+    teardowns: usize,
     waiters: usize,
     pipeline_slots: usize,
     warm_retry_scheduled: bool,

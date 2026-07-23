@@ -371,7 +371,7 @@ async fn cancelled_acquire_after_delivery_cleans_transferred_slot() {
     }
     controller.take_request().send(Ok(slot)).unwrap();
     let completion = pool.pending.join_next().await;
-    pool.handle_creation_join(completion).await;
+    pool.handle_creation_join(completion);
 
     drop(response);
 
@@ -429,6 +429,84 @@ async fn cancelled_burst_does_not_leave_ready_slots_above_buffer() {
     handle.cleanup().await;
     assert_eq!(retained_dropped.await.unwrap(), retained_workspace);
     assert!(!retained_workspace.exists());
+}
+
+#[tokio::test]
+async fn surplus_teardown_does_not_block_ready_acquire() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (controller, spawner) = ControlledSpawner::new();
+    let pool = test_pool_with_spawner(
+        test_config(tmp.path()),
+        1,
+        2,
+        4,
+        Duration::from_secs(60),
+        spawner,
+    );
+    let handle = CowPoolHandle::new_for_test(pool);
+
+    let first = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+    let second = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.waiters == 2 && snapshot.pending == 2
+    })
+    .await;
+    first.abort();
+    second.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    assert!(second.await.unwrap_err().is_cancelled());
+
+    let (retained, retained_dropped) =
+        test_slot_with_drop_notify(tmp.path(), "ready-during-surplus-teardown");
+    let retained_workspace = retained.workspace().to_owned();
+    controller.take_request().send(Ok(retained)).unwrap();
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.ready == 1 && snapshot.pending == 1
+    })
+    .await;
+
+    let (surplus, teardown_started, release_teardown, surplus_dropped) =
+        test_slot_with_teardown_gate(tmp.path(), "slow-surplus-teardown");
+    let surplus_workspace = surplus.workspace().to_owned();
+    controller.take_request().send(Ok(surplus)).unwrap();
+    assert_eq!(teardown_started.await.unwrap(), surplus_workspace);
+    let snapshot = tokio::time::timeout(Duration::from_secs(1), handle.snapshot())
+        .await
+        .expect("surplus teardown should not block pool state");
+    assert_eq!(snapshot.ready, 1);
+    assert_eq!(snapshot.teardowns, 1);
+
+    let acquired = tokio::time::timeout(Duration::from_secs(1), handle.acquire())
+        .await
+        .expect("surplus teardown should not block a ready acquire")
+        .unwrap();
+    assert_eq!(acquired.id(), "ready-during-surplus-teardown");
+    destroy_prepared_slot_async(acquired).await;
+    assert_eq!(retained_dropped.await.unwrap(), retained_workspace);
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.pending == 1 && snapshot.teardowns == 1
+    })
+    .await;
+
+    let cleanup = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.cleanup().await }
+    });
+    controller
+        .take_request()
+        .send(Err(CowPoolError::CowFileCreation(
+            "cleanup replacement".into(),
+        )))
+        .unwrap();
+    release_teardown.send(()).unwrap();
+    assert_eq!(surplus_dropped.await.unwrap(), surplus_workspace);
+    cleanup.await.unwrap();
 }
 
 #[tokio::test]
