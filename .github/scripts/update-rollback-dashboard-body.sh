@@ -59,6 +59,7 @@ jq -ce --arg target "$target_commit" '
 published_at=$(jq -r 'map(.published_at) | max' "$normalized_releases_file")
 singapore_time=$(TZ=Asia/Singapore date -d "$published_at" '+%m-%d-%Y %H:%M:%S')
 sf_time=$(TZ=America/Los_Angeles date -d "$published_at" '+%m-%d-%Y %H:%M:%S')
+sf_zone=$(TZ=America/Los_Angeles date -d "$published_at" '+%Z')
 jq -r '.[] | [.artifact, .version, .url, (.body | @base64)] | @tsv' \
   "$normalized_releases_file" >"$release_rows_file"
 
@@ -72,9 +73,17 @@ format_changelog() {
     { skip_leading_blanks = 0 }
     /^```/ {
       in_fence = !in_fence
-      print
+      if (!skip_dependencies) print
       next
     }
+    !in_fence && /^###[[:space:]]+Dependencies[[:space:]]*$/ {
+      skip_dependencies = 1
+      next
+    }
+    !in_fence && skip_dependencies && /^###[[:space:]]+/ {
+      skip_dependencies = 0
+    }
+    skip_dependencies { next }
     !in_fence && /^#/ {
       print "#" $0
       next
@@ -86,24 +95,28 @@ format_changelog() {
 new_entry_file="${entries_dir}/000.md"
 {
   printf '<!-- ROLLBACK_ENTRY_START %s -->\n' "$target_commit"
-  printf '## %s Asia/Singapore · %s SF · RollbackId: `%s`\n\n' \
-    "$singapore_time" \
-    "$sf_time" \
-    "$target_commit"
+  printf '<details>\n'
+  printf '<summary>%s SGT</summary>\n\n' "$singapore_time"
+  printf '* RevertId: `%s`\n' "$target_commit"
+  printf '* %s %s\n\n' "$sf_zone" "$sf_time"
 
   while IFS=$'\t' read -r artifact version url encoded_body; do
-    printf '### [%s](%s): `%s`\n\n' "$artifact" "$url" "$version"
-    printf '**Change Log**\n\n'
+    printf '### [%s](%s): `%s`\n' "$artifact" "$url" "$version"
 
     changelog=$(printf '%s' "$encoded_body" | base64 --decode)
     if [ -n "$changelog" ]; then
-      printf '%s\n' "$changelog" | format_changelog
+      formatted_changelog=$(printf '%s\n' "$changelog" | format_changelog)
     else
-      printf '_No changelog provided._\n'
+      formatted_changelog='_No changelog provided._'
+    fi
+    if [ -n "$formatted_changelog" ]; then
+      printf '\n**Change Log**\n\n'
+      printf '%s\n' "$formatted_changelog"
     fi
     printf '\n'
   done <"$release_rows_file"
 
+  printf '</details>\n'
   printf '<!-- ROLLBACK_ENTRY_END -->\n'
 } >"$new_entry_file"
 
@@ -126,6 +139,98 @@ awk -v entries_dir="$entries_dir" -v target="$target_commit" '
     capture = 0
   }
 ' "$body_file"
+
+normalize_retained_entry() {
+  local entry_file=$1
+  local normalized_entry_file="${entry_file}.normalized"
+
+  awk '
+    /^<!-- ROLLBACK_ENTRY_START [0-9a-f]+ -->$/ {
+      entry_commit = $0
+      sub(/^<!-- ROLLBACK_ENTRY_START /, "", entry_commit)
+      sub(/ -->$/, "", entry_commit)
+      print
+      next
+    }
+    /^```/ {
+      in_fence = !in_fence
+      if (!skip_dependencies) {
+        if (pending_changelog) {
+          print "**Change Log**"
+          print ""
+          pending_changelog = 0
+        }
+        print
+      }
+      next
+    }
+    !in_fence && /^## .* Asia\/Singapore · .* SF · RollbackId:/ {
+      singapore_time = $0
+      sub(/^## /, "", singapore_time)
+      sub(/ Asia\/Singapore ·.*$/, "", singapore_time)
+
+      sf_time = $0
+      sub(/^.* Asia\/Singapore · /, "", sf_time)
+      sub(/ SF · RollbackId:.*$/, "", sf_time)
+
+      print "<details>"
+      print "<summary>" singapore_time " SGT</summary>"
+      print ""
+      print "* RevertId: `" entry_commit "`"
+      print "* PDT " sf_time
+      print ""
+      converted = 1
+      next
+    }
+    !in_fence && /^\*\*Change Log\*\*$/ {
+      pending_changelog = 1
+      next
+    }
+    !in_fence && pending_changelog && /^[[:space:]]*$/ { next }
+    !in_fence && /^####[[:space:]]+Dependencies[[:space:]]*$/ {
+      skip_dependencies = 1
+      next
+    }
+    !in_fence && skip_dependencies &&
+      (/^#[[:space:]]/ ||
+       /^##[[:space:]]/ ||
+       /^###[[:space:]]/ ||
+       /^####[[:space:]]/) {
+      skip_dependencies = 0
+    }
+    !in_fence && skip_dependencies &&
+      (/^<\/details>$/ ||
+       /^<!-- ROLLBACK_ENTRY_END -->$/) {
+      skip_dependencies = 0
+    }
+    skip_dependencies { next }
+    pending_changelog {
+      if (/^###[[:space:]]+\[/ ||
+          /^<\/details>$/ ||
+          /^<!-- ROLLBACK_ENTRY_END -->$/) {
+        pending_changelog = 0
+      } else {
+        print "**Change Log**"
+        print ""
+        pending_changelog = 0
+      }
+    }
+    /^<!-- ROLLBACK_ENTRY_END -->$/ {
+      if (converted) print "</details>"
+      print
+      next
+    }
+    { print }
+  ' "$entry_file" >"$normalized_entry_file"
+
+  mv "$normalized_entry_file" "$entry_file"
+}
+
+for entry_file in "$entries_dir"/[0-9][0-9][1-9].md; do
+  if [ -f "$entry_file" ]; then
+    normalize_retained_entry "$entry_file"
+  fi
+done
 
 render_body() {
   local output_file=$1
