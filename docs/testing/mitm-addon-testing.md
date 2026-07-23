@@ -30,6 +30,7 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
+| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                     |
 | `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
 | `test_request_handler_authority_validation.py`          | HTTPS authority validation before firewall auth                                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
