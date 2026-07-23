@@ -4418,6 +4418,73 @@ describe("connector catalog valid lifecycle", () => {
     expect(requestedKeys).not.toContain(skill.archiveKey);
   });
 
+  it.each(["storage name", "version ID"] as const)(
+    "rejects bundled skills sharing one %s across connectors",
+    async (sharedIdentity) => {
+      configureSource();
+      const suffix = randomUUID().slice(0, 8);
+      const firstConnectorRef = `skill-identity-a-${suffix}`;
+      const secondConnectorRef = `skill-identity-b-${suffix}`;
+      const firstSkill = buildBundledSkillFixture(
+        firstConnectorRef,
+        createHash("sha256").update(`first:${randomUUID()}`).digest("hex"),
+      );
+      const secondSkill = buildBundledSkillFixture(
+        secondConnectorRef,
+        createHash("sha256").update(`second:${randomUUID()}`).digest("hex"),
+      );
+      const secondDescriptor = structuredClone(secondSkill.descriptor);
+      if (sharedIdentity === "storage name") {
+        secondDescriptor.storageName = firstSkill.storageName;
+        secondDescriptor.storageVersionPrefix =
+          `__system__/volume/${firstSkill.storageName}/` +
+          `${secondSkill.versionId}`;
+      } else {
+        secondDescriptor.versionId = firstSkill.versionId;
+        secondDescriptor.storageVersionPrefix =
+          `__system__/volume/${secondSkill.storageName}/` +
+          `${firstSkill.versionId}`;
+      }
+      const release = buildRelease({
+        version:
+          `2026-07-23.skill-identity-` +
+          `${sharedIdentity === "storage name" ? "storage-name" : "version-id"}-${suffix}`,
+        connectorRef: firstConnectorRef,
+        mutateRuntime: (artifact) => {
+          const connectors = arrayValue(artifact.connectors, "connectors");
+          const first = firstRecord(connectors, "connectors");
+          first.skill = firstSkill.descriptor;
+
+          const second = structuredClone(first);
+          second.connectorRef = secondConnectorRef;
+          second.label = "Second Skill Identity";
+          const secondMethod = firstRecord(second.authMethods, "authMethods");
+          recordValue(secondMethod.storage, "storage").secrets = [
+            "SECOND_SKILL_IDENTITY_TOKEN",
+          ];
+          firstRecord(
+            recordValue(secondMethod.grant, "grant").fields,
+            "grant.fields",
+          ).privateName = "SECOND_SKILL_IDENTITY_TOKEN";
+          recordValue(
+            recordValue(secondMethod.access, "access").envBindings,
+            "envBindings",
+          ).SERVICE_TOKEN = "$secrets.SECOND_SKILL_IDENTITY_TOKEN";
+          second.skill = secondDescriptor;
+          connectors.push(second);
+        },
+      });
+      serveObjects(catalogObjects([release], release));
+
+      expect((await syncCatalog()).body).toMatchObject({
+        outcome: "rejected",
+        state: "never-synced",
+        active: null,
+        lastAttempt: { failureCode: "relationship-mismatch" },
+      });
+    },
+  );
+
   it("accepts source identities and platform requirements without local support", async () => {
     configureSource();
     const release = buildRelease({

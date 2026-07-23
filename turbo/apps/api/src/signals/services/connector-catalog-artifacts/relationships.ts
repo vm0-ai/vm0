@@ -103,6 +103,8 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
   );
   const secretOwners = new Map<string, string>();
   const variableOwners = new Map<string, string>();
+  const skillStorageOwners = new Map<string, string>();
+  const skillVersionOwners = new Map<string, string>();
 
   for (const connector of artifact.connectors) {
     if (connector.connectorRef.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
@@ -140,6 +142,27 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
       }),
     });
     validateConnectorSourceSemantics(source);
+
+    if (connector.skill.kind === "bundled") {
+      const storageOwner = skillStorageOwners.get(connector.skill.storageName);
+      if (storageOwner !== undefined) {
+        throw new Error(
+          `Connector skill storage ${connector.skill.storageName} is claimed by ${storageOwner} and ${connector.connectorRef}`,
+        );
+      }
+      skillStorageOwners.set(
+        connector.skill.storageName,
+        connector.connectorRef,
+      );
+
+      const versionOwner = skillVersionOwners.get(connector.skill.versionId);
+      if (versionOwner !== undefined) {
+        throw new Error(
+          `Connector skill version ${connector.skill.versionId} is claimed by ${versionOwner} and ${connector.connectorRef}`,
+        );
+      }
+      skillVersionOwners.set(connector.skill.versionId, connector.connectorRef);
+    }
 
     for (const method of connector.authMethods) {
       for (const secretName of method.storage.secrets) {
