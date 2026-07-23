@@ -13,14 +13,13 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { convert, type FormatCallback } from "html-to-text";
 import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
 import { z } from "zod";
 
-import { executeRawRows } from "../../lib/db-raw-rows";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -209,6 +208,21 @@ const outboxRowSchema = z.object({
   attempts: z.int(),
 });
 type OutboxRow = z.output<typeof outboxRowSchema>;
+
+function outboxRowSelection() {
+  return {
+    id: emailOutbox.id,
+    from_address: emailOutbox.fromAddress,
+    to_addresses: emailOutbox.toAddresses,
+    cc_addresses: emailOutbox.ccAddresses,
+    subject: emailOutbox.subject,
+    reply_to: emailOutbox.replyTo,
+    headers: emailOutbox.headers,
+    template: emailOutbox.template,
+    post_send_action: emailOutbox.postSendAction,
+    attempts: emailOutbox.attempts,
+  };
+}
 
 interface EnqueueEmailOptions {
   readonly from: string;
@@ -749,17 +763,12 @@ async function processOutboxItem(
 
 async function drainById(db: Db, itemId: string): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    const rows = await executeRawRows(
-      tx,
-      sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
-             reply_to, headers, template, post_send_action, attempts
-          FROM email_outbox
-          WHERE id = ${itemId}
-            AND status = 'pending'
-          FOR UPDATE SKIP LOCKED`,
-      outboxRowSchema,
-    );
-    const row = rows[0];
+    const [selectedRow] = await tx
+      .select(outboxRowSelection())
+      .from(emailOutbox)
+      .where(and(eq(emailOutbox.id, itemId), eq(emailOutbox.status, "pending")))
+      .for("update", { skipLocked: true });
+    const row = selectedRow ? outboxRowSchema.parse(selectedRow) : undefined;
     return row ? await processOutboxItem(tx, row) : false;
   });
 }
@@ -770,19 +779,24 @@ async function drainNextOutboxItem(
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const currentTime = new Date(currentTimeMs);
-    const rows = await executeRawRows(
-      tx,
-      sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
-             reply_to, headers, template, post_send_action, attempts
-          FROM email_outbox
-          WHERE status = 'pending'
-            AND (next_retry_at IS NULL OR next_retry_at <= ${currentTime})
-          ORDER BY created_at ASC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED`,
-      outboxRowSchema,
-    );
-    const row = rows[0];
+    const [selectedRow] = await tx
+      .select(outboxRowSelection())
+      .from(emailOutbox)
+      .where(
+        and(
+          eq(emailOutbox.status, "pending"),
+          or(
+            isNull(emailOutbox.nextRetryAt),
+            // Keep the Date schema-bound so Drizzle encodes its UTC wall-clock
+            // value instead of letting node-postgres apply the process timezone.
+            lte(emailOutbox.nextRetryAt, currentTime),
+          ),
+        ),
+      )
+      .orderBy(asc(emailOutbox.createdAt))
+      .limit(1)
+      .for("update", { skipLocked: true });
+    const row = selectedRow ? outboxRowSchema.parse(selectedRow) : undefined;
     return row ? await processOutboxItem(tx, row, currentTimeMs) : false;
   });
 }

@@ -101,6 +101,17 @@ const directQuery = `
   \`
 `;
 
+const runnerLockingQuery = `
+  sql\`
+    SELECT
+      \${runs.id} AS "runId",
+      \${runs.threadId} > 0 AS "isExpired"
+    FROM \${runs}
+    WHERE \${eq(runs.id, threadId)}
+    FOR UPDATE
+  \`
+`;
+
 ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
   valid: [
     {
@@ -161,6 +172,176 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
           sql\`SELECT 1 FROM \${runs} WHERE \${eq(runs.id, 1)} LIMIT 1\`,
           rowSchema,
         );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT DISTINCT \${runs.id}
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            WITH locked AS (
+              SELECT \${runs.id}
+              FROM \${runs}
+              WHERE \${eq(runs.id, threadId)}
+              FOR UPDATE
+            )
+            SELECT * FROM locked
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            INNER JOIN \${runStates}
+              ON \${eq(runStates.id, runs.id)}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}, \${runStates}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE EXISTS (
+              SELECT 1
+              FROM \${callbacks}
+              WHERE \${eq(callbacks.runId, runs.id)}
+            )
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, threadId)} FOR SHARE\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, threadId)} FOR UPDATE NOWAIT\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${runs.id} FROM \${runs} WHERE \${eq(runs.id, threadId)} FOR UPDATE OF runs\`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            LIMIT \${1}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${runs.id}
+            FROM \${runs}
+            WHERE \${eq(runs.id, threadId)}
+            LIMIT 2
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        const lockingQuery = ${runnerLockingQuery};
+        await executeRawRows(db, lockingQuery, rowSchema);
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        const source = sql.identifier("runs");
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT id
+            FROM \${source}
+            WHERE \${eq(runs.id, threadId)}
+            FOR UPDATE
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        async function executeRawRows(...args: unknown[]) { return args; }
+        await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+          return { strings, values };
+        }
+        const eq = (...values: unknown[]) => values;
+        await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
       `,
     },
     {
@@ -466,6 +647,53 @@ ruleTester.run("prefer-drizzle-query-builder", preferDrizzleQueryBuilder, {
     },
   ],
   invalid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
+    {
+      code: `${schemaPreamble}
+        import { sql as query } from "drizzle-orm";
+        import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
+        await decodeRows(
+          db,
+          query\`
+            SELECT id, from_address, to_addresses, attempts
+            FROM email_outbox
+            WHERE id = \${threadId}
+              AND status = 'pending'
+              AND 'FOR UPDATE ignored' = 'FOR UPDATE ignored'
+              /* SELECT FROM ignored */
+            FOR UPDATE SKIP LOCKED;
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
+    {
+      code: `${schemaPreamble}
+        import * as drizzle from "drizzle-orm";
+        import * as rawRows from "./lib/db-raw-rows";
+        await rawRows.executeRawRows(
+          db,
+          drizzle.sql\`
+            SELECT id, from_address, to_addresses, attempts
+            FROM email_outbox
+            WHERE status = 'pending'
+              AND (next_retry_at IS NULL OR next_retry_at <= \${threadId})
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "lockingQueryBuilder" }],
+    },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";

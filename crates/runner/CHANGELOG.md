@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.147.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.4...runner-rs-v0.147.5) (2026-07-23)
+
+
+### Documentation
+
+* **runner:** document public destination classifier contract ([#22681](https://github.com/vm0-ai/vm0/issues/22681)) ([509e2ac](https://github.com/vm0-ai/vm0/commit/509e2ac7e46f374568e8dfa05a931c656ce9c832))
+
 ## [0.147.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.3...runner-rs-v0.147.4) (2026-07-23)
 
 
