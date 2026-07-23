@@ -6,7 +6,7 @@ import {
 } from "./desktop-update-feed";
 
 describe("desktop update feed", () => {
-  it("enables updates only for packaged production macOS arm64 and x64 builds", () => {
+  it("enables updates only for packaged production macOS arm64 builds", () => {
     expect(
       shouldInstallDesktopAutoUpdates({
         environment: "production",
@@ -22,7 +22,7 @@ describe("desktop update feed", () => {
         platform: "darwin",
         arch: "x64",
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       shouldInstallDesktopAutoUpdates({
@@ -59,11 +59,8 @@ describe("desktop update feed", () => {
   });
 
   it("builds the static feed base URL used by update-electron-app", () => {
-    expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai", "arm64")).toBe(
+    expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai")).toBe(
       "https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64",
-    );
-    expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai", "x64")).toBe(
-      "https://api.vm0.ai/api/desktop/updates/stable/darwin/x64",
     );
   });
 });
