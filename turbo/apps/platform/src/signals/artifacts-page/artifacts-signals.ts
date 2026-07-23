@@ -6,21 +6,14 @@ import {
   type PersistedAttachment,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  artifactMatchesCategory,
-  type ArtifactCategory,
-} from "./artifact-category.ts";
-import {
-  artifactSearchText,
-  normalizedSearchTokens,
-} from "./artifact-search.ts";
+import type { ArtifactCategory } from "./artifact-category.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRef } from "../utils.ts";
+import { onRef, settle } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -33,9 +26,6 @@ const ARTIFACTS_PAGE_SIZE = 2000;
 // Backstop against an unbounded fetch loop (e.g. a server that never returns a
 // null cursor). Sits far above any realistic per-org artifact count.
 const ARTIFACTS_MAX_PAGES = 100;
-// Read the whole locally-cached set back for the cache-first paint.
-const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
-
 // Number of cards the grid makes available per automatic loading step. Row
 // virtualization keeps the mounted DOM bounded independently of this window.
 const ARTIFACT_WINDOW_STEP = 60;
@@ -51,6 +41,11 @@ const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
 const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
 const internalArtifactsGridWidth$ = state(0);
 const internalArtifactsPendingFocusIndex$ = state<number | null>(null);
+const internalArtifactsPageSession$ = state<object | null>(null);
+
+interface ArtifactsPageData {
+  readonly artifacts: readonly ArtifactItem[];
+}
 
 interface ArtifactsScrollMetrics {
   readonly clientHeight: number;
@@ -62,9 +57,29 @@ const internalArtifactsScrollMetrics$ = state<ArtifactsScrollMetrics>({
   scrollTop: 0,
 });
 
-interface ArtifactsPageData {
-  readonly artifacts: readonly ArtifactItem[];
-}
+export const setupArtifactsPageData$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    const session = {};
+    set(internalArtifactsPageSession$, session);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (get(internalArtifactsPageSession$) !== session) {
+          return;
+        }
+        set(internalArtifactsPageSession$, null);
+        // ccstate keeps an unmounted computed's last Promise cached. Force the
+        // inactive branches now so fulfilled Promises cannot retain artifact
+        // arrays after this page is gone.
+        const releasedSource = get(artifacts$);
+        if (releasedSource instanceof Promise) {
+          throw new Error("Artifact page data release must be synchronous");
+        }
+      },
+      { once: true },
+    );
+  },
+);
 
 function artifactItemCacheStores(dbPromise: Promise<IDBPDatabase>) {
   return createArtifactItemCacheStores(() => {
@@ -255,157 +270,104 @@ export const reloadArtifacts$ = command(({ set }) => {
   });
 });
 
-function artifactIsHosted(item: ArtifactItem): boolean {
-  return (
-    item.artifactKind === "hosted-site" ||
-    item.artifactKind === "presentation-html"
-  );
-}
-
-function compareArtifactWinner(
-  left: ArtifactItem,
-  right: ArtifactItem,
-): number {
-  if (left.updatedAt !== right.updatedAt) {
-    return left.updatedAt.localeCompare(right.updatedAt);
-  }
-  if (left.createdAt !== right.createdAt) {
-    return left.createdAt.localeCompare(right.createdAt);
-  }
-  return left.artifactItemId.localeCompare(right.artifactItemId);
-}
-
-function mergeArtifactItems(
-  cached: readonly ArtifactItem[],
-  changed: readonly ArtifactItem[],
-): ArtifactItem[] {
-  const byId = new Map<string, ArtifactItem>();
-  for (const item of cached) {
-    byId.set(item.artifactItemId, item);
-  }
-  for (const item of changed) {
-    byId.set(item.artifactItemId, item);
-  }
-
-  const hostedRunIds = new Set(
-    Array.from(byId.values())
-      .filter(artifactIsHosted)
-      .map((item) => {
-        return item.runId;
-      }),
-  );
-  const byUrl = new Map<string, ArtifactItem>();
-  for (const item of byId.values()) {
-    if (hostedRunIds.has(item.runId) && !artifactIsHosted(item)) {
-      continue;
-    }
-    const current = byUrl.get(item.url);
-    if (!current || compareArtifactWinner(item, current) > 0) {
-      byUrl.set(item.url, item);
-    }
-  }
-
-  return Array.from(byUrl.values()).sort((left, right) => {
-    if (left.createdAt !== right.createdAt) {
-      return right.createdAt.localeCompare(left.createdAt);
-    }
-    return right.artifactItemId.localeCompare(left.artifactItemId);
-  });
-}
-
-// Remote source: read the last-known cache immediately, request only rows that
-// changed since its synchronization timestamp, and merge those rows locally.
-// A server without incremental support omits `syncUntil`; in that case its
-// response is treated as the historical full snapshot for rolling-deploy
-// compatibility.
-export const remoteArtifacts$ = computed(
-  async (get): Promise<ArtifactsPageData> => {
+// Remote pages are normalized and persisted one at a time. This keeps
+// IndexedDB as the only complete artifact collection; the synchronization
+// computed retains no full cache or remote snapshot.
+const internalArtifactsSync$ = computed(
+  (get, { signal }): void | Promise<void> => {
     get(internalArtifactsReload$);
-    const dbPromise = get(chatIdb$);
+    if (get(internalArtifactsPageSession$) === null) {
+      return;
+    }
+    const stores = artifactItemCacheStores(get(chatIdb$));
     const client = get(zeroClient$)(artifactsContract);
-    const stores = artifactItemCacheStores(dbPromise);
-    const [cachedArtifacts, lastSyncedAt] = await Promise.all([
-      stores.readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT }),
-      stores.readStore.readLastSyncedAt(),
-    ]);
-    const updatedAfter = lastSyncedAt ?? cachedArtifacts[0]?.createdAt;
-    const remoteArtifacts: ArtifactItem[] = [];
-    let cursor: string | undefined;
-    let syncUntil: string | undefined;
-    for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
-      const result = await accept(
-        client.list({
-          query: {
-            limit: ARTIFACTS_PAGE_SIZE,
-            cursor,
-            updatedAfter,
-          },
-        }),
-        [200],
-      );
-      syncUntil ??= result.body.syncUntil;
-      remoteArtifacts.push(
-        ...result.body.artifacts.map((item) => {
+
+    return (async (): Promise<void> => {
+      const updatedAfter =
+        (await stores.readStore.readLastSyncedAt(signal)) ?? undefined;
+      let cursor: string | undefined;
+      let syncUntil: string | undefined;
+      let fullSync = updatedAfter === undefined;
+
+      for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
+        const result = await accept(
+          client.list({
+            query: {
+              limit: ARTIFACTS_PAGE_SIZE,
+              cursor,
+              updatedAfter,
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+
+        if (page === 0) {
+          syncUntil = result.body.syncUntil;
+          fullSync ||= syncUntil === undefined;
+          if (fullSync) {
+            await stores.writeStore.beginFullSync(signal);
+          }
+        }
+
+        const artifacts = result.body.artifacts.map((item) => {
           return artifactItemSchema.parse(item);
-        }),
-      );
-      if (!result.body.nextCursor) {
-        break;
+        });
+        await stores.writeStore.upsertItems(artifacts, signal);
+
+        cursor = result.body.nextCursor ?? undefined;
+        if (!cursor) {
+          if (syncUntil) {
+            await stores.writeStore.finishSync(syncUntil, signal);
+          }
+          return;
+        }
       }
-      cursor = result.body.nextCursor;
-    }
 
-    const mergeBase = updatedAfter && syncUntil ? cachedArtifacts : [];
-    const artifacts = mergeArtifactItems(mergeBase, remoteArtifacts);
-    const cacheUpdated = await stores.writeStore.replaceItems(artifacts);
-    if (cacheUpdated && syncUntil) {
-      await stores.writeStore.setLastSyncedAt(syncUntil);
-    }
-    return { artifacts };
+      throw new Error("Artifact pagination exceeded the page limit");
+    })();
   },
 );
 
-// Cache-first paint: the last-known artifact set from IndexedDB. Never throws
-// (reads degrade to an empty list), so it is always a safe fallback.
-export const cachedArtifacts$ = computed(
-  async (get): Promise<ArtifactsPageData> => {
-    get(internalArtifactsReload$);
-    const dbPromise = get(chatIdb$);
-    const artifacts = await artifactItemCacheStores(
-      dbPromise,
-    ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
-    return { artifacts };
+// The page waits for synchronization, then reads just its visible window from
+// IndexedDB in updatedAt order. A failed refresh may fall back to an existing
+// cache, but remote rows are never rendered directly.
+export const artifacts$ = computed(
+  (get, { signal }): ArtifactsPageData | Promise<ArtifactsPageData> => {
+    if (get(internalArtifactsPageSession$) === null) {
+      return { artifacts: [] };
+    }
+
+    const sync = Promise.resolve(get(internalArtifactsSync$));
+    const stores = artifactItemCacheStores(get(chatIdb$));
+    const search = get(internalArtifactsSearch$);
+    const agentId = get(internalArtifactsAgentId$);
+    const artifactCategory = get(internalArtifactsCategory$);
+    const limit = get(internalArtifactsWindow$) + 1;
+
+    return (async (): Promise<ArtifactsPageData> => {
+      const syncResult = await settle(sync, signal);
+      if (
+        !syncResult.ok &&
+        (await stores.readStore.readLastSyncedAt(signal)) === null
+      ) {
+        throw syncResult.error;
+      }
+      const artifacts = await stores.readStore.readRecent(
+        {
+          ...(search ? { query: search } : {}),
+          ...(agentId ? { agentId } : {}),
+          ...(artifactCategory ? { artifactCategory } : {}),
+          limit,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      return { artifacts };
+    })();
   },
 );
-
-// Applies the search / agent / category filters in memory over the active set,
-// so switching filters is instant and never re-fetches or truncates.
-export function filterArtifacts(
-  artifacts: readonly ArtifactItem[],
-  filters: {
-    readonly search: string;
-    readonly agentId: string | null;
-    readonly category: ArtifactCategory | null;
-  },
-): ArtifactItem[] {
-  const searchTokens = normalizedSearchTokens(filters.search);
-  const filtered = artifacts.filter((item) => {
-    if (filters.agentId && item.agentId !== filters.agentId) {
-      return false;
-    }
-    if (!artifactMatchesCategory(item, filters.category)) {
-      return false;
-    }
-    if (searchTokens.length === 0) {
-      return true;
-    }
-    const text = artifactSearchText(item);
-    return searchTokens.every((token) => {
-      return text.includes(token);
-    });
-  });
-  return filtered;
-}
 
 export const navigateToArtifactThread$ = command(
   ({ set }, threadId: string) => {

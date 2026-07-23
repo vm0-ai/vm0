@@ -30,10 +30,16 @@ export function logChatIdbDisabled(dbName: string, reason: unknown): void {
 
 export async function withChatIdbTimeout<T>(
   label: string,
-  operation: () => Promise<T>,
+  operation: (operationSignal: AbortSignal) => Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
   signal?.throwIfAborted();
+  const operationTimeoutSignal = AbortSignal.timeout(
+    CHAT_IDB_OPERATION_TIMEOUT_MS,
+  );
+  const operationSignal = signal
+    ? AbortSignal.any([signal, operationTimeoutSignal])
+    : operationTimeoutSignal;
   const timeoutSignal = signal ?? AbortSignal.any([]);
 
   const timeoutPromise = (async (): Promise<never> => {
@@ -41,7 +47,7 @@ export async function withChatIdbTimeout<T>(
     throw new ChatIdbTimeoutError(label);
   })();
   const operationPromise = (async (): Promise<T> => {
-    return await operation();
+    return await operation(operationSignal);
   })();
 
   return await Promise.race([operationPromise, timeoutPromise]);

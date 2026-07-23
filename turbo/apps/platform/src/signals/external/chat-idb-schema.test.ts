@@ -1,12 +1,11 @@
 import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import {
-  ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_RUN_FILE_INDEX,
+  ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_RUN_HOSTED_INDEX,
   ARTIFACT_ITEMS_STORE,
+  ARTIFACT_ITEMS_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX,
   ARTIFACT_SYNC_STORE,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
@@ -112,35 +111,30 @@ function expectArtifactItemsStoreCreated(
   });
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_CREATED_AT_INDEX, [
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_UPDATED_AT_INDEX, [
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX, [
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX, [
     "agentId",
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX, [
-    "artifactKind",
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX, [
+    "url",
+    "updatedAt",
     "createdAt",
     "artifactItemId",
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX, [
-    "agentId",
-    "artifactKind",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  expect(
-    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_HOSTED_INDEX, ["runId", "hosted"]);
 }
 
 function expectArtifactSyncStoreCreated(
@@ -216,5 +210,41 @@ describe("upgradeChatIdb local cache resets", () => {
     expect(createObjectStore).toHaveBeenCalledTimes(2);
     expectArtifactItemsStoreCreated(createdStores, createObjectStore);
     expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
+  it("rebuilds artifact caches with direct-read indexes from v16", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 16);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(2);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE);
+    expect(deleteObjectStore).toHaveBeenCalledWith(ARTIFACT_SYNC_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(2);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+    expectArtifactSyncStoreCreated(createObjectStore);
+  });
+
+  it("does not rebuild artifact caches at v17", () => {
+    const { db, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+      ARTIFACT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 17);
+
+    expect(deleteObjectStore).not.toHaveBeenCalled();
+    expect(createObjectStore).not.toHaveBeenCalled();
   });
 });

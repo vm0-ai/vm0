@@ -2,11 +2,10 @@ import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_RUN_FILE_INDEX,
+  ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_RUN_HOSTED_INDEX,
+  ARTIFACT_ITEMS_UPDATED_AT_INDEX,
+  ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX,
   ARTIFACT_SYNC_STORE,
 } from "./chat-idb-schema.ts";
 import { createArtifactItemCacheStores } from "./idb-artifact-item-store.ts";
@@ -33,8 +32,10 @@ interface FakeStore {
 }
 
 interface FakeTransaction {
+  abort(): void;
   readonly store: FakeStore;
   readonly done: Promise<void>;
+  objectStore(storeName: string): FakeStore;
 }
 
 interface IndexedRow {
@@ -101,24 +102,28 @@ function keyMatchesRange(
 
 function indexKey(indexName: string, item: ArtifactItem): IDBValidKey | null {
   switch (indexName) {
-    case ARTIFACT_ITEMS_CREATED_AT_INDEX: {
-      return [item.createdAt, item.artifactItemId];
+    case ARTIFACT_ITEMS_UPDATED_AT_INDEX: {
+      return [item.updatedAt, item.createdAt, item.artifactItemId];
     }
-    case ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX: {
-      return [item.agentId, item.createdAt, item.artifactItemId];
+    case ARTIFACT_ITEMS_AGENT_UPDATED_AT_INDEX: {
+      return [
+        item.agentId,
+        item.updatedAt,
+        item.createdAt,
+        item.artifactItemId,
+      ];
     }
-    case ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX: {
-      return item.artifactKind
-        ? [item.artifactKind, item.createdAt, item.artifactItemId]
-        : null;
+    case ARTIFACT_ITEMS_RUN_HOSTED_INDEX: {
+      return [
+        item.runId,
+        item.artifactKind === "hosted-site" ||
+        item.artifactKind === "presentation-html"
+          ? 1
+          : 0,
+      ];
     }
-    case ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX: {
-      return item.artifactKind
-        ? [item.agentId, item.artifactKind, item.createdAt, item.artifactItemId]
-        : null;
-    }
-    case ARTIFACT_ITEMS_RUN_FILE_INDEX: {
-      return [item.runId, item.fileId];
+    case ARTIFACT_ITEMS_URL_UPDATED_AT_INDEX: {
+      return [item.url, item.updatedAt, item.createdAt, item.artifactItemId];
     }
     default: {
       throw new Error(`Unexpected index: ${indexName}`);
@@ -132,10 +137,24 @@ class MemoryArtifactDb {
 
   get db(): IDBPDatabase {
     return {
-      transaction: () => {
+      transaction: (storeNames: string | string[]) => {
+        const storeName = Array.isArray(storeNames)
+          ? (storeNames[0] ?? "")
+          : storeNames;
         return {
-          store: this.store(),
+          abort: () => {
+            return undefined;
+          },
+          store:
+            storeName === ARTIFACT_SYNC_STORE
+              ? this.syncStateStore()
+              : this.store(),
           done: Promise.resolve(),
+          objectStore: (name: string) => {
+            return name === ARTIFACT_SYNC_STORE
+              ? this.syncStateStore()
+              : this.store();
+          },
         } satisfies FakeTransaction;
       },
       get: (storeName: string) => {
@@ -150,6 +169,29 @@ class MemoryArtifactDb {
         return Promise.resolve();
       },
     } as unknown as IDBPDatabase;
+  }
+
+  private syncStateStore(): FakeStore {
+    return {
+      put: (value) => {
+        this.syncState = value;
+        return Promise.resolve();
+      },
+      delete: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      clear: () => {
+        this.syncState = undefined;
+        return Promise.resolve();
+      },
+      get: () => {
+        return Promise.resolve(this.syncState);
+      },
+      index: () => {
+        throw new Error("Sync state store has no indexes");
+      },
+    };
   }
 
   private store(): FakeStore {
@@ -242,12 +284,6 @@ function artifact(
   };
 }
 
-function artifactIds(items: readonly ArtifactItem[]): string[] {
-  return items.map((item) => {
-    return item.artifactItemId;
-  });
-}
-
 function setupStores(db = new MemoryArtifactDb()) {
   return {
     db,
@@ -258,10 +294,16 @@ function setupStores(db = new MemoryArtifactDb()) {
 }
 
 describe("artifact item IndexedDB cache reads", () => {
-  it("reads recent cached artifact items newest first", async () => {
+  it("reads recently updated cached artifact items newest first", async () => {
     const { stores } = setupStores();
-    const first = artifact(1);
-    const second = artifact(2);
+    const first = artifact(1, {
+      createdAt: "2026-01-03T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const second = artifact(2, {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
 
     await stores.writeStore.upsertItems([first, second]);
 
@@ -269,6 +311,22 @@ describe("artifact item IndexedDB cache reads", () => {
       second,
       first,
     ]);
+  });
+
+  it("stops after the requested recent-item window", async () => {
+    const { stores } = setupStores();
+    const items = Array.from({ length: 61 }, (_, index) => {
+      return artifact(index + 1, {
+        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
+      });
+    });
+
+    await stores.writeStore.upsertItems(items);
+
+    const recent = await stores.readStore.readRecent({ limit: 60 });
+    expect(recent).toHaveLength(60);
+    expect(recent[0]).toStrictEqual(items[60]);
+    expect(recent[59]).toStrictEqual(items[1]);
   });
 
   it("upserts idempotently and replaces stale metadata", async () => {
@@ -290,12 +348,40 @@ describe("artifact item IndexedDB cache reads", () => {
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
       refreshed,
     ]);
-    await expect(
-      stores.readStore.readByRunFile(refreshed.runId, refreshed.fileId),
-    ).resolves.toStrictEqual(refreshed);
   });
 
-  it("reads by agent, artifact kind, and their compound index", async () => {
+  it("selects URL winners and hosted runs while reading", async () => {
+    const { stores } = setupStores();
+    const sharedUrl = "https://cdn.vm0.test/shared.html";
+    const older = artifact(1, {
+      artifactKind: undefined,
+      url: sharedUrl,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const newer = artifact(2, {
+      url: sharedUrl,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+    const rawRunFile = artifact(3, {
+      artifactKind: undefined,
+      runId: "hosted-run",
+    });
+    const hostedRun = artifact(4, {
+      runId: "hosted-run",
+    });
+
+    await stores.writeStore.upsertItems([older, rawRunFile]);
+    await stores.writeStore.upsertItems([newer, hostedRun]);
+
+    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
+      newer,
+      hostedRun,
+    ]);
+  });
+});
+
+describe("artifact item IndexedDB cache filters and sync marker", () => {
+  it("reads by agent and artifact category", async () => {
     const { stores } = setupStores();
     const hostedFirst = artifact(1, {
       agentId: "agent-a",
@@ -320,12 +406,12 @@ describe("artifact item IndexedDB cache reads", () => {
       stores.readStore.readRecent({ agentId: "agent-a" }),
     ).resolves.toStrictEqual([presentation, hostedFirst]);
     await expect(
-      stores.readStore.readRecent({ artifactKind: "hosted-site" }),
+      stores.readStore.readRecent({ artifactCategory: "website" }),
     ).resolves.toStrictEqual([hostedSecond, hostedFirst]);
     await expect(
       stores.readStore.readRecent({
         agentId: "agent-a",
-        artifactKind: "presentation-html",
+        artifactCategory: "presentation",
       }),
     ).resolves.toStrictEqual([presentation]);
   });
@@ -346,23 +432,12 @@ describe("artifact item IndexedDB cache reads", () => {
     ).resolves.toStrictEqual([queryMatch]);
   });
 
-  it("reads by run/file index", async () => {
-    const { stores } = setupStores();
-    const item = artifact(1);
-
-    await stores.writeStore.upsertItems([item]);
-
-    await expect(
-      stores.readStore.readByRunFile(item.runId, item.fileId),
-    ).resolves.toStrictEqual(item);
-  });
-
   it("reads and writes the last artifact synchronization timestamp", async () => {
     const { stores } = setupStores();
     const lastSyncedAt = "2026-07-20T04:00:00.000Z";
 
     await expect(stores.readStore.readLastSyncedAt()).resolves.toBe(null);
-    await stores.writeStore.setLastSyncedAt(lastSyncedAt);
+    await stores.writeStore.finishSync(lastSyncedAt);
     await expect(stores.readStore.readLastSyncedAt()).resolves.toBe(
       lastSyncedAt,
     );
@@ -370,59 +445,51 @@ describe("artifact item IndexedDB cache reads", () => {
 });
 
 describe("artifact item IndexedDB cache writes and failures", () => {
-  it("deletes selected artifacts and clears the cache", async () => {
+  it("atomically begins a full synchronization", async () => {
     const { stores } = setupStores();
-    const first = artifact(1);
-    const second = artifact(2);
+    await stores.writeStore.upsertItems([artifact(1)]);
+    await stores.writeStore.finishSync("2026-01-02T00:00:00.000Z");
 
-    await stores.writeStore.upsertItems([first, second]);
-    await stores.writeStore.deleteItems([first.artifactItemId]);
-
-    expect(artifactIds(await stores.readStore.readRecent())).toStrictEqual([
-      second.artifactItemId,
-    ]);
-
-    await stores.writeStore.clear();
+    await stores.writeStore.beginFullSync();
 
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
+    await expect(stores.readStore.readLastSyncedAt()).resolves.toBe(null);
   });
 
-  it("replaces the cached artifact set", async () => {
-    const { stores } = setupStores();
-    const stale = artifact(1);
-    const fresh = artifact(2);
-
-    await stores.writeStore.upsertItems([stale]);
-    await stores.writeStore.replaceItems([fresh]);
-
-    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([fresh]);
-  });
-
-  it("falls back to cache miss values when IndexedDB reads fail", async () => {
+  it("rejects strict cache reads", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
     });
 
-    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
-    await expect(
-      stores.readStore.readByRunFile("run-1", "file-1"),
-    ).resolves.toBe(null);
+    await expect(stores.readStore.readRecent()).rejects.toThrow("open failed");
   });
 
-  it("ignores best-effort write failures", async () => {
+  it("rejects strict cache reads when IndexedDB misses the deadline", async () => {
+    const pendingDb = Promise.withResolvers<IDBPDatabase>();
+    const stores = createArtifactItemCacheStores(() => {
+      return pendingDb.promise;
+    });
+
+    await expect(stores.readStore.readRecent()).rejects.toThrow(
+      "IndexedDB operation timed out: artifacts:readRecent",
+    );
+  });
+
+  it("propagates synchronization write failures", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
     });
     const item = artifact(1);
 
+    await expect(stores.writeStore.beginFullSync()).rejects.toThrow(
+      "open failed",
+    );
+    await expect(stores.writeStore.upsertItems([item])).rejects.toThrow(
+      "open failed",
+    );
     await expect(
-      stores.writeStore.upsertItems([item]),
-    ).resolves.toBeUndefined();
-    await expect(stores.writeStore.replaceItems([item])).resolves.toBe(false);
-    await expect(
-      stores.writeStore.deleteItems([item.artifactItemId]),
-    ).resolves.toBeUndefined();
-    await expect(stores.writeStore.clear()).resolves.toBeUndefined();
+      stores.writeStore.finishSync("2026-01-01T00:00:00.000Z"),
+    ).rejects.toThrow("open failed");
   });
 
   it("does not open IndexedDB for empty writes", async () => {
@@ -431,8 +498,7 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     });
     const stores = createArtifactItemCacheStores(getDb);
 
-    await stores.writeStore.upsertItems([]);
-    await stores.writeStore.deleteItems([]);
+    await expect(stores.writeStore.upsertItems([])).resolves.toBeUndefined();
 
     expect(getDb).not.toHaveBeenCalled();
   });
