@@ -33,7 +33,6 @@ import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts"
 import { setupArtifactsPage$ } from "./artifacts-page/artifacts-page-setup.ts";
 import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
-import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
@@ -250,10 +249,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.artifacts,
     setup: setupAuthSidebarPageWrapper(setupArtifactsPage$),
-  },
-  {
-    path: ROUTES.memory,
-    setup: setupAuthSidebarPageWrapper(setupMemoryPage$),
   },
   {
     path: ROUTES.settingsSlack,

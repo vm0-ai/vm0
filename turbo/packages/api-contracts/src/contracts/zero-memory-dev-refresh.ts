@@ -22,8 +22,9 @@ export type MemoryDevRefreshResponse = z.infer<
 >;
 
 /**
- * Staff/development-only refresh endpoint for iterating on Memory Activity
- * summary generation against the current user's memory artifact.
+ * Temporary response contract for browser clients that loaded the retired
+ * Memory page before its frontend deployment. Remove after those clients have
+ * drained.
  */
 export const zeroMemoryDevRefreshContract = c.router({
   refresh: {
@@ -37,7 +38,7 @@ export const zeroMemoryDevRefreshContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Force-refresh memory summaries for the current user",
+    summary: "Skip refreshes from retired memory activity clients",
   },
 });
 

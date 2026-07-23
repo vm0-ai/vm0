@@ -1,7 +1,6 @@
 export const ROUTES = {
   home: "/",
   agents: "/agents",
-  memory: "/memory",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",

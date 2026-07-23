@@ -20,7 +20,6 @@ import {
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
   cronReconcileBillingEntitlementsContract,
   cronRefreshStoragePresignedUrlsContract,
-  cronSummarizeMemoryContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
@@ -84,10 +83,6 @@ const expectedVercelCrons = [
   {
     path: cronCompactChatThreadSnapshotsContract.compact.path,
     schedule: "0 * * * *",
-  },
-  {
-    path: cronSummarizeMemoryContract.summarize.path,
-    schedule: "30 * * * *",
   },
   {
     path: cronTelegramCleanupContract.cleanup.path,

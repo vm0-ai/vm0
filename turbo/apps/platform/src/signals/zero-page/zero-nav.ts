@@ -197,7 +197,6 @@ export const setSidebarExpanded$ = command(({ set }, expanded: boolean) => {
 export type SidebarNavId =
   | "chat"
   | "agents"
-  | "memory"
   | "artifacts"
   | "connectors"
   | "workflows"
@@ -224,7 +223,6 @@ export const handleZeroNavSelect$ = command(
       const navRoutes = {
         chat: ROUTES.home,
         agents: ROUTES.agents,
-        memory: ROUTES.memory,
         artifacts: ROUTES.artifacts,
         connectors: ROUTES.connectors,
         workflows: ROUTES.workflows,

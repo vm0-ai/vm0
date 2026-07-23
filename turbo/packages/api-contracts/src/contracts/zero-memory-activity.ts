@@ -39,23 +39,13 @@ const memoryActivityItemSchema = z.object({
 });
 
 const memoryActivityEntrySchema = z.object({
-  /** Local day this summary covers, formatted YYYY-MM-DD. */
   date: z.string(),
-  /** LLM narrative for the day; null when generation failed. */
   summary: z.string().nullable(),
-  /** Version current at the start of the day; null for the first-ever summary. */
   fromVersionId: z.string().nullable(),
-  /** Last version of the day. */
   toVersionId: z.string(),
   items: z.array(memoryActivityItemSchema),
 });
 
-/**
- * Precomputed daily Memory Activity timeline for the current user, ordered
- * most-recent-day first. Each entry is a per-local-day net summary with at
- * least one changed memory file and structured diff evidence — served as a
- * pure DB read.
- */
 export const memoryActivityResponseSchema = z.object({
   entries: z.array(memoryActivityEntrySchema),
   nextCursor: z.string().nullable(),
@@ -66,9 +56,9 @@ export type MemoryActivityResponse = z.infer<
 >;
 
 /**
- * Zero memory activity contract for /api/zero/memory/activity
- *
- * GET: Read the current user's precomputed daily memory-change summaries.
+ * Temporary response contract for browser clients that loaded the retired
+ * Memory page before its frontend deployment. Remove after those clients have
+ * drained.
  */
 export const zeroMemoryActivityContract = c.router({
   get: {
@@ -89,7 +79,7 @@ export const zeroMemoryActivityContract = c.router({
       401: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get the current user's daily memory-change summaries",
+    summary: "Return an empty response for retired memory activity clients",
   },
 });
 
