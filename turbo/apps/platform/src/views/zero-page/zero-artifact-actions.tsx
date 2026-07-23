@@ -753,13 +753,13 @@ function startArtifactDownloadWithCleanup(params: {
   );
 }
 
-function shouldShowGoogleSlidesUpload(
+function shouldShowPresentationPptxExport(
   artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
   features: Record<string, boolean | undefined>,
 ): boolean {
   return (
     artifactKind === "presentation-html" &&
-    (features[FeatureSwitchKey.PresentationGoogleSlidesUpload] ?? false)
+    (features[FeatureSwitchKey.PresentationPptxExport] ?? false)
   );
 }
 
@@ -785,10 +785,10 @@ export function ArtifactDownloadMenu({
   const features = useGet(featureSwitch$);
   const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
   const downloadPending = pendingKey === artifactDownloadKey;
-  const downloadFilename = artifactDownloadFilename(
+  const downloadName = artifactDownloadFilename(artifactKind, filename, url);
+  const showPresentationPptxExport = shouldShowPresentationPptxExport(
     artifactKind,
-    filename,
-    url,
+    features,
   );
   return (
     <Popover
@@ -842,11 +842,7 @@ export function ArtifactDownloadMenu({
             startArtifactDownloadWithCleanup({
               closeMenu,
               description: "artifact download",
-              download: downloadAttachmentUrl(
-                url,
-                pageSignal,
-                downloadFilename,
-              ),
+              download: downloadAttachmentUrl(url, pageSignal, downloadName),
               downloadKey: artifactDownloadKey,
               finish: finishArtifactDownload,
               start: startArtifactDownload,
@@ -856,14 +852,14 @@ export function ArtifactDownloadMenu({
           <IconDownload size={14} stroke={1.5} />
           Download
         </ArtifactDownloadMenuItem>
-        {artifactKind === "presentation-html" && (
+        {showPresentationPptxExport && (
           <ArtifactDownloadMenuItem
             onClick={() => {
               startArtifactDownloadWithCleanup({
                 closeMenu,
                 description: "presentation html pptx download",
                 download: downloadPresentationPptx({
-                  filename: downloadFilename,
+                  filename: downloadName,
                   signal: pageSignal,
                   url,
                 }),
@@ -877,10 +873,10 @@ export function ArtifactDownloadMenu({
             Download (.pptx)
           </ArtifactDownloadMenuItem>
         )}
-        {shouldShowGoogleSlidesUpload(artifactKind, features) && syncTarget && (
+        {showPresentationPptxExport && syncTarget && (
           <GoogleSlidesMenuItem
             closeMenu={closeMenu}
-            filename={downloadFilename}
+            filename={downloadName}
             syncTarget={syncTarget}
             threadId={syncTarget.threadId}
             url={url}

@@ -135,6 +135,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.PresentationPptxExport]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -168,6 +169,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.PresentationPptxExport]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );

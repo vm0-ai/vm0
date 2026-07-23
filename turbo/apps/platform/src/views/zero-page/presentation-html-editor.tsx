@@ -365,18 +365,19 @@ function PresentationEditorHeader({
           <span>Presentation editor</span>
         </div>
       </div>
-      <button
-        type="button"
-        data-presentation-editor-action="true"
-        aria-label="Download edited PPTX"
-        title="Download edited PPTX"
-        disabled={!onDownloadPptx}
-        onClick={onDownloadPptx}
-        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-2"
-      >
-        <IconDownload size={16} stroke={1.5} />
-        <span className="hidden sm:inline">PPTX</span>
-      </button>
+      {onDownloadPptx && (
+        <button
+          type="button"
+          data-presentation-editor-action="true"
+          aria-label="Download edited PPTX"
+          title="Download edited PPTX"
+          onClick={onDownloadPptx}
+          className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:w-auto sm:px-2"
+        >
+          <IconDownload size={16} stroke={1.5} />
+          <span className="hidden sm:inline">PPTX</span>
+        </button>
+      )}
       <button
         type="button"
         data-presentation-editor-action="true"
@@ -2021,12 +2022,43 @@ function PresentationEditorCloseDialog({
   );
 }
 
+function createEditedPptxDownloadAction(params: {
+  readonly controller: ReturnType<typeof createPresentationEditorController>;
+  readonly draft: EditorDraft;
+  readonly enabled: boolean;
+  readonly filename: string;
+  readonly pageSignal: AbortSignal;
+  readonly publishingRef: MutableValue<boolean>;
+}): (() => void) | undefined {
+  if (!params.enabled) {
+    return undefined;
+  }
+  return () => {
+    runEditorTaskIfIdle({
+      publishingRef: params.publishingRef,
+      reason: "presentation html editor pptx download after publish",
+      task: async () => {
+        if (!(await params.controller.ensureRedeployed())) {
+          return;
+        }
+        downloadEditedPptx({
+          baseUrl: params.draft.publicUrl,
+          filename: params.filename,
+          html: params.controller.buildEditedHtml(),
+          signal: params.pageSignal,
+        });
+      },
+    });
+  };
+}
+
 function PresentationEditorReady({
   draggingUnsupported,
   draft,
   filename,
   movementEnabled,
   onClose,
+  pptxExportEnabled,
   sourceUrl,
   title,
 }: {
@@ -2035,6 +2067,7 @@ function PresentationEditorReady({
   filename: string;
   movementEnabled: boolean;
   onClose: (publishedUrl?: string) => void;
+  pptxExportEnabled: boolean;
   sourceUrl: string;
   title: string;
 }) {
@@ -2088,6 +2121,14 @@ function PresentationEditorReady({
     publishingRef,
     setCloseDialogOpen,
   });
+  const downloadPptx = createEditedPptxDownloadAction({
+    controller,
+    draft,
+    enabled: pptxExportEnabled,
+    filename,
+    pageSignal,
+    publishingRef,
+  });
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -2096,23 +2137,7 @@ function PresentationEditorReady({
           busyRef.current = node;
         }}
         onClose={closeActions.requestClose}
-        onDownloadPptx={() => {
-          runEditorTaskIfIdle({
-            publishingRef,
-            reason: "presentation html editor pptx download after publish",
-            task: async () => {
-              if (!(await controller.ensureRedeployed())) {
-                return;
-              }
-              downloadEditedPptx({
-                baseUrl: draft.publicUrl,
-                filename,
-                html: controller.buildEditedHtml(),
-                signal: pageSignal,
-              });
-            },
-          });
-        }}
+        onDownloadPptx={downloadPptx}
         onGenerateSpeakerNotes={() => {
           runEditorTaskIfIdle({
             publishingRef,
@@ -2162,6 +2187,9 @@ export function PresentationHtmlEditor({
   const movementFeatureEnabled = Boolean(
     features?.[FeatureSwitchKey.PresentationElementDragging],
   );
+  const pptxExportEnabled = Boolean(
+    features?.[FeatureSwitchKey.PresentationPptxExport],
+  );
 
   if (loadable.state === "loading") {
     return <PresentationEditorLoading title={title} onClose={onClose} />;
@@ -2191,6 +2219,7 @@ export function PresentationHtmlEditor({
         movementFeatureEnabled && loadable.data.movementSupported
       }
       onClose={onClose}
+      pptxExportEnabled={pptxExportEnabled}
       sourceUrl={url}
       title={title}
     />

@@ -89,7 +89,7 @@ const uploadGoogleSlidesInner$ = command(
     );
     signal.throwIfAborted();
     if (
-      !isFeatureEnabled(FeatureSwitchKey.PresentationGoogleSlidesUpload, {
+      !isFeatureEnabled(FeatureSwitchKey.PresentationPptxExport, {
         orgId: auth.orgId,
         userId: auth.userId,
         overrides,

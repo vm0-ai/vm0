@@ -2759,10 +2759,45 @@ describe("zero artifact sidebar", () => {
     }
   });
 
+  it("hides presentation PPTX export actions when the feature switch is disabled", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationPptxExport]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download")).toBeInTheDocument();
+    });
+    const menuItemLabels = queryAllByRoleFast("menuitem").map((element) => {
+      return element.textContent?.replace(/\s+/g, " ").trim();
+    });
+    expect(menuItemLabels).not.toContain("Download (.pptx)");
+    expect(menuItemLabels).not.toContain("Upload to Google Slides");
+
+    click(screen.getByTestId("artifact-download-menu-dismiss-layer"));
+    click(screen.getByLabelText("Edit presentation"));
+    await waitFor(() => {
+      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Download edited PPTX")).toBeNull();
+  });
+
   it("downloads a presentation artifact as PPTX from the sidebar", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
-    setupPresentationArtifactThread(presentationUrl);
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationPptxExport]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
@@ -2823,7 +2858,7 @@ describe("zero artifact sidebar", () => {
     });
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+        [FeatureSwitchKey.PresentationPptxExport]: true,
       },
     });
 
@@ -2877,7 +2912,7 @@ describe("zero artifact sidebar", () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
-        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+        [FeatureSwitchKey.PresentationPptxExport]: true,
       },
     });
 
@@ -2960,7 +2995,7 @@ describe("zero artifact sidebar", () => {
       artifactFiles,
       content: `[Quarterly roadmap](${presentationUrl})`,
       featureSwitches: {
-        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+        [FeatureSwitchKey.PresentationPptxExport]: true,
       },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
     });
@@ -2999,6 +3034,11 @@ describe("zero artifact sidebar", () => {
     setupPresentationArtifactThread(
       presentationUrl,
       presentationHtmlWithDeckBackground(),
+      {
+        featureSwitches: {
+          [FeatureSwitchKey.PresentationPptxExport]: true,
+        },
+      },
     );
 
     await waitFor(() => {
@@ -3042,6 +3082,11 @@ describe("zero artifact sidebar", () => {
     setupPresentationArtifactThread(
       presentationUrl,
       responsivePresentationHtml(),
+      {
+        featureSwitches: {
+          [FeatureSwitchKey.PresentationPptxExport]: true,
+        },
+      },
     );
 
     await waitFor(() => {
@@ -3369,6 +3414,9 @@ ${openFencedHostedSiteUrl}`,
       presentationUrl,
       assetBackedPresentationHtml(assetPath, externalAssetUrl),
       {
+        featureSwitches: {
+          [FeatureSwitchKey.PresentationPptxExport]: true,
+        },
         hostedResources: {
           [expectedAssetUrl]: {
             body: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
@@ -4271,7 +4319,11 @@ ${openFencedHostedSiteUrl}`,
         });
       },
     );
-    setupPresentationArtifactThread(presentationUrl);
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationPptxExport]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();

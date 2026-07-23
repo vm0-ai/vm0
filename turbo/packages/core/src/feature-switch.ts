@@ -418,10 +418,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationGoogleSlidesUpload]: {
+  [FeatureSwitchKey.PresentationPptxExport]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
+      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
