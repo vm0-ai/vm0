@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1517,6 +1517,96 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
     assert_successful_action_once(&ops, "session_history_workspace_cache_restore");
     assert_successful_action_once(&ops, "session_restore");
     assert_no_action(&ops, "session_history_download");
+}
+
+#[tokio::test]
+async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let history = b"x";
+    let sidecar_path = dir.path().join("pending-session-history.blob");
+    nix::unistd::mkfifo(
+        &sidecar_path,
+        nix::sys::stat::Mode::from_bits_truncate(0o600),
+    )
+    .unwrap();
+    let writer_path = sidecar_path.clone();
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-sidecar-cancel-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: "https://example.test/history.blob?token=secret".into(),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_cancel = cancel.clone();
+    let run_task = tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &ctx);
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(run_cancel, None).with_session_history_restore_plan(
+                SessionHistoryRestorePlan::LocalSidecar {
+                    sidecar: WorkspaceSessionHistorySidecar {
+                        path: sidecar_path,
+                        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+                        encoded_size: history.len() as u64,
+                    },
+                    fallback: None,
+                },
+            ),
+        )
+        .await
+    });
+
+    let writer = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&writer_path)
+            {
+                Ok(writer) => break writer,
+                Err(error) if error.raw_os_error() == Some(libc::ENXIO) => {
+                    tokio::task::yield_now().await;
+                }
+                Err(error) => panic!("open sidecar FIFO writer: {error}"),
+            }
+        }
+    })
+    .await
+    .expect("run should open the sidecar reader");
+    cancel.cancel();
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .expect("cancelled run should finish")
+        .unwrap()
+        .unwrap();
+    drop(writer);
+
+    let failure = result.failure.expect("cancelled run should fail");
+    assert_eq!(failure.exit_code, EXIT_SIGKILL);
+    assert_eq!(failure.error, "cancelled by user");
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.wait_process_calls().is_empty());
 }
 
 #[tokio::test]
