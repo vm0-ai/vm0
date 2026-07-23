@@ -378,6 +378,34 @@ describe("artifact item IndexedDB cache reads", () => {
       hostedRun,
     ]);
   });
+
+  it("selects URL winners after hiding raw files from hosted runs", async () => {
+    const { stores } = setupStores();
+    const sharedUrl = "https://cdn.vm0.test/shared.html";
+    const visibleOlder = artifact(1, {
+      artifactKind: undefined,
+      runId: "visible-run",
+      url: sharedUrl,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const hiddenNewer = artifact(2, {
+      artifactKind: undefined,
+      runId: "hosted-run",
+      url: sharedUrl,
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    });
+    const hostedRun = artifact(3, {
+      runId: "hosted-run",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+
+    await stores.writeStore.upsertItems([visibleOlder, hiddenNewer, hostedRun]);
+
+    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
+      hostedRun,
+      visibleOlder,
+    ]);
+  });
 });
 
 describe("artifact item IndexedDB cache filters and sync marker", () => {

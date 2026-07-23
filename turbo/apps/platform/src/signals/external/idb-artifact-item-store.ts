@@ -206,36 +206,50 @@ async function readRecentItems(
       const hostedRuns = new Map<string, boolean>();
       const urlWinners = new Map<string, string | null>();
       const recent: ArtifactItem[] = [];
+      const isVisibleArtifact = async (
+        candidate: ValidatedStoredArtifactItem,
+      ): Promise<boolean> => {
+        if (candidate.hosted) {
+          return true;
+        }
+        let runIsHosted = hostedRuns.get(candidate.item.runId);
+        if (runIsHosted === undefined) {
+          runIsHosted =
+            (await runHostedIndex.get([candidate.item.runId, 1])) !== undefined;
+          hostedRuns.set(candidate.item.runId, runIsHosted);
+        }
+        return !runIsHosted;
+      };
+      const findUrlWinner = async (url: string): Promise<string | null> => {
+        let winnerCursor = await urlIndex.openCursor(
+          prefixRange([url]),
+          "prev",
+        );
+        while (winnerCursor) {
+          const candidate = validateStoredArtifactItem(winnerCursor.value);
+          if (await isVisibleArtifact(candidate)) {
+            return candidate.item.artifactItemId;
+          }
+          winnerCursor = await winnerCursor.continue();
+        }
+        return null;
+      };
       let cursor = await index.openCursor(plan.range, "prev");
       while (cursor && recent.length < limit) {
         signal?.throwIfAborted();
         const stored = validateStoredArtifactItem(cursor.value);
-        if (matchesFilter(stored, effectiveFilter, queryTokens)) {
-          let runIsHosted = hostedRuns.get(stored.item.runId);
-          if (runIsHosted === undefined) {
-            runIsHosted =
-              (await runHostedIndex.get([stored.item.runId, 1])) !== undefined;
-            hostedRuns.set(stored.item.runId, runIsHosted);
+        if (
+          matchesFilter(stored, effectiveFilter, queryTokens) &&
+          (await isVisibleArtifact(stored))
+        ) {
+          let urlWinner = urlWinners.get(stored.item.url);
+          if (urlWinner === undefined) {
+            urlWinner = await findUrlWinner(stored.item.url);
+            urlWinners.set(stored.item.url, urlWinner);
           }
 
-          if (stored.hosted || !runIsHosted) {
-            let urlWinner = urlWinners.get(stored.item.url);
-            if (urlWinner === undefined) {
-              const winnerCursor = await urlIndex.openCursor(
-                prefixRange([stored.item.url]),
-                "prev",
-              );
-              urlWinner =
-                winnerCursor === null
-                  ? null
-                  : validateStoredArtifactItem(winnerCursor.value).item
-                      .artifactItemId;
-              urlWinners.set(stored.item.url, urlWinner);
-            }
-
-            if (stored.item.artifactItemId === urlWinner) {
-              recent.push(stored.item);
-            }
+          if (stored.item.artifactItemId === urlWinner) {
+            recent.push(stored.item);
           }
         }
         if (recent.length >= limit) {
