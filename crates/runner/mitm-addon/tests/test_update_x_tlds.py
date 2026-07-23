@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import http.client
 import io
 import os
@@ -19,6 +20,9 @@ from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
 _ADDON_ROOT = Path(__file__).resolve().parents[1]
 _UPDATE_SCRIPT = _ADDON_ROOT / "scripts" / "update-x-tlds.py"
 _CLI_TIMEOUT_SECONDS = 30
+_EXPECTED_IANA_TLD_VERSION = "2026042600"
+_EXPECTED_IANA_TLD_COUNT = 1437
+_EXPECTED_IANA_TLD_SHA256 = "58c386314e69df471d34645b7614c8540a44ae110fc082f48434ea332a88ebc2"
 
 
 class _FailingOpener:
@@ -314,9 +318,12 @@ def test_update_cli_reports_missing_source_file_without_replacing_output(
     assert output.read_text(encoding="utf-8") == original
 
 
-def test_snapshot_has_version_and_expected_stable_entries():
-    assert IANA_TLD_VERSION
-    assert {"ai", "com", "dev", "museum", "xn--q9jyb4c"} <= IANA_TLDS
+def test_snapshot_matches_pinned_integrity():
+    snapshot_payload = "\n".join(sorted(IANA_TLDS)).encode("ascii")
+
+    assert IANA_TLD_VERSION == _EXPECTED_IANA_TLD_VERSION
+    assert len(IANA_TLDS) == _EXPECTED_IANA_TLD_COUNT
+    assert hashlib.sha256(snapshot_payload).hexdigest() == _EXPECTED_IANA_TLD_SHA256
 
 
 def test_check_cli_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch, capsys):
