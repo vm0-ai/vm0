@@ -25,6 +25,11 @@ export interface EditorDocumentSnapshot {
   ) => UserMessageDocument | null;
 }
 
+export interface TextMessageTemplateSnapshot {
+  readonly titleSnapshot: string;
+  readonly template: GenerationTemplateRequest;
+}
+
 function appendTextPart(parts: UserMessagePart[], text: string): void {
   if (text.length === 0) {
     return;
@@ -197,6 +202,24 @@ export function createEditorDocumentSnapshot(
       return editorDocToMessageDocument(document, context);
     },
   });
+}
+
+/** Creates the business document for sends that do not originate in Tiptap. */
+export function textToMessageDocument(
+  text: string,
+  template?: TextMessageTemplateSnapshot,
+): UserMessageDocument | null {
+  const parts: UserMessagePart[] = [];
+  if (template) {
+    parts.push({
+      type: "template",
+      titleSnapshot: template.titleSnapshot,
+      template: template.template,
+    });
+  }
+  appendTextPart(parts, text);
+  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  return parsed.success ? parsed.data : null;
 }
 
 function templateCategory(type: GenerationTemplateType): string {
