@@ -1656,6 +1656,22 @@ export {
   type ZeroMapsPlacesDetailsRequest,
 } from "./zero-maps";
 export {
+  zeroWeatherContract,
+  zeroWeatherOperationSchema,
+  zeroWeatherUnitsSchema,
+  zeroWeatherResponseSchema,
+  zeroWeatherCurrentRequestSchema,
+  zeroWeatherForecastHourlyRequestSchema,
+  zeroWeatherForecastDailyRequestSchema,
+  zeroWeatherHistoryHourlyRequestSchema,
+  type ZeroWeatherContract,
+  type ZeroWeatherResponse,
+  type ZeroWeatherCurrentRequest,
+  type ZeroWeatherForecastHourlyRequest,
+  type ZeroWeatherForecastDailyRequest,
+  type ZeroWeatherHistoryHourlyRequest,
+} from "./zero-weather";
+export {
   zeroVideoIoGenerateContract,
   zeroVideoIoGenerateRequestSchema,
   zeroVideoIoGenerateResponseSchema,

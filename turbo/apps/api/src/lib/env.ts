@@ -29,6 +29,7 @@ const SCHEMA = {
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
+  ZERO_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   ZERO_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   ZERO_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
   STEAM_WEB_API_KEY: z.string().min(1).optional(),

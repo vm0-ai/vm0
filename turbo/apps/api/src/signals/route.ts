@@ -111,6 +111,7 @@ import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
+import { zeroWeatherRoutes } from "./routes/zero-weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
@@ -305,6 +306,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroLogsRoutes,
   ...zeroMailRoutes,
   ...zeroMapsRoutes,
+  ...zeroWeatherRoutes,
   ...zeroScrapeRoutes,
   ...zeroWebSearchRoutes,
   ...zeroModelPoliciesRoutes,
