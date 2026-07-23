@@ -1,5 +1,6 @@
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { asc, inArray, lte } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
@@ -14,16 +15,15 @@ export const cleanupConnectorOauthStates$ = command(
     let totalDeleted = 0;
 
     for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
-      const { rowCount } = await db.execute(sql`
-        DELETE FROM connector_oauth_states
-        WHERE id IN (
-          SELECT id
-          FROM connector_oauth_states
-          WHERE expires_at <= ${cutoff}
-          ORDER BY expires_at
-          LIMIT ${DELETE_BATCH_SIZE}
-        )
-      `);
+      const expiredStates = db
+        .select({ id: connectorOauthStates.id })
+        .from(connectorOauthStates)
+        .where(lte(connectorOauthStates.expiresAt, cutoff))
+        .orderBy(asc(connectorOauthStates.expiresAt))
+        .limit(DELETE_BATCH_SIZE);
+      const { rowCount } = await db
+        .delete(connectorOauthStates)
+        .where(inArray(connectorOauthStates.id, expiredStates));
       signal.throwIfAborted();
 
       const batchDeleted = rowCount ?? 0;

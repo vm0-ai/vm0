@@ -862,7 +862,24 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.599.18",
+          [CLIENT_VERSION_HEADER]: "0.621.0",
+        },
+      });
+
+      expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("upgrades retired memory viewer clients before route matching", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/memory", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.621.0",
         },
       });
 
@@ -879,7 +896,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.599.19",
+          [CLIENT_VERSION_HEADER]: "0.622.0",
         },
       });
 
@@ -893,7 +910,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [CLIENT_VERSION_HEADER]: "0.622.0",
         },
       });
 
@@ -906,7 +923,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [CLIENT_VERSION_HEADER]: "0.622.0",
           [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
         },
       });
@@ -919,7 +936,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [CLIENT_VERSION_HEADER]: "0.622.0",
           [ZERO_MAIL_CLIENT_VERSION_HEADER]: ZERO_MAIL_CLIENT_VERSION,
         },
       });
@@ -949,7 +966,7 @@ describe("createApp", () => {
         headers: {
           "user-agent": "zero-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
-          "x-client-version": "0.599.19",
+          "x-client-version": "0.622.0",
           "x-client-type": "App",
           "x-client-session-id": "session-test",
           "x-client-request-id": "request-test",
@@ -967,7 +984,7 @@ describe("createApp", () => {
         path_template: "/health",
         remote_addr: "203.0.113.10",
         user_agent: "zero-test-agent",
-        x_client_version: "0.599.19",
+        x_client_version: "0.622.0",
         x_client_type: "App",
         x_client_session_id: "session-test",
         x_client_request_id: "request-test",

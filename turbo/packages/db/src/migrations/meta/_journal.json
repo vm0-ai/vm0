@@ -4544,6 +4544,13 @@
       "when": 1784778921101,
       "tag": "0648_military_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 649,
+      "version": "7",
+      "when": 1784788419485,
+      "tag": "0649_common_proudstar",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -425,10 +425,9 @@ async function cleanupExpiredRunnerJobs(
   db: Db,
   signal: AbortSignal,
 ): Promise<number> {
-  const { rowCount } = await db.execute(sql`
-    DELETE FROM ${runnerJobQueue}
-    WHERE ${runnerJobQueue.expiresAt} <= now()
-  `);
+  const { rowCount } = await db
+    .delete(runnerJobQueue)
+    .where(lte(runnerJobQueue.expiresAt, sql`now()`));
   signal.throwIfAborted();
 
   const deletedCount = rowCount ?? 0;
@@ -444,10 +443,9 @@ async function cleanupExpiredCustomConnectorAuthRefs(
   db: Db,
   signal: AbortSignal,
 ): Promise<number> {
-  const { rowCount } = await db.execute(sql`
-    DELETE FROM ${agentRunCustomConnectorAuthRefs}
-    WHERE ${agentRunCustomConnectorAuthRefs.expiresAt} <= now()
-  `);
+  const { rowCount } = await db
+    .delete(agentRunCustomConnectorAuthRefs)
+    .where(lte(agentRunCustomConnectorAuthRefs.expiresAt, sql`now()`));
   signal.throwIfAborted();
 
   const deletedCount = rowCount ?? 0;
