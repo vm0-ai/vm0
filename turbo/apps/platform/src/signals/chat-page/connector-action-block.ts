@@ -15,6 +15,7 @@ import {
   getOnlyAvailableStatusNoAuthMethod,
   setSelectedConnectorRef$,
 } from "../zero-page/settings/connectors.ts";
+import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-ref.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
@@ -80,11 +81,12 @@ export function parseConnectorAuthorizeUrl(
   value: string,
 ): ConnectorActionDescriptor | null {
   const appOrigin = window.location.origin;
+  const canonicalAppOrigin = resolvePlatformOriginForTarget("app");
   if (!URL.canParse(value, appOrigin)) {
     return null;
   }
   const url = new URL(value, appOrigin);
-  if (url.origin !== appOrigin) {
+  if (url.origin !== appOrigin && url.origin !== canonicalAppOrigin) {
     return null;
   }
 

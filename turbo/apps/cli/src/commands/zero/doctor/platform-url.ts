@@ -46,7 +46,7 @@ export function toPlatformUrl(apiUrl: string): URL {
 }
 
 export async function getPlatformOrigin(): Promise<string> {
-  const appUrl = process.env.APP_URL;
+  const appUrl = process.env.VM0_APP_URL;
   if (appUrl) {
     return new URL(appUrl).origin;
   }

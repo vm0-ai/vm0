@@ -124,7 +124,7 @@ describe("zero connector status command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("APP_URL", "");
+    vi.stubEnv("VM0_APP_URL", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", "");
@@ -289,6 +289,7 @@ describe("zero connector status command", () => {
 
     it("uses the production app origin in authorization links", async () => {
       const apiOrigin = "https://api.vm0.ai";
+      vi.stubEnv("APP_URL", "https://unrelated.example.test");
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
       server.use(
         stubConnectorCatalogStatus(
@@ -313,11 +314,11 @@ describe("zero connector status command", () => {
       );
     });
 
-    it("uses APP_URL in authorization links", async () => {
+    it("uses VM0_APP_URL in authorization links", async () => {
       const apiOrigin = "https://api.example.test";
       const appOrigin = "https://app.example.test";
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
-      vi.stubEnv("APP_URL", `${appOrigin}/ignored-path`);
+      vi.stubEnv("VM0_APP_URL", `${appOrigin}/ignored-path`);
       server.use(
         stubConnectorCatalogStatus(
           [statusItemFromConnector(connectedGithub)],

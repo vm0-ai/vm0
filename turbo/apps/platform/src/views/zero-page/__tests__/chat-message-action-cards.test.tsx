@@ -394,6 +394,60 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(2);
   });
 
+  it("renders canonical connector actions on alternate production origins", async () => {
+    const previousUrl = window.location.href;
+    const threadId = `${THREAD_ID}-alternate-production-origin`;
+    window.location.href = `https://app.okou.ai/chats/${threadId}`;
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+
+    const canonicalUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    const untrustedUrl = `https://evil.example.test/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "slack",
+        label: "Slack",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Alternate production origin",
+      chatMessages: [
+        {
+          id: "msg-user-alternate-production-origin",
+          role: "user",
+          content: "Authorize Slack",
+          runId: "run-alternate-production-origin",
+          createdAt: "2026-07-23T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-alternate-production-origin",
+          role: "assistant",
+          content: `${canonicalUrl}\n\n[Untrusted connector](${untrustedUrl})`,
+          runId: "run-alternate-production-origin",
+          createdAt: "2026-07-23T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
+    const untrustedLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "Untrusted connector";
+    });
+    expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
+  });
+
   it("connects a single OAuth connector directly and resumes the chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-direct-oauth`;

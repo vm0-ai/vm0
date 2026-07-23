@@ -8375,7 +8375,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "WebSearch",
     ]);
     expect(claim.disallowedTools).not.toContain("WebFetch");
-    expect(claim.environment?.APP_URL).toBe(appUrl);
+    expect(claim.environment?.VM0_APP_URL).toBe(appUrl);
+    expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
     const zeroToken = claim.environment?.ZERO_TOKEN;
