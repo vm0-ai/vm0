@@ -567,6 +567,25 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_script_does_not_select_canonical_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let fallback_path = restore_path(&codex_home);
+        let symlink_path = canonical_path(&codex_home, "2026-07-23", "04-01-04");
+        let target = temp.path().join("target.jsonl");
+        create_file(&target);
+        fs::create_dir_all(symlink_path.parent().unwrap()).unwrap();
+        symlink(&target, &symlink_path).unwrap();
+
+        let output = run_cleanup(&codex_home, &fallback_path);
+
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        assert!(!symlink_path.exists());
+        assert!(target.exists());
+    }
+
+    #[test]
     fn cleanup_script_fails_when_scan_budget_exceeded_without_deleting_sessions() {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
