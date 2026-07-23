@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createEmailApi } from "./helpers/api-bdd-email";
@@ -262,6 +262,9 @@ beforeEach(() => {
   mockEnv("RESEND_API_KEY", "test-resend-key");
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+  // This route drains a cross-file outbox; Resend pacing is not part of these
+  // transactional delivery assertions.
+  mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
 
 describe("POST /api/zero/email/inbound", () => {
