@@ -132,7 +132,7 @@ export const removeFeishuOrg$ = command(
   },
 );
 
-export const refreshFeishuOrg$ = command(({ set }) => {
+const refreshFeishuOrg$ = command(({ set }) => {
   set(reload$, (value) => {
     return value + 1;
   });

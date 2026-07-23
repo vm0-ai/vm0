@@ -1,12 +1,16 @@
 import { command, computed } from "ccstate";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import { InvalidFeishuCredentialsError } from "../external/feishu-client";
 import type { RouteEntry } from "../route-entry";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle } from "../utils";
 import {
   configureFeishuInstallation$,
@@ -28,7 +32,30 @@ function adminRequired() {
   };
 }
 
+const feishuIntegrationDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Feishu integration is not enabled",
+      code: "FORBIDDEN" as const,
+    }),
+  }),
+});
+
+const feishuIntegrationEnabled$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const context = await loadUserFeatureSwitchContext(
+    get(db$),
+    auth.orgId,
+    auth.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, context);
+});
+
 const getStatus$ = computed(async (get) => {
+  if (!(await get(feishuIntegrationEnabled$))) {
+    return feishuIntegrationDisabled;
+  }
   const auth = get(organizationAuthContext$);
   const body = await get(
     feishuConnectStatus({
@@ -41,6 +68,9 @@ const getStatus$ = computed(async (get) => {
 });
 
 const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (!(await get(feishuIntegrationEnabled$))) {
+    return feishuIntegrationDisabled;
+  }
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
@@ -90,6 +120,9 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (!(await get(feishuIntegrationEnabled$))) {
+    return feishuIntegrationDisabled;
+  }
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
@@ -102,6 +135,9 @@ const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const disconnect$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (!(await get(feishuIntegrationEnabled$))) {
+    return feishuIntegrationDisabled;
+  }
   const auth = get(organizationAuthContext$);
   const disconnected = await set(
     disconnectFeishuConnection$,

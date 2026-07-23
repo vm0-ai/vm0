@@ -9,6 +9,7 @@ import { Buffer } from "node:buffer";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -21,6 +22,7 @@ import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -119,6 +121,22 @@ function directMessage(appId: string, text: string): unknown {
   });
 }
 
+async function enableFeishuIntegration(actor: {
+  readonly userId: string;
+  readonly orgId: string | null;
+}): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Feishu integration tests require an organization");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: actor.userId, orgId: actor.orgId },
+    {
+      [FeatureSwitchKey.FeishuIntegration]: true,
+    },
+  );
+}
+
 beforeEach(() => {
   mockEnv("APP_URL", APP_ORIGIN);
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
@@ -163,6 +181,28 @@ describe("Feishu integration", () => {
     );
   });
 
+  it("rejects configuration API access when the feature switch is disabled", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "FORBIDDEN",
+      message: "Feishu integration is not enabled",
+    });
+  });
+
   it("verifies and decrypts URL verification callbacks", async () => {
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
@@ -171,6 +211,7 @@ describe("Feishu integration", () => {
       orgRole: "org:admin",
     });
     authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
     const agent = await authOrgApi.createAgent(actor, {
       displayName: "Feishu callback agent",
       visibility: "public",
@@ -241,6 +282,7 @@ describe("Feishu integration", () => {
       orgRole: "org:admin",
     });
     const runnerGroup = runsApi.configureRunnerGroup();
+    await enableFeishuIntegration(actor);
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();

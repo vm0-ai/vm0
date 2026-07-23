@@ -27,6 +27,7 @@ export const zeroFeishuConnectContract = c.router({
     responses: {
       200: feishuConnectStatusSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Check Feishu connection status",
   },
@@ -71,6 +72,7 @@ export const zeroFeishuConnectContract = c.router({
     responses: {
       200: z.object({ success: z.literal(true) }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Disconnect a Feishu user",
