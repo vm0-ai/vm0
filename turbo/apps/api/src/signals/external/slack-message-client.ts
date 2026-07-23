@@ -20,6 +20,10 @@ type PostMessageResult =
     }
   | { readonly kind: "slack_error"; readonly error: string };
 
+type GetMessagePermalinkResult =
+  | { readonly kind: "ok"; readonly permalink: string }
+  | { readonly kind: "slack_error"; readonly error: string };
+
 type PostEphemeralResult =
   | { readonly kind: "ok"; readonly ts: string | undefined }
   | { readonly kind: "slack_error"; readonly error: string };
@@ -124,6 +128,26 @@ export async function postMessage(
     throw result.error;
   }
   return { kind: "ok", ts: result.value.ts, channel: result.value.channel };
+}
+
+export async function getMessagePermalink(
+  client: WebClient,
+  channel: string,
+  messageTs: string,
+): Promise<GetMessagePermalinkResult> {
+  const result = await settle(
+    client.chat.getPermalink({ channel, message_ts: messageTs }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    return { kind: "slack_error", error: "get_permalink_failed" };
+  }
+  if (!result.value.permalink) {
+    return { kind: "slack_error", error: "missing_permalink" };
+  }
+  return { kind: "ok", permalink: result.value.permalink };
 }
 
 export async function setThreadStatus(
