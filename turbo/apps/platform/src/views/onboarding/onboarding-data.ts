@@ -65,6 +65,7 @@ export interface OnboardingWorkflow {
   readonly description: string;
   readonly prompt: string;
   readonly connectors: readonly string[];
+  readonly required: readonly string[];
   readonly steps: readonly string[];
   readonly scenario: string;
   readonly detailSteps: readonly { title: string; description: string }[];
@@ -88,14 +89,22 @@ function supplementalWorkflowTemplate(input: {
   readonly description: string;
   readonly prompt: string;
   readonly connectors: readonly string[];
+  readonly required: readonly string[];
 }): SupplementalWorkflowTemplate {
+  const optional = input.connectors.filter((connector) => {
+    return !input.required.includes(connector);
+  });
+  const connectorLine =
+    optional.length > 0
+      ? `Connectors: ${input.required.join(", ")} required; ${optional.join(", ")} optional.`
+      : `Connectors: ${input.required.join(", ")} required.`;
   return {
     id: `workflow-template:${input.id}`,
     category: input.category,
     title: input.title,
     description: input.description,
     connectors: input.connectors,
-    promptGuidance: input.prompt,
+    promptGuidance: `${input.prompt}\n\n${connectorLine} Connect any missing required connectors before running.`,
   };
 }
 
@@ -110,6 +119,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero compare the latest release's crash-free rate in Sentry against the previous baseline and tell #dev whether it regressed, with a rollback suggestion if it did.",
       connectors: ["sentry", "github", "vercel", "slack"],
+      required: ["sentry", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "post-github-updates-slack",
@@ -120,6 +130,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero compile my merged and in-progress work from GitHub and Linear into a short progress update and post it to Slack.",
       connectors: ["github", "linear", "sentry", "slack"],
+      required: ["github", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "report-ai-model-costs-slack",
@@ -130,6 +141,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero report today's LLM token spend and p95 latency per model and route from Langfuse and post it to Slack.",
       connectors: ["langfuse", "slack"],
+      required: ["langfuse", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "summarize-user-feedback-notion",
@@ -140,6 +152,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero gather recent user feedback from Productlane, Typeform, Intercom, and GitHub, cluster it into themes, and write a ranked summary in Notion.",
       connectors: ["productlane", "typeform", "intercom", "github", "notion"],
+      required: ["notion"],
     }),
     supplementalWorkflowTemplate({
       id: "watch-brand-mentions",
@@ -150,6 +163,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero search the web, Hacker News, and X for recent mentions of our product and post them to Slack.",
       connectors: ["exa", "x", "slack"],
+      required: ["exa", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "sort-route-zendesk-tickets",
@@ -160,6 +174,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero go through the new Zendesk tickets, set each one's severity, route it to the right team, and draft a first reply.",
       connectors: ["zendesk", "linear"],
+      required: ["zendesk"],
     }),
     supplementalWorkflowTemplate({
       id: "fixes-to-notion-help-docs",
@@ -170,6 +185,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero take a recently resolved ticket and turn the fix into a reusable help article in Notion.",
       connectors: ["notion", "zendesk"],
+      required: ["notion", "zendesk"],
     }),
     supplementalWorkflowTemplate({
       id: "morning-brief-slack",
@@ -180,6 +196,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       prompt:
         "@Zero send me a brief with today's schedule and the emails that need me and post it to Slack.",
       connectors: ["gmail", "google-calendar", "slack"],
+      required: ["gmail", "google-calendar", "slack"],
     }),
   ];
 
@@ -290,6 +307,33 @@ function workflowSteps(promptGuidance: string): readonly string[] {
     .slice(0, 4);
 }
 
+// Derives the required connectors from the "Connectors: X required; Y optional"
+// line embedded in promptGuidance, so this stays the single source of truth with
+// the guidance text. Templates without that line resolve to no required connectors.
+function requiredConnectors(
+  promptGuidance: string,
+  connectors: readonly string[],
+): readonly string[] {
+  const match = promptGuidance.match(/Connectors:\s*([^.;\n]*?)\s+required/u);
+  const captured = match?.[1];
+  if (captured === undefined) {
+    return [];
+  }
+  const declared = new Set(
+    captured
+      .split(",")
+      .map((value) => {
+        return value.trim();
+      })
+      .filter((value) => {
+        return value.length > 0;
+      }),
+  );
+  return connectors.filter((connector) => {
+    return declared.has(connector);
+  });
+}
+
 function onboardingWorkflow(
   id: string,
   categoryId: OnboardingWorkflowCategoryId,
@@ -310,6 +354,7 @@ function onboardingWorkflow(
     description,
     prompt: template.promptGuidance,
     connectors: template.connectors,
+    required: requiredConnectors(template.promptGuidance, template.connectors),
     steps: workflowSteps(template.promptGuidance),
     scenario: details?.scenario ?? description,
     detailSteps: details?.steps ?? [],

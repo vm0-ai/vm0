@@ -77,7 +77,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Add a Gmail label-applied automation for the workflow once the user confirms the label name.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Gmail label name, handling rules, and final action if they are missing.",
+      "Connectors: gmail required.\n\nBefore creating anything, ask for the Gmail label name, handling rules, and final action if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:daily-standup-report",
@@ -93,7 +93,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post the final standup report to a Slack channel selected by the user.",
     ],
     missingInfo:
-      "Before creating anything, ask for the schedule, timezone, Slack channel, metric scope, and any required report sections if they are missing.",
+      "Connectors: github, slack required; sentry, axiom, plausible optional.\n\nBefore creating anything, ask for the schedule, timezone, Slack channel, metric scope, and any required report sections if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:github-pr-summarizer",
@@ -109,7 +109,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Save the report in Notion and optionally post a shorter version to Slack.",
     ],
     missingInfo:
-      "Before creating anything, ask for the repositories, cadence, timezone, Notion destination, Slack destination, and grouping rules if they are missing.",
+      "Connectors: github, notion required; slack optional.\n\nBefore creating anything, ask for the repositories, cadence, timezone, Notion destination, Slack destination, and grouping rules if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:sentry-issue-digest",
@@ -125,7 +125,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post the digest to a Slack channel with links back to Sentry.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Sentry projects, severity threshold, schedule, timezone, and Slack channel if they are missing.",
+      "Connectors: sentry, slack required.\n\nBefore creating anything, ask for the Sentry projects, severity threshold, schedule, timezone, and Slack channel if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:vercel-deploy-digest",
@@ -141,7 +141,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Send Slack alerts for failures and optionally send a periodic deployment digest.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Vercel projects, GitHub repositories, alert rules, cadence, and Slack channel if they are missing.",
+      "Connectors: vercel, slack required; github optional.\n\nBefore creating anything, ask for the Vercel projects, GitHub repositories, alert rules, cadence, and Slack channel if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:auto-merge-github-prs",
@@ -202,7 +202,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Optionally tag an owner or add follow-up notes based on the user's routing rules.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Slack channel, Notion database, taxonomy, owner mapping, and run cadence if they are missing.",
+      "Connectors: slack, notion required.\n\nBefore creating anything, ask for the Slack channel, Notion database, taxonomy, owner mapping, and run cadence if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:github-idea-to-notion-spec",
@@ -291,7 +291,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post a Slack summary and send urgent alerts when churn spikes.",
     ],
     missingInfo:
-      "Before creating anything, ask for the RevenueCat project, schedule, timezone, Sheets destination, Slack channel, and alert thresholds if they are missing.",
+      "Connectors: revenuecat, google-sheets required; slack optional.\n\nBefore creating anything, ask for the RevenueCat project, schedule, timezone, Sheets destination, Slack channel, and alert thresholds if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:post-daily-metrics-slack",
@@ -396,7 +396,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post Slack alerts for important changes that need review.",
     ],
     missingInfo:
-      "Before creating anything, ask for competitor URLs, cadence, timezone, Notion destination, Slack channel, and alert criteria if they are missing.",
+      "Connectors: firecrawl, notion required; slack optional.\n\nBefore creating anything, ask for competitor URLs, cadence, timezone, Notion destination, Slack channel, and alert criteria if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:x-brand-monitor",
@@ -412,7 +412,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Send Slack alerts for high-engagement, urgent, or reputationally sensitive posts.",
     ],
     missingInfo:
-      "Before creating anything, ask for the keywords or accounts, cadence, Notion database, Slack channel, and alert thresholds if they are missing.",
+      "Connectors: x, notion required; slack optional.\n\nBefore creating anything, ask for the keywords or accounts, cadence, Notion database, Slack channel, and alert thresholds if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:track-keyword-ranks-ahrefs",
@@ -447,7 +447,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
   defineWorkflowTemplate({
     id: "workflow-template:blog-posts-to-x",
     category: "Marketing",
-    title: "Turn blog posts into X posts",
+    title: "Turn blog posts into social posts",
     description:
       "Turn each new blog post into social variants queued via Buffer.",
     connectors: ["strapi", "buffer", "x"],
@@ -503,7 +503,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post the pipeline digest to a Slack channel.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Salesforce object scope, cadence, timezone, Slack channel, and pipeline rules if they are missing.",
+      "Connectors: salesforce, slack required.\n\nBefore creating anything, ask for the Salesforce object scope, cadence, timezone, Slack channel, and pipeline rules if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:catch-leads-gmail",
@@ -537,9 +537,8 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
   defineWorkflowTemplate({
     id: "workflow-template:research-new-signups-apollo",
     category: "Sales",
-    title: "Research new signups with Apollo",
-    description:
-      "Research each new signup with Apollo and post a quick snapshot.",
+    title: "Research new signups",
+    description: "Research each new signup and post a quick snapshot.",
     connectors: ["clerk", "slack", "apollo"],
     behavior: [
       "Zero reads new signups",
@@ -607,7 +606,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Alert Slack when a ticket is urgent, blocked, or needs human follow-up.",
     ],
     missingInfo:
-      "Before creating anything, ask for the inbox or label, triage rules, Notion database, Slack channel, and escalation criteria if they are missing.",
+      "Connectors: gmail, notion required; slack optional.\n\nBefore creating anything, ask for the inbox or label, triage rules, Notion database, Slack channel, and escalation criteria if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:zendesk-knowledge-base",
@@ -623,7 +622,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post a Slack summary when new FAQ drafts are ready for review.",
     ],
     missingInfo:
-      "Before creating anything, ask for the Zendesk scope, cadence, Notion destination, Slack channel, and publishing/review rules if they are missing.",
+      "Connectors: zendesk, notion required; slack optional.\n\nBefore creating anything, ask for the Zendesk scope, cadence, Notion destination, Slack channel, and publishing/review rules if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:draft-replies-notion-faq",
@@ -666,7 +665,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Recovery email drafted",
     ],
     missingInfo:
-      "Connectors: clerk required; stripe, zendesk, resend, slack optional.\nSuggested trigger: Add a schedule trigger (e.g. daily). Stripe and Zendesk have no native event trigger here, so poll on a cadence.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
+      "Connectors: clerk, stripe required; zendesk, resend, slack optional.\nSuggested trigger: Add a schedule trigger (e.g. daily). Stripe and Zendesk have no native event trigger here, so poll on a cadence.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:summarize-zendesk-tickets-daily",
@@ -785,7 +784,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post the standup summary to the selected Slack channel.",
     ],
     missingInfo:
-      "Before creating anything, ask for the ClickUp scope, schedule, timezone, grouping preference, and Slack channel if they are missing.",
+      "Connectors: clickup, slack required.\n\nBefore creating anything, ask for the ClickUp scope, schedule, timezone, grouping preference, and Slack channel if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:sync-asana-projects-notion",
@@ -855,14 +854,14 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Operations",
     title: "Catch Google Calendar conflicts",
     description: "Scan your calendar for double-bookings and alert you early.",
-    connectors: ["cal-com", "google-calendar", "slack"],
+    connectors: ["google-calendar", "cal-com", "slack"],
     behavior: [
       "An event is created",
       "Checked for conflicts",
       "Conflict flagged in Slack",
     ],
     missingInfo:
-      "Connectors: cal-com, google-calendar required; slack optional.\nSuggested trigger: Add a google-calendar-event-created event trigger, or a morning schedule that scans the day for conflicts.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
+      "Connectors: google-calendar required; cal-com, slack optional.\nSuggested trigger: Add a google-calendar-event-created event trigger, or a morning schedule that scans the day for conflicts.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:personal-weekly-digest",
@@ -878,7 +877,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Send the digest to the user's chosen Slack destination.",
     ],
     missingInfo:
-      "Before creating anything, ask for the day/time, timezone, GitHub scope, Gmail filters, calendar scope, and Slack destination if they are missing.",
+      "Connectors: slack required; github, gmail, google-calendar optional.\n\nBefore creating anything, ask for the day/time, timezone, GitHub scope, Gmail filters, calendar scope, and Slack destination if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:morning-brief",
@@ -894,7 +893,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Post the brief to Slack or another destination the user chooses.",
     ],
     missingInfo:
-      "Before creating anything, ask for the schedule, timezone, Slack destination, Gmail scope, calendar scope, and Notion sources if they are missing.",
+      "Connectors: gmail, google-calendar, slack required; notion optional.\n\nBefore creating anything, ask for the schedule, timezone, Slack destination, Gmail scope, calendar scope, and Notion sources if they are missing.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:sort-gmail-draft-replies",

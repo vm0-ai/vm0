@@ -198,9 +198,7 @@ describe("onboarding flow", () => {
 
     await openGithubWorkflowRun();
 
-    const connectorLabel = await screen.findByText(
-      "Connect the Catalog GitHub to continue the workflow",
-    );
+    const connectorLabel = await screen.findByText("Catalog GitHub");
     const connectorRow = connectorLabel.parentElement?.parentElement;
     if (!connectorRow) {
       throw new Error("Expected Catalog GitHub connector row");
@@ -279,6 +277,61 @@ describe("onboarding flow", () => {
     );
   });
 
+  it("disables Run now with a hint until required connectors are connected", async () => {
+    mockOnboardingNeeded();
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
+    detachedSetupPage({
+      context,
+      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=watch-sentry-after-release",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Connect your tools and customize your workflow",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    expect(buttonByText("Run now")).toBeDisabled();
+    expect(screen.getByText(/to run this workflow/u)).toBeInTheDocument();
+  });
+
+  it("does not gate Run now once the required connectors are connected", async () => {
+    mockOnboardingNeeded();
+    context.mocks.data.connectors([
+      {
+        id: "11111111-1111-4111-8111-111111111112",
+        type: "notion",
+        authMethod: "oauth",
+        externalId: "notion-user-1",
+        externalUsername: "notion-user",
+        externalEmail: null,
+        oauthScopes: ["read", "write"],
+        connectionStatus: "connected",
+        reconnectReason: null,
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    detachedSetupPage({
+      context,
+      path: "/onboarding/workflow-run?choice=workflow&category=product&workflow=summarize-user-feedback-notion",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Connect your tools and customize your workflow",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(buttonByText("Run now")).not.toBeDisabled();
+    });
+    expect(screen.queryByText(/to run this workflow/u)).toBeNull();
+  });
+
   it("sends the custom workflow choice straight into the product", async () => {
     await openMakePage();
     chooseMakeOption("Workflow automation");
@@ -353,9 +406,7 @@ describe("onboarding flow", () => {
 
     await openGithubWorkflowRun();
 
-    const githubLabel = await screen.findByText(
-      "Connect the GitHub to continue the workflow",
-    );
+    const githubLabel = await screen.findByText("GitHub");
     const githubRow = githubLabel.parentElement?.parentElement;
     if (!githubRow) {
       throw new Error("Expected GitHub connector row");
