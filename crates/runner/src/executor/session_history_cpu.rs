@@ -903,7 +903,6 @@ fn verify_codex_zstd(
     let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
     let mut decoded_bytes = 0u64;
     let mut metadata = None;
-    let mut metadata_invalid = false;
     let mut line = Vec::new();
 
     loop {
@@ -933,14 +932,17 @@ fn verify_codex_zstd(
             )));
         }
         observer.update(&line, cancel)?;
-        if metadata.is_none() && !metadata_invalid {
+        if metadata.is_none() {
             match parse_codex_session_metadata_line(strip_jsonl_line_ending(&line), cancel, hooks) {
                 Ok(parsed) => metadata = parsed,
                 Err(RunnerError::Cancelled) => {
                     timings.record_decompression(decompression_started.elapsed(), false);
                     return Err(RunnerError::Cancelled);
                 }
-                Err(_) => metadata_invalid = true,
+                Err(error) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(error);
+                }
             }
         }
     }
@@ -963,11 +965,7 @@ fn verify_codex_zstd(
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
     let prefix_outcome = hash_result?;
     let identity_started = Instant::now();
-    let identity_result = if metadata_invalid {
-        Err(invalid_codex_session_history_identity())
-    } else {
-        validate_codex_session_metadata(metadata, cli_agent_session_id)
-    };
+    let identity_result = validate_codex_session_metadata(metadata, cli_agent_session_id);
     timings.record_validation(identity_started.elapsed(), identity_result.is_ok());
     let timestamp = identity_result?;
     Ok((timestamp, prefix_outcome))
@@ -1015,7 +1013,7 @@ fn scan_valid_utf8_history(
             return validate_codex_session_metadata(Some(metadata), cli_agent_session_id);
         }
     }
-    Err(invalid_codex_session_history_identity())
+    validate_codex_session_metadata(None, cli_agent_session_id)
 }
 
 fn parse_codex_session_metadata_line(
@@ -1050,7 +1048,7 @@ fn parse_valid_utf8_codex_session_metadata_line(
     };
     check_cancelled(cancel)?;
     if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
-        return Err(invalid_codex_session_history_identity());
+        return Ok(None);
     }
 
     let payload = value
@@ -1082,9 +1080,14 @@ fn validate_codex_session_metadata(
     metadata: Option<CodexSessionMetadata>,
     cli_agent_session_id: &str,
 ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
-    let metadata = metadata.ok_or_else(invalid_codex_session_history_identity)?;
     let expected_thread_id = CodexThreadId::parse(cli_agent_session_id)
         .ok_or_else(invalid_codex_session_history_identity)?;
+    // Codex can rewrite long rollouts without retaining the original
+    // session_meta record. Preserve the legacy timestamp fallback when it is
+    // absent, but require the first metadata record to match when one remains.
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
     if metadata.thread_id != expected_thread_id {
         return Err(invalid_codex_session_history_identity());
     }
@@ -1603,7 +1606,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn raw_codex_history_requires_matching_first_session_metadata() {
+    async fn raw_codex_history_rejects_invalid_or_mismatched_first_session_metadata() {
         let other_session_id = "019e9154-c304-70f0-adde-36efb1be1702";
         let forged_later = [
             codex_history(other_session_id),
@@ -1616,12 +1619,6 @@ mod tests {
             br#"{"type":"session_meta","payload":{"id":"invalid","timestamp":"2026-07-13T01:02:03Z"}}"#
                 .to_vec(),
             codex_history(other_session_id),
-            [
-                br#"{"type":"response_item","payload":{}}"#.as_slice(),
-                b"\n",
-                codex_history(CODEX_SESSION_ID).as_slice(),
-            ]
-            .concat(),
             forged_later,
         ] {
             let outcome = SessionHistoryCpuPool::with_capacity(1)
@@ -1639,6 +1636,60 @@ mod tests {
             );
             assert!(!error.contains(CODEX_SESSION_ID));
             assert!(!error.contains(other_session_id));
+        }
+
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                raw_job_with_session_id(
+                    "invalid",
+                    b"{\"type\":\"response_item\",\"payload\":{}}\n".to_vec(),
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.result.unwrap_err().to_string(),
+            format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
+        );
+    }
+
+    #[tokio::test]
+    async fn raw_codex_history_allows_non_metadata_prefix_or_absent_metadata() {
+        for (history, expected_timestamp) in [
+            (
+                [
+                    br#"{"type":"response_item","payload":{}}"#.as_slice(),
+                    b"\n",
+                    codex_history(CODEX_SESSION_ID).as_slice(),
+                ]
+                .concat(),
+                Some("2026-07-13T01:02:03+00:00"),
+            ),
+            (
+                b"{\"type\":\"response_item\",\"payload\":{}}\n".to_vec(),
+                None,
+            ),
+        ] {
+            let outcome = SessionHistoryCpuPool::with_capacity(1)
+                .materialize(
+                    raw_job(history, EffectiveCliFramework::Codex),
+                    &CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                outcome
+                    .result
+                    .unwrap()
+                    .session
+                    .codex_timestamp()
+                    .map(|timestamp| timestamp.to_rfc3339())
+                    .as_deref(),
+                expected_timestamp
+            );
         }
     }
 
@@ -1716,6 +1767,29 @@ mod tests {
             outcome.result.unwrap_err().to_string(),
             format!("internal error: {INVALID_CODEX_SESSION_HISTORY_IDENTITY}")
         );
+    }
+
+    #[tokio::test]
+    async fn retained_zstd_codex_history_allows_absent_session_metadata() {
+        let history = b"{\"type\":\"response_item\",\"payload\":{}}\n";
+        let encoded = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let outcome = SessionHistoryCpuPool::with_capacity(1)
+            .materialize(
+                SessionHistoryCpuJob::zstd(
+                    CODEX_SESSION_ID.into(),
+                    encoded,
+                    history.len() as u64,
+                    hex::encode(Sha256::digest(history)),
+                    EffectiveCliFramework::Codex,
+                ),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let session = outcome.result.unwrap().session;
+        assert!(session.codex_zstd_history().is_some());
+        assert!(session.codex_timestamp().is_none());
     }
 
     #[tokio::test]
