@@ -579,7 +579,11 @@ class TestRunnerUsageFlushSignal:
             patch.object(
                 runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
-            patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            patch.object(
+                logging_utils,
+                "flush_log_path",
+                wraps=logging_utils.flush_log_path,
+            ) as flush_log_path,
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
         ):
             with patch.object(Path, "replace", new=fail_first_state_replace):
