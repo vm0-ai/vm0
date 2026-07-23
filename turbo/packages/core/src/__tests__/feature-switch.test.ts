@@ -219,6 +219,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroWebSearch,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ComposerConnectorPermissions,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
@@ -227,10 +230,12 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.PresentationElementDragging]: true,
         [FeatureSwitchKey.ZeroWebSearch]: true,
+        [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroWebSearch]: true,
+      [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
   });
