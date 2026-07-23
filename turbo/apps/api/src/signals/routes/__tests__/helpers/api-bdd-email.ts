@@ -56,8 +56,31 @@ export function createEmailApi(context: TestContext) {
     );
   }
 
+  async function enqueueInboundErrorEmail(
+    opts: { readonly from?: string; readonly subject?: string } = {},
+  ): Promise<{ readonly from: string; readonly subject: string }> {
+    const from =
+      opts.from ?? `bdd-sender-${randomUUID().slice(0, 12)}@example.test`;
+    const subject = opts.subject ?? `BDD drain ${randomUUID().slice(0, 8)}`;
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+    await postResendInboundWebhook(
+      {
+        type: "email.received",
+        data: {
+          email_id: `em_${randomUUID()}`,
+          to: ["bdd-org@mail.example.com"],
+          from,
+          subject,
+        },
+      },
+      [200],
+    );
+    return { from, subject };
+  }
+
   return {
     postResendInboundWebhook,
+    enqueueInboundErrorEmail,
 
     /**
      * Induce a pending email outbox row through public state only: an inbound
@@ -68,26 +91,10 @@ export function createEmailApi(context: TestContext) {
     async triggerInboundErrorEmail(
       opts: { readonly from?: string; readonly subject?: string } = {},
     ): Promise<{ readonly from: string; readonly subject: string }> {
-      const from =
-        opts.from ?? `bdd-sender-${randomUUID().slice(0, 12)}@example.test`;
-      const subject = opts.subject ?? `BDD drain ${randomUUID().slice(0, 8)}`;
-      context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
       context.mocks.resend.send.mockRejectedValue(
         new Error("inline drain down"),
       );
-      await postResendInboundWebhook(
-        {
-          type: "email.received",
-          data: {
-            email_id: `em_${randomUUID()}`,
-            to: ["bdd-org@mail.example.com"],
-            from,
-            subject,
-          },
-        },
-        [200],
-      );
-      return { from, subject };
+      return await enqueueInboundErrorEmail(opts);
     },
 
     async suppressEmailAddress(address: string): Promise<void> {
