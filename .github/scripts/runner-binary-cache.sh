@@ -517,6 +517,35 @@ validate_resolution_context() {
   esac
 }
 
+producer_is_main_reachable() {
+  local producer_head_sha=$1 comparison_json
+  if ! comparison_json=$(gh api \
+    "repos/${REPO}/compare/${producer_head_sha}...${DEFAULT_BRANCH}" 2>/dev/null); then
+    return 1
+  fi
+  jq -e \
+    --arg producer_head_sha "$producer_head_sha" '
+      (.base_commit | type == "object") and
+      .base_commit.sha == $producer_head_sha and
+      (.merge_base_commit | type == "object") and
+      .merge_base_commit.sha == $producer_head_sha and
+      (.ahead_by | type == "number" and floor == . and . >= 0) and
+      (.behind_by | type == "number" and floor == . and . >= 0) and
+      (
+        (
+          .status == "identical" and
+          .ahead_by == 0 and
+          .behind_by == 0
+        ) or
+        (
+          .status == "ahead" and
+          .ahead_by > 0 and
+          .behind_by == 0
+        )
+      )
+    ' <<<"$comparison_json" >/dev/null
+}
+
 collect_trusted_candidates() {
   local expected_target=$1 expected_digest=$2 output_dir=$3
   mkdir -p "$output_dir"
@@ -534,12 +563,14 @@ collect_trusted_candidates() {
     return 1
   fi
 
-  local potential_file sorted_potential trusted_file identities_file
+  local potential_file sorted_potential trusted_unsorted trusted_file identities_file
   potential_file="${output_dir}/potential-candidates.tsv"
   sorted_potential="${output_dir}/potential-candidates-sorted.tsv"
+  trusted_unsorted="${output_dir}/trusted-candidates-unsorted.tsv"
   trusted_file="${output_dir}/trusted-candidates.tsv"
   identities_file="${output_dir}/trusted-identities.tsv"
   : > "$potential_file"
+  : > "$trusted_unsorted"
   : > "$trusted_file"
   : > "$identities_file"
   while IFS= read -r artifact_encoded; do
@@ -556,37 +587,44 @@ collect_trusted_candidates() {
       [[ ! "$artifact_id" =~ ^[1-9][0-9]*$ ]] ||
       [[ ! "$artifact_size" =~ ^[1-9][0-9]*$ ]] ||
       [ "$artifact_size" -gt "$RUNNER_BINARY_MAX_MANIFEST_ARTIFACT_BYTES" ] ||
+      [[ ! "$artifact_head_sha" =~ ^[0-9a-f]{40}$ ]] ||
       [ "$artifact_run_id" = "$CURRENT_RUN_ID" ]; then
       continue
     fi
 
-    local source="" rank=""
+    local discovery_rank="" discovery_source_rank=""
     if [ "$artifact_branch" = "$DEFAULT_BRANCH" ]; then
-      source="protected-main"
+      discovery_rank=0
       case "$CURRENT_EVENT" in
-        pull_request|push) rank=0 ;;
-        merge_group) rank=1 ;;
+        pull_request|push) discovery_source_rank=0 ;;
+        merge_group) discovery_source_rank=1 ;;
       esac
     elif [ -n "${CURRENT_PR_HEAD_REF:-}" ] && [ "$artifact_branch" = "$CURRENT_PR_HEAD_REF" ]; then
-      source="same-pr"
+      discovery_rank=0
       case "$CURRENT_EVENT" in
-        pull_request) rank=1 ;;
-        merge_group) rank=0 ;;
+        pull_request) discovery_source_rank=2 ;;
+        merge_group) discovery_source_rank=0 ;;
         push) continue ;;
       esac
     elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [[ "$artifact_branch" =~ (^|/)pr-${CURRENT_PR_NUMBER}- ]]; then
-      source="same-pr"
+      discovery_rank=0
       case "$CURRENT_EVENT" in
-        pull_request) rank=1 ;;
-        merge_group) rank=0 ;;
+        pull_request) discovery_source_rank=2 ;;
+        merge_group) discovery_source_rank=0 ;;
         push) continue ;;
       esac
+    else
+      discovery_rank=1
+      case "$CURRENT_EVENT" in
+        pull_request) discovery_source_rank=1 ;;
+        merge_group) discovery_source_rank=2 ;;
+        push) discovery_source_rank=1 ;;
+      esac
     fi
-    [ -n "$source" ] || continue
 
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$rank" "$artifact_created" "$artifact_id" "$artifact_run_id" "$source" \
-      "$artifact_head_sha" >> "$potential_file"
+      "$discovery_rank" "$discovery_source_rank" "$artifact_created" \
+      "$artifact_id" "$artifact_run_id" "$artifact_head_sha" >> "$potential_file"
   done < <(jq -r \
     --arg name "$artifact_name_value" '
       .[] | .artifacts[]? |
@@ -594,12 +632,13 @@ collect_trusted_candidates() {
       @base64
     ' <<<"$artifacts_json")
 
-  sort -t $'\t' -k1,1n -k2,2r "$potential_file" > "$sorted_potential"
+  # Inspect direct source hints before candidates that need an ancestry query.
+  sort -t $'\t' -k1,1n -k2,2n -k3,3r "$potential_file" > "$sorted_potential"
 
   local inspected=0 trusted_count=0 identity_count=0 limit_reached=false
   local potential_count
   potential_count=$(wc -l < "$sorted_potential" | tr -d ' ')
-  while IFS=$'\t' read -r rank artifact_created artifact_id artifact_run_id source artifact_head_sha; do
+  while IFS=$'\t' read -r _ _ artifact_created artifact_id artifact_run_id artifact_head_sha; do
     [ -n "$artifact_run_id" ] || continue
     if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ]; then
       break
@@ -619,29 +658,69 @@ collect_trusted_candidates() {
         .repository.full_name == $repo and
         .path == $workflow and
         .status == "completed" and
-        .conclusion == "success" and
         .head_sha == $artifact_head_sha and
         (.run_attempt | type == "number" and . > 0)
       ' <<<"$run_json" >/dev/null; then
       continue
     fi
 
-    local actual_source="" run_event run_branch
+    local actual_source="" run_event run_branch producer_pr_numbers
     run_event=$(jq -r '.event' <<<"$run_json")
     run_branch=$(jq -r '.head_branch' <<<"$run_json")
-    if [ "$run_event" = "push" ] && [ "$run_branch" = "$DEFAULT_BRANCH" ]; then
-      actual_source="protected-main"
-    elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [ "$run_event" = "pull_request" ] &&
-      jq -e --argjson pr "$CURRENT_PR_NUMBER" 'any(.pull_requests[]?; .number == $pr)' \
-        <<<"$run_json" >/dev/null; then
-      actual_source="same-pr"
-    elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [ "$run_event" = "merge_group" ] &&
-      [[ "$run_branch" =~ (^|/)pr-${CURRENT_PR_NUMBER}- ]]; then
-      actual_source="same-pr"
-    else
-      continue
+    case "$run_event" in
+      push)
+        producer_pr_numbers='[]'
+        if [ "$run_branch" = "$DEFAULT_BRANCH" ]; then
+          actual_source="protected-main"
+        fi
+        ;;
+      pull_request)
+        if ! producer_pr_numbers=$(jq -ce '
+          [.pull_requests[]?.number] |
+          select(
+            length > 0 and
+            all(.[]; type == "number" and floor == . and . > 0)
+          )
+        ' <<<"$run_json"); then
+          continue
+        fi
+        if [ -n "${CURRENT_PR_NUMBER:-}" ] &&
+          jq -e --argjson pr "$CURRENT_PR_NUMBER" 'index($pr) != null' \
+            <<<"$producer_pr_numbers" >/dev/null; then
+          actual_source="same-pr"
+        fi
+        ;;
+      merge_group)
+        if [[ ! "$run_branch" =~ (^|/)pr-([1-9][0-9]*)- ]]; then
+          continue
+        fi
+        producer_pr_numbers="[${BASH_REMATCH[2]}]"
+        if [ -n "${CURRENT_PR_NUMBER:-}" ] &&
+          [ "${BASH_REMATCH[2]}" = "$CURRENT_PR_NUMBER" ]; then
+          actual_source="same-pr"
+        fi
+        ;;
+      *) continue ;;
+    esac
+    if [ -z "$actual_source" ]; then
+      if producer_is_main_reachable "$artifact_head_sha"; then
+        actual_source="main-reachable"
+      else
+        continue
+      fi
     fi
-    [ "$actual_source" = "$source" ] || continue
+    local source_rank
+    case "${CURRENT_EVENT}:${actual_source}" in
+      pull_request:protected-main) source_rank=0 ;;
+      pull_request:main-reachable) source_rank=1 ;;
+      pull_request:same-pr) source_rank=2 ;;
+      merge_group:same-pr) source_rank=0 ;;
+      merge_group:protected-main) source_rank=1 ;;
+      merge_group:main-reachable) source_rank=2 ;;
+      push:protected-main) source_rank=0 ;;
+      push:main-reachable) source_rank=1 ;;
+      *) continue ;;
+    esac
 
     local candidate_dir manifest_path
     candidate_dir="${output_dir}/candidate-${artifact_id}"
@@ -666,24 +745,36 @@ collect_trusted_candidates() {
       continue
     fi
 
-    local run_attempt expected_pr_json
+    local run_attempt current_pr_json
     run_attempt=$(jq -r '.run_attempt' <<<"$run_json")
-    if [ "$source" = "same-pr" ]; then
-      expected_pr_json="$CURRENT_PR_NUMBER"
-    else
-      expected_pr_json="null"
-    fi
+    current_pr_json="${CURRENT_PR_NUMBER:-null}"
     if ! jq -e \
       --argjson run_id "$artifact_run_id" \
       --argjson run_attempt "$run_attempt" \
       --arg event "$run_event" \
       --arg head_sha "$artifact_head_sha" \
-      --argjson pr_number "$expected_pr_json" '
+      --arg source "$actual_source" \
+      --argjson producer_pr_numbers "$producer_pr_numbers" \
+      --argjson current_pr_number "$current_pr_json" '
         .producer.runId == $run_id and
         .producer.runAttempt == $run_attempt and
         .producer.event == $event and
         .producer.headSha == $head_sha and
-        .producer.prNumber == $pr_number
+        (
+          if $event == "push" then
+            .producer.prNumber == null
+          else
+            .producer.prNumber as $producer_pr_number |
+            ($producer_pr_numbers | index($producer_pr_number)) != null
+          end
+        ) and
+        (
+          if $source == "same-pr" then
+            .producer.prNumber == $current_pr_number
+          else
+            true
+          end
+        )
       ' "$manifest_path" >/dev/null; then
       continue
     fi
@@ -696,13 +787,16 @@ collect_trusted_candidates() {
       identity_count=$((identity_count + 1))
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$rank" "$artifact_created" "$artifact_id" "$artifact_run_id" "$source" \
-      "$manifest_path" >> "$trusted_file"
+      "$source_rank" "$artifact_created" "$artifact_id" "$artifact_run_id" \
+      "$actual_source" "$manifest_path" >> "$trusted_unsorted"
     trusted_count=$((trusted_count + 1))
     if [ "$identity_count" -ge "$RUNNER_BINARY_MAX_TRUSTED_IDENTITIES" ]; then
       break
     fi
   done < "$sorted_potential"
+
+  # Select by the source proven from canonical run metadata, not the hint.
+  sort -t $'\t' -k1,1n -k2,2r "$trusted_unsorted" > "$trusted_file"
 
   if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ] &&
     [ "$potential_count" -gt "$inspected" ]; then
@@ -810,10 +904,6 @@ active_resolve() {
       exit 2
       ;;
   esac
-  if [ "$CURRENT_EVENT" = "push" ]; then
-    resolve_result "miss" "" "protected-main-full-build"
-    return 0
-  fi
   if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET_NAME:-}" ] ||
     [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
     resolve_result "miss" "" "missing-r2-config"
