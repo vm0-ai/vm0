@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.147.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.5...runner-rs-v0.147.6) (2026-07-23)
+
+
+### Refactoring
+
+* **runner:** split workspace cache tests by behavior ([#22698](https://github.com/vm0-ai/vm0/issues/22698)) ([6e08cd5](https://github.com/vm0-ai/vm0/commit/6e08cd5f50f1c8d87f710a55120187291ae92b06))
+
 ## [0.147.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.4...runner-rs-v0.147.5) (2026-07-23)
 
 
