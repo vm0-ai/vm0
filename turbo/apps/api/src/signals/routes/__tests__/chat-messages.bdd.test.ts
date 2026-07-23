@@ -3675,6 +3675,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Auto-inbox label (${workflowTemplate.id})`,
     );
     expect(workflowPrompt).toContain("Use the workflow-setup skill");
+    expect(workflowPrompt).toContain(
+      "Save the reusable workflow draft as soon as the template behavior is clear.",
+    );
+    expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
     // The illustration run was cancelled, so only its message text is replayed
