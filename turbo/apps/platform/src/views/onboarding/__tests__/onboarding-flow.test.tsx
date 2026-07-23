@@ -277,6 +277,46 @@ describe("onboarding flow", () => {
     );
   });
 
+  it("disables Run now with a hint until required connectors are connected", async () => {
+    mockOnboardingNeeded();
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
+    detachedSetupPage({
+      context,
+      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=watch-sentry-after-release",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Connect your tools and customize your workflow",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    expect(buttonByText("Run now")).toBeDisabled();
+    expect(screen.getByText(/to run this workflow/u)).toBeInTheDocument();
+  });
+
+  it("does not gate Run now for a workflow that requires no connectors", async () => {
+    mockOnboardingNeeded();
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
+    detachedSetupPage({
+      context,
+      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=auto-merge-github-prs",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Connect your tools and customize your workflow",
+      }),
+    ).resolves.toBeInTheDocument();
+
+    expect(buttonByText("Run now")).not.toBeDisabled();
+    expect(screen.queryByText(/to run this workflow/u)).toBeNull();
+  });
+
   it("sends the custom workflow choice straight into the product", async () => {
     await openMakePage();
     chooseMakeOption("Workflow automation");
