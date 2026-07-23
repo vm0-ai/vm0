@@ -47,7 +47,7 @@ describe("zero weather command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
-  it("posts current-condition requests and prints zero-credit metadata", async () => {
+  it("posts current-condition requests and renders a readable summary", async () => {
     let requestBody: unknown;
     server.use(
       http.post(
@@ -61,7 +61,11 @@ describe("zero weather command", () => {
             creditsCharged: 0,
             billingCategory: "current",
             billingQuantity: 1,
-            result: { temperature: { degrees: 28, unit: "CELSIUS" } },
+            result: {
+              timeZone: { id: "America/Los_Angeles" },
+              weatherCondition: { description: { text: "Clear" } },
+              temperature: { degrees: 28, unit: "CELSIUS" },
+            },
           });
         },
       ),
@@ -75,21 +79,109 @@ describe("zero weather command", () => {
       "39.9042",
       "--lng",
       "116.4074",
-      "--language",
-      "zh-CN",
     ]);
 
     expect(requestBody).toEqual({
       lat: 39.9042,
       lng: 116.4074,
       units: "metric",
-      languageCode: "zh-CN",
+      languageCode: "en",
     });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("✓ Current weather retrieved");
-    expect(output).toContain("Provider: google-weather");
+    expect(output).toContain("Current conditions · America/Los_Angeles");
+    expect(output).toContain("Clear · 28°C");
     expect(output).toContain(WEATHER_ATTRIBUTION);
-    expect(output).toContain("Credits charged: 0");
+    expect(output).not.toContain('"temperature"');
+  });
+
+  it("renders daily forecasts with the useful weather fields", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/weather/forecast/daily",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "forecast.daily",
+            provider: "google-weather",
+            attribution: WEATHER_ATTRIBUTION,
+            creditsCharged: 0,
+            billingCategory: "forecast.daily",
+            billingQuantity: 1,
+            result: {
+              forecastDays: [
+                {
+                  displayDate: { year: 2026, month: 7, day: 23 },
+                  daytimeForecast: {
+                    weatherCondition: {
+                      description: { text: "Partly cloudy" },
+                    },
+                    precipitation: { probability: { percent: 10 } },
+                    wind: {
+                      direction: { cardinal: "WEST" },
+                      speed: { unit: "KILOMETERS_PER_HOUR", value: 27 },
+                      gust: { unit: "KILOMETERS_PER_HOUR", value: 39 },
+                    },
+                    uvIndex: 9,
+                  },
+                  nighttimeForecast: {
+                    weatherCondition: {
+                      description: { text: "Partly clear" },
+                    },
+                    precipitation: { probability: { percent: 5 } },
+                  },
+                  maxTemperature: { degrees: 19.9, unit: "CELSIUS" },
+                  minTemperature: { degrees: 15.1, unit: "CELSIUS" },
+                  feelsLikeMaxTemperature: {
+                    degrees: 24.6,
+                    unit: "CELSIUS",
+                  },
+                  feelsLikeMinTemperature: { degrees: 14, unit: "CELSIUS" },
+                  sunEvents: {
+                    sunriseTime: "2026-07-22T13:05:12Z",
+                    sunsetTime: "2026-07-23T03:26:43Z",
+                  },
+                },
+              ],
+              timeZone: { id: "America/Los_Angeles" },
+            },
+          });
+        },
+      ),
+    );
+
+    await zeroWeatherCommand.parseAsync([
+      "node",
+      "cli",
+      "forecast",
+      "daily",
+      "--lat",
+      "37.7749",
+      "--lng",
+      "-122.4194",
+      "--days",
+      "1",
+    ]);
+
+    expect(requestBody).toEqual({
+      lat: 37.7749,
+      lng: -122.4194,
+      units: "metric",
+      languageCode: "en",
+      days: 1,
+    });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("Daily forecast · America/Los_Angeles");
+    expect(output).toContain("Thu, Jul 23");
+    expect(output).toContain("Partly cloudy · Partly clear overnight");
+    expect(output).toContain("15.1–19.9°C");
+    expect(output).toContain("feels like 14–24.6°C");
+    expect(output).toContain("rain 10% (night 5%)");
+    expect(output).toContain("W 27 km/h, gusts 39 km/h");
+    expect(output).toContain("UV 9");
+    expect(output).toContain("Sunrise 6:05 AM · Sunset 8:26 PM");
+    expect(output).not.toContain('"forecastDays"');
   });
 
   it("passes hourly forecast range and pagination without aggregating pages", async () => {
@@ -139,6 +231,7 @@ describe("zero weather command", () => {
       lat: 37.7749,
       lng: -122.4194,
       units: "imperial",
+      languageCode: "en",
       pageSize: 12,
       pageToken: "hourly-page",
       hours: 72,
@@ -191,20 +284,17 @@ describe("zero weather command", () => {
       "39.9042",
       "--lng",
       "116.4074",
-      "--language",
-      "zh-CN",
     ]);
 
     expect(requestBody).toEqual({
       lat: 39.9042,
       lng: 116.4074,
-      languageCode: "zh-CN",
+      languageCode: "en",
     });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("✓ Current air quality retrieved");
-    expect(output).toContain("Provider: google-air-quality");
+    expect(output).toContain("Current air quality");
     expect(output).toContain(AIR_QUALITY_ATTRIBUTION);
-    expect(output).toContain("Credits charged: 0");
   });
 
   it("posts daily forecast options to the daily endpoint", async () => {
@@ -247,6 +337,7 @@ describe("zero weather command", () => {
       lat: 51.5072,
       lng: -0.1276,
       units: "metric",
+      languageCode: "en",
       pageSize: 5,
       days: 10,
     });
@@ -285,15 +376,22 @@ describe("zero weather command", () => {
       "24",
       "--page-token",
       "history-page",
-      "--json",
     ]);
 
     expect(requestBody).toEqual({
       lat: 35.6762,
       lng: 139.6503,
       units: "metric",
+      languageCode: "en",
       pageToken: "history-page",
       hours: 24,
     });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("Hourly history");
+    expect(output).toContain("No history data returned.");
+  });
+
+  it("does not expose a language option", () => {
+    expect(zeroWeatherCommand.helpInformation()).not.toContain("--language");
   });
 });
