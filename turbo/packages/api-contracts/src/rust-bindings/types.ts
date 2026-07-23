@@ -1,9 +1,9 @@
 import type { z } from "zod";
 import {
   artifactEntrySchema,
+  legacyStorageManifestSchema,
   storageEntrySchema,
   storageMountEntrySchema,
-  storageManifestSchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
@@ -186,7 +186,7 @@ export const rustTypeBindings = [
     ],
   },
   {
-    schema: storageManifestSchema,
+    schema: legacyStorageManifestSchema,
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageManifest",
     direction: "response",

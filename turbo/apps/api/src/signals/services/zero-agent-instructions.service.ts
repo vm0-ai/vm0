@@ -1,6 +1,9 @@
 import { computed, type Computed } from "ccstate";
 import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import {
+  getInstructionsStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { getInstructionsFilename } from "@vm0/core/frameworks";
 import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
 import {
@@ -80,8 +83,8 @@ export function zeroAgentInstructions(args: {
       .where(
         and(
           eq(storages.orgId, compose.orgId),
+          eq(storages.userId, VOLUME_ORG_USER_ID),
           eq(storages.name, storageName),
-          eq(storages.type, "volume"),
         ),
       )
       .limit(1);

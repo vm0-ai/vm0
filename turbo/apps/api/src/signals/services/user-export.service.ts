@@ -400,7 +400,6 @@ async function loadStorageVolumeFiles(
         eq(storages.orgId, args.orgId),
         eq(storages.userId, VOLUME_ORG_USER_ID),
         eq(storages.name, args.storageName),
-        eq(storages.type, "volume"),
       ),
     )
     .limit(1);
@@ -582,11 +581,7 @@ async function collectMemoryFiles(
     })
     .from(storages)
     .where(
-      and(
-        eq(storages.userId, userId),
-        eq(storages.name, MEMORY_ARTIFACT_NAME),
-        eq(storages.type, "artifact"),
-      ),
+      and(eq(storages.userId, userId), eq(storages.name, MEMORY_ARTIFACT_NAME)),
     )
     .orderBy(asc(storages.orgId));
   runtime.signal.throwIfAborted();

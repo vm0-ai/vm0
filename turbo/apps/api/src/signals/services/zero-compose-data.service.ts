@@ -7,7 +7,10 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import {
+  getInstructionsStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
@@ -133,8 +136,8 @@ export const deleteComposeById$ = command(
         .where(
           and(
             eq(storages.orgId, args.orgId),
+            eq(storages.userId, VOLUME_ORG_USER_ID),
             eq(storages.name, storageName),
-            eq(storages.type, "volume"),
           ),
         )
         .limit(1);

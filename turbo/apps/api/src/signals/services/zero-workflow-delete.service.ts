@@ -51,7 +51,6 @@ export const deleteZeroWorkflow$ = command(
             eq(storages.orgId, args.orgId),
             eq(storages.userId, VOLUME_ORG_USER_ID),
             eq(storages.name, storageName),
-            eq(storages.type, "volume"),
           ),
         )
         .limit(1);

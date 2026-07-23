@@ -37,6 +37,8 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
+  type LegacyStorageManifest,
+  type StorageManifest,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
@@ -105,6 +107,18 @@ type RunnerPollBody = z.infer<(typeof runnersPollContract.poll)["body"]>;
 type RunnerRealtimeTokenBody = z.infer<
   (typeof runnerRealtimeTokenContract.create)["body"]
 >;
+
+export function expectLegacyStorageManifest(
+  manifest: StorageManifest | null | undefined,
+): LegacyStorageManifest | null | undefined {
+  if (manifest === null || manifest === undefined) {
+    return manifest;
+  }
+  if (!("storages" in manifest)) {
+    throw new Error("Expected a legacy Storage manifest");
+  }
+  return manifest;
+}
 
 interface ClerkUserProfile {
   readonly id: string;

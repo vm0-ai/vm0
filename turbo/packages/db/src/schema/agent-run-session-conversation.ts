@@ -15,8 +15,10 @@ import type {
   AgentRunAdditionalVolumes,
   AgentRunResult,
   AgentRunSecretNames,
+  AgentRunStorageMounts,
   AgentRunVars,
   AgentSessionArtifacts,
+  AgentSessionStorageMounts,
 } from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
 
 /**
@@ -56,6 +58,9 @@ export const agentRuns = pgTable(
     // Additional volumes passed at run time (name, version, mountPath for checkpoint restore)
     additionalVolumes:
       jsonb("additional_volumes").$type<AgentRunAdditionalVolumes>(),
+    // Canonical resolved mounts. additionalVolumes remains the rollback
+    // projection until the Storage expand/contract rollout completes.
+    storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
     // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
@@ -135,6 +140,9 @@ export const agentSessions = pgTable(
       .$type<AgentSessionArtifacts>()
       .notNull()
       .default([]),
+    // Canonical writeback mounts used by session continuation. artifacts is
+    // retained as a rollback projection for old API instances.
+    storageMounts: jsonb("storage_mounts").$type<AgentSessionStorageMounts>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

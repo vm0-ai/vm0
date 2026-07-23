@@ -243,7 +243,6 @@ export function listStoragesForAuth({
         and(
           eq(storages.orgId, runtimeOrg.orgId),
           eq(storages.userId, storageUserId(type, auth.userId)),
-          eq(storages.type, type),
         ),
       )
       .orderBy(desc(storages.updatedAt));
@@ -283,7 +282,6 @@ export function downloadStorageForAuth({
           eq(storages.orgId, runtimeOrg.orgId),
           eq(storages.userId, storageUserId(type, auth.userId)),
           eq(storages.name, name),
-          eq(storages.type, type),
         ),
       )
       .limit(1);

@@ -20,7 +20,10 @@ import {
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectLegacyStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -762,7 +765,9 @@ describe("RUN-04: session and checkpoint reads", () => {
       artifacts: [{ name: "bdd-out", mountPath: "/out" }],
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
-    const outArtifact = claim1.storageManifest?.artifacts.find((artifact) => {
+    const outArtifact = expectLegacyStorageManifest(
+      claim1.storageManifest,
+    )?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "bdd-out";
     });
     if (!outArtifact) {
@@ -1433,7 +1438,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       ],
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
-    expect(claim1.storageManifest?.storages).toMatchObject([
+    expect(
+      expectLegacyStorageManifest(claim1.storageManifest)?.storages,
+    ).toMatchObject([
       {
         name: "data",
         mountPath: "/data",
@@ -1441,7 +1448,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         archiveSize: refreshedVolumeArchiveSize,
       },
     ]);
-    const memory1 = claim1.storageManifest?.artifacts.find((artifact) => {
+    const memory1 = expectLegacyStorageManifest(
+      claim1.storageManifest,
+    )?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "memory";
     });
     expect(memory1).toMatchObject({
@@ -1544,10 +1553,12 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
-    expect(claim2.storageManifest?.storages).toMatchObject([
-      { name: "data", vasVersionId: volumeVersion },
-    ]);
-    const memory2 = claim2.storageManifest?.artifacts.find((artifact) => {
+    expect(
+      expectLegacyStorageManifest(claim2.storageManifest)?.storages,
+    ).toMatchObject([{ name: "data", vasVersionId: volumeVersion }]);
+    const memory2 = expectLegacyStorageManifest(
+      claim2.storageManifest,
+    )?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "memory";
     });
     expect(memory2).toMatchObject({
@@ -1615,13 +1626,15 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     const strictClaim = await api.claimRunnerJob(strictMemory.runId);
     expect(
-      strictClaim.storageManifest?.artifacts.map((artifact) => {
-        return {
-          name: artifact.vasStorageName,
-          mountPath: artifact.mountPath,
-          missingRootPolicy: artifact.missingRootPolicy,
-        };
-      }),
+      expectLegacyStorageManifest(strictClaim.storageManifest)?.artifacts.map(
+        (artifact) => {
+          return {
+            name: artifact.vasStorageName,
+            mountPath: artifact.mountPath,
+            missingRootPolicy: artifact.missingRootPolicy,
+          };
+        },
+      ),
     ).toStrictEqual([
       {
         name: "memory",
@@ -1644,13 +1657,15 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     const customClaim = await api.claimRunnerJob(customCanonical.runId);
     expect(
-      customClaim.storageManifest?.artifacts.map((artifact) => {
-        return {
-          name: artifact.vasStorageName,
-          mountPath: artifact.mountPath,
-          missingRootPolicy: artifact.missingRootPolicy,
-        };
-      }),
+      expectLegacyStorageManifest(customClaim.storageManifest)?.artifacts.map(
+        (artifact) => {
+          return {
+            name: artifact.vasStorageName,
+            mountPath: artifact.mountPath,
+            missingRootPolicy: artifact.missingRootPolicy,
+          };
+        },
+      ),
     ).toStrictEqual([
       {
         name: "custom-memory",
@@ -1681,11 +1696,11 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
-    const continuedMemory = continuedClaim.storageManifest?.artifacts.find(
-      (artifact) => {
-        return artifact.vasStorageName === "memory";
-      },
-    );
+    const continuedMemory = expectLegacyStorageManifest(
+      continuedClaim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
     expect(continuedMemory).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
       missingRootPolicy: "preserveParentVersion",

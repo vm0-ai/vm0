@@ -344,7 +344,6 @@ const downloadRegistryResourceInner$ = computed(async (get) => {
     .where(
       and(
         eq(storages.name, privateArchive.storageName),
-        eq(storages.type, "volume"),
         eq(storageVersions.id, privateArchive.versionId),
       ),
     )

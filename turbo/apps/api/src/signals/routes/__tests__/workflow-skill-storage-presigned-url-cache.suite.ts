@@ -19,7 +19,10 @@ import { mockNow, nowDate } from "../../../lib/time";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectLegacyStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "../test-workflow-skill-storage-presigned-url-cache-state";
 
@@ -261,7 +264,6 @@ async function createWorkflowSkillRunFixture(): Promise<{
     orgId: actor.orgId,
     userId: VOLUME_ORG_USER_ID,
     name: storageName,
-    type: "volume",
   });
   return {
     actor,
@@ -293,7 +295,9 @@ async function createRunAndClaimWorkflowSkill(args: {
   });
   await api.heartbeatRunner(args.runnerGroup);
   const claim = await api.claimRunnerJob(run.runId);
-  const entry = claim.storageManifest?.storages.find((storage) => {
+  const entry = expectLegacyStorageManifest(
+    claim.storageManifest,
+  )?.storages.find((storage) => {
     return storage.vasStorageName === args.storageName;
   });
   if (!entry) {

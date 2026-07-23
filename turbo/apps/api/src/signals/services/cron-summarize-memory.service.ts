@@ -1,11 +1,14 @@
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
+import {
+  MEMORY_ARTIFACT_NAME,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -92,7 +95,7 @@ async function loadMemoryStorages(
 ): Promise<MemoryStorageRow[]> {
   const filters = [
     eq(storages.name, MEMORY_ARTIFACT_NAME),
-    eq(storages.type, "artifact"),
+    ne(storages.userId, VOLUME_ORG_USER_ID),
   ];
   if (filter.orgId !== undefined) {
     filters.push(eq(storages.orgId, filter.orgId));

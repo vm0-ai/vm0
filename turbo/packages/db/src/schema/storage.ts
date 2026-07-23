@@ -16,9 +16,10 @@ import {
 /**
  * Storages table
  * Main table for storage with HEAD pointer to current version.
- * Unique constraint: (orgId, userId, name, type)
- * - Volumes use VOLUME_ORG_USER_ID ("__org__") as userId (org-level shared)
- * - Artifacts and Memory use real userId (per-user isolated)
+ * Canonical identity: (orgId, userId, name)
+ * - Org-owned storages use VOLUME_ORG_USER_ID ("__org__") as userId
+ * - User-owned storages use the real userId
+ * - type is a temporary legacy projection and is not part of identity
  */
 export const storages = pgTable(
   "storages",
@@ -42,6 +43,13 @@ export const storages = pgTable(
   (table) => {
     return {
       orgIdx: index("idx_storages_org").on(table.orgId),
+      orgUserNameIdx: uniqueIndex("idx_storages_org_user_name").on(
+        table.orgId,
+        table.userId,
+        table.name,
+      ),
+      // Keep the legacy identity index during the expand/contract rollout so
+      // older API instances can still use their four-column ON CONFLICT target.
       orgUserNameTypeIdx: uniqueIndex("idx_storages_org_user_name_type").on(
         table.orgId,
         table.userId,

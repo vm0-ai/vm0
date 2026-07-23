@@ -60,7 +60,6 @@ export async function commitMemoryVersion(
     orgId: actor.orgId,
     userId: actor.userId,
     name: MEMORY_ARTIFACT_NAME,
-    type: "artifact",
   });
   return {
     versionId: prepared.versionId,

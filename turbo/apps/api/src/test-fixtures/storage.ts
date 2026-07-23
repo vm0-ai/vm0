@@ -14,7 +14,6 @@ export async function readStorageS3PrefixFixture(values: {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-  readonly type: string;
 }): Promise<string> {
   const db = createStore().set(writeDb$);
   const [row] = await db
@@ -25,13 +24,12 @@ export async function readStorageS3PrefixFixture(values: {
         eq(storages.orgId, values.orgId),
         eq(storages.userId, values.userId),
         eq(storages.name, values.name),
-        eq(storages.type, values.type),
       ),
     )
     .limit(1);
   if (!row) {
     throw new Error(
-      `No storage row for ${values.orgId}/${values.userId}/${values.name}/${values.type}`,
+      `No storage row for ${values.orgId}/${values.userId}/${values.name}`,
     );
   }
   return row.s3Prefix;

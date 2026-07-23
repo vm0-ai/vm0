@@ -23,7 +23,6 @@ interface ExistingStorageVersion {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-  readonly type: string;
   readonly s3Prefix: string;
   readonly s3Key: string;
   readonly size: number;
@@ -114,7 +113,6 @@ function existingVersionMatchesRegistration(
     existing.orgId === SYSTEM_ORG_ID &&
     existing.userId === VOLUME_ORG_USER_ID &&
     existing.name === registration.storageName &&
-    existing.type === "volume" &&
     existing.s3Prefix === registration.s3Prefix &&
     existing.s3Key === registration.s3Key &&
     existing.size === registration.size &&
@@ -139,7 +137,6 @@ async function readExistingVersions(
       orgId: storages.orgId,
       userId: storages.userId,
       name: storages.name,
-      type: storages.type,
       s3Prefix: storages.s3Prefix,
       s3Key: storageVersions.s3Key,
       size: storageVersions.size,
@@ -250,7 +247,6 @@ async function createAndReadCanonicalStorages(
       and(
         eq(storages.orgId, SYSTEM_ORG_ID),
         eq(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.type, "volume"),
         inArray(
           storages.name,
           registrations.map((registration) => {
@@ -353,7 +349,7 @@ async function updateNewStorageHeads(
       }),
     )
     .onConflictDoUpdate({
-      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      target: [storages.orgId, storages.userId, storages.name],
       set: {
         headVersionId: sql`excluded.head_version_id`,
         size: sql`excluded.size`,

@@ -4,6 +4,7 @@ import { conversations } from "./conversation";
 import type {
   CheckpointAgentComposeSnapshot,
   CheckpointArtifactSnapshots,
+  CheckpointStorageMounts,
   CheckpointVolumeVersionsSnapshot,
 } from "@vm0/db/jsonb-contracts/checkpoint";
 
@@ -38,5 +39,8 @@ export const checkpoints = pgTable("checkpoints", {
   volumeVersionsSnapshot: jsonb(
     "volume_versions_snapshot",
   ).$type<CheckpointVolumeVersionsSnapshot>(),
+  // Canonical exact mount snapshot. The legacy artifact/volume snapshots stay
+  // populated during the rollback window.
+  storageMounts: jsonb("storage_mounts").$type<CheckpointStorageMounts>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
