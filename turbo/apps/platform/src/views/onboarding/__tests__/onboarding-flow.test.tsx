@@ -199,8 +199,7 @@ describe("onboarding flow", () => {
     await openGithubWorkflowRun();
 
     const connectorLabel = await screen.findByText("Catalog GitHub");
-    const connectorRow =
-      connectorLabel.parentElement?.parentElement?.parentElement;
+    const connectorRow = connectorLabel.parentElement?.parentElement;
     if (!connectorRow) {
       throw new Error("Expected Catalog GitHub connector row");
     }
@@ -353,7 +352,7 @@ describe("onboarding flow", () => {
     await openGithubWorkflowRun();
 
     const githubLabel = await screen.findByText("GitHub");
-    const githubRow = githubLabel.parentElement?.parentElement?.parentElement;
+    const githubRow = githubLabel.parentElement?.parentElement;
     if (!githubRow) {
       throw new Error("Expected GitHub connector row");
     }

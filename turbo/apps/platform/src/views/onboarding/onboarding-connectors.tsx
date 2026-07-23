@@ -104,15 +104,13 @@ function OnboardingConnectorRow({
         <ConnectorIcon icon={item?.icon} size={22} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <p className="min-w-0 truncate text-sm font-medium">{label}</p>
+        <p className="truncate text-sm font-medium">{label}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {variant === "workflow" ? (
-            <span className="shrink-0 text-xs font-normal text-muted-foreground">
-              {required ? "Required" : "Optional"}
+            <span className="text-muted-foreground/70">
+              {required ? "Required" : "Optional"} ·{" "}
             </span>
           ) : null}
-        </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {promptHelpText(item?.description)}
         </p>
       </div>
