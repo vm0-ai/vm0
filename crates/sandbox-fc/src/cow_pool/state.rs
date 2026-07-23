@@ -273,7 +273,9 @@ impl CowPool {
             Ok(slot) => {
                 let slot_id = slot.id().to_owned();
                 self.warm_retry_at = None;
-                if self.active {
+                self.prune_closed_waiters();
+                let retained = self.active && self.ready.len() < self.desired_pipeline_slots();
+                if retained {
                     self.ready.push_back(slot);
                 } else {
                     destroy_prepared_slot_async(slot).await;
@@ -282,6 +284,7 @@ impl CowPool {
                     id = %slot_id,
                     purpose = ?outcome.purpose,
                     elapsed_ms,
+                    retained,
                     ready = self.ready.len(),
                     pending = self.pending.len(),
                     waiters = self.waiters.len(),

@@ -195,6 +195,15 @@ pub(crate) struct PreparedCowSlot {
     drop_notify: Option<oneshot::Sender<PathBuf>>,
 }
 
+struct PreparedCowSlotCleanup {
+    id: String,
+    workspace: PathBuf,
+    cleanup: Option<SlotWorkspaceCleanup>,
+    device: Option<Box<PreparedCowDevice>>,
+    #[cfg(test)]
+    drop_notify: Option<oneshot::Sender<PathBuf>>,
+}
+
 impl PreparedCowSlot {
     pub(super) fn new(slot: PrewarmedSlot, device: PooledNbdCowDevice) -> Self {
         slot.into_prepared(PreparedCowDevice::Real(device))
@@ -284,17 +293,40 @@ impl PreparedCowSlot {
             )),
         }
     }
+
+    fn take_cleanup(&mut self) -> PreparedCowSlotCleanup {
+        PreparedCowSlotCleanup {
+            id: self.id.clone(),
+            workspace: self.workspace.clone(),
+            cleanup: self.cleanup.take(),
+            device: self.device.take(),
+            #[cfg(test)]
+            drop_notify: self.drop_notify.take(),
+        }
+    }
 }
 
 impl Drop for PreparedCowSlot {
     fn drop(&mut self) {
-        if self.device.is_some() || self.cleanup.is_some() {
+        if self.device.is_none() && self.cleanup.is_none() {
+            return;
+        }
+
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             warn!(
                 id = %self.id,
                 path = %self.workspace.display(),
-                "prepared COW slot dropped without explicit checkout or cleanup; preserving workspace"
+                "prepared COW slot dropped outside a Tokio runtime; preserving workspace"
             );
-        }
+            return;
+        };
+
+        warn!(
+            id = %self.id,
+            path = %self.workspace.display(),
+            "prepared COW slot dropped without explicit checkout or cleanup; starting cleanup"
+        );
+        drop(runtime.spawn(run_prepared_slot_cleanup(self.take_cleanup())));
     }
 }
 
@@ -366,54 +398,7 @@ pub(super) fn destroy_slot_async(slot: PrewarmedSlot) -> impl std::future::Futur
 pub(crate) fn destroy_prepared_slot_async(
     mut slot: PreparedCowSlot,
 ) -> impl std::future::Future<Output = CowCleanupOutcome> {
-    let id = slot.id.clone();
-    let workspace = slot.workspace.clone();
-    let cleanup = slot.cleanup.take();
-    let device = slot.device.take();
-    #[cfg(test)]
-    let drop_notify = slot.drop_notify.take();
-
-    let teardown = tokio::spawn(async move {
-        let outcome = match device.map(|device| *device) {
-            Some(PreparedCowDevice::Real(device)) => {
-                destroy_cow_device_with_retries(&id, device).await
-            }
-            #[cfg(test)]
-            Some(PreparedCowDevice::Test { .. }) => CowCleanupOutcome::BackingFilesSafeToDelete,
-            None => CowCleanupOutcome::BackingFilesSafeToDelete,
-        };
-
-        if outcome.backing_files_safe_to_delete() {
-            if let Some(cleanup) = cleanup {
-                let removed =
-                    tokio::task::spawn_blocking(move || cleanup.remove_best_effort()).await;
-                match removed {
-                    Ok(removed_workspace) => {
-                        #[cfg(test)]
-                        if let Some(drop_notify) = drop_notify {
-                            let _ = drop_notify.send(removed_workspace);
-                        }
-                        #[cfg(not(test))]
-                        drop(removed_workspace);
-                    }
-                    Err(error) => {
-                        warn!(
-                            id = %id,
-                            error = %error,
-                            "prepared COW slot teardown task failed"
-                        );
-                    }
-                }
-            }
-        } else {
-            warn!(
-                id = %id,
-                path = %workspace.display(),
-                "preserving prepared COW workspace after device cleanup failure"
-            );
-        }
-        outcome
-    });
+    let teardown = tokio::spawn(run_prepared_slot_cleanup(slot.take_cleanup()));
 
     async move {
         match teardown.await {
@@ -424,4 +409,51 @@ pub(crate) fn destroy_prepared_slot_async(
             }
         }
     }
+}
+
+async fn run_prepared_slot_cleanup(slot: PreparedCowSlotCleanup) -> CowCleanupOutcome {
+    let PreparedCowSlotCleanup {
+        id,
+        workspace,
+        cleanup,
+        device,
+        #[cfg(test)]
+        drop_notify,
+    } = slot;
+    let outcome = match device.map(|device| *device) {
+        Some(PreparedCowDevice::Real(device)) => destroy_cow_device_with_retries(&id, device).await,
+        #[cfg(test)]
+        Some(PreparedCowDevice::Test { .. }) => CowCleanupOutcome::BackingFilesSafeToDelete,
+        None => CowCleanupOutcome::BackingFilesSafeToDelete,
+    };
+
+    if outcome.backing_files_safe_to_delete() {
+        if let Some(cleanup) = cleanup {
+            let removed = tokio::task::spawn_blocking(move || cleanup.remove_best_effort()).await;
+            match removed {
+                Ok(removed_workspace) => {
+                    #[cfg(test)]
+                    if let Some(drop_notify) = drop_notify {
+                        let _ = drop_notify.send(removed_workspace);
+                    }
+                    #[cfg(not(test))]
+                    drop(removed_workspace);
+                }
+                Err(error) => {
+                    warn!(
+                        id = %id,
+                        error = %error,
+                        "prepared COW slot teardown task failed"
+                    );
+                }
+            }
+        }
+    } else {
+        warn!(
+            id = %id,
+            path = %workspace.display(),
+            "preserving prepared COW workspace after device cleanup failure"
+        );
+    }
+    outcome
 }

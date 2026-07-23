@@ -356,6 +356,82 @@ async fn cancelled_acquire_does_not_lose_completed_slot() {
 }
 
 #[tokio::test]
+async fn cancelled_acquire_after_delivery_cleans_transferred_slot() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (controller, spawner) = ControlledSpawner::new();
+    let mut pool =
+        test_pool_with_spawner(test_config(tmp.path()), 0, 1, 4, Duration::ZERO, spawner);
+    let (respond_to, response) = oneshot::channel();
+    pool.handle_acquire(StdInstant::now(), respond_to);
+
+    let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "delivered-before-cancel");
+    let workspace = slot.workspace().to_owned();
+    while controller.request_count() == 0 {
+        tokio::task::yield_now().await;
+    }
+    controller.take_request().send(Ok(slot)).unwrap();
+    let completion = pool.pending.join_next().await;
+    pool.handle_creation_join(completion).await;
+
+    drop(response);
+
+    assert_eq!(dropped.await.unwrap(), workspace);
+    assert!(!workspace.exists());
+    pool.cleanup().await;
+}
+
+#[tokio::test]
+async fn cancelled_burst_does_not_leave_ready_slots_above_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (controller, spawner) = ControlledSpawner::new();
+    let pool = test_pool_with_spawner(test_config(tmp.path()), 1, 3, 8, Duration::ZERO, spawner);
+    let handle = CowPoolHandle::new_for_test(pool);
+
+    let first = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+    let second = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.waiters == 2 && snapshot.pending == 3
+    })
+    .await;
+    first.abort();
+    second.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    assert!(second.await.unwrap_err().is_cancelled());
+
+    let (retained, retained_dropped) =
+        test_slot_with_drop_notify(tmp.path(), "retained-buffer-slot");
+    let retained_workspace = retained.workspace().to_owned();
+    controller.take_request().send(Ok(retained)).unwrap();
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.ready == 1 && snapshot.pending == 2 && snapshot.pipeline_slots == 3
+    })
+    .await;
+
+    for index in 0..2 {
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), &format!("surplus-{index}"));
+        let workspace = slot.workspace().to_owned();
+        controller.take_request().send(Ok(slot)).unwrap();
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+    }
+
+    wait_for_snapshot(&handle, |snapshot| {
+        snapshot.ready == 1 && snapshot.pending == 0 && snapshot.pipeline_slots == 1
+    })
+    .await;
+
+    handle.cleanup().await;
+    assert_eq!(retained_dropped.await.unwrap(), retained_workspace);
+    assert!(!retained_workspace.exists());
+}
+
+#[tokio::test]
 async fn creation_failure_fails_one_waiter_and_retries_remaining_waiter() {
     let tmp = tempfile::tempdir().unwrap();
     let (controller, spawner) = ControlledSpawner::new();
@@ -1291,14 +1367,57 @@ async fn partial_prepared_checkout_cleanup_leaves_target_for_transaction() {
 }
 
 #[tokio::test]
-async fn prepared_slot_drop_preserves_backing_workspace() {
+async fn checkout_failure_after_file_moves_leaves_target_for_transaction() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "source-cleanup-failure");
+    let source_workspace = slot.workspace().to_owned();
+    let source_cow = source_workspace.join("cow.img");
+    let source_bitmap = nbd_cow::cow::bitmap_path_for(&source_cow);
+    std::fs::write(&source_bitmap, b"bitmap").unwrap();
+    std::fs::write(source_workspace.join("unexpected"), b"entry").unwrap();
+    let target_workspace = tmp.path().join("sandbox");
+    std::fs::create_dir(&target_workspace).unwrap();
+
+    let error = match slot.checkout_to(&target_workspace) {
+        Ok(_) => panic!("checkout unexpectedly succeeded"),
+        Err(error) => error,
+    };
+    destroy_prepared_slot_async(error.into_slot()).await;
+
+    let target_cow = target_workspace.join("cow.img");
+    assert_eq!(dropped.await.unwrap(), source_workspace);
+    assert!(!source_workspace.exists());
+    assert_eq!(std::fs::read(&target_cow).unwrap(), b"cow");
+    assert_eq!(
+        std::fs::read(nbd_cow::cow::bitmap_path_for(&target_cow)).unwrap(),
+        b"bitmap"
+    );
+}
+
+#[tokio::test]
+async fn prepared_slot_drop_starts_cleanup() {
     let tmp = tempfile::tempdir().unwrap();
     let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "prepared-drop");
     let workspace = slot.workspace().to_owned();
 
     drop(slot);
 
-    assert!(dropped.await.is_err());
+    assert_eq!(dropped.await.unwrap(), workspace);
+    assert!(!workspace.exists());
+}
+
+#[test]
+fn prepared_slot_drop_without_runtime_preserves_backing_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (slot, mut dropped) = test_slot_with_drop_notify(tmp.path(), "drop-without-runtime");
+    let workspace = slot.workspace().to_owned();
+
+    drop(slot);
+
+    assert!(matches!(
+        dropped.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
     assert!(workspace.exists());
 }
 
