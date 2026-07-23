@@ -1118,7 +1118,7 @@ fn check_cancelled(cancel: &CancellationToken) -> RunnerResult<()> {
 }
 
 fn cpu_cancelled_error() -> RunnerError {
-    RunnerError::Internal(CPU_CANCELLED.into())
+    RunnerError::Cancelled
 }
 
 #[cfg(test)]
@@ -1375,7 +1375,7 @@ mod tests {
 
         cancel.cancel();
         let error = wait_for(task).await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("cancelled"));
+        assert!(matches!(error, RunnerError::Cancelled));
         wait_for(gate.wait_completed()).await;
     }
 
@@ -1427,7 +1427,7 @@ mod tests {
         wait_for(gate.wait_submitted()).await;
         cancel.cancel();
         let error = wait_for(second).await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("cancelled"));
+        assert!(matches!(error, RunnerError::Cancelled));
         assert_eq!(gate.entry_count(), 1);
 
         gate.release_one();
@@ -1455,7 +1455,7 @@ mod tests {
 
         cancel.cancel();
         let error = wait_for(task).await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("cancelled"));
+        assert!(matches!(error, RunnerError::Cancelled));
         wait_for(reader_gate.wait_completed()).await;
     }
 
