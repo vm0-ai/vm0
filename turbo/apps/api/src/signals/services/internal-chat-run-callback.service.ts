@@ -56,6 +56,10 @@ import {
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { dispatchSlackChatDeliveryOnce } from "./internal-slack-chat-run-callback.service";
+import {
+  clearCanonicalSlackThreadStatusIfIdle,
+  type CanonicalSlackThreadStatusTarget,
+} from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import {
   insertAssistantEventMessages,
@@ -402,6 +406,10 @@ interface ChatCallbackDependencies {
     callbackId: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly clearSlackThreadStatusIfIdle: (
+    target: CanonicalSlackThreadStatusTarget,
+    signal: AbortSignal,
+  ) => Promise<boolean>;
   readonly createQueuedRun?: CreateQueuedRun;
   readonly drainThreadQueue?: (
     chatThreadId: string,
@@ -2429,6 +2437,65 @@ async function maybeDrainThreadQueueForTerminalCallback(args: {
   return result.ok ? { ok: true } : { ok: false, error: result.error };
 }
 
+async function clearSlackThreadStatusAfterTerminalCallback(args: {
+  readonly chatThreadId: string;
+  readonly slackDelivery: SlackDeliveryTarget | undefined;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.slackDelivery) {
+    return;
+  }
+  await tapError(
+    args.dependencies.clearSlackThreadStatusIfIdle(
+      {
+        chatThreadId: args.chatThreadId,
+        channelId: args.slackDelivery.channelId,
+        threadTs: args.slackDelivery.threadTs,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to clear canonical Slack thread status", {
+        chatThreadId: args.chatThreadId,
+        error,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+}
+
+async function handleTerminalChatCallbackPreparationFailure(args: {
+  readonly runId: string;
+  readonly error: unknown;
+  readonly chatThreadId: string;
+  readonly slackDelivery: SlackDeliveryTarget | undefined;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly timing: ChatCallbackPreCreateTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<never> {
+  const fallbackDrain = await maybeDrainThreadQueueForTerminalCallback({
+    enabled: true,
+    chatThreadId: args.chatThreadId,
+    dependencies: args.dependencies,
+    timing: args.timing,
+    signal: args.signal,
+  });
+  if (!fallbackDrain.ok) {
+    log.error("Failed to drain thread queue after terminal callback error", {
+      runId: args.runId,
+      error: fallbackDrain.error,
+    });
+  }
+  await clearSlackThreadStatusAfterTerminalCallback({
+    chatThreadId: args.chatThreadId,
+    slackDelivery: args.slackDelivery,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
+  throw args.error;
+}
+
 async function processTerminalChatCallback(args: {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
@@ -2458,6 +2525,12 @@ async function processTerminalChatCallback(args: {
     },
   );
   if (!loaded) {
+    await clearSlackThreadStatusAfterTerminalCallback({
+      chatThreadId: args.payload.threadId,
+      slackDelivery: args.payload.slackDelivery,
+      dependencies: args.dependencies,
+      signal: args.signal,
+    });
     return;
   }
   const { run, chatThread } = loaded;
@@ -2496,20 +2569,15 @@ async function processTerminalChatCallback(args: {
   );
 
   if (!prepared.ok) {
-    const fallbackDrain = await maybeDrainThreadQueueForTerminalCallback({
-      enabled: true,
+    return await handleTerminalChatCallbackPreparationFailure({
+      runId,
+      error: prepared.error,
       chatThreadId: chatThread.chatThreadId,
+      slackDelivery: args.payload.slackDelivery,
       dependencies: args.dependencies,
       timing,
       signal: args.signal,
     });
-    if (!fallbackDrain.ok) {
-      log.error("Failed to drain thread queue after terminal callback error", {
-        runId,
-        error: fallbackDrain.error,
-      });
-    }
-    throw prepared.error;
   }
   const work = prepared.value;
 
@@ -2537,6 +2605,12 @@ async function processTerminalChatCallback(args: {
     timing,
     signal: args.signal,
   });
+  await clearSlackThreadStatusAfterTerminalCallback({
+    chatThreadId: chatThread.chatThreadId,
+    slackDelivery: args.payload.slackDelivery,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
 
   if (work.deferredSideEffects) {
     await runTerminalChatCallbackSideEffects({
@@ -2560,6 +2634,7 @@ function withoutQueuedRunDependency(
     formatRunError: dependencies.formatRunError,
     getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
     dispatchSlackDelivery: dependencies.dispatchSlackDelivery,
+    clearSlackThreadStatusIfIdle: dependencies.clearSlackThreadStatusIfIdle,
     drainThreadQueue: dependencies.drainThreadQueue,
   };
 }
@@ -2699,6 +2774,9 @@ export async function handleChatInternalCallbackWithoutCcstate(
       dispatchSlackDelivery: (callbackId, inputSignal) => {
         return dispatchSlackChatDeliveryOnce(db, callbackId, inputSignal);
       },
+      clearSlackThreadStatusIfIdle: (target, inputSignal) => {
+        return clearCanonicalSlackThreadStatusIfIdle(db, target, inputSignal);
+      },
     },
   });
 }
@@ -2736,6 +2814,9 @@ const buildChatCallbackDependencies$ = command(
       },
       dispatchSlackDelivery: (callbackId, inputSignal) => {
         return dispatchSlackChatDeliveryOnce(db, callbackId, inputSignal);
+      },
+      clearSlackThreadStatusIfIdle: (target, inputSignal) => {
+        return clearCanonicalSlackThreadStatusIfIdle(db, target, inputSignal);
       },
       drainThreadQueue: input.drainThreadQueue,
     };
