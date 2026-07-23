@@ -78,6 +78,7 @@ function OnboardingConnectorRow({
   connecting,
   loading,
   variant,
+  required,
   onConnect,
 }: {
   readonly connectorRef: ConnectorRef;
@@ -86,6 +87,7 @@ function OnboardingConnectorRow({
   readonly connecting: boolean;
   readonly loading: boolean;
   readonly variant: ConnectorSetupVariant;
+  readonly required: boolean;
   readonly onConnect: (item: PublicConnectorCatalogStatusItem) => void;
 }) {
   const label = item?.label ?? connectorRef;
@@ -102,19 +104,16 @@ function OnboardingConnectorRow({
         <ConnectorIcon icon={item?.icon} size={22} />
       </span>
       <div className="min-w-0 flex-1">
-        {variant === "workflow" ? (
-          <p className="truncate text-sm leading-5 text-muted-foreground">
-            Connect the {label} to continue the workflow
-          </p>
-        ) : (
-          <>
-            <p className="truncate text-sm font-medium">{label}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {promptHelpText(item?.description)}
-            </p>
-          </>
-        )}
+        <p className="truncate text-sm font-medium">{label}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {promptHelpText(item?.description)}
+        </p>
       </div>
+      {variant === "workflow" ? (
+        <span className="shrink-0 text-xs font-medium text-muted-foreground/70">
+          {required ? "Required" : "Optional"}
+        </span>
+      ) : null}
       {connected ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
           <IconCircleCheck size={16} aria-hidden="true" />
@@ -145,14 +144,17 @@ function OnboardingConnectorRow({
 
 export function OnboardingConnectorSetup({
   connectorIds,
+  requiredIds,
   variant = "workflow",
   children,
 }: {
   readonly connectorIds: readonly string[];
+  readonly requiredIds?: readonly string[];
   readonly variant?: ConnectorSetupVariant;
   readonly children?: ReactNode;
 }) {
   const refs = connectorRefs(connectorIds);
+  const requiredSet = new Set(connectorRefs(requiredIds ?? []));
   const pageSignal = useGet(pageSignal$);
   const connectorCatalogItemsLoadable = useLastLoadable(
     allConnectorCatalogItems$,
@@ -205,6 +207,7 @@ export function OnboardingConnectorSetup({
               connecting={connecting}
               loading={loading}
               variant={variant}
+              required={requiredSet.has(connectorRef)}
               onConnect={(connector) => {
                 launchConnectorConnect({
                   connector,

@@ -109,7 +109,10 @@ export function OnboardingWorkflowRunPage() {
           </section>
         ) : null}
 
-        <OnboardingConnectorSetup connectorIds={workflow?.connectors ?? []}>
+        <OnboardingConnectorSetup
+          connectorIds={workflow?.connectors ?? []}
+          requiredIds={workflow?.required ?? []}
+        >
           <label className="sr-only" htmlFor="workflow-note">
             {custom
               ? "Describe your workflow"
