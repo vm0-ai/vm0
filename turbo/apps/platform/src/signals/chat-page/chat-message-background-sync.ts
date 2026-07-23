@@ -45,7 +45,7 @@ function createdMessageSyncThroughMessageId(message: unknown): string | null {
   return message.data.syncThroughMessageId;
 }
 
-export const syncChatThreadMessagesToIndexedDb$ = command(
+const syncChatThreadMessagesToIndexedDb$ = command(
   async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
     const bounds = await set(loadIndexedDbChatMessageBounds$, threadId, signal);
     signal.throwIfAborted();
@@ -109,7 +109,7 @@ const handleUserChannelMessage$ = command(
   },
 );
 
-export const subscribeChatMessageBackgroundSync$ = command(
+const subscribeChatMessageBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       setAblyMessageLoop$,
