@@ -1455,6 +1455,7 @@ describe("artifacts page", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "Updated draft",
+        draftStructuredPrompt: null,
         draftAttachments: [
           {
             id: "existing-file",

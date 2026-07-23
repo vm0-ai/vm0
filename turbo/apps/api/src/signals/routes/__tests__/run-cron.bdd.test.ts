@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -451,9 +452,19 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     expect(unauthorizedDrain.status).toBe(401);
   });
 
-  it("drains a pending inbound-error email through Resend exactly once", async () => {
+  it("drains an inbound-error email once at its UTC retry boundary", async () => {
     const email = createEmailApi(context);
-    const { from, subject } = await email.triggerInboundErrorEmail();
+    const baseTime = now();
+    mockNow(baseTime);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    context.mocks.resend.send.mockResolvedValue({
+      data: null,
+      error: { message: "inline drain down" },
+    });
+    const { from, subject } = await email.enqueueInboundErrorEmail();
     await flushWaitUntilForTest();
     expect(resendSendCallsTo(from)).toBe(1);
 
@@ -463,6 +474,14 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
 
+    const beforeRetry = await email.drainEmailOutboxCron(true);
+    if (beforeRetry.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(beforeRetry.body.success).toBeTruthy();
+    expect(resendSendCallsTo(from)).toBe(0);
+
+    mockNow(baseTime + 1000);
     const drain = await email.drainEmailOutboxCron(true);
     if (drain.status !== 200) {
       throw new Error("Expected drain email outbox cron to succeed");
@@ -482,6 +501,55 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     const second = await email.drainEmailOutboxCron(true);
     if (second.status !== 200) {
       throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(resendSendCallsTo(from)).toBe(1);
+  });
+
+  it("skips an outbox row locked by the inline drain", async () => {
+    const email = createEmailApi(context);
+    const from = `bdd-locked-${randomUUID().slice(0, 12)}@example.test`;
+    const sendStarted = createDeferredPromise<void>(context.signal);
+    const releaseSend = createDeferredPromise<void>(context.signal);
+    onTestFinished(async () => {
+      if (!releaseSend.settled()) {
+        releaseSend.resolve(undefined);
+      }
+      await flushWaitUntilForTest();
+    });
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockImplementation(async (payload) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "to" in payload &&
+        payload.to === from
+      ) {
+        sendStarted.resolve(undefined);
+        await releaseSend.promise;
+      }
+      return { data: { id: "resend-bdd-locked" }, error: null };
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+
+    await email.enqueueInboundErrorEmail({ from });
+    await sendStarted.promise;
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    const concurrentDrain = await email.drainEmailOutboxCron(true);
+    if (concurrentDrain.status !== 200) {
+      throw new Error("Expected concurrent email outbox drain to succeed");
+    }
+    expect(concurrentDrain.body.success).toBeTruthy();
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    releaseSend.resolve(undefined);
+    await flushWaitUntilForTest();
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    const afterRelease = await email.drainEmailOutboxCron(true);
+    if (afterRelease.status !== 200) {
+      throw new Error("Expected final email outbox drain to succeed");
     }
     expect(resendSendCallsTo(from)).toBe(1);
   });

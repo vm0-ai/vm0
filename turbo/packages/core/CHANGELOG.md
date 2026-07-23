@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.453.3](https://github.com/vm0-ai/vm0/compare/core-v8.453.2...core-v8.453.3) (2026-07-23)
+
+
+### Bug Fixes
+
+* **platform:** expose composer connector permissions in Lab ([#22679](https://github.com/vm0-ai/vm0/issues/22679)) ([5ea1b54](https://github.com/vm0-ai/vm0/commit/5ea1b54d11b0b6daa0c2ff5f0ed910b75d83a2fe))
+
+
+### Refactoring
+
+* **memory:** retire viewer and activity runtime ([#22655](https://github.com/vm0-ai/vm0/issues/22655)) ([1f8a11f](https://github.com/vm0-ai/vm0/commit/1f8a11fadc8893e5e87a00c3d6cdf6e986afcf4f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.2
+    * @vm0/connectors bumped to 1.182.0
+
 ## [8.453.2](https://github.com/vm0-ai/vm0/compare/core-v8.453.1...core-v8.453.2) (2026-07-23)
 
 

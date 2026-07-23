@@ -51,7 +51,10 @@ import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import {
+  textToMessageDocument,
+  type EditorDocumentSnapshot,
+} from "../zero-page/user-message-document-codec.ts";
 
 export type NewChatThreadPane = "main" | "sidebar";
 
@@ -67,6 +70,7 @@ interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
   generationTemplate: GenerationTemplateRequest | undefined;
+  generationTemplateTitleSnapshot?: string;
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
   routeSearchParams?: URLSearchParams;
@@ -82,6 +86,42 @@ interface PreparedNewThreadPayload {
   attachFiles: AttachFile[] | undefined;
   attachments: PagedChatMessage["attachFiles"];
   hasTextContent: boolean;
+}
+
+function structuredPromptForNewThread(
+  enabled: boolean,
+  request: SendNewThreadMessageRequest,
+  prepared: PreparedNewThreadPayload,
+): UserMessageDocument | undefined {
+  if (!enabled) {
+    return undefined;
+  }
+  const generationTemplate = request.generationTemplate;
+  if (
+    generationTemplate &&
+    !request.editorDocument &&
+    !request.generationTemplateTitleSnapshot
+  ) {
+    throw new Error("Structured template title snapshot is required");
+  }
+  const structuredPrompt = request.editorDocument
+    ? request.editorDocument.toMessageDocument({
+        generationTemplate,
+        attachments: prepared.attachments,
+      })
+    : textToMessageDocument(
+        prepared.prompt,
+        generationTemplate && request.generationTemplateTitleSnapshot
+          ? {
+              titleSnapshot: request.generationTemplateTitleSnapshot,
+              template: generationTemplate,
+            }
+          : undefined,
+      );
+  if (!structuredPrompt) {
+    throw new Error("Failed to serialize structured prompt");
+  }
+  return structuredPrompt;
 }
 
 function createNewThreadOptimisticMessageEntry({
@@ -465,20 +505,11 @@ const sendNewThreadMessage$ = command(
     const features = get(featureSwitch$);
     const structuredPromptEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
-    const structuredPrompt =
-      structuredPromptEnabled && request.editorDocument
-        ? request.editorDocument.toMessageDocument({
-            generationTemplate,
-            attachments: prepared.attachments,
-          })
-        : undefined;
-    if (
-      structuredPromptEnabled &&
-      request.editorDocument &&
-      !structuredPrompt
-    ) {
-      throw new Error("Failed to serialize structured prompt");
-    }
+    const structuredPrompt = structuredPromptForNewThread(
+      structuredPromptEnabled,
+      request,
+      prepared,
+    );
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();

@@ -61,6 +61,7 @@ import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
+  holdChatMessageFixture,
   holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
   replaceBddVm0ApiKeys,
@@ -339,18 +340,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
+function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
     const dataset = call[0];
     const events = call[1];
     if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
       return [];
     }
-    return events.filter((event): event is Record<string, unknown> => {
-      return isRecord(event) && event.run_id === runId;
-    });
+    return events.filter(isRecord);
+  });
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEvents().filter((event) => {
+    return event.run_id === runId;
   });
 }
 
@@ -1464,10 +1469,15 @@ describe("CHAT-02: dispatch failure", () => {
     const { actor, agentId } = await entitledChatActor();
     const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    const messageId = randomUUID();
 
     const sent = await chat.requestSendMessage(
       actor,
-      { agentId, prompt: "fail before worker start" },
+      {
+        agentId,
+        prompt: "fail before worker start",
+        clientMessageId: messageId,
+      },
       [201],
     );
     if (sent.status !== 201 || sent.body.runId === null) {
@@ -1503,6 +1513,33 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected a failed lifecycle marker");
     }
     expect(failedMarker.error).toStrictEqual(expect.any(String));
+    expect(userMessages(messages.messages)).toContainEqual(
+      expect.objectContaining({
+        content: "fail before worker start",
+        revokesMessageId: messageId,
+        runId: sent.body.runId,
+      }),
+    );
+    const replay = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: sent.body.threadId,
+        prompt: "fail before worker start",
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(replay.body).toMatchObject({
+      runId: sent.body.runId,
+      threadId: sent.body.threadId,
+      status: "failed",
+    });
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: sent.body.runId }),
+    );
+    await api.requestClaimRunnerJob(true, sent.body.runId, [404]);
     expect(routeRequests()).toBe(0);
   }, 60_000);
 });
@@ -4237,7 +4274,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
 describe("CHAT-02: shared user message queue", () => {
   it("dispatches idle-thread sends by appending a run-associated replacement", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
@@ -4320,6 +4357,16 @@ describe("CHAT-02: shared user message queue", () => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return call[0] === `chatThreadMessageCreated:${sent.body.threadId}`;
         });
+      })
+      .toBe(true);
+
+    const claimedRun = await claimChatRun(runnerGroup, runId);
+    expect(claimedRun.claim.prompt).toBe("queue-first direct dispatch");
+    await expect
+      .poll(() => {
+        return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
+          "api_dispatch_claim_queue_first_message",
+        );
       })
       .toBe(true);
 
@@ -4596,7 +4643,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     // Hold the real org admission lock after the inline send has persisted its
     // queue-first row. This lets both the inline path and terminal callback
-    // drain reach run insertion before either can claim the message.
+    // drain reach the final atomic launch boundary before either can claim it.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
@@ -4689,17 +4736,12 @@ describe("CHAT-02: shared user message queue", () => {
     const candidates = runList.runs.filter((run) => {
       return run.prompt === prompt;
     });
-    expect(candidates).toHaveLength(2);
-    expect(
-      candidates.filter((run) => {
-        return ["queued", "pending", "running"].includes(run.status);
+    expect(candidates).toStrictEqual([
+      expect.objectContaining({
+        id: sent.body.runId,
+        status: expect.stringMatching(/^(queued|pending|running)$/),
       }),
-    ).toStrictEqual([expect.objectContaining({ id: sent.body.runId })]);
-    expect(
-      candidates.filter((run) => {
-        return run.id !== sent.body.runId;
-      }),
-    ).toStrictEqual([expect.objectContaining({ status: "cancelled" })]);
+    ]);
 
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
@@ -4833,6 +4875,223 @@ describe("CHAT-02: shared user message queue", () => {
 
     await cancelChatRun(actor, claimed.runId);
   }, 90_000);
+
+  it("lets recall win without deadlocking an atomic queue-first drain", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue serialization");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "recall-first queue race anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const prompt = "recall wins the atomic queue-first race";
+    const messageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    const messageQueueLock = await holdChatMessageQueueItemFixture({
+      threadId: anchor.threadId,
+      messageId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      messageQueueLock.release();
+      await Promise.all([admissionLock.done, messageQueueLock.done]);
+    });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    const recall = chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: messageId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+
+    admissionLock.release();
+    await admissionLock.done;
+    await expect
+      .poll(messageQueueLock.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(2);
+    messageQueueLock.release();
+
+    const recalled = await recall;
+    expect(recalled.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+    await messageQueueLock.done;
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(() => {
+        return sandboxOperationEvents().some((event) => {
+          return (
+            event.op_type === "api_dispatch_claim_queue_first_message" &&
+            event.queue_first_claim_result === "lost" &&
+            event.queue_first_launch_outcome === "claim_lost"
+          );
+        });
+      })
+      .toBe(true);
+
+    const messages = await chat.listThreadMessages(actor, anchor.threadId);
+    expect(userMessages(messages.messages)).toContainEqual(
+      expect.objectContaining({
+        content: null,
+        revokesMessageId: messageId,
+      }),
+    );
+    expect(
+      userMessages(messages.messages).filter((message) => {
+        return message.revokesMessageId === messageId && message.runId;
+      }),
+    ).toHaveLength(0);
+
+    const runList = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runList.runs.filter((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toHaveLength(0);
+  }, 90_000);
+
+  it("does not publish a queued auto-send after thread deletion wins", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "thread deletion after queue-first launch anchor",
+    });
+    await claimChatRun(runnerGroup, anchor.runId);
+    const messageId = randomUUID();
+    const prompt = "queued auto-send deleted before its marker";
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const blocker = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold org concurrency during thread deletion",
+    });
+
+    // Force the auto-send onto the org queue, then pause its post-commit queue
+    // signal before the marker transaction begins. Cancelling the anchor emits
+    // the first queue signal; the queued launch emits the second.
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const queuePublishStarted = createDeferredPromise<void>(context.signal);
+    const releaseQueuePublish = createDeferredPromise<void>(context.signal);
+    let queueChangedPublishes = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        queueChangedPublishes++;
+        if (queueChangedPublishes === 2) {
+          queuePublishStarted.resolve(undefined);
+          return releaseQueuePublish.promise;
+        }
+      }
+      return Promise.resolve(undefined);
+    });
+    onTestFinished(() => {
+      if (!releaseQueuePublish.settled()) {
+        releaseQueuePublish.resolve(undefined);
+      }
+    });
+
+    await cancelChatRun(actor, anchor.runId);
+    await queuePublishStarted.promise;
+
+    const runList = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    const autoRun = runList.runs.find((run) => {
+      return run.prompt === prompt;
+    });
+    expect(autoRun).toMatchObject({ status: "queued" });
+    if (!autoRun) {
+      throw new Error("Expected the committed queued auto-send run");
+    }
+
+    // Hold a child message row so deletion owns the thread lock while the
+    // post-commit marker reaches that exact parent/child race.
+    const messageLock = await holdChatMessageFixture({
+      threadId: anchor.threadId,
+      messageId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      messageLock.release();
+      await messageLock.done;
+    });
+    const deletion = chat.deleteThread(actor, anchor.threadId);
+    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+
+    context.mocks.ably.publish.mockClear();
+    releaseQueuePublish.resolve(undefined);
+    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    messageLock.release();
+
+    await Promise.all([messageLock.done, deletion]);
+    await flushWaitUntilForTest();
+    expect(
+      apiDispatchActionTypes(apiDispatchTimingEventsForRun(autoRun.id)),
+    ).not.toContain(
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+    );
+    const publishedTopics = context.mocks.ably.publish.mock.calls.map(
+      ([topic]) => {
+        return topic;
+      },
+    );
+    expect(publishedTopics).not.toContain(
+      `chatThreadMessageCreated:${anchor.threadId}`,
+    );
+    expect(publishedTopics).not.toContain(
+      `chatThreadRunCreated:${anchor.threadId}`,
+    );
+    await waitForRunStatus(actor, autoRun.id, "cancelled");
+    await chat.requestReadThread(actor, anchor.threadId, [404]);
+    await cancelChatRun(actor, blocker.runId);
+  });
 
   it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

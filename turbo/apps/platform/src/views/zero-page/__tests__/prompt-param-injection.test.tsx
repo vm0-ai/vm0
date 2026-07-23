@@ -6,6 +6,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -89,7 +90,10 @@ describe("prompt query parameter injection", () => {
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
-      expect(structuredPrompt).toBeUndefined();
+      expect(structuredPrompt).toStrictEqual({
+        version: 1,
+        parts: [{ type: "text", text: "Build a launch recap" }],
+      });
       expect(createdThreadModel).toBe("deepseek-v4-pro");
     });
   });
@@ -168,6 +172,7 @@ describe("prompt query parameter injection", () => {
     expect(presentationTemplate).toBeDefined();
 
     let runPrompt: string | undefined;
+    let structuredPrompt: UserMessageDocument | undefined;
     let selection:
       | {
           templateId: string;
@@ -178,6 +183,7 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        structuredPrompt = body.structuredPrompt;
         selection =
           body.generationTemplate?.type === "presentation"
             ? body.generationTemplate.selection
@@ -188,6 +194,7 @@ describe("prompt query parameter injection", () => {
     detachedSetupPage({
       context,
       path: "/prompt?prompt=Make%20a%20launch%20deck&template=presentation-template%3Aplayful-launch-presentation",
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -197,6 +204,20 @@ describe("prompt query parameter injection", () => {
         colorSystemId: presentationTemplate?.colorSystemId,
         templateId: presentationTemplate?.templateId,
         previewUrl: presentationTemplate?.embedUrl,
+      });
+      expect(structuredPrompt).toStrictEqual({
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: presentationTemplate?.title,
+            template: {
+              type: "presentation",
+              selection,
+            },
+          },
+          { type: "text", text: "Make a launch deck" },
+        ],
       });
     });
   });

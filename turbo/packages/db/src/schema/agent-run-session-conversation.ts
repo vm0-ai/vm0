@@ -55,11 +55,10 @@ export const agentRuns = pgTable(
     vars: jsonb("vars").$type<AgentRunVars>(),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<AgentRunSecretNames>(),
-    // Additional volumes passed at run time (name, version, mountPath for checkpoint restore)
+    // Historical additional-volume projection retained for legacy row reads.
     additionalVolumes:
       jsonb("additional_volumes").$type<AgentRunAdditionalVolumes>(),
-    // Canonical resolved mounts. additionalVolumes remains the rollback
-    // projection until the Storage expand/contract rollout completes.
+    // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
@@ -140,8 +139,8 @@ export const agentSessions = pgTable(
       .$type<AgentSessionArtifacts>()
       .notNull()
       .default([]),
-    // Canonical writeback mounts used by session continuation. artifacts is
-    // retained as a rollback projection for old API instances.
+    // Canonical writeback mounts used by session continuation. artifacts
+    // contains only historical rollback data; new writers leave it empty.
     storageMounts: jsonb("storage_mounts").$type<AgentSessionStorageMounts>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

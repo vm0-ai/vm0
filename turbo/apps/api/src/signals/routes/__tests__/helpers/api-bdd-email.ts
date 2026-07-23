@@ -56,39 +56,31 @@ export function createEmailApi(context: TestContext) {
     );
   }
 
+  async function enqueueInboundErrorEmail(
+    opts: { readonly from?: string; readonly subject?: string } = {},
+  ): Promise<{ readonly from: string; readonly subject: string }> {
+    const from =
+      opts.from ?? `bdd-sender-${randomUUID().slice(0, 12)}@example.test`;
+    const subject = opts.subject ?? `BDD drain ${randomUUID().slice(0, 8)}`;
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+    await postResendInboundWebhook(
+      {
+        type: "email.received",
+        data: {
+          email_id: `em_${randomUUID()}`,
+          to: ["bdd-org@mail.example.com"],
+          from,
+          subject,
+        },
+      },
+      [200],
+    );
+    return { from, subject };
+  }
+
   return {
     postResendInboundWebhook,
-
-    /**
-     * Induce a pending email outbox row through public state only: an inbound
-     * email from a sender with no vm0 account makes the inbound webhook enqueue
-     * an inbound-error reply, and a rejecting Resend mock rolls back the inline
-     * drain so the row stays pending for the drain cron.
-     */
-    async triggerInboundErrorEmail(
-      opts: { readonly from?: string; readonly subject?: string } = {},
-    ): Promise<{ readonly from: string; readonly subject: string }> {
-      const from =
-        opts.from ?? `bdd-sender-${randomUUID().slice(0, 12)}@example.test`;
-      const subject = opts.subject ?? `BDD drain ${randomUUID().slice(0, 8)}`;
-      context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
-      context.mocks.resend.send.mockRejectedValue(
-        new Error("inline drain down"),
-      );
-      await postResendInboundWebhook(
-        {
-          type: "email.received",
-          data: {
-            email_id: `em_${randomUUID()}`,
-            to: ["bdd-org@mail.example.com"],
-            from,
-            subject,
-          },
-        },
-        [200],
-      );
-      return { from, subject };
-    },
+    enqueueInboundErrorEmail,
 
     async suppressEmailAddress(address: string): Promise<void> {
       await postResendInboundWebhook(

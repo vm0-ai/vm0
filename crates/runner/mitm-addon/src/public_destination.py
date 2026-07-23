@@ -1,4 +1,36 @@
-"""Public destination address classification for firewall host policies."""
+"""Classify public destination addresses for credential-bearing firewall traffic.
+
+"Public" is this repository's explicit native public-unicast policy, not a
+guarantee that an address is reachable from a particular network. IPv4 follows
+the globally reachable distinctions in the IANA IPv4 Special-Purpose Address
+Registry, together with the non-unicast address space. IPv6 is deliberately
+limited to native global unicast in ``2000::/3`` and excludes mapped, scoped,
+Teredo, 6to4, documentation, and other special-purpose forms. The normally
+non-global ``2001::/23`` block admits only its more-specific globally reachable
+allocations.
+
+The explicit tables are intentional. Supported Python ``ipaddress`` versions
+can lag registry updates, and ``is_global`` also admits transition forms outside
+this policy. Authoritative sources:
+
+- https://www.iana.org/assignments/iana-ipv4-special-registry/
+- https://www.iana.org/assignments/iana-ipv6-special-registry/
+- https://www.iana.org/assignments/ipv6-unicast-address-assignments/
+- https://www.rfc-editor.org/rfc/rfc4291.html
+
+``builtin_host_policy.py`` rejects unsafe configured or observed literals.
+``request_classification.py`` validates concrete request destinations before
+credentials are used; it may defer an ordinary hostname during header
+processing, but request processing must later validate concrete endpoint
+evidence. ``auth_base_forwarder.py`` validates every resolved address before
+connecting. A hostname classification is therefore a deferral, never proof
+that its eventual address is public.
+
+The same range policy is implemented in ``firewall-types.ts`` for connector
+base validation. Range changes must update both implementations and the
+boundary matrices in ``test_public_destination.py`` and
+``firewall-expander.test.ts`` together.
+"""
 
 import ipaddress
 from dataclasses import dataclass
@@ -9,6 +41,9 @@ from host_normalization import (
     translate_idna_dot_separators,
 )
 
+# Native IPv4 addresses that are not public unicast, coalesced from the IANA
+# special-purpose registry and non-unicast space. The public 192.0.0.9 and
+# 192.0.0.10 exceptions remain outside the blocked subranges.
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
     (0x0A000000, 0x0AFFFFFF),
@@ -28,12 +63,19 @@ _IPV4_NON_PUBLIC_RANGES = (
 )
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
+# Native IPv6 public unicast is limited to 2000::/3. Special-purpose allocations
+# inside that block are handled by the exception and exclusion constants below.
 _IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
 _IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
 _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
 _IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX = 0x01FF
 _IPV6_DOCUMENTATION_SECOND = 0x0DB8
 _IPV6_6TO4_FIRST = 0x2002
+# These are the globally reachable allocations nested inside the otherwise
+# non-global 2001::/23 IETF Protocol Assignments block:
+# - exact PCP, TURN, and DNS-SD anycast addresses 2001:1::1, 2001:1::2, and 2001:1::3;
+# - 2001:3::/32 (AMT) and 2001:4:112::/48 (AS112-v6);
+# - 2001:20::/28 (ORCHIDv2) and 2001:30::/28 (Drone Remote ID).
 _IPV6_SPECIAL_EXACT_SECOND = 0x0001
 _IPV6_SPECIAL_EXACT_LAST_MIN = 0x0001
 _IPV6_SPECIAL_EXACT_LAST_MAX = 0x0003
@@ -47,6 +89,10 @@ _IPV6_DRONE_REMOTE_ID_SECOND_MAX = 0x003F
 _IPV6_EXPANDED_DOCUMENTATION_FIRST = 0x3FFF
 _IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX = 0x0FFF
 
+# Reasons produced when a concrete runtime destination cannot be approved:
+# `missing_destination` means no usable destination evidence was supplied;
+# `invalid_destination` means the evidence is not accepted concrete IP-literal
+# syntax; `non_public_destination` means a valid address was rejected by policy.
 DestinationDenialReason = Literal[
     "missing_destination",
     "invalid_destination",
@@ -56,13 +102,39 @@ DestinationDenialReason = Literal[
 
 @dataclass(frozen=True)
 class RuntimeDestinationCheck:
+    """Result produced by ``validate_runtime_destination_host()``.
+
+    Validator-produced results have ``allowed=True`` exactly when ``reason`` is
+    ``None``; denied results carry a ``DestinationDenialReason``. The dataclass
+    constructor itself does not enforce that correlation.
+
+    ``destination_host`` is diagnostic context, not a trusted or canonical
+    authority. It preserves a supplied non-empty string, while non-string or
+    whitespace-only missing input is represented as an empty string.
+    """
+
     allowed: bool
     destination_host: str
     reason: DestinationDenialReason | None = None
 
 
 def public_ip_literal_is_public(hostname: str) -> bool | None:
-    """Return public-IP status for IP-like/malformed input, or None for ordinary hostnames."""
+    """Classify exact host text as a public literal, rejected input, or hostname.
+
+    Return ``True`` for an accepted public IPv4 or IPv6 literal. IPv6 may be
+    unbracketed or enclosed by one matching bracket pair; bracketed IPv4 is
+    rejected.
+
+    Return ``False`` for non-public literals and for text that must not be
+    deferred as a hostname, including empty or whitespace-altered input,
+    malformed brackets, scoped input, legacy numeric IPv4 forms, and invalid
+    IDNA host syntax.
+
+    Return ``None`` only for an ordinary valid hostname. This means that no
+    concrete address was classified; callers must validate the eventual
+    endpoint rather than treating ``None`` as approval.
+    """
+
     ip_text = hostname.strip()
     if not ip_text or ip_text != hostname:
         return False
@@ -93,6 +165,20 @@ def public_ip_literal_is_public(hostname: str) -> bool | None:
 
 
 def validate_runtime_destination_host(destination_host: object) -> RuntimeDestinationCheck:
+    """Require concrete runtime destination evidence to be a public IP literal.
+
+    Non-string, empty, and whitespace-only values produce
+    ``missing_destination``. Surrounding whitespace, ordinary hostnames,
+    malformed literals, and invalid bracket forms produce
+    ``invalid_destination``. Valid but disallowed addresses produce
+    ``non_public_destination``. Only a valid public IPv4 literal or an
+    unbracketed/bracketed public IPv6 literal produces an allowed result.
+
+    The ``object`` input is intentional: absent or malformed endpoint evidence
+    is denied instead of requiring callers to narrow it first. See
+    ``RuntimeDestinationCheck`` for the diagnostic host-field contract.
+    """
+
     if not isinstance(destination_host, str):
         return RuntimeDestinationCheck(
             allowed=False,
@@ -157,6 +243,12 @@ def validate_runtime_destination_host(destination_host: object) -> RuntimeDestin
 
 
 def ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Apply the shared public-unicast policy to an already-parsed address.
+
+    This function performs no hostname classification, text normalization, or
+    DNS resolution.
+    """
+
     return _ip_address_is_public(ip)
 
 

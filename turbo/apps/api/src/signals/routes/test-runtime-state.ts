@@ -38,6 +38,10 @@ import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import { createDeferredPromise, onRejection } from "../utils";
 import {
+  projectLegacyCheckpointStorage,
+  projectLegacyWritebackArtifacts,
+} from "../services/storage-legacy-projection.service";
+import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
@@ -275,6 +279,125 @@ async function removeRunCanonicalStorageState(
   signal.throwIfAborted();
 }
 
+async function removeSessionCanonicalStorageState(
+  db: Db,
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [session] = await db
+    .select({
+      artifacts: agentSessions.artifacts,
+      storageMounts: agentSessions.storageMounts,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!session) {
+    throw new Error("Agent session not found");
+  }
+  await db
+    .update(agentSessions)
+    .set({
+      artifacts:
+        session.storageMounts === null
+          ? session.artifacts
+          : [...projectLegacyWritebackArtifacts(session.storageMounts)],
+      storageMounts: null,
+    })
+    .where(eq(agentSessions.id, sessionId));
+  signal.throwIfAborted();
+}
+
+async function removeCheckpointCanonicalStorageState(
+  db: Db,
+  checkpointId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [checkpoint] = await db
+    .select({
+      storageMounts: checkpoints.storageMounts,
+    })
+    .from(checkpoints)
+    .where(eq(checkpoints.id, checkpointId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!checkpoint) {
+    throw new Error("Checkpoint not found");
+  }
+  const legacy =
+    checkpoint.storageMounts === null
+      ? null
+      : projectLegacyCheckpointStorage(checkpoint.storageMounts);
+  await db
+    .update(checkpoints)
+    .set({
+      ...(legacy === null
+        ? {}
+        : {
+            artifactSnapshots: legacy.artifactSnapshots
+              ? [...legacy.artifactSnapshots]
+              : null,
+            volumeVersionsSnapshot: legacy.volumeVersionsSnapshot,
+          }),
+      storageMounts: null,
+    })
+    .where(eq(checkpoints.id, checkpointId));
+  signal.throwIfAborted();
+}
+
+async function readStoragePersistenceState(
+  db: Db,
+  ids: {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly checkpointId: string;
+  },
+  signal: AbortSignal,
+) {
+  const [[run], [session], [checkpoint]] = await Promise.all([
+    db
+      .select({
+        additionalVolumes: agentRuns.additionalVolumes,
+        storageMounts: agentRuns.storageMounts,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, ids.runId))
+      .limit(1),
+    db
+      .select({
+        artifacts: agentSessions.artifacts,
+        storageMounts: agentSessions.storageMounts,
+      })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, ids.sessionId))
+      .limit(1),
+    db
+      .select({
+        artifactSnapshots: checkpoints.artifactSnapshots,
+        volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+        storageMounts: checkpoints.storageMounts,
+      })
+      .from(checkpoints)
+      .where(eq(checkpoints.id, ids.checkpointId))
+      .limit(1),
+  ]);
+  signal.throwIfAborted();
+  if (!run || !session || !checkpoint) {
+    throw new Error("Storage persistence row not found");
+  }
+  return {
+    run_canonical: run.storageMounts !== null,
+    run_legacy: (run.additionalVolumes?.length ?? 0) > 0,
+    session_canonical: session.storageMounts !== null,
+    session_legacy: session.artifacts.length > 0,
+    checkpoint_canonical: checkpoint.storageMounts !== null,
+    checkpoint_legacy_artifacts:
+      (checkpoint.artifactSnapshots?.length ?? 0) > 0,
+    checkpoint_legacy_volumes: checkpoint.volumeVersionsSnapshot !== null,
+  };
+}
+
 type StorageStateAction = Extract<
   TestRuntimeStateActionBody,
   {
@@ -285,6 +408,29 @@ type StorageStateAction = Extract<
       | "delete-storage-row";
   }
 >;
+
+type ReadStorageStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-storage-persistence-state" }
+>;
+type AnyStorageStateAction = StorageStateAction | ReadStorageStateAction;
+
+function isStorageStateAction(
+  body: TestRuntimeStateActionBody,
+): body is AnyStorageStateAction {
+  switch (body.action) {
+    case "remove-run-canonical-storage-state":
+    case "remove-session-canonical-storage-state":
+    case "remove-checkpoint-canonical-storage-state":
+    case "delete-storage-row":
+    case "read-storage-persistence-state": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
 
 async function mutateStorageState(
   db: Db,
@@ -297,17 +443,15 @@ async function mutateStorageState(
       return;
     }
     case "remove-session-canonical-storage-state": {
-      await db
-        .update(agentSessions)
-        .set({ storageMounts: null })
-        .where(eq(agentSessions.id, body.session_id));
+      await removeSessionCanonicalStorageState(db, body.session_id, signal);
       break;
     }
     case "remove-checkpoint-canonical-storage-state": {
-      await db
-        .update(checkpoints)
-        .set({ storageMounts: null })
-        .where(eq(checkpoints.id, body.checkpoint_id));
+      await removeCheckpointCanonicalStorageState(
+        db,
+        body.checkpoint_id,
+        signal,
+      );
       break;
     }
     case "delete-storage-row": {
@@ -316,6 +460,32 @@ async function mutateStorageState(
     }
   }
   signal.throwIfAborted();
+}
+
+async function storageStateActionResponse(
+  db: Db,
+  body: AnyStorageStateAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "read-storage-persistence-state") {
+    return {
+      status: 200 as const,
+      body: {
+        ok: true as const,
+        storage_persistence: await readStoragePersistenceState(
+          db,
+          {
+            runId: body.run_id,
+            sessionId: body.session_id,
+            checkpointId: body.checkpoint_id,
+          },
+          signal,
+        ),
+      },
+    };
+  }
+  await mutateStorageState(db, body, signal);
+  return { status: 200 as const, body: { ok: true as const } };
 }
 
 const postRuntimeStateAction$ = command(
@@ -332,6 +502,9 @@ const postRuntimeStateAction$ = command(
 
     const body = bodyResult.data;
     const db = set(writeDb$);
+    if (isStorageStateAction(body)) {
+      return await storageStateActionResponse(db, body, signal);
+    }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {
         return {
@@ -385,13 +558,6 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "remove-run-canonical-storage-state":
-      case "remove-session-canonical-storage-state":
-      case "remove-checkpoint-canonical-storage-state":
-      case "delete-storage-row": {
-        await mutateStorageState(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "replace-custom-connector-prefixes": {

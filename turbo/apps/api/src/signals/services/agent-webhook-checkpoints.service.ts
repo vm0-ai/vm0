@@ -8,7 +8,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
-import type { ContextArtifact, PersistedStorageMount } from "@vm0/db/types";
+import type { PersistedStorageMount } from "@vm0/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -43,20 +43,8 @@ interface AgentComposeSnapshot {
   readonly secretNames?: readonly string[];
 }
 
-interface AdditionalVolumeSnapshot {
-  readonly name: string;
-  readonly versionId: string;
-  readonly mountPath: string;
-}
-
-interface EnrichedVolumeVersionsSnapshot {
-  readonly versions: Record<string, string>;
-  readonly additionalVolumes?: readonly AdditionalVolumeSnapshot[];
-}
-
 interface CheckpointRunContext {
   readonly agentComposeVersionId: string | null;
-  readonly additionalVolumes: typeof agentRuns.$inferSelect.additionalVolumes;
   readonly storageMounts: typeof agentRuns.$inferSelect.storageMounts;
   readonly secretNames: readonly string[] | null;
   readonly sessionId: string;
@@ -93,25 +81,6 @@ function recordOfStringsOrUndefined(
   }
 
   return result;
-}
-
-function artifactSnapshotsForDb(args: {
-  readonly snapshots: CheckpointCreateBody["artifactSnapshots"];
-}): ContextArtifact[] | null {
-  if (!args.snapshots || args.snapshots.length === 0) {
-    return null;
-  }
-
-  return args.snapshots.map((snapshot) => {
-    return {
-      name: snapshot.name,
-      version: snapshot.version,
-      mountPath: snapshot.mountPath,
-      ...(snapshot.missingRootPolicy
-        ? { missingRootPolicy: snapshot.missingRootPolicy }
-        : {}),
-    };
-  });
 }
 
 function responseArtifacts(
@@ -160,40 +129,6 @@ function checkpointStorageMounts(args: {
   });
 }
 
-function enrichVolumeSnapshot(args: {
-  readonly request: CheckpointCreateBody["volumeVersionsSnapshot"];
-  readonly additionalVolumes:
-    | readonly {
-        readonly name: string;
-        readonly version?: string;
-        readonly mountPath: string;
-      }[]
-    | null;
-}): EnrichedVolumeVersionsSnapshot | null {
-  const request = args.request;
-  if (!request) {
-    return null;
-  }
-
-  const additionalVolumes =
-    args.additionalVolumes && args.additionalVolumes.length > 0
-      ? args.additionalVolumes.map((volume): AdditionalVolumeSnapshot => {
-          const versionId =
-            request.versions[volume.name] ?? volume.version ?? "latest";
-          return {
-            name: volume.name,
-            versionId,
-            mountPath: volume.mountPath,
-          };
-        })
-      : undefined;
-
-  return {
-    versions: request.versions,
-    ...(additionalVolumes ? { additionalVolumes } : {}),
-  };
-}
-
 async function loadCheckpointRunContext(
   db: Db,
   input: CheckpointAuthInput<CheckpointCreateBody>,
@@ -201,7 +136,6 @@ async function loadCheckpointRunContext(
   const [run] = await db
     .select({
       agentComposeVersionId: agentRuns.agentComposeVersionId,
-      additionalVolumes: agentRuns.additionalVolumes,
       storageMounts: agentRuns.storageMounts,
       secretNames: agentRuns.secretNames,
       sessionId: agentRuns.sessionId,
@@ -469,13 +403,6 @@ export const createAgentCheckpoint$ = command(
       ...(vars ? { vars } : {}),
       ...(run.secretNames ? { secretNames: run.secretNames } : {}),
     };
-    const artifactSnapshots = artifactSnapshotsForDb({
-      snapshots: input.body.artifactSnapshots,
-    });
-    const volumeVersionsSnapshot = enrichVolumeSnapshot({
-      request: input.body.volumeVersionsSnapshot,
-      additionalVolumes: run.additionalVolumes,
-    });
     const storageMounts = checkpointStorageMounts({
       runStorageMounts: run.storageMounts,
       artifactSnapshots: input.body.artifactSnapshots,
@@ -484,8 +411,6 @@ export const createAgentCheckpoint$ = command(
     const checkpointFields = {
       conversationId: conversation.id,
       agentComposeSnapshot,
-      artifactSnapshots,
-      volumeVersionsSnapshot,
       storageMounts,
     };
     const [checkpoint] = await db
