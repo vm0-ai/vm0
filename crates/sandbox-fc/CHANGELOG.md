@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.148](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.147...sandbox-fc-v0.37.148) (2026-07-23)
+
+
+### Performance Improvements
+
+* **runner:** preconnect one-shot nbd cow slots ([#22683](https://github.com/vm0-ai/vm0/issues/22683)) ([1d02f4a](https://github.com/vm0-ai/vm0/commit/1d02f4a9e5df3d981da9fbf99606bd10d31b1a16))
+
 ## [0.37.147](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.146...sandbox-fc-v0.37.147) (2026-07-23)
 
 ## [0.37.146](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.145...sandbox-fc-v0.37.146) (2026-07-23)
