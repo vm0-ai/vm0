@@ -9,7 +9,7 @@ host runtime that page uses.
 
 Zero Computer Use supports macOS 14+ (macOS 14 or newer). Packaged app
 metadata, native helper builds, and release verification all use the same
-minimum for Apple Silicon artifacts and future Intel artifacts.
+minimum for Apple silicon artifacts. Intel Macs are not supported.
 
 When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It

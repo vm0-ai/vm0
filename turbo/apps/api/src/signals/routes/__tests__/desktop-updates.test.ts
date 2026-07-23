@@ -74,6 +74,20 @@ function darwinArm64Release(version: string, url: string) {
   };
 }
 
+function legacyDarwinX64Release(version: string, url: string) {
+  return {
+    version,
+    name: `Zero Computer Use ${version}`,
+    notes: `Release ${version}`,
+    pubDate: "2026-06-08T00:00:00.000Z",
+    platforms: {
+      darwin: {
+        x64: { url },
+      },
+    },
+  };
+}
+
 describe("desktop update routes", () => {
   let testIndex = 0;
 
@@ -159,6 +173,40 @@ describe("desktop update routes", () => {
         },
       ],
     });
+  });
+
+  it("rejects the retired macOS x64 update feed", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-x64-0.2.1.zip";
+    mockDesktopUpdateManifest(
+      stableManifest("0.2.1", {
+        "0.2.1": legacyDarwinX64Release("0.2.1", zipUrl),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/desktop/updates/stable/darwin/x64/RELEASES.json",
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Location")).toBeNull();
+  });
+
+  it("rejects the retired macOS x64 dmg download", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-x64-0.12.0.zip";
+    mockDesktopUpdateManifest(
+      stableManifest("0.12.0", {
+        "0.12.0": legacyDarwinX64Release("0.12.0", zipUrl),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/x64/dmg",
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Location")).toBeNull();
   });
 
   it("does not return a blocked latest release", async () => {
