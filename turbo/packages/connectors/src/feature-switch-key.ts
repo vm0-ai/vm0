@@ -42,7 +42,6 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   CanonicalSlackIngress = "canonicalSlackIngress",
   CanonicalSlackWebVisibility = "canonicalSlackWebVisibility",
-  ZeroWebSearch = "zeroWebSearch",
   ZeroWeather = "zeroWeather",
   Banking = "banking",
   Lab = "lab",
