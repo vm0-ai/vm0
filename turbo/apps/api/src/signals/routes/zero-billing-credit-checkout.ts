@@ -11,7 +11,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import {
-  activeCustomCreditPriceId,
+  activeCustomCreditUnitPriceId,
   createCreditCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
@@ -62,7 +62,7 @@ const creditCheckoutAuthed$ = command(
       );
     }
 
-    if (!activeCustomCreditPriceId()) {
+    if (!activeCustomCreditUnitPriceId()) {
       return badRequestMessage("Custom credit price not configured");
     }
 
