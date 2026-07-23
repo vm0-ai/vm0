@@ -33,6 +33,12 @@ pub(crate) enum ProcessContainmentCleanupMode {
     Forced,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ProcessContainmentMode {
+    BuildConfigured,
+    TestNoop,
+}
+
 enum ContainmentBackend {
     Cgroup(CgroupGuard),
     TestNoop,
@@ -72,11 +78,11 @@ impl ProcessContainmentError {
 }
 
 impl ExecProcessContainment {
-    pub(crate) fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
-        // Host-side debug integration tests have no guest cgroup hierarchy.
-        // A real guest, including a debug build, gets the hierarchy from
-        // guest-init before vsock-guest starts and therefore uses cgroups.
-        if use_test_noop_backend() {
+    pub(crate) fn create(
+        sequence: u32,
+        mode: ProcessContainmentMode,
+    ) -> Result<Self, ProcessContainmentError> {
+        if use_test_noop_backend(mode) {
             return Ok(Self {
                 backend: ContainmentBackend::TestNoop,
             });
@@ -113,19 +119,20 @@ impl ExecProcessContainment {
     }
 }
 
-pub(crate) fn verify_exec_process_containment_empty() -> Result<(), ProcessContainmentError> {
-    if use_test_noop_backend() {
+pub(crate) fn verify_exec_process_containment_empty(
+    mode: ProcessContainmentMode,
+) -> Result<(), ProcessContainmentError> {
+    if use_test_noop_backend(mode) {
         return Ok(());
     }
     verify_exec_process_containment_empty_in(Path::new(EXEC_CGROUP_BASE_PATH))
 }
 
-fn use_test_noop_backend() -> bool {
-    // Library unit tests do not own the guest cgroup hierarchy. Controlled
-    // containment tests exercise real behavior through caller-provided paths.
-    cfg!(test)
-        || cfg!(feature = "test-support")
-        || (cfg!(debug_assertions) && !Path::new(EXEC_CGROUP_BASE_PATH).is_dir())
+fn use_test_noop_backend(mode: ProcessContainmentMode) -> bool {
+    // Host-side connection tests pass TestNoop explicitly, while library unit
+    // tests and downstream test-support builds select it at compile time.
+    // Controlled containment tests exercise real behavior through paths they own.
+    matches!(mode, ProcessContainmentMode::TestNoop) || cfg!(test) || cfg!(feature = "test-support")
 }
 
 fn verify_exec_process_containment_empty_in(

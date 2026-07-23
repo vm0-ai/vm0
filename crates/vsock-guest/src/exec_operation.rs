@@ -21,6 +21,7 @@ use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::process_containment::{
     ExecProcessContainment, ProcessContainmentCleanupMode, ProcessContainmentError,
+    ProcessContainmentMode,
 };
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
@@ -170,12 +171,14 @@ pub(crate) struct ExecOperationWorkerRequest {
     control: ExecControlPolicy,
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
+    process_containment_mode: ProcessContainmentMode,
 }
 
 impl ExecOperationWorkerRequest {
     pub(crate) fn from_decoded(
         seq: u32,
         decoded: vsock_proto::DecodedExecStart<'_>,
+        process_containment_mode: ProcessContainmentMode,
     ) -> io::Result<Self> {
         let lifecycle = match decoded.lifecycle {
             ExecLifecyclePolicy::OneShot => ExecOperationLifecycle::OneShot,
@@ -229,6 +232,7 @@ impl ExecOperationWorkerRequest {
             control: decoded.control,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            process_containment_mode,
         })
     }
 
@@ -878,15 +882,16 @@ fn run_exec_operation_worker<S>(
     } else {
         env_refs.as_slice()
     };
-    let process_containment = match ExecProcessContainment::create(request.seq) {
-        Ok(process_containment) => process_containment,
-        Err(error) => {
-            completion.start_failed(&format!(
-                "Failed to initialize exec process containment: {error}"
-            ));
-            return;
-        }
-    };
+    let process_containment =
+        match ExecProcessContainment::create(request.seq, request.process_containment_mode) {
+            Ok(process_containment) => process_containment,
+            Err(error) => {
+                completion.start_failed(&format!(
+                    "Failed to initialize exec process containment: {error}"
+                ));
+                return;
+            }
+        };
     let spawned = match spawn_shell_command_with_pipes(
         &request.command,
         effective_env,
@@ -1638,6 +1643,7 @@ mod tests {
             control: ExecControlPolicy::Disabled,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            process_containment_mode: ProcessContainmentMode::BuildConfigured,
         }
     }
 

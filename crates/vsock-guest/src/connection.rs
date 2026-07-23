@@ -22,7 +22,7 @@ use crate::handlers::{
     MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
 };
 use crate::log::log;
-use crate::process_containment::verify_exec_process_containment_empty;
+use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -198,6 +198,7 @@ fn handle_quiesce_operations(
     seq: u32,
     payload: &[u8],
     operation_state: &OperationState,
+    process_containment_mode: ProcessContainmentMode,
     writer: &GuestWriter,
 ) -> io::Result<()> {
     if !validate_empty_control_payload(
@@ -212,14 +213,16 @@ fn handle_quiesce_operations(
     match operation_state.enter_quiescing() {
         // Quiescing atomically fences new guest operations. Once pending is
         // zero, this is the final race-free boundary before the VM is parked.
-        QuiesceResult::Quiesced => match verify_exec_process_containment_empty() {
-            Ok(()) => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
-            Err(error) => send_error_response(
-                seq,
-                &format!("guest process containment is not empty: {error}"),
-                writer,
-            ),
-        },
+        QuiesceResult::Quiesced => {
+            match verify_exec_process_containment_empty(process_containment_mode) {
+                Ok(()) => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
+                Err(error) => send_error_response(
+                    seq,
+                    &format!("guest process containment is not empty: {error}"),
+                    writer,
+                ),
+            }
+        }
         QuiesceResult::Busy { pending } => send_error_response(
             seq,
             &format!("guest operations still pending: {pending}"),
@@ -254,10 +257,15 @@ struct ConnectionDispatcher {
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
+    process_containment_mode: ProcessContainmentMode,
 }
 
 impl ConnectionDispatcher {
-    fn new(writer: GuestWriter, connection_cancel: Arc<AtomicBool>) -> io::Result<Self> {
+    fn new(
+        writer: GuestWriter,
+        connection_cancel: Arc<AtomicBool>,
+        process_containment_mode: ProcessContainmentMode,
+    ) -> io::Result<Self> {
         let file_write_worker =
             FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
         Ok(Self {
@@ -267,6 +275,7 @@ impl ConnectionDispatcher {
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
+            process_containment_mode,
         })
     }
 
@@ -299,7 +308,11 @@ impl ConnectionDispatcher {
                 return Ok(());
             }
         };
-        let mut request = match ExecOperationWorkerRequest::from_decoded(msg.seq, decoded) {
+        let mut request = match ExecOperationWorkerRequest::from_decoded(
+            msg.seq,
+            decoded,
+            self.process_containment_mode,
+        ) {
             Ok(request) => request,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -456,7 +469,13 @@ impl ConnectionDispatcher {
     }
 
     fn handle_quiesce_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        handle_quiesce_operations(msg.seq, msg.payload, &self.operation_state, &self.writer)
+        handle_quiesce_operations(
+            msg.seq,
+            msg.payload,
+            &self.operation_state,
+            self.process_containment_mode,
+            &self.writer,
+        )
     }
 
     fn handle_resume_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
@@ -538,13 +557,32 @@ pub fn connect_unix(path: &str) -> io::Result<UnixStream> {
 /// Handle connection - the main event loop
 /// Uses separate reader/writer to avoid deadlock between main loop and background threads
 pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
-    match handle_connection_with_outcome(stream) {
+    handle_connection_with_mode(stream, ProcessContainmentMode::BuildConfigured)
+}
+
+/// Handles a host-side test connection without accessing the guest cgroup hierarchy.
+///
+/// This remains available without `test-support` so this crate's integration
+/// tests can select deterministic containment in their normal library build.
+#[doc(hidden)]
+pub fn handle_connection_with_test_process_containment(stream: UnixStream) -> io::Result<()> {
+    handle_connection_with_mode(stream, ProcessContainmentMode::TestNoop)
+}
+
+fn handle_connection_with_mode(
+    stream: UnixStream,
+    process_containment_mode: ProcessContainmentMode,
+) -> io::Result<()> {
+    match handle_connection_with_outcome(stream, process_containment_mode) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
     }
 }
 
-fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, ConnectionFailure> {
+fn handle_connection_with_outcome(
+    stream: UnixStream,
+    process_containment_mode: ProcessContainmentMode,
+) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
     let mut reader = stream.try_clone().map_err(unstable_connection_failure)?;
@@ -566,8 +604,9 @@ fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, C
     log("INFO", "Sent ready signal");
 
     let mut session = ConnectionSession::new();
-    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone())
-        .map_err(|error| session.failure(error))?;
+    let dispatcher =
+        ConnectionDispatcher::new(writer, connection_cancel.clone(), process_containment_mode)
+            .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
@@ -675,13 +714,20 @@ fn retry_or_fail(failure: ReconnectFailure, attempts: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Run the vsock guest agent with the given options.
+/// Run the vsock guest agent over vsock, or over a host-side Unix test socket.
 /// Includes reconnection logic for snapshot restore scenarios where
 /// the connection is lost when VM is paused and resumed.
 pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
     log("INFO", "Starting vsock guest...");
 
     let mut attempts = 0u32;
+    // The Unix transport exists for host-side integration tests and does not
+    // own the guest cgroup hierarchy. Deployed guests connect over vsock.
+    let process_containment_mode = if unix_socket.is_some() {
+        ProcessContainmentMode::TestNoop
+    } else {
+        ProcessContainmentMode::BuildConfigured
+    };
 
     loop {
         let result = if let Some(path) = unix_socket {
@@ -690,7 +736,7 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream)
+                    handle_connection_with_outcome(stream, process_containment_mode)
                 })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -698,7 +744,7 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream)
+                    handle_connection_with_outcome(stream, process_containment_mode)
                 })
         };
 

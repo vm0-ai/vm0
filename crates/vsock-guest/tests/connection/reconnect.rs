@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 use vsock_guest::run;
 use vsock_proto::{
-    self, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    self, MSG_OPERATIONS_QUIESCED, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
 };
 
 use super::support::{
-    read_and_discard_message, read_message, send_resume_operations, unique_socket_path,
+    read_and_discard_message, read_message, send_quiesce_operations, unique_socket_path,
 };
 
 const EXPECTED_RECONNECT_ATTEMPTS: usize = 50;
@@ -63,10 +63,10 @@ fn run_resets_reconnect_attempts_after_real_host_work() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
     read_and_discard_message(&mut real_work_stream);
-    send_resume_operations(&mut real_work_stream, 9);
-    let resumed = read_message(&mut real_work_stream);
-    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
-    assert_eq!(resumed.seq, 9);
+    send_quiesce_operations(&mut real_work_stream, 9);
+    let quiesced = read_message(&mut real_work_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 9);
     drop(real_work_stream);
 
     let mut shutdown_stream =
