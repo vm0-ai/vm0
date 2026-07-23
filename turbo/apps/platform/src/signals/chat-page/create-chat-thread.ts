@@ -75,6 +75,7 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
+import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
@@ -223,15 +224,6 @@ function isInterruptControlMessage(msg: PagedChatMessage): boolean {
     msg.role === "user" &&
     msg.runId === undefined &&
     msg.interruptsRunId !== undefined
-  );
-}
-
-function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
-  return (
-    msg.role === "assistant" &&
-    msg.runId !== undefined &&
-    (msg.runLifecycleEvent === "cancelled" ||
-      msg.error?.trim().toLowerCase() === "run cancelled")
   );
 }
 

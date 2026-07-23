@@ -960,6 +960,96 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("shows a paused latest workflow run group expanded by default", async () => {
+    const threadId = "thread-paused-workflow-run-group";
+    const runGroupId = "f0000001-0000-4000-a000-00000000074b";
+    const workflowPrompt = "/daily-workflow";
+    const workflowSnapshot = {
+      name: "daily-workflow",
+      displayName: "Daily workflow",
+      description: "Daily workflow summary",
+    };
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Paused workflow run group",
+      chatMessages: [
+        {
+          id: "msg-paused-workflow-user-1",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-1",
+          role: "assistant",
+          content: "First workflow result",
+          runId: "f0000001-0000-4000-a000-00000000074c",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-paused-workflow-user-2",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-paused-workflow-assistant-2",
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "f0000001-0000-4000-a000-00000000074d",
+          runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("First workflow result")).toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Collapse grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+
+    fireEvent.click(buttonByLabel("Collapse grouped run history"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("First workflow result"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "1 run for Daily workflow summary",
+      );
+    });
+  });
+
   it("renders workflow automation user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";

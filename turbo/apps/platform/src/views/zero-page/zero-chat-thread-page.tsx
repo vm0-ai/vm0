@@ -154,7 +154,7 @@ import {
 } from "../../signals/chat-page/completed-work-folding.ts";
 import {
   buildRunGroupFolding,
-  runGroupExpandedKeys$,
+  runGroupExpansionOverrides$,
   toggleRunGroupExpanded$,
   type RunGroupFold,
   type RunGroupFolding,
@@ -2670,11 +2670,11 @@ function ChatThreadRenderedMessageGroups({
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
-  const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
+  const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
   const runGroupFolding = buildRunGroupFolding(
     renderedActiveGroups,
-    runGroupExpandedKeys,
+    runGroupExpansionOverrides,
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
@@ -2689,7 +2689,6 @@ function ChatThreadRenderedMessageGroups({
       thread={thread}
       groups={visibleGroups}
       runGroupFolding={runGroupFolding}
-      runGroupExpandedKeys={runGroupExpandedKeys}
       onToggleRunGroup={toggleRunGroupExpanded}
       completedWorkFolding={completedWorkFolding}
       completedWorkExpandedKeys={completedWorkExpandedKeys}
@@ -2778,7 +2777,6 @@ function ChatThreadMessageGroups({
   thread,
   groups,
   runGroupFolding,
-  runGroupExpandedKeys,
   onToggleRunGroup,
   completedWorkFolding,
   completedWorkExpandedKeys,
@@ -2787,8 +2785,7 @@ function ChatThreadMessageGroups({
   thread: ChatThreadSignals;
   groups: readonly GroupedChatMessageGroup[];
   runGroupFolding: RunGroupFolding | null;
-  runGroupExpandedKeys: ReadonlySet<string>;
-  onToggleRunGroup: (key: string) => void;
+  onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
   completedWorkExpandedKeys: ReadonlySet<string>;
   onToggleCompletedWork: (key: string) => void;
@@ -2797,7 +2794,6 @@ function ChatThreadMessageGroups({
     resolveRunGroupFoldPlacements({
       groups,
       runGroupFolding,
-      runGroupExpandedKeys,
       onToggleRunGroup,
     });
 
@@ -2858,13 +2854,11 @@ interface RunGroupFoldControl {
 function resolveRunGroupFoldPlacements({
   groups,
   runGroupFolding,
-  runGroupExpandedKeys,
   onToggleRunGroup,
 }: {
   groups: readonly GroupedChatMessageGroup[];
   runGroupFolding: RunGroupFolding | null;
-  runGroupExpandedKeys: ReadonlySet<string>;
-  onToggleRunGroup: (key: string) => void;
+  onToggleRunGroup: (key: string, expanded: boolean) => void;
 }): {
   embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
   externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
@@ -2885,9 +2879,9 @@ function resolveRunGroupFoldPlacements({
     for (const fold of folds) {
       const control: RunGroupFoldControl = {
         fold,
-        expanded: runGroupExpandedKeys.has(fold.key),
+        expanded: fold.expanded,
         onToggle: () => {
-          onToggleRunGroup(fold.key);
+          onToggleRunGroup(fold.key, fold.expanded);
         },
       };
       const embeddedGroupId = control.expanded
