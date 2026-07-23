@@ -343,6 +343,14 @@ export const createCreditCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
+    const customer = await stripe.customers.retrieve(customerId);
+    signal.throwIfAborted();
+    const customerCoupon =
+      "discount" in customer ? customer.discount?.source.coupon : null;
+    const customerCouponId =
+      typeof customerCoupon === "string"
+        ? customerCoupon
+        : customerCoupon?.id;
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,
@@ -362,7 +370,9 @@ export const createCreditCheckoutSession$ = command(
       mode: "payment",
       customer: customerId,
       line_items: [{ price: customCreditUnitPriceId, quantity: unitQuantity }],
-      allow_promotion_codes: true,
+      ...(customerCouponId
+        ? { discounts: [{ coupon: customerCouponId }] }
+        : { allow_promotion_codes: true }),
       invoice_creation: {
         enabled: true,
         invoice_data: {

@@ -1554,6 +1554,9 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 describe("POST /api/zero/billing/credit-checkout", () => {
   beforeEach(() => {
     setZeroPrice();
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      discount: null,
+    });
   });
 
   function trackedSeed(): { orgId: string; userId: string } {
@@ -1613,7 +1616,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     });
   });
 
-  it("creates coupon-enabled credit checkout with fixed $1 units", async () => {
+  it("allows promotion codes when the customer has no discount", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -1664,6 +1667,63 @@ describe("POST /api/zero/billing/credit-checkout", () => {
           creditsAmountMode: "amount_subtotal",
           requestedCreditsAmount: "20000",
         },
+      }),
+    );
+  });
+
+  it("automatically applies the customer's coupon", async () => {
+    const fixture = await trackedSeed();
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    await createStripeCustomerOrgForFixture(fixture, customerId);
+    const couponId = `coupon_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      discount: {
+        source: {
+          type: "coupon",
+          coupon: couponId,
+        },
+      },
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/discounted-credit",
+    });
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingCreditCheckoutContract).create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/discounted-credit",
+    });
+    expect(context.mocks.stripe.customers.retrieve).toHaveBeenCalledWith(
+      customerId,
+    );
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mode: "payment",
+        customer: customerId,
+        line_items: [
+          { price: TEST_PRICE_CUSTOM_CREDIT_UNIT, quantity: 20 },
+        ],
+        discounts: [{ coupon: couponId }],
+      }),
+    );
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({
+        allow_promotion_codes: true,
       }),
     );
   });
