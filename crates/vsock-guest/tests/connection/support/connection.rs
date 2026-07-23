@@ -2,7 +2,7 @@ use std::os::unix::net::UnixStream;
 use std::thread;
 use std::time::Duration;
 
-use vsock_guest::handle_connection;
+use vsock_guest::handle_connection_with_test_process_containment;
 
 use super::protocol::read_and_discard_message;
 
@@ -10,7 +10,8 @@ pub(crate) type GuestConnectionHandle = thread::JoinHandle<std::io::Result<()>>;
 
 pub(crate) fn start_guest_connection() -> (GuestConnectionHandle, UnixStream) {
     let (guest_stream, mut host_stream) = UnixStream::pair().unwrap();
-    let handle = thread::spawn(move || handle_connection(guest_stream));
+    let handle =
+        thread::spawn(move || handle_connection_with_test_process_containment(guest_stream));
     read_and_discard_message(&mut host_stream);
     host_stream
         .set_read_timeout(Some(Duration::from_secs(5)))

@@ -26,7 +26,10 @@ mod user;
 mod wait;
 mod writer;
 
-pub use connection::{connect_unix, connect_vsock, handle_connection, run};
+pub use connection::{
+    connect_unix, connect_vsock, handle_connection,
+    handle_connection_with_test_process_containment, run,
+};
 pub use log::log;
 
 #[cfg(any(debug_assertions, feature = "test-support"))]
