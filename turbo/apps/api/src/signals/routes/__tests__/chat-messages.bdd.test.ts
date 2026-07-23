@@ -61,6 +61,7 @@ import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
+  holdChatMessageFixture,
   holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
   replaceBddVm0ApiKeys,
@@ -4983,6 +4984,102 @@ describe("CHAT-02: shared user message queue", () => {
       }),
     ).toHaveLength(0);
   }, 90_000);
+
+  it("skips a queued auto-send marker after thread deletion wins", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "thread deletion after queue-first launch anchor",
+    });
+    await claimChatRun(runnerGroup, anchor.runId);
+    const messageId = randomUUID();
+    const prompt = "queued auto-send deleted before its marker";
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const blocker = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold org concurrency during thread deletion",
+    });
+
+    // Force the auto-send onto the org queue, then pause its post-commit queue
+    // signal before the marker transaction begins. Cancelling the anchor emits
+    // the first queue signal; the queued launch emits the second.
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const queuePublishStarted = createDeferredPromise<void>(context.signal);
+    const releaseQueuePublish = createDeferredPromise<void>(context.signal);
+    let queueChangedPublishes = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        queueChangedPublishes++;
+        if (queueChangedPublishes === 2) {
+          queuePublishStarted.resolve(undefined);
+          return releaseQueuePublish.promise;
+        }
+      }
+      return Promise.resolve(undefined);
+    });
+    onTestFinished(() => {
+      if (!releaseQueuePublish.settled()) {
+        releaseQueuePublish.resolve(undefined);
+      }
+    });
+
+    await cancelChatRun(actor, anchor.runId);
+    await queuePublishStarted.promise;
+
+    const runList = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    const autoRun = runList.runs.find((run) => {
+      return run.prompt === prompt;
+    });
+    expect(autoRun).toMatchObject({ status: "queued" });
+    if (!autoRun) {
+      throw new Error("Expected the committed queued auto-send run");
+    }
+
+    // Hold a child message row so deletion owns the thread lock while the
+    // post-commit marker reaches that exact parent/child race.
+    const messageLock = await holdChatMessageFixture({
+      threadId: anchor.threadId,
+      messageId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      messageLock.release();
+      await messageLock.done;
+    });
+    const deletion = chat.deleteThread(actor, anchor.threadId);
+    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+
+    releaseQueuePublish.resolve(undefined);
+    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    messageLock.release();
+
+    await Promise.all([messageLock.done, deletion]);
+    await flushWaitUntilForTest();
+    expect(
+      apiDispatchActionTypes(apiDispatchTimingEventsForRun(autoRun.id)),
+    ).toContain(
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+    );
+    await waitForRunStatus(actor, autoRun.id, "cancelled");
+    await chat.requestReadThread(actor, anchor.threadId, [404]);
+    await cancelChatRun(actor, blocker.runId);
+  });
 
   it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

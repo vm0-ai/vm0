@@ -2015,13 +2015,27 @@ async function appendAutoSentQueuedRunMarker(args: {
   readonly runId: string;
   readonly threadId: string;
 }): Promise<void> {
-  await args.db.transaction(async (tx) => {
-    await appendQueuedRunAssistantMarker(tx, {
-      chatThreadId: args.threadId,
-      runId: args.runId,
-      createdAfter: args.createdAfter,
-    });
-  });
+  const marker = await settle(
+    args.db.transaction(async (tx) => {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: args.threadId,
+        runId: args.runId,
+        createdAfter: args.createdAfter,
+      });
+    }),
+  );
+  if (marker.ok) {
+    return;
+  }
+  // The atomic launch can commit immediately before thread deletion. Keep the
+  // normal marker path query-free and classify only that expected FK race.
+  if (
+    isForeignKeyViolation(marker.error) &&
+    !(await chatThreadExists(args.db, args.threadId))
+  ) {
+    return;
+  }
+  throw marker.error;
 }
 
 async function createAutoSentQueuedRun(args: {
