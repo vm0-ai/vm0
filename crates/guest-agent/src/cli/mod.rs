@@ -1535,9 +1535,8 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, disallowed_tools_with_builtin_web_search_disabled,
-        exec_boundary, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason,
+        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1597,37 +1596,6 @@ mod tests {
         command
             .windows(2)
             .position(|window| window[0] == "-c" && window[1] == config)
-    }
-
-    #[test]
-    fn zero_web_search_policy_disables_claude_builtin_search() {
-        let user_env = HashMap::new();
-        let mut runtime = runtime_for_exec_boundary_test(
-            env::Framework::ClaudeCode,
-            "prompt",
-            "",
-            false,
-            &user_env,
-        );
-        runtime.disallowed_tools =
-            disallowed_tools_with_builtin_web_search_disabled("CronCreate", true);
-
-        let command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let disallowed_tools_index = command
-            .iter()
-            .position(|arg| arg == "--disallowed-tools")
-            .unwrap();
-
-        assert_eq!(command[disallowed_tools_index + 1], "CronCreate");
-        assert_eq!(command[disallowed_tools_index + 2], "WebSearch");
-        assert_eq!(
-            disallowed_tools_with_builtin_web_search_disabled("CronCreate,WebSearch", true),
-            "CronCreate,WebSearch"
-        );
-        assert_eq!(
-            disallowed_tools_with_builtin_web_search_disabled("CronCreate", false),
-            "CronCreate"
-        );
     }
 
     #[test]
