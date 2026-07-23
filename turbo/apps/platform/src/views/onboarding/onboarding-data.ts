@@ -64,6 +64,7 @@ export interface OnboardingWorkflow {
   readonly description: string;
   readonly prompt: string;
   readonly connectors: readonly string[];
+  readonly required: readonly string[];
   readonly steps: readonly string[];
 }
 
@@ -303,6 +304,25 @@ function workflowSteps(promptGuidance: string): readonly string[] {
     .slice(0, 4);
 }
 
+// Derives the required connectors from the "Connectors: X required; Y optional"
+// line embedded in promptGuidance, so this stays the single source of truth with
+// the guidance text. Templates without that line resolve to no required connectors.
+function requiredConnectors(
+  promptGuidance: string,
+  connectors: readonly string[],
+): readonly string[] {
+  const match = promptGuidance.match(/Connectors:\s*([^.;\n]*?)\s+required/u);
+  const captured = match?.[1];
+  if (captured === undefined) {
+    return [];
+  }
+  const declared = captured
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return connectors.filter((connector) => declared.includes(connector));
+}
+
 function onboardingWorkflow(
   id: string,
   categoryId: OnboardingWorkflowCategoryId,
@@ -320,6 +340,7 @@ function onboardingWorkflow(
     description: WORKFLOW_DESCRIPTION_OVERRIDES[id] ?? template.description,
     prompt: template.promptGuidance,
     connectors: template.connectors,
+    required: requiredConnectors(template.promptGuidance, template.connectors),
     steps: workflowSteps(template.promptGuidance),
   };
 }

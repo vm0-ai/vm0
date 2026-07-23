@@ -7,7 +7,10 @@ import {
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
+import {
+  OnboardingConnectorSetup,
+  useRequiredConnectorsState,
+} from "./onboarding-connectors.tsx";
 import {
   buildCustomWorkflowPrompt,
   buildWorkflowPrompt,
@@ -22,6 +25,16 @@ import {
   WorkflowPreview,
 } from "./onboarding-workflow-picker-page.tsx";
 
+function formatConnectorList(labels: readonly string[]): string {
+  if (labels.length <= 1) {
+    return labels[0] ?? "";
+  }
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`;
+  }
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+}
+
 export function OnboardingWorkflowRunPage() {
   const draft = useGet(onboardingDraft$);
   const ui = useGet(onboardingUi$);
@@ -30,6 +43,9 @@ export function OnboardingWorkflowRunPage() {
   const { navigateTo } = useOnboardingNavigation();
   const custom = draft.workflowId === CUSTOM_WORKFLOW_ID;
   const workflow = findOnboardingWorkflow(draft.workflowId);
+  const requiredState = useRequiredConnectorsState(workflow?.required ?? []);
+  const requiredConnectorsMissing =
+    (workflow?.required.length ?? 0) > 0 && !requiredState.allConnected;
   const previewOpen = ui.workflowPreviewId === workflow?.id;
   const prompt = custom
     ? buildCustomWorkflowPrompt(draft.workflowNote)
@@ -62,7 +78,9 @@ export function OnboardingWorkflowRunPage() {
         footer={
           <OnboardingRunAction
             prompt={prompt}
-            disabled={custom && !draft.workflowNote.trim()}
+            disabled={
+              (custom && !draft.workflowNote.trim()) || requiredConnectorsMissing
+            }
             onBack={handleBack}
           />
         }
@@ -114,6 +132,11 @@ export function OnboardingWorkflowRunPage() {
             className="mt-[18px] min-h-[98px] w-full resize-y rounded-xl border border-border bg-background p-3 text-sm leading-5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </OnboardingConnectorSetup>
+        {requiredConnectorsMissing && requiredState.missingLabels.length > 0 ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {`Connect ${formatConnectorList(requiredState.missingLabels)} to run this workflow.`}
+          </p>
+        ) : null}
       </OnboardingShell>
       {workflow && previewOpen ? (
         <WorkflowPreview

@@ -32,6 +32,38 @@ function connectorRefs(values: readonly string[]): ConnectorRef[] {
   });
 }
 
+export function useRequiredConnectorsState(connectorIds: readonly string[]): {
+  readonly loading: boolean;
+  readonly allConnected: boolean;
+  readonly missingLabels: readonly string[];
+} {
+  const refs = connectorRefs(connectorIds);
+  const connectorCatalogItemsLoadable = useLastLoadable(
+    allConnectorCatalogItems$,
+  );
+  const justConnectedRefs = useGet(justConnectedRefs$);
+  const items =
+    connectorCatalogItemsLoadable.state === "hasData"
+      ? connectorCatalogItemsLoadable.data
+      : [];
+  const missing = refs.filter((connectorRef) => {
+    const item = items.find((candidate) => {
+      return candidate.connectorRef === connectorRef;
+    });
+    return !(item?.connected === true || justConnectedRefs.has(connectorRef));
+  });
+  return {
+    loading: connectorCatalogItemsLoadable.state === "loading",
+    allConnected: missing.length === 0,
+    missingLabels: missing.map((connectorRef) => {
+      const item = items.find((candidate) => {
+        return candidate.connectorRef === connectorRef;
+      });
+      return item?.label ?? connectorRef;
+    }),
+  };
+}
+
 function promptHelpText(helpText: string | undefined): string {
   return (helpText ?? "Connect this account to continue")
     .replace(/^Connect your \w+ account to /u, "")
