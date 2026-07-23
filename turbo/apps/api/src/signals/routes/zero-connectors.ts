@@ -565,6 +565,9 @@ const startConnectorOauthInner$ = command(
   },
 );
 
+// Compatibility for handoff URLs issued before direct provider redirects.
+// Remove after the previous API is no longer rollback-eligible and every state
+// issued with CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS has expired.
 const continueConnectorOauthInner$ = command(
   async ({ get }, signal: AbortSignal) => {
     const params = get(

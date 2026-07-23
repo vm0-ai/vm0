@@ -29,6 +29,7 @@ export const showConnectorRedirectingMobileWarningAfterDelay$ = command(
     }
 
     await delay(MOBILE_REDIRECT_WARNING_DELAY_MS, { signal });
+    signal.throwIfAborted();
     set(internalMobileWarningVisible$, true);
   },
 );
