@@ -21,19 +21,12 @@ case "$target" in
 esac
 
 revision="${RUNNER_BINARY_GIT_REVISION:-HEAD}"
-crates_tree=$(git -C "$REPO_ROOT" rev-parse "${revision}:crates")
-contract_tree=$(git -C "$REPO_ROOT" rev-parse "${revision}:.github/scripts/runner-binary-build")
 binary_input_digest=$(
-  printf '%s\0%s\0%s\0%s\0' \
-    "$RUNNER_BINARY_INPUT_SCHEMA_VERSION" \
-    "$target" \
-    "$crates_tree" \
-    "$contract_tree" \
-    | sha256sum \
-    | awk '{print $1}'
+  {
+    printf '%s\0%s\0' "$RUNNER_BINARY_INPUT_SCHEMA_VERSION" "$target"
+    "${SCRIPT_DIR}/context.sh" inventory "$REPO_ROOT" "$revision"
+  } | sha256sum | awk '{print $1}'
 )
 
 emit "binary-input-digest" "$binary_input_digest"
-emit "crates-tree" "$crates_tree"
-emit "contract-tree" "$contract_tree"
 emit "toolchain-image" "$RUNNER_BINARY_TOOLCHAIN_IMAGE"

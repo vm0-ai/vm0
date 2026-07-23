@@ -260,6 +260,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   await publishUserSignal(
     [args.userId],
     `chatThreadMessageCreated:${args.threadId}`,
+    { syncThroughMessageId: inserted.id },
   );
   return true;
 }

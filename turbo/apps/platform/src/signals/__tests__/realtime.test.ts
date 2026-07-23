@@ -615,7 +615,7 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageCreated$: keepAliveLoop$,
+            onMessageCreated$: keepAlivePayloadLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -648,7 +648,7 @@ describe("realtime signals", () => {
           threadId,
           handlers: {
             onThreadDetailChanged$: keepAliveLoop$,
-            onMessageCreated$: keepAliveLoop$,
+            onMessageCreated$: keepAlivePayloadLoop$,
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
@@ -678,7 +678,7 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageCreated$: keepAliveLoop$,
+          onMessageCreated$: keepAlivePayloadLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
@@ -701,7 +701,7 @@ describe("realtime signals", () => {
         threadId,
         handlers: {
           onThreadDetailChanged$: keepAliveLoop$,
-          onMessageCreated$: keepAliveLoop$,
+          onMessageCreated$: keepAlivePayloadLoop$,
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,

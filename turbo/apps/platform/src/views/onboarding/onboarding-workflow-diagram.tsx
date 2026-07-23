@@ -260,25 +260,14 @@ function WorkflowDiagramNode({
 function WorkflowDiagramAction({
   title,
   description,
-  variant,
   className,
 }: {
   readonly title: string;
   readonly description: string;
-  readonly variant: "filed" | "complete";
   readonly className: string;
 }) {
   return (
     <div className={`owf-diagram-action ${className}`}>
-      <span
-        className={`owf-diagram-action-icon ${
-          variant === "complete"
-            ? "owf-diagram-action-icon-complete"
-            : "owf-diagram-action-icon-filed"
-        }`}
-      >
-        <span />
-      </span>
       <span className="owf-diagram-action-copy">
         <strong>{title}</strong>
         <span>{description}</span>
@@ -375,7 +364,6 @@ export function WorkflowPreviewDiagram({
             firstStep?.description ??
             "Zero prepares the next step from your tools."
           }
-          variant="filed"
           className="owf-diagram-action-one"
         />
         <WorkflowDiagramAction
@@ -384,7 +372,6 @@ export function WorkflowPreviewDiagram({
             lastStep?.description ??
             "Zero completes the workflow and returns the result."
           }
-          variant="complete"
           className="owf-diagram-action-two"
         />
       </div>

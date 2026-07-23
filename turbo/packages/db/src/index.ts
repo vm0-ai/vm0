@@ -100,8 +100,6 @@ import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-s
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
-import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
-import * as memoryChangeItemSchema from "./schema/memory-change-item";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
@@ -212,8 +210,6 @@ export const schema = {
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
-  ...memoryChangeSummarySchema,
-  ...memoryChangeItemSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
   ...googleCalendarEventSchema,

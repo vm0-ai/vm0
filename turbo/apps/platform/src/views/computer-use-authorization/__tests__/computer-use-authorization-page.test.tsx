@@ -2,7 +2,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { zeroComputerUseAuthorizationRequestsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   detachedSetupPage,
@@ -46,16 +45,6 @@ function linkByText(text: string): HTMLElement {
   });
   if (!link) {
     throw new Error(`${text} link not found`);
-  }
-  return link;
-}
-
-function linkByLabel(label: string): HTMLElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!link) {
-    throw new Error(`${label} link not found`);
   }
   return link;
 }
@@ -266,7 +255,11 @@ describe("computer use authorization page", () => {
         "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+      ),
+    ).toBeInTheDocument();
     const downloadLink = await waitFor(() => {
       return linkByText("Download for macOS");
     });
@@ -303,56 +296,14 @@ describe("computer use authorization page", () => {
       screen.findByText("No online computers"),
     ).resolves.toBeInTheDocument();
     const requiredButton = await waitFor(() => {
-      return buttonByText("Requires Apple Silicon Mac");
+      return buttonByText("Requires an Apple silicon Mac");
     });
     expect(requiredButton).toBeDisabled();
-    expect(screen.getByText("Requires macOS 14 or newer.")).toBeInTheDocument();
-    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
-  });
-
-  it("shows Apple Silicon and Intel downloads when x64 downloads are enabled", async () => {
-    mockMacUserAgentData("x86");
-    context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "slack",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
-          computerUseHostId: null,
-          hosts: [],
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_x64",
-      featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
-    });
-
-    await expect(
-      screen.findByText("No online computers"),
-    ).resolves.toBeInTheDocument();
-
-    const appleSiliconDownload = await waitFor(() => {
-      return linkByLabel("Download for Mac Apple Silicon");
-    });
-    expect(appleSiliconDownload).toHaveAttribute(
-      "href",
-      expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
-      ),
-    );
-    expect(linkByLabel("Download for Mac Intel")).toHaveAttribute(
-      "href",
-      expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/x64/dmg",
-      ),
-    );
-    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Requires Apple Silicon Mac"),
-    ).not.toBeInTheDocument();
+      screen.getByText(
+        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
   });
 });

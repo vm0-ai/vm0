@@ -2357,7 +2357,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true },
+      { [FeatureSwitchKey.PresentationExport]: true },
     );
 
     // Enabled, but Google Drive is not connected yet.

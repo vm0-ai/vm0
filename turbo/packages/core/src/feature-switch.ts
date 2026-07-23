@@ -354,24 +354,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.DesktopX64Download]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show Intel Mac download links for Zero Computer Use after darwin-x64 release artifacts are available.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatThreadMessageBackgroundSync]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Prefetch chat thread messages into IndexedDB when message-created realtime events arrive outside the focused thread.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -411,10 +397,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationGoogleSlidesUpload]: {
+  [FeatureSwitchKey.PresentationExport]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
+      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -435,6 +435,13 @@ describe("activity inspect page", () => {
     });
     expect(screen.getByText("Done")).toBeInTheDocument();
     expect(screen.getByText("5.0s")).toBeInTheDocument();
+    expect(screen.getByText(/^\d{2}:\d{2}:\d{2}\.000$/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:01\.000\)$/),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:03\.000\)$/),
+    ).toHaveLength(2);
     expect(
       screen.getByText("Collected OAuth evidence from network logs."),
     ).toBeInTheDocument();

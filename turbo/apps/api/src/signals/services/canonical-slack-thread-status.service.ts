@@ -70,8 +70,8 @@ async function loadCanonicalSlackThreadStatusBinding(
   return { ...binding, orgId: binding.orgId };
 }
 
-async function canonicalSlackThreadHasOutstandingWork(
-  db: Db,
+async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
+  db: Pick<Db, "select">,
   target: CanonicalSlackThreadStatusTarget,
   workspaceId: string,
 ): Promise<boolean> {
@@ -104,59 +104,67 @@ async function canonicalSlackThreadHasOutstandingWork(
     return false;
   }
 
-  const [activeIngress, activeRuns, queuedSlackMessages] = await Promise.all([
-    db
-      .select({ id: slackChatIngress.id })
-      .from(slackChatIngress)
-      .where(
-        and(
-          inArray(slackChatIngress.routeId, routeIds),
-          inArray(slackChatIngress.status, ACTIVE_INGRESS_STATUSES),
-        ),
-      )
-      .limit(1),
-    db
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        triggerSource: zeroRuns.triggerSource,
-      })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          inArray(zeroRuns.chatThreadId, chatThreadIds),
-          inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
-        ),
+  const activeIngress = await db
+    .select({ id: slackChatIngress.id })
+    .from(slackChatIngress)
+    .where(
+      and(
+        inArray(slackChatIngress.routeId, routeIds),
+        inArray(slackChatIngress.status, ACTIVE_INGRESS_STATUSES),
       ),
-    db
-      .select({ chatThreadId: chatMessageQueue.chatThreadId })
-      .from(chatMessageQueue)
-      .where(
-        and(
-          inArray(chatMessageQueue.chatThreadId, chatThreadIds),
-          eq(chatMessageQueue.itemType, "slack_user_message"),
-        ),
-      ),
-  ]);
+    )
+    .limit(1);
   if (activeIngress.length > 0) {
     return true;
   }
-  if (
-    activeRuns.some((run) => {
-      return run.triggerSource === "slack";
-    })
-  ) {
+  const queuedSlackMessages = await db
+    .select({ id: chatMessageQueue.id })
+    .from(chatMessageQueue)
+    .where(
+      and(
+        inArray(chatMessageQueue.chatThreadId, chatThreadIds),
+        eq(chatMessageQueue.itemType, "slack_user_message"),
+      ),
+    )
+    .limit(1);
+  // Dequeue atomically replaces this row with an active run, so the row
+  // itself keeps the physical Slack thread busy during that handoff.
+  if (queuedSlackMessages.length > 0) {
     return true;
   }
-
-  const activeChatThreadIds = new Set(
-    activeRuns.flatMap((run) => {
-      return run.chatThreadId ? [run.chatThreadId] : [];
-    }),
-  );
-  return queuedSlackMessages.some((message) => {
-    return activeChatThreadIds.has(message.chatThreadId);
+  const activeRuns = await db
+    .select({ triggerSource: zeroRuns.triggerSource })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        inArray(zeroRuns.chatThreadId, chatThreadIds),
+        inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
+      ),
+    );
+  return activeRuns.some((run) => {
+    return run.triggerSource === "slack";
   });
+}
+
+async function canonicalSlackThreadHasOutstandingWork(
+  db: Db,
+  target: CanonicalSlackThreadStatusTarget,
+  workspaceId: string,
+): Promise<boolean> {
+  // The ingress-to-queue and queue-to-run handoffs are transactional. Read
+  // one snapshot so the status cannot combine opposite sides of a commit
+  // into an idle state that never actually existed.
+  return await db.transaction(
+    async (tx) => {
+      return await canonicalSlackThreadHasOutstandingWorkInSnapshot(
+        tx,
+        target,
+        workspaceId,
+      );
+    },
+    { isolationLevel: "repeatable read" },
+  );
 }
 
 export async function canonicalSlackThreadStatusTargetForIngress(
