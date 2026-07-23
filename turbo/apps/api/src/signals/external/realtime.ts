@@ -143,14 +143,28 @@ export async function publishChatThreadDetailChangedSafely(
  * message data source subscribes to this topic and refetches, so derived state
  * (e.g. the composer's folded goal state) updates live.
  *
+ * `syncThroughMessageId` is an optional cache watermark: the ID of the row
+ * that sorts last, in server list order (createdAt, sequenceNumber), among the
+ * rows appended by the mutation that triggered this publish. Only pass it when
+ * that "last of the batch" identity is certain.
+ *
+ * Compatibility: keep publishing this optional payload while browser bundles
+ * from #22718 may still be active. The restored payload-independent loop
+ * ignores it; remove it only after those clients can no longer be active.
+ *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
 export async function publishChatThreadMessageCreatedSafely(
   userId: string,
   threadId: string,
+  syncThroughMessageId?: string,
 ): Promise<void> {
   await tapError(
-    publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`),
+    publishUserSignal(
+      [userId],
+      `chatThreadMessageCreated:${threadId}`,
+      syncThroughMessageId ? { syncThroughMessageId } : null,
+    ),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
         threadId,
