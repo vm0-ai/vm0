@@ -80,6 +80,16 @@ interface SimpleDeleteMatch {
   readonly targetTableExpressionIndex: number | undefined;
 }
 
+interface SimpleUpsertMatch {
+  readonly targetTableExpressionIndex: number | undefined;
+}
+
+interface CompleteSqlStatement {
+  readonly end: number;
+  readonly hasTrailingSemicolon: boolean;
+  readonly tokens: readonly SqlToken[];
+}
+
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
   ["returning", 0],
   ["select", 0],
@@ -140,6 +150,8 @@ const UNSUPPORTED_DELETE_PREDICATE_KEYWORDS = new Set([
   "RETURNING",
   "USING",
 ]);
+
+const UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS = new Set(["RETURNING", "WHERE"]);
 
 function quasiText(node: TSESTree.TemplateElement): string {
   return node.value.cooked ?? node.value.raw;
@@ -284,35 +296,132 @@ function onlyWhitespaceBetween(
   return source.slice(left.end, right.start).trim() === "";
 }
 
-function simpleDeleteMatch(
+function isPunctuation(
+  token: SqlToken | undefined,
+  value: PunctuationToken["value"],
+): boolean {
+  return token?.kind === "punctuation" && token.value === value;
+}
+
+function completeSqlStatement(
   syntaxSource: string,
-): SimpleDeleteMatch | undefined {
+): CompleteSqlStatement | undefined {
   const tokens = topLevelTokens(syntaxSource);
-  if (tokens === undefined) {
+  if (tokens === undefined || tokens.length === 0) {
     return undefined;
   }
 
   let end = tokens.length;
+  let hasTrailingSemicolon = false;
+  let statementEnd = syntaxSource.length;
   const trailingToken = tokens[end - 1];
-  if (trailingToken?.kind === "punctuation" && trailingToken.value === ";") {
-    if (syntaxSource.slice(trailingToken.end).trim() !== "") {
+  if (isPunctuation(trailingToken, ";")) {
+    if (
+      trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end).trim() !== ""
+    ) {
       return undefined;
     }
+    hasTrailingSemicolon = true;
+    statementEnd = trailingToken.start;
     end -= 1;
-  } else if (
-    trailingToken === undefined ||
-    syntaxSource.slice(trailingToken.end).trim() !== ""
+  }
+
+  const statementTokens = tokens.slice(0, end);
+  const firstToken = statementTokens[0];
+  if (
+    firstToken === undefined ||
+    syntaxSource.slice(0, firstToken.start).trim() !== "" ||
+    statementTokens.some((token) => {
+      return isPunctuation(token, ";");
+    })
   ) {
     return undefined;
   }
 
-  const statementTokens = tokens.slice(0, end);
-  const deleteKeyword = statementTokens[0];
-  const fromKeyword = statementTokens[1];
-  const targetTable = statementTokens[2];
-  const whereKeyword = statementTokens[3];
+  return {
+    end: statementEnd,
+    hasTrailingSemicolon,
+    tokens: statementTokens,
+  };
+}
+
+function isSimpleIdentifierList(
+  syntaxSource: string,
+  open: SqlToken,
+  close: SqlToken,
+): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_$]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_$]*)*$/u.test(
+    syntaxSource.slice(open.end, close.start).trim(),
+  );
+}
+
+function hasSimpleAssignments(
+  source: string,
+  syntaxSource: string,
+  start: number,
+  end: number,
+): boolean {
+  const segments: Array<{ readonly start: number; readonly end: number }> = [];
+  let depth = 0;
+  let segmentStart = start;
+
+  for (let offset = start; offset < end; offset += 1) {
+    const character = syntaxSource[offset];
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      segments.push({ start: segmentStart, end: offset });
+      segmentStart = offset + 1;
+    }
+  }
+  segments.push({ start: segmentStart, end });
+
+  return segments.every((segment) => {
+    let assignmentOffset = -1;
+    let assignmentDepth = 0;
+    for (let offset = segment.start; offset < segment.end; offset += 1) {
+      const character = syntaxSource[offset];
+      if (character === "(") {
+        assignmentDepth += 1;
+      } else if (character === ")") {
+        assignmentDepth -= 1;
+      } else if (character === "=" && assignmentDepth === 0) {
+        assignmentOffset = offset;
+        break;
+      }
+    }
+    if (assignmentOffset === -1) {
+      return false;
+    }
+    const target = syntaxSource.slice(segment.start, assignmentOffset).trim();
+    const value = source.slice(assignmentOffset + 1, segment.end).trim();
+    return /^[A-Za-z_][A-Za-z0-9_$]*$/u.test(target) && value !== "";
+  });
+}
+
+function simpleDeleteMatch(
+  syntaxSource: string,
+  statement: CompleteSqlStatement,
+): SimpleDeleteMatch | undefined {
+  const tokens = statement.tokens;
+  const trailingToken = tokens[tokens.length - 1];
   if (
-    statementTokens.length <= 4 ||
+    !statement.hasTrailingSemicolon &&
+    (trailingToken === undefined ||
+      syntaxSource.slice(trailingToken.end, statement.end).trim() !== "")
+  ) {
+    return undefined;
+  }
+
+  const deleteKeyword = tokens[0];
+  const fromKeyword = tokens[1];
+  const targetTable = tokens[2];
+  const whereKeyword = tokens[3];
+  if (
+    tokens.length <= 4 ||
     !isWord(deleteKeyword, "DELETE") ||
     !isWord(fromKeyword, "FROM") ||
     (targetTable?.kind !== "word" && targetTable?.kind !== "expression") ||
@@ -328,14 +437,107 @@ function simpleDeleteMatch(
   }
 
   if (
-    statementTokens.slice(4).some((token) => {
+    tokens.slice(4).some((token) => {
       return (
         (token.kind === "word" &&
           UNSUPPORTED_DELETE_PREDICATE_KEYWORDS.has(token.value)) ||
-        (token.kind === "punctuation" &&
-          (token.value === "," || token.value === ";"))
+        isPunctuation(token, ",")
       );
     })
+  ) {
+    return undefined;
+  }
+
+  return {
+    targetTableExpressionIndex:
+      targetTable.kind === "expression"
+        ? targetTable.expressionIndex
+        : undefined,
+  };
+}
+
+function simpleUpsertMatch(
+  source: string,
+  syntaxSource: string,
+  statement: CompleteSqlStatement,
+): SimpleUpsertMatch | undefined {
+  const tokens = statement.tokens;
+  const insertKeyword = tokens[0];
+  const intoKeyword = tokens[1];
+  const targetTable = tokens[2];
+  const insertColumnsOpen = tokens[3];
+  const insertColumnsClose = tokens[4];
+  const valuesKeyword = tokens[5];
+  const valuesOpen = tokens[6];
+  const valuesClose = tokens[7];
+  const onKeyword = tokens[8];
+  const conflictKeyword = tokens[9];
+  const conflictTargetOpen = tokens[10];
+  const conflictTargetClose = tokens[11];
+  const doKeyword = tokens[12];
+  const updateKeyword = tokens[13];
+  const setKeyword = tokens[14];
+
+  if (
+    tokens.length <= 15 ||
+    !isWord(insertKeyword, "INSERT") ||
+    !isWord(intoKeyword, "INTO") ||
+    (targetTable?.kind !== "word" && targetTable?.kind !== "expression") ||
+    !isPunctuation(insertColumnsOpen, "(") ||
+    !isPunctuation(insertColumnsClose, ")") ||
+    !isWord(valuesKeyword, "VALUES") ||
+    !isPunctuation(valuesOpen, "(") ||
+    !isPunctuation(valuesClose, ")") ||
+    !isWord(onKeyword, "ON") ||
+    !isWord(conflictKeyword, "CONFLICT") ||
+    !isPunctuation(conflictTargetOpen, "(") ||
+    !isPunctuation(conflictTargetClose, ")") ||
+    !isWord(doKeyword, "DO") ||
+    !isWord(updateKeyword, "UPDATE") ||
+    !isWord(setKeyword, "SET") ||
+    insertKeyword === undefined ||
+    intoKeyword === undefined ||
+    insertColumnsOpen === undefined ||
+    insertColumnsClose === undefined ||
+    valuesKeyword === undefined ||
+    valuesOpen === undefined ||
+    valuesClose === undefined ||
+    onKeyword === undefined ||
+    conflictKeyword === undefined ||
+    conflictTargetOpen === undefined ||
+    conflictTargetClose === undefined ||
+    doKeyword === undefined ||
+    updateKeyword === undefined ||
+    setKeyword === undefined ||
+    !onlyWhitespaceBetween(syntaxSource, insertKeyword, intoKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, intoKeyword, targetTable) ||
+    !onlyWhitespaceBetween(syntaxSource, targetTable, insertColumnsOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, insertColumnsClose, valuesKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, valuesKeyword, valuesOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, valuesClose, onKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, onKeyword, conflictKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, conflictKeyword, conflictTargetOpen) ||
+    !onlyWhitespaceBetween(syntaxSource, conflictTargetClose, doKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, doKeyword, updateKeyword) ||
+    !onlyWhitespaceBetween(syntaxSource, updateKeyword, setKeyword) ||
+    !isSimpleIdentifierList(
+      syntaxSource,
+      insertColumnsOpen,
+      insertColumnsClose,
+    ) ||
+    source.slice(valuesOpen.end, valuesClose.start).trim() === "" ||
+    !isSimpleIdentifierList(
+      syntaxSource,
+      conflictTargetOpen,
+      conflictTargetClose,
+    ) ||
+    tokens.slice(15).some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_UPSERT_ASSIGNMENT_KEYWORDS.has(token.value)
+      );
+    }) ||
+    !hasSimpleAssignments(source, syntaxSource, setKeyword.end, statement.end)
   ) {
     return undefined;
   }
@@ -751,7 +953,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete simple deletes, selects, locking selects, and scalar result queries",
+        "Prefer Drizzle query builders for complete simple deletes, upserts, selects, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -763,6 +965,8 @@ export const preferDrizzleQueryBuilder = createRule({
         "Use a Drizzle select builder with .for(...) for this complete locking query.",
       deleteQueryBuilder:
         "Use a Drizzle delete builder for this complete single-target query.",
+      upsertQueryBuilder:
+        "Use a Drizzle insert builder with .onConflictDoUpdate(...) for this complete single-row upsert.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -1270,7 +1474,7 @@ export const preferDrizzleQueryBuilder = createRule({
       inspectSelectionContainer(fields, new Set<TSESTree.Node>());
     }
 
-    function inspectCompleteDelete(node: TSESTree.CallExpression): void {
+    function inspectCompleteWrite(node: TSESTree.CallExpression): void {
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
         memberName(node.callee) !== "execute" ||
@@ -1289,7 +1493,17 @@ export const preferDrizzleQueryBuilder = createRule({
       const source = query.quasi.quasis
         .map(quasiText)
         .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
-      const match = simpleDeleteMatch(sqlCodeMask(source));
+      const syntaxSource = sqlCodeMask(source);
+      const statement = completeSqlStatement(syntaxSource);
+      if (statement === undefined) {
+        return;
+      }
+      const deleteMatch = simpleDeleteMatch(syntaxSource, statement);
+      const upsertMatch =
+        deleteMatch === undefined
+          ? simpleUpsertMatch(source, syntaxSource, statement)
+          : undefined;
+      const match = deleteMatch ?? upsertMatch;
       if (
         match === undefined ||
         !isDrizzleSqlTag(checker, services, query.tag) ||
@@ -1316,12 +1530,18 @@ export const preferDrizzleQueryBuilder = createRule({
         }
       }
 
-      context.report({ node: query, messageId: "deleteQueryBuilder" });
+      context.report({
+        node: query,
+        messageId:
+          deleteMatch === undefined
+            ? "upsertQueryBuilder"
+            : "deleteQueryBuilder",
+      });
     }
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        inspectCompleteDelete(node);
+        inspectCompleteWrite(node);
         if (
           node.callee.type === AST_NODE_TYPES.MemberExpression &&
           RESULT_FIELD_ARGUMENT.has(memberName(node.callee) ?? "")

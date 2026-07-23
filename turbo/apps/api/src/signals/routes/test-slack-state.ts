@@ -465,12 +465,23 @@ async function ensureStarterCreditGrant(
     return;
   }
 
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, tier, created_at, updated_at)
-        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, 'free', now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, tier = 'free', updated_at = now()`,
-  );
+  await tx
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      credits: STARTER_GRANT_AMOUNT,
+      tier: "free",
+      createdAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        credits: sql`${orgMetadata.credits} + ${STARTER_GRANT_AMOUNT}`,
+        tier: "free",
+        updatedAt: sql`now()`,
+      },
+    });
 }
 
 async function slackInstallation(db: ReadonlyDb, teamId: string) {
