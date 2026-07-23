@@ -261,6 +261,7 @@ describe("chat inline feedback", () => {
       composerEditor,
       "Mention the dates before the risk summary.",
     );
+    await waitForDeferredSelectionCapture();
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 

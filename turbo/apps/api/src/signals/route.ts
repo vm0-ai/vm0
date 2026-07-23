@@ -100,6 +100,7 @@ import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
 import { zeroEmailCallbackRoutes } from "./routes/zero-email-callbacks";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
+import { zeroFinanceRoutes } from "./routes/zero-finance";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
@@ -149,6 +150,7 @@ import { zeroIntegrationsGithubUploadCompleteRoutes } from "./routes/zero-integr
 import { zeroIntegrationsGithubUploadInitRoutes } from "./routes/zero-integrations-github-upload-init";
 import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
+import { zeroIntegrationsFeishuMessageRoutes } from "./routes/zero-integrations-feishu-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
 import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
@@ -297,6 +299,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroEmailCallbackRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
+  ...zeroFinanceRoutes,
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
@@ -368,6 +371,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsGithubUploadInitRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
+  ...zeroIntegrationsFeishuMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroIntegrationsTeamsDownloadFileRoutes,

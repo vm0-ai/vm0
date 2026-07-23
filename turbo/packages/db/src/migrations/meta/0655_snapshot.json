@@ -1,6 +1,6 @@
 {
-  "id": "b81978e9-295d-45f9-9cb1-576b12f1408f",
-  "prevId": "b1e2f772-fde3-4f7d-8446-05757028bba0",
+  "id": "8eeb14f5-1d34-4c90-93be-49ffca1a3bbc",
+  "prevId": "65f6a0ec-d796-4708-8314-99b3b188f266",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10319,78 +10319,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.compact_model_usage_observation": {
-      "name": "compact_model_usage_observation",
-      "schema": "",
-      "columns": {
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "model": {
-          "name": "model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "input_tokens": {
-          "name": "input_tokens",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "output_tokens": {
-          "name": "output_tokens",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cache_read_input_tokens": {
-          "name": "cache_read_input_tokens",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cache_creation_input_tokens": {
-          "name": "cache_creation_input_tokens",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "observed_at": {
-          "name": "observed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_compact_model_usage_observation_observed_at": {
-          "name": "idx_compact_model_usage_observation_observed_at",
-          "columns": [
-            {
-              "expression": "observed_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.model_usage_observation": {
       "name": "model_usage_observation",
       "schema": "",
@@ -10570,47 +10498,6 @@
           "onDelete": "set null"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.model_usage_observation_legacy_key": {
-      "name": "model_usage_observation_legacy_key",
-      "schema": "",
-      "columns": {
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "observed_at": {
-          "name": "observed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "idx_model_usage_observation_legacy_key_observed_at": {
-          "name": "idx_model_usage_observation_legacy_key_observed_at",
-          "columns": [
-            {
-              "expression": "observed_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

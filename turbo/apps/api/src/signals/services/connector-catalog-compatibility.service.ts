@@ -18,18 +18,18 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, ne, or } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
-  connectorCatalogPrivateArtifactSchema,
-  connectorCatalogPublicArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-  type ConnectorCatalogPrivateArtifact,
+  type ConnectorCatalogArtifact,
+  type ConnectorCatalogAuthMethod,
 } from "./connector-catalog-artifacts/artifacts";
-import { connectorCatalogSource } from "./connector-catalog-sync.service";
+import { decodeConnectorCatalogSnapshot } from "./connector-catalog-artifacts/loader";
+import { connectorCatalogSource } from "./connector-catalog-source";
 
 const COMPATIBILITY_REASON_ORDER = [
   "missing-grant-provider",
@@ -43,23 +43,20 @@ const COMPATIBILITY_REASON_ORDER = [
 // capability projection, so rolling builds cannot reuse each other's reports.
 const EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 1;
 
-type PrivateAuthMethod =
-  ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
-
-interface ExecutableCapabilityState {
+export interface ExecutableCapabilityState {
   readonly digest: string;
   readonly configuredNames: ReadonlySet<string>;
   readonly registrations: readonly ConnectorAuthProviderRegistrationCapability[];
 }
 
-interface ActiveSnapshotIdentity {
+interface ConnectorCatalogCompatibilityIdentity {
   readonly catalogVersion: string;
-  readonly integrityDigest: string;
+  readonly catalogDigest: string;
 }
 
-interface ActiveSnapshot extends ActiveSnapshotIdentity {
-  readonly publicCatalog: string;
-  readonly privateCatalog: string;
+interface CanonicalSnapshot extends ConnectorCatalogCompatibilityIdentity {
+  readonly catalogRawSize: number;
+  readonly catalogGzip: Buffer;
 }
 
 function compareStrings(left: string, right: string): number {
@@ -70,7 +67,7 @@ function registrationKey(connectorRef: string, authMethodId: string): string {
   return `${connectorRef}\0${authMethodId}`;
 }
 
-function executableCapabilityState(): ExecutableCapabilityState {
+export function connectorCatalogExecutableCapabilityState(): ExecutableCapabilityState {
   const registrations = getConnectorAuthProviderRegistrationCapabilities();
   const configurationNames = [
     ...new Set(
@@ -100,11 +97,11 @@ function executableCapabilityState(): ExecutableCapabilityState {
 }
 
 export function connectorCatalogExecutableCapabilityDigest(): string {
-  return executableCapabilityState().digest;
+  return connectorCatalogExecutableCapabilityState().digest;
 }
 
-function privateClientContract(
-  method: PrivateAuthMethod,
+function methodClientContract(
+  method: ConnectorCatalogAuthMethod,
 ): ConnectorAuthProviderMethodContract["client"] {
   const client = method.client;
   if (client === undefined) {
@@ -123,8 +120,8 @@ function privateClientContract(
   return { kind: "static-public-literal" };
 }
 
-function privateMethodContract(
-  method: PrivateAuthMethod,
+function methodContract(
+  method: ConnectorCatalogAuthMethod,
 ): ConnectorAuthProviderMethodContract {
   const grantOutputNames =
     method.grant.kind === "manual"
@@ -132,14 +129,14 @@ function privateMethodContract(
       : Object.keys(method.grant.outputs).sort(compareStrings);
   const startOptionNames =
     method.grant.kind === "device-auth"
-      ? method.grant.startOptionMappings
-          .map((mapping) => {
-            return mapping.privateName;
+      ? method.grant.startOptions
+          .map((option) => {
+            return option.privateName;
           })
           .sort(compareStrings)
       : [];
   return {
-    client: privateClientContract(method),
+    client: methodClientContract(method),
     grant: {
       kind: method.grant.kind,
       callbackOrigin:
@@ -175,7 +172,7 @@ function privateMethodContract(
 
 function addProviderReasons(
   reasons: Set<ConnectorCatalogCompatibilityReason>,
-  method: PrivateAuthMethod,
+  method: ConnectorCatalogAuthMethod,
   registration: ConnectorAuthProviderRegistrationCapability | undefined,
 ): void {
   if (
@@ -209,7 +206,7 @@ function hasUnapprovedConfigurationIdentity(
 }
 
 function evaluateMethod(args: {
-  readonly method: PrivateAuthMethod;
+  readonly method: ConnectorCatalogAuthMethod;
   readonly registration:
     | ConnectorAuthProviderRegistrationCapability
     | undefined;
@@ -218,7 +215,7 @@ function evaluateMethod(args: {
   const reasons = new Set<ConnectorCatalogCompatibilityReason>();
   addProviderReasons(reasons, args.method, args.registration);
 
-  const contract = privateMethodContract(args.method);
+  const contract = methodContract(args.method);
   const contractMatches =
     args.registration === undefined
       ? !hasUnapprovedConfigurationIdentity(contract)
@@ -238,38 +235,26 @@ function evaluateMethod(args: {
   });
 }
 
-function evaluateSnapshot(
-  snapshot: ActiveSnapshot,
-  capability: ExecutableCapabilityState,
-): ConnectorCatalogFilteredAuthMethod[] {
-  const publicJson: unknown = JSON.parse(snapshot.publicCatalog);
-  const privateJson: unknown = JSON.parse(snapshot.privateCatalog);
-  const publicArtifact = connectorCatalogPublicArtifactSchema.parse(publicJson);
-  const privateArtifact =
-    connectorCatalogPrivateArtifactSchema.parse(privateJson);
-  if (
-    publicArtifact.catalogVersion !== snapshot.catalogVersion ||
-    privateArtifact.catalogVersion !== snapshot.catalogVersion
-  ) {
-    throw new Error("Connector catalog snapshot identity mismatch");
-  }
-
+function evaluateConnectorCatalogCompatibility(args: {
+  readonly artifact: ConnectorCatalogArtifact;
+  readonly capability: ExecutableCapabilityState;
+}): readonly ConnectorCatalogFilteredAuthMethod[] {
   const registrations = new Map(
-    capability.registrations.map((registration) => {
+    args.capability.registrations.map((registration) => {
       return [
         registrationKey(registration.connectorRef, registration.authMethodId),
         registration,
       ];
     }),
   );
-  const filtered = privateArtifact.connectors.flatMap((connector) => {
+  const filtered = args.artifact.connectors.flatMap((connector) => {
     return connector.authMethods.flatMap((method) => {
       const reasons = evaluateMethod({
         method,
         registration: registrations.get(
           registrationKey(connector.connectorRef, method.id),
         ),
-        configuredNames: capability.configuredNames,
+        configuredNames: args.capability.configuredNames,
       });
       return reasons.length === 0
         ? []
@@ -288,6 +273,58 @@ function evaluateSnapshot(
       compareStrings(left.authMethodId, right.authMethodId)
     );
   });
+}
+
+async function deleteReplacedEvaluations(args: {
+  readonly db: Db;
+  readonly sourceId: string;
+  readonly catalogDigest: string;
+}): Promise<void> {
+  await args.db
+    .delete(connectorCatalogCompatibilityEvaluation)
+    .where(
+      and(
+        eq(connectorCatalogCompatibilityEvaluation.sourceId, args.sourceId),
+        eq(
+          connectorCatalogCompatibilityEvaluation.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        ne(
+          connectorCatalogCompatibilityEvaluation.catalogDigest,
+          args.catalogDigest,
+        ),
+      ),
+    );
+}
+
+export async function persistConnectorCatalogCompatibility(args: {
+  readonly db: Db;
+  readonly sourceId: string;
+  readonly identity: ConnectorCatalogCompatibilityIdentity;
+  readonly artifact: ConnectorCatalogArtifact;
+  readonly capability: ExecutableCapabilityState;
+}): Promise<void> {
+  await deleteReplacedEvaluations({
+    db: args.db,
+    sourceId: args.sourceId,
+    catalogDigest: args.identity.catalogDigest,
+  });
+  const filteredAuthMethods = evaluateConnectorCatalogCompatibility({
+    artifact: args.artifact,
+    capability: args.capability,
+  });
+  await args.db
+    .insert(connectorCatalogCompatibilityEvaluation)
+    .values({
+      sourceId: args.sourceId,
+      schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+      catalogVersion: args.identity.catalogVersion,
+      catalogDigest: args.identity.catalogDigest,
+      executableCapabilityDigest: args.capability.digest,
+      evaluatedAt: nowDate(),
+      filteredAuthMethods: [...filteredAuthMethods],
+    })
+    .onConflictDoNothing();
 }
 
 async function lockSyncState(db: Db, sourceId: string): Promise<boolean> {
@@ -311,13 +348,13 @@ async function lockSyncState(db: Db, sourceId: string): Promise<boolean> {
 async function activeSnapshotForUpdate(
   db: Db,
   sourceId: string,
-): Promise<ActiveSnapshot | undefined> {
+): Promise<CanonicalSnapshot | undefined> {
   const [snapshot] = await db
     .select({
       catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      integrityDigest: connectorCatalogActiveSnapshot.integrityDigest,
-      publicCatalog: connectorCatalogActiveSnapshot.publicCatalog,
-      privateCatalog: connectorCatalogActiveSnapshot.privateCatalog,
+      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+      catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
+      catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
     })
     .from(connectorCatalogActiveSnapshot)
     .where(
@@ -359,28 +396,6 @@ async function reconcileCompatibility(args: {
     return;
   }
 
-  await args.db
-    .delete(connectorCatalogCompatibilityEvaluation)
-    .where(
-      and(
-        eq(connectorCatalogCompatibilityEvaluation.sourceId, args.sourceId),
-        eq(
-          connectorCatalogCompatibilityEvaluation.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        or(
-          ne(
-            connectorCatalogCompatibilityEvaluation.catalogVersion,
-            snapshot.catalogVersion,
-          ),
-          ne(
-            connectorCatalogCompatibilityEvaluation.integrityDigest,
-            snapshot.integrityDigest,
-          ),
-        ),
-      ),
-    );
-
   const [existing] = await args.db
     .select({
       capabilityDigest:
@@ -399,8 +414,8 @@ async function reconcileCompatibility(args: {
           snapshot.catalogVersion,
         ),
         eq(
-          connectorCatalogCompatibilityEvaluation.integrityDigest,
-          snapshot.integrityDigest,
+          connectorCatalogCompatibilityEvaluation.catalogDigest,
+          snapshot.catalogDigest,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
@@ -413,16 +428,13 @@ async function reconcileCompatibility(args: {
     return;
   }
 
-  const filteredAuthMethods = evaluateSnapshot(snapshot, args.capability);
-  const evaluatedAt = nowDate();
-  await args.db.insert(connectorCatalogCompatibilityEvaluation).values({
+  const decoded = decodeConnectorCatalogSnapshot(snapshot);
+  await persistConnectorCatalogCompatibility({
+    db: args.db,
     sourceId: args.sourceId,
-    schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-    catalogVersion: snapshot.catalogVersion,
-    integrityDigest: snapshot.integrityDigest,
-    executableCapabilityDigest: args.capability.digest,
-    evaluatedAt,
-    filteredAuthMethods: [...filteredAuthMethods],
+    identity: snapshot,
+    artifact: decoded.artifact,
+    capability: args.capability,
   });
 }
 
@@ -430,7 +442,7 @@ async function compatibilityStatus(args: {
   readonly db: ReadonlyDb;
   readonly sourceId: string;
   readonly capabilityDigest: string;
-  readonly snapshot: ActiveSnapshotIdentity | null;
+  readonly snapshot: ConnectorCatalogCompatibilityIdentity | null;
 }): Promise<ConnectorCatalogFilteringStatus> {
   if (args.snapshot === null) {
     return staleFilteringStatus(args.capabilityDigest);
@@ -455,8 +467,8 @@ async function compatibilityStatus(args: {
           args.snapshot.catalogVersion,
         ),
         eq(
-          connectorCatalogCompatibilityEvaluation.integrityDigest,
-          args.snapshot.integrityDigest,
+          connectorCatalogCompatibilityEvaluation.catalogDigest,
+          args.snapshot.catalogDigest,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
@@ -481,7 +493,7 @@ async function compatibilityStatus(args: {
 export const reconcileConnectorCatalogCompatibility$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     const source = connectorCatalogSource();
-    const capability = executableCapabilityState();
+    const capability = connectorCatalogExecutableCapabilityState();
     await set(writeDb$).transaction(async (tx) => {
       await reconcileCompatibility({
         db: tx,
@@ -496,11 +508,11 @@ export const reconcileConnectorCatalogCompatibility$ = command(
 export const connectorCatalogCompatibilityStatus$ = command(
   async (
     { get },
-    snapshot: ActiveSnapshotIdentity | null,
+    snapshot: ConnectorCatalogCompatibilityIdentity | null,
     signal: AbortSignal,
   ): Promise<ConnectorCatalogFilteringStatus> => {
     const source = connectorCatalogSource();
-    const capability = executableCapabilityState();
+    const capability = connectorCatalogExecutableCapabilityState();
     const status = await compatibilityStatus({
       db: get(db$),
       sourceId: source.sourceId,

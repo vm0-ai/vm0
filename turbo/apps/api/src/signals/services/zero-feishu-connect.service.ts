@@ -256,6 +256,9 @@ async function persistFeishuInstallation(args: {
       .update(feishuOrgInstallations)
       .set({
         appId: args.input.appId,
+        botOpenId: null,
+        botName: null,
+        botAvatarUrl: null,
         encryptedAppSecret,
         encryptedVerificationToken,
         encryptedEncryptKey,
@@ -547,6 +550,7 @@ export const updateFeishuInstallationAgent$ = command(
           ? {
               ...(botInfo
                 ? {
+                    botOpenId: botInfo.openId,
                     botName: botInfo.name,
                     botAvatarUrl: botInfo.avatarUrl,
                   }

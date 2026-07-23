@@ -260,8 +260,8 @@ export async function insertAssistantEventMessages(
 
   if (insertedRowCount > 0) {
     // The watermark must be the batch row that sorts last in server list
-    // order (createdAt, sequenceNumber) — clients skip the refetch when they
-    // already hold it, assuming every earlier batch row is present too.
+    // order (createdAt, sequenceNumber) so old clients can safely treat it as
+    // proof that every earlier row from this publish is already present.
     const watermark = insertedRows.reduce((last, row) => {
       const lastCreated = last.createdAt.getTime();
       const rowCreated = row.createdAt.getTime();

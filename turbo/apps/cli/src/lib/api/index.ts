@@ -156,6 +156,9 @@ export {
   downloadTeamsFile,
 } from "./domains/integrations-teams";
 
+// Domain modules - Integrations Feishu
+export { sendFeishuMessage } from "./domains/integrations-feishu";
+
 // Domain modules - Integrations GitHub
 export {
   downloadGithubFile,
@@ -222,6 +225,13 @@ export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
+export {
+  callZeroFinanceChart,
+  callZeroFinanceProfile,
+  callZeroFinanceQuote,
+  callZeroFinanceSearch,
+  type ZeroFinanceResponse,
+} from "./domains/zero-finance";
 
 // Domain modules - Zero Banking
 export {

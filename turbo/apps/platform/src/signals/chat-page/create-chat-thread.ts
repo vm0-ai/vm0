@@ -75,6 +75,7 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "./chat-message.ts";
+import { isCancelledAssistantMessage } from "./chat-run-lifecycle.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
@@ -223,15 +224,6 @@ function isInterruptControlMessage(msg: PagedChatMessage): boolean {
     msg.role === "user" &&
     msg.runId === undefined &&
     msg.interruptsRunId !== undefined
-  );
-}
-
-function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
-  return (
-    msg.role === "assistant" &&
-    msg.runId !== undefined &&
-    (msg.runLifecycleEvent === "cancelled" ||
-      msg.error?.trim().toLowerCase() === "run cancelled")
   );
 }
 
@@ -2149,10 +2141,12 @@ function createSyncRemoteMessagesCommand({
     const accumulatedMessages: PagedChatMessage[] = [];
     let sinceId = persistentMessages.at(-1)?.message.id;
     const startedWithoutCursor = sinceId === undefined;
+    let initialPageOldestMessageId: string | undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
       const requestedSinceId = sinceId;
+      const isInitialPage = requestedSinceId === undefined;
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId: requestedSinceId },
@@ -2165,7 +2159,7 @@ function createSyncRemoteMessagesCommand({
         gotCount: result.messages.length,
       });
 
-      if (requestedSinceId === undefined) {
+      if (isInitialPage) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2173,9 +2167,14 @@ function createSyncRemoteMessagesCommand({
         return;
       }
 
-      accumulatedMessages.push(...result.messages);
       await set(writeIndexedDbChatMessages$, threadId, result.messages, signal);
       signal.throwIfAborted();
+      if (isInitialPage) {
+        initialPageOldestMessageId = result.messages[0]!.id;
+        set(mergePersistentMessages$, result.messages);
+      } else {
+        accumulatedMessages.push(...result.messages);
+      }
       sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
@@ -2185,7 +2184,9 @@ function createSyncRemoteMessagesCommand({
 
     if (!get(hasReachedOldestMessage$)) {
       const oldestMessageId =
-        persistentMessages[0]?.message.id ?? accumulatedMessages[0]?.id;
+        persistentMessages[0]?.message.id ??
+        initialPageOldestMessageId ??
+        accumulatedMessages[0]?.id;
       if (
         (startedWithoutCursor && initialHasHistoryBefore === false) ||
         oldestMessageId === undefined
@@ -2233,21 +2234,6 @@ function createSyncRemoteMessagesCommand({
     signal.throwIfAborted();
     set(mergePersistentMessages$, accumulatedMessages);
   });
-}
-
-function messageCreatedPayloadSyncThroughMessageId(
-  payload: unknown,
-): string | null {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("syncThroughMessageId" in payload) ||
-    typeof payload.syncThroughMessageId !== "string" ||
-    !uuidPattern.test(payload.syncThroughMessageId)
-  ) {
-    return null;
-  }
-  return payload.syncThroughMessageId;
 }
 
 function messageUpdatedPayloadMessageId(payload: unknown): string | null {
@@ -2557,14 +2543,6 @@ function createPagedMessages(
 
   const latestMessageSignals = createLatestMessageSignals(rawMessages$);
 
-  const persistentChatMessageIds$ = computed((get): Set<string> => {
-    return new Set(
-      get(persistentChatMessages$).map((entry) => {
-        return entry.message.id;
-      }),
-    );
-  });
-
   const runSyncRemoteMessages$ = createSyncRemoteMessagesCommand({
     threadId,
     persistentMessages$: persistentChatMessages$,
@@ -2595,7 +2573,6 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
-    persistentChatMessageIds$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
   };
@@ -2741,7 +2718,6 @@ interface RunTrackingDeps {
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  persistentChatMessageIds$: Computed<Set<string>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   mergeNewIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -2988,61 +2964,12 @@ function createOnSubscribedCommand({
   });
 }
 
-function createOnMessageCreatedCommand({
-  threadId,
-  mergeNewIndexedDbMessages$,
-  persistentChatMessageIds$,
-  syncRemoteMessages$,
-  markThreadReadIfNeeded$,
-  autoScroll$,
-}: Pick<
-  RunTrackingDeps,
-  | "threadId"
-  | "mergeNewIndexedDbMessages$"
-  | "persistentChatMessageIds$"
-  | "syncRemoteMessages$"
-  | "autoScroll$"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<boolean>, [unknown, AbortSignal]> {
-  return command(async ({ get, set }, payload: unknown, sig: AbortSignal) => {
-    L.debug("onMessageCreated$ fired", { threadId });
-    await set(mergeNewIndexedDbMessages$, sig);
-    sig.throwIfAborted();
-    const syncThroughMessageId =
-      messageCreatedPayloadSyncThroughMessageId(payload);
-    if (
-      syncThroughMessageId !== null &&
-      get(persistentChatMessageIds$).has(syncThroughMessageId)
-    ) {
-      // The event's watermark row is already local (background sync or an
-      // earlier fetch), so every row of this publish is present too.
-      L.debug("onMessageCreated$ skipped sync: watermark already local", {
-        threadId,
-        syncThroughMessageId,
-      });
-    } else {
-      await set(syncRemoteMessages$, sig);
-      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
-    }
-    await set(markThreadReadIfNeeded$, sig);
-    animationFrame(
-      () => {
-        set(autoScroll$);
-      },
-      { signal: sig },
-    );
-    return false;
-  });
-}
-
 function createRunTracking({
   threadId,
   reloadThread$,
   remoteThreadDetail$,
   latestChatMessageId$,
   latestRunFinishCreatedAt$,
-  persistentChatMessageIds$,
   initializeIndexedDbMessages$,
   mergeNewIndexedDbMessages$,
   syncRemoteMessages$,
@@ -3076,15 +3003,6 @@ function createRunTracking({
     markThreadReadIfNeeded$,
   });
 
-  const onMessageCreated$ = createOnMessageCreatedCommand({
-    threadId,
-    mergeNewIndexedDbMessages$,
-    persistentChatMessageIds$,
-    syncRemoteMessages$,
-    markThreadReadIfNeeded$,
-    autoScroll$,
-  });
-
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbMessages$, signal);
@@ -3093,6 +3011,22 @@ function createRunTracking({
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(reloadThread$);
+      return false;
+    });
+
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      L.debug("onMessageCreated$ fired", { threadId });
+      await set(mergeNewIndexedDbMessages$, sig);
+      sig.throwIfAborted();
+      await set(syncRemoteMessages$, sig);
+      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal: sig },
+      );
       return false;
     });
 
@@ -4464,7 +4398,6 @@ export function createChatThreadSignals(
     remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    persistentChatMessageIds$: messages.persistentChatMessageIds$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     mergeNewIndexedDbMessages$: messages.mergeNewIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,

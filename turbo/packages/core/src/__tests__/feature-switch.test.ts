@@ -108,6 +108,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
@@ -136,6 +137,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
@@ -201,6 +203,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroFinance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,

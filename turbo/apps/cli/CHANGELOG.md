@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.248.0](https://github.com/vm0-ai/vm0/compare/cli-v9.247.1...cli-v9.248.0) (2026-07-23)
+
+
+### Features
+
+* render readable weather output in the cli ([#22763](https://github.com/vm0-ai/vm0/issues/22763)) ([6a81ea8](https://github.com/vm0-ai/vm0/commit/6a81ea8e5924b6c8f6094f4b65021301f645a364))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.218.0
+    * @vm0/connectors bumped to 1.186.0
+    * @vm0/core bumped to 8.457.2
+
 ## [9.247.1](https://github.com/vm0-ai/vm0/compare/cli-v9.247.0...cli-v9.247.1) (2026-07-23)
 
 

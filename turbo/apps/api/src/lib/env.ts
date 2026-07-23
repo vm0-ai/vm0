@@ -32,6 +32,7 @@ const SCHEMA = {
   ZERO_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   ZERO_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   ZERO_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
+  ZERO_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
   STEAM_WEB_API_KEY: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
   PEXELS_API_KEY: z.string().min(1).optional(),
