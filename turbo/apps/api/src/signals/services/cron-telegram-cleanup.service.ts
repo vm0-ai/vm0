@@ -14,7 +14,9 @@ export const cleanupTelegramMessages$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
     const db = set(writeDb$);
     const cutoffDate = nowDate();
-    cutoffDate.setDate(cutoffDate.getDate() - TELEGRAM_MESSAGE_RETENTION_DAYS);
+    cutoffDate.setUTCDate(
+      cutoffDate.getUTCDate() - TELEGRAM_MESSAGE_RETENTION_DAYS,
+    );
 
     let totalDeleted = 0;
     let batchDeleted: number;

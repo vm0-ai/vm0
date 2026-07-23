@@ -14,7 +14,7 @@ import {
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
 
-const FIXTURE_INSERT_BATCH_SIZE = 500;
+const FIXTURE_INSERT_BATCH_SIZE = 5000;
 const MAX_EXPIRED_COUNT = 10_001;
 
 const markerSchema = z.string().min(1);

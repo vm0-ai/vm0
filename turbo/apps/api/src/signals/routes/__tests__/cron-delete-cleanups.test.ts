@@ -31,7 +31,8 @@ const CRON_SECRET = "test-delete-cleanups-secret";
 const CONNECTOR_EXPIRED_COUNT = 10_001;
 const TELEGRAM_EXPIRED_COUNT = 10_001;
 const CUTOFF_MS = Date.parse("1950-01-31T00:00:00.000Z");
-const TELEGRAM_NOW_MS = Date.parse("1950-03-02T00:00:00.000Z");
+const TELEGRAM_CUTOFF_MS = Date.parse("1950-04-20T00:00:00.000Z");
+const TELEGRAM_NOW_MS = Date.parse("1950-05-20T00:00:00.000Z");
 
 function connectorState(marker: string, kind: string): string {
   return `${marker}:${kind}`;
@@ -83,7 +84,7 @@ async function seedTelegramFixture(expiredCount: number): Promise<string> {
   await requestFixture({
     action: "seed-telegram",
     marker,
-    cutoff: new Date(CUTOFF_MS).toISOString(),
+    cutoff: new Date(TELEGRAM_CUTOFF_MS).toISOString(),
     expiredCount,
   });
   return marker;
@@ -150,10 +151,10 @@ describe("complete delete cleanup crons", () => {
 
     const empty = await cleanupConnectorOauthStates();
     expect(empty.body.deleted).toBe(0);
-  });
+  }, 15_000);
 
-  it("runs full and short telegram batches without crossing the UTC cutoff outside UTC", async () => {
-    stubTestTimezone("Asia/Shanghai");
+  it("runs full and short telegram batches across a non-UTC daylight-saving boundary", async () => {
+    stubTestTimezone("America/New_York");
     mockNow(TELEGRAM_NOW_MS);
     const marker = await seedTelegramFixture(TELEGRAM_EXPIRED_COUNT);
 

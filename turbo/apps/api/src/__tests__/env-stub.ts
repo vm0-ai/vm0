@@ -1,6 +1,8 @@
 import { vi } from "vitest";
 
-export function stubTestTimezone(timezone: "Asia/Shanghai" | "UTC"): void {
+export function stubTestTimezone(
+  timezone: "America/New_York" | "Asia/Shanghai" | "UTC",
+): void {
   vi.stubEnv("TZ", timezone);
 }
 
