@@ -5,6 +5,7 @@ import { callZeroWeather, type ZeroWeatherResponse } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 const WEATHER_UNITS = ["metric", "imperial"] as const;
+const WEATHER_LANGUAGE_CODE = "en";
 
 type WeatherUnits = (typeof WEATHER_UNITS)[number];
 
@@ -15,7 +16,6 @@ interface JsonOption {
 interface CoordinateOptions extends JsonOption {
   readonly lat: number;
   readonly lng: number;
-  readonly language?: string;
 }
 
 interface LocationOptions extends CoordinateOptions {
@@ -82,7 +82,7 @@ function coordinatePayload(
   return {
     lat: options.lat,
     lng: options.lng,
-    languageCode: options.language,
+    languageCode: WEATHER_LANGUAGE_CODE,
   };
 }
 
@@ -101,21 +101,533 @@ function pagedPayload(options: PagedOptions): Record<string, unknown> {
   };
 }
 
-function renderWeatherMetadata(response: ZeroWeatherResponse): void {
-  if (response.provider) {
-    console.log(chalk.dim(`  Provider: ${response.provider}`));
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recordField(value: unknown, key: string): JsonRecord | undefined {
+  if (!isRecord(value)) {
+    return undefined;
   }
+  const field = value[key];
+  return isRecord(field) ? field : undefined;
+}
+
+function arrayField(
+  value: unknown,
+  key: string,
+): readonly unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const field = value[key];
+  return Array.isArray(field) ? field : undefined;
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const field = value[key];
+  return typeof field === "string" ? field : undefined;
+}
+
+function numberField(value: unknown, key: string): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const field = value[key];
+  return typeof field === "number" && Number.isFinite(field)
+    ? field
+    : undefined;
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatTemperature(value: unknown): string | undefined {
+  const degrees = numberField(value, "degrees");
+  if (degrees === undefined) {
+    return undefined;
+  }
+  const unit = stringField(value, "unit");
+  const suffix = unit === "FAHRENHEIT" ? "°F" : "°C";
+  return `${formatNumber(degrees)}${suffix}`;
+}
+
+function temperatureSuffix(value: unknown): string {
+  return stringField(value, "unit") === "FAHRENHEIT" ? "°F" : "°C";
+}
+
+function formatTemperatureRange(
+  minimum: unknown,
+  maximum: unknown,
+): string | undefined {
+  const minimumText = formatTemperature(minimum);
+  const maximumText = formatTemperature(maximum);
+  const minimumDegrees = numberField(minimum, "degrees");
+  const maximumDegrees = numberField(maximum, "degrees");
+  if (
+    minimumDegrees !== undefined &&
+    maximumDegrees !== undefined &&
+    temperatureSuffix(minimum) === temperatureSuffix(maximum)
+  ) {
+    return `${formatNumber(minimumDegrees)}–${formatNumber(maximumDegrees)}${temperatureSuffix(minimum)}`;
+  }
+  if (minimumText && maximumText) {
+    return `${minimumText}–${maximumText}`;
+  }
+  return minimumText ?? maximumText;
+}
+
+function formatCardinalDirection(
+  value: string | undefined,
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const abbreviations: Record<string, string> = {
+    NORTH: "N",
+    NORTHEAST: "NE",
+    EAST: "E",
+    SOUTHEAST: "SE",
+    SOUTH: "S",
+    SOUTHWEST: "SW",
+    WEST: "W",
+    NORTHWEST: "NW",
+  };
+  return value
+    .split("_")
+    .map((part) => {
+      return abbreviations[part] ?? part;
+    })
+    .join("");
+}
+
+function formatSpeed(value: unknown): string | undefined {
+  const speed = numberField(value, "value");
+  if (speed === undefined) {
+    return undefined;
+  }
+  const unit = stringField(value, "unit");
+  const suffix =
+    unit === "MILES_PER_HOUR"
+      ? "mph"
+      : unit === "METERS_PER_SECOND"
+        ? "m/s"
+        : "km/h";
+  return `${formatNumber(speed)} ${suffix}`;
+}
+
+function formatWind(value: unknown): string | undefined {
+  const direction = formatCardinalDirection(
+    stringField(recordField(value, "direction"), "cardinal"),
+  );
+  const speed = formatSpeed(recordField(value, "speed"));
+  const gust = formatSpeed(recordField(value, "gust"));
+  const primary = [direction, speed].filter(Boolean).join(" ");
+  if (!primary && !gust) {
+    return undefined;
+  }
+  if (!gust) {
+    return primary || undefined;
+  }
+  return `${primary || "Wind"}, gusts ${gust}`;
+}
+
+function formatCondition(value: unknown): string | undefined {
+  const description = recordField(value, "description");
+  return stringField(description, "text") ?? stringField(value, "text");
+}
+
+function formatProbability(value: unknown): string | undefined {
+  const percent = numberField(recordField(value, "probability"), "percent");
+  return percent === undefined ? undefined : `${formatNumber(percent)}%`;
+}
+
+function formatQuantity(value: unknown): string | undefined {
+  const quantity = numberField(value, "quantity");
+  if (quantity === undefined || quantity === 0) {
+    return undefined;
+  }
+  const unit = stringField(value, "unit");
+  return `${formatNumber(quantity)} ${unit === "MILLIMETERS" ? "mm" : (unit ?? "units")}`;
+}
+
+function formatTimeZone(value: unknown): string | undefined {
+  return typeof value === "string" ? value : stringField(value, "id");
+}
+
+function formatDisplayDate(value: unknown): string | undefined {
+  const year = numberField(value, "year");
+  const month = numberField(value, "month");
+  const day = numberField(value, "day");
+  if (year === undefined || month === undefined || day === undefined) {
+    return undefined;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function formatDateTime(
+  value: unknown,
+  timeZone: string | undefined,
+): string | undefined {
+  if (typeof value === "string") {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  const year = numberField(value, "year");
+  const month = numberField(value, "month");
+  const day = numberField(value, "day");
+  if (year === undefined || month === undefined || day === undefined) {
+    return undefined;
+  }
+  const hour = numberField(value, "hours") ?? numberField(value, "hour") ?? 0;
+  const minute =
+    numberField(value, "minutes") ?? numberField(value, "minute") ?? 0;
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatLocalTime(
+  value: unknown,
+  timeZone: string | undefined,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function renderSource(response: ZeroWeatherResponse): void {
   if (response.attribution) {
-    console.log(chalk.dim(`  ${response.attribution}`));
+    console.log(chalk.dim(response.attribution));
   }
-  if (response.billingCategory) {
-    console.log(chalk.dim(`  Billing category: ${response.billingCategory}`));
+}
+
+function renderCurrentConditions(result: JsonRecord): boolean {
+  const timeZone = formatTimeZone(result.timeZone);
+  console.log(`Current conditions${timeZone ? ` · ${timeZone}` : ""}`);
+
+  const condition = formatCondition(result.weatherCondition);
+  const temperature = formatTemperature(result.temperature);
+  const feelsLike = formatTemperature(result.feelsLikeTemperature);
+  const currentTime = formatDateTime(result.currentTime, timeZone);
+  if (condition || temperature || feelsLike) {
+    console.log(
+      `  ${[
+        condition,
+        temperature,
+        feelsLike ? `feels like ${feelsLike}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ")}`,
+    );
   }
-  if (response.billingQuantity !== undefined) {
-    console.log(chalk.dim(`  Billing quantity: ${response.billingQuantity}`));
+
+  const details = [
+    formatWind(result.wind),
+    numberField(result, "relativeHumidity") !== undefined
+      ? `humidity ${formatNumber(numberField(result, "relativeHumidity") ?? 0)}%`
+      : undefined,
+    numberField(result, "uvIndex") !== undefined
+      ? `UV ${formatNumber(numberField(result, "uvIndex") ?? 0)}`
+      : undefined,
+    formatProbability(result.precipitation)
+      ? `rain ${formatProbability(result.precipitation)}`
+      : undefined,
+  ].filter(Boolean);
+  if (details.length > 0) {
+    console.log(`  ${details.join(" · ")}`);
   }
-  if (response.creditsCharged !== undefined) {
-    console.log(chalk.dim(`  Credits charged: ${response.creditsCharged}`));
+  if (currentTime) {
+    console.log(chalk.dim(`  Updated ${currentTime}`));
+  }
+  return Boolean(condition || temperature || feelsLike || details.length > 0);
+}
+
+function compactStrings(
+  values: readonly (string | undefined)[],
+): readonly string[] {
+  return values.filter((value): value is string => {
+    return value !== undefined;
+  });
+}
+
+function formatLabeledTemperatureRange(
+  label: string,
+  minimum: unknown,
+  maximum: unknown,
+): string | undefined {
+  const range = formatTemperatureRange(minimum, maximum);
+  return range ? `${label}${range}` : undefined;
+}
+
+function formatDailyRainProbability(
+  daytime: JsonRecord | undefined,
+  nighttime: JsonRecord | undefined,
+): string | undefined {
+  const daytimeProbability = formatProbability(daytime?.precipitation);
+  if (!daytimeProbability) {
+    return undefined;
+  }
+  const nighttimeProbability = formatProbability(nighttime?.precipitation);
+  return `rain ${daytimeProbability}${
+    nighttimeProbability ? ` (night ${nighttimeProbability})` : ""
+  }`;
+}
+
+function formatLabeledNumber(
+  label: string,
+  value: unknown,
+  key: string,
+  onlyWhenPositive = false,
+): string | undefined {
+  const number = numberField(value, key);
+  if (number === undefined || (onlyWhenPositive && number <= 0)) {
+    return undefined;
+  }
+  return `${label} ${formatNumber(number)}${label === "UV" ? "" : "%"}`;
+}
+
+function formatLabeledQuantity(
+  label: string,
+  value: unknown,
+): string | undefined {
+  const quantity = formatQuantity(value);
+  return quantity ? `${label} ${quantity}` : undefined;
+}
+
+function renderDailyForecastDay(
+  forecastDay: unknown,
+  timeZone: string | undefined,
+): void {
+  const day = isRecord(forecastDay) ? forecastDay : {};
+  const daytime = recordField(day, "daytimeForecast");
+  const nighttime = recordField(day, "nighttimeForecast");
+  const date = formatDisplayDate(day.displayDate) ?? "Forecast day";
+  console.log(chalk.bold(`  ${date}`));
+
+  const nighttimeCondition = formatCondition(
+    recordField(nighttime, "weatherCondition"),
+  );
+  const conditions = compactStrings([
+    formatCondition(recordField(daytime, "weatherCondition")),
+    nighttimeCondition ? `${nighttimeCondition} overnight` : undefined,
+  ]);
+  if (conditions.length > 0) {
+    console.log(`    ${conditions.join(" · ")}`);
+  }
+
+  const details = compactStrings([
+    formatTemperatureRange(day.minTemperature, day.maxTemperature),
+    formatLabeledTemperatureRange(
+      "feels like ",
+      day.feelsLikeMinTemperature,
+      day.feelsLikeMaxTemperature,
+    ),
+    formatDailyRainProbability(daytime, nighttime),
+    formatWind(daytime?.wind) ?? formatWind(nighttime?.wind),
+    formatLabeledNumber("UV", daytime, "uvIndex"),
+    formatLabeledNumber(
+      "thunderstorms",
+      daytime,
+      "thunderstormProbability",
+      true,
+    ),
+    formatLabeledQuantity(
+      "snow",
+      recordField(daytime?.precipitation, "snowQpf"),
+    ),
+    formatLabeledQuantity("ice", recordField(daytime, "iceThickness")),
+  ]);
+  if (details.length > 0) {
+    console.log(`    ${details.join(" · ")}`);
+  }
+
+  const sunEvents = recordField(day, "sunEvents");
+  const sunrise = formatLocalTime(
+    stringField(sunEvents, "sunriseTime"),
+    timeZone,
+  );
+  const sunset = formatLocalTime(
+    stringField(sunEvents, "sunsetTime"),
+    timeZone,
+  );
+  const sunDetails = compactStrings([
+    sunrise ? `Sunrise ${sunrise}` : undefined,
+    sunset ? `Sunset ${sunset}` : undefined,
+  ]);
+  if (sunDetails.length > 0) {
+    console.log(chalk.dim(`    ${sunDetails.join(" · ")}`));
+  }
+}
+
+function renderDailyForecast(result: JsonRecord): boolean {
+  const forecastDays = arrayField(result, "forecastDays");
+  if (!forecastDays) {
+    return false;
+  }
+  const timeZone = formatTimeZone(result.timeZone);
+  console.log(`Daily forecast${timeZone ? ` · ${timeZone}` : ""}`);
+  if (forecastDays.length === 0) {
+    console.log(chalk.dim("  No daily forecast data returned."));
+    return true;
+  }
+
+  for (const forecastDay of forecastDays) {
+    renderDailyForecastDay(forecastDay, timeZone);
+  }
+  return true;
+}
+
+function renderHourlyForecast(
+  result: JsonRecord,
+  key: "forecastHours" | "historyHours",
+  title: string,
+): boolean {
+  const hours = arrayField(result, key);
+  if (!hours) {
+    return false;
+  }
+  const timeZone = formatTimeZone(result.timeZone);
+  console.log(`${title}${timeZone ? ` · ${timeZone}` : ""}`);
+  if (hours.length === 0) {
+    console.log(
+      chalk.dim(
+        `  No ${key === "forecastHours" ? "forecast" : "history"} data returned.`,
+      ),
+    );
+    return true;
+  }
+
+  for (const hour of hours) {
+    const interval = recordField(hour, "interval");
+    const timestamp =
+      (isRecord(hour) ? hour.displayDateTime : undefined) ??
+      stringField(interval, "startTime");
+    const dateTime = formatDateTime(timestamp, timeZone) ?? "Unknown time";
+    const details = [
+      dateTime,
+      formatCondition(recordField(hour, "weatherCondition")),
+      formatTemperature(recordField(hour, "temperature")),
+      formatProbability(recordField(hour, "precipitation"))
+        ? `rain ${formatProbability(recordField(hour, "precipitation"))}`
+        : undefined,
+      formatWind(recordField(hour, "wind")),
+    ].filter(Boolean);
+    console.log(`  ${details.join(" · ")}`);
+  }
+  return true;
+}
+
+function formatConcentration(value: unknown): string | undefined {
+  const concentration = numberField(value, "value");
+  if (concentration === undefined) {
+    return undefined;
+  }
+  const unit = stringField(value, "units");
+  const suffix =
+    unit === "MICROGRAMS_PER_CUBIC_METER"
+      ? "µg/m³"
+      : unit === "MILLIGRAMS_PER_CUBIC_METER"
+        ? "mg/m³"
+        : unit === "PARTS_PER_BILLION"
+          ? "ppb"
+          : unit === "PARTS_PER_MILLION"
+            ? "ppm"
+            : (unit ?? "units");
+  return `${formatNumber(concentration)} ${suffix}`;
+}
+
+function renderAirQuality(result: JsonRecord): boolean {
+  const indexes = arrayField(result, "indexes");
+  const pollutants = arrayField(result, "pollutants");
+  if (!indexes && !pollutants) {
+    return false;
+  }
+  console.log("Current air quality");
+  for (const index of indexes ?? []) {
+    const label =
+      stringField(index, "displayName") ?? stringField(index, "code") ?? "AQI";
+    const aqi = numberField(index, "aqi");
+    const category = stringField(index, "category");
+    const value = aqi === undefined ? label : `${label}: ${formatNumber(aqi)}`;
+    console.log(`  ${value}${category ? ` · ${category}` : ""}`);
+  }
+  for (const pollutant of pollutants ?? []) {
+    const label =
+      stringField(pollutant, "fullName") ??
+      stringField(pollutant, "displayName") ??
+      stringField(pollutant, "code");
+    const concentration = formatConcentration(
+      recordField(pollutant, "concentration"),
+    );
+    if (label || concentration) {
+      console.log(`  ${[label, concentration].filter(Boolean).join(": ")}`);
+    }
+  }
+  return true;
+}
+
+function renderReadableWeatherResult(
+  operation: string | undefined,
+  result: unknown,
+): void {
+  if (!isRecord(result)) {
+    console.log(chalk.dim("No structured weather data returned."));
+    return;
+  }
+
+  const rendered =
+    operation === "current"
+      ? renderCurrentConditions(result)
+      : operation === "forecast.daily"
+        ? renderDailyForecast(result)
+        : operation === "forecast.hourly"
+          ? renderHourlyForecast(result, "forecastHours", "Hourly forecast")
+          : operation === "history.hourly"
+            ? renderHourlyForecast(result, "historyHours", "Hourly history")
+            : operation === "air-quality.current"
+              ? renderAirQuality(result)
+              : false;
+
+  if (!rendered) {
+    console.log(chalk.dim("No readable weather fields were returned."));
   }
 }
 
@@ -124,8 +636,8 @@ function renderWeatherResponse(
   response: ZeroWeatherResponse,
 ): void {
   console.log(chalk.green(`✓ ${label}`));
-  renderWeatherMetadata(response);
-  console.log(JSON.stringify(response.result ?? response, null, 2));
+  renderReadableWeatherResult(response.operation, response.result);
+  renderSource(response);
 }
 
 async function runWeatherRequest(
@@ -151,7 +663,6 @@ function addCoordinateOptions(command: Command): Command {
   return command
     .requiredOption("--lat <number>", "Latitude", parseLatitude)
     .requiredOption("--lng <number>", "Longitude", parseLongitude)
-    .option("--language <code>", "IETF BCP-47 response language code")
     .option("--json", "Print the raw response as JSON");
 }
 
@@ -290,11 +801,11 @@ export const zeroWeatherCommand = new Command()
     "after",
     `
 Examples:
-  Current conditions:  zero weather current --lat 39.9042 --lng 116.4074 --language zh-CN --json
+  Current conditions:  zero weather current --lat 39.9042 --lng 116.4074 --json
   Hourly forecast:     zero weather forecast hourly --lat 39.9042 --lng 116.4074 --hours 48 --page-size 24 --json
   Daily forecast:      zero weather forecast daily --lat 39.9042 --lng 116.4074 --days 10 --page-size 10 --json
   Hourly history:      zero weather history hourly --lat 39.9042 --lng 116.4074 --hours 24 --json
-  Current air quality: zero weather air-quality current --lat 39.9042 --lng 116.4074 --language zh-CN --json
+  Current air quality: zero weather air-quality current --lat 39.9042 --lng 116.4074 --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires weather:read capability) or a CLI token
