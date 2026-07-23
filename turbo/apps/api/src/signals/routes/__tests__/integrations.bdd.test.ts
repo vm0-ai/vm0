@@ -57,6 +57,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+interface SlackInputAssetMessage {
+  readonly attachFiles?:
+    | readonly {
+        readonly filename?: string | null;
+        readonly assetRef?: { readonly id?: string | null } | null;
+      }[]
+    | null;
+}
+
+function requireCanonicalSlackInputAssetId(
+  messages: readonly SlackInputAssetMessage[],
+): string {
+  const assetId = messages
+    .flatMap((message) => {
+      return message.attachFiles ?? [];
+    })
+    .find((file) => {
+      return file.filename === "source-notes.txt";
+    })?.assetRef?.id;
+  if (!assetId) {
+    throw new Error("Expected a canonical Slack input asset");
+  }
+  return assetId;
+}
+
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -1348,6 +1373,16 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return message.content?.includes("[Slack file]") ?? false;
       }),
     ).toBeFalsy();
+    const canonicalInputAssetId =
+      requireCanonicalSlackInputAssetId(visibleMessages);
+    const canonicalInputRun = await runs.readRun(actor, run1Id);
+    expect(canonicalInputRun.prompt).toContain(
+      `[Web file] source-notes.txt (text/plain)`,
+    );
+    expect(canonicalInputRun.prompt).toContain(`[ID] ${canonicalInputAssetId}`);
+    expect(canonicalInputRun.appendSystemPrompt).toContain(
+      "zero web download-file -h",
+    );
     expect(context.mocks.slack.chat.getPermalink).toHaveBeenCalledWith({
       channel: channelId,
       message_ts: threadTs,

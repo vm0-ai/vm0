@@ -4,7 +4,7 @@ import {
   canonicalAssetDeliveries,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { WebClient } from "@slack/web-api";
 
 import {
@@ -111,28 +111,15 @@ function providerFailureMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Slack request failed";
 }
 
-async function markDeliveryFailed(
-  db: Db,
-  assetId: string,
-  error: {
-    readonly code: string;
-    readonly message: string;
-    readonly retryable: boolean;
-  },
-): Promise<CanonicalSlackDeliveryResult> {
-  await db
-    .update(canonicalAssetDeliveries)
-    .set({
-      status: "failed",
-      lastError: error,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(canonicalAssetDeliveries.assetId, assetId),
-        eq(canonicalAssetDeliveries.provider, "slack"),
-      ),
-    );
+interface CanonicalSlackDeliveryFailure {
+  readonly code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+}
+
+function failedResult(
+  error: CanonicalSlackDeliveryFailure,
+): CanonicalSlackDeliveryResult {
   return {
     status: "failed",
     message: error.message,
@@ -140,12 +127,84 @@ async function markDeliveryFailed(
   };
 }
 
+function deliveryIdentityCondition(row: CanonicalSlackDeliveryRow): SQL {
+  return and(
+    eq(canonicalAssetDeliveries.assetId, row.assetId),
+    eq(canonicalAssetDeliveries.provider, "slack"),
+    eq(canonicalAssetDeliveries.operationId, row.operationId),
+  )!;
+}
+
+function deliveryExternalIdCondition(externalId: string | null): SQL {
+  return externalId === null
+    ? isNull(canonicalAssetDeliveries.externalId)
+    : eq(canonicalAssetDeliveries.externalId, externalId);
+}
+
+function deliveryTransitionCondition(row: CanonicalSlackDeliveryRow): SQL {
+  return and(
+    deliveryIdentityCondition(row),
+    deliveryExternalIdCondition(row.externalId),
+    ne(canonicalAssetDeliveries.status, "delivered"),
+  )!;
+}
+
+async function deliveryResultAfterTransitionConflict(
+  db: Db,
+  row: CanonicalSlackDeliveryRow,
+): Promise<CanonicalSlackDeliveryResult> {
+  const [current] = await db
+    .select({
+      status: canonicalAssetDeliveries.status,
+      externalId: canonicalAssetDeliveries.externalId,
+      deliveryUrl: canonicalAssetDeliveries.url,
+      lastError: canonicalAssetDeliveries.lastError,
+    })
+    .from(canonicalAssetDeliveries)
+    .where(deliveryIdentityCondition(row))
+    .limit(1);
+  if (current?.status === "delivered") {
+    return {
+      status: "delivered",
+      fileId: current.externalId ?? "",
+      permalink: current.deliveryUrl ?? "",
+    };
+  }
+  if (current?.status === "failed" && current.lastError) {
+    return failedResult(current.lastError);
+  }
+  return failedResult({
+    code: "delivery-attempt-in-progress",
+    message: "Another Slack delivery attempt is already in progress",
+    retryable: true,
+  });
+}
+
+async function markDeliveryFailed(
+  db: Db,
+  row: CanonicalSlackDeliveryRow,
+  error: CanonicalSlackDeliveryFailure,
+): Promise<CanonicalSlackDeliveryResult> {
+  const [failed] = await db
+    .update(canonicalAssetDeliveries)
+    .set({
+      status: "failed",
+      lastError: error,
+      updatedAt: sql`now()`,
+    })
+    .where(deliveryTransitionCondition(row))
+    .returning({ id: canonicalAssetDeliveries.id });
+  return failed
+    ? failedResult(error)
+    : await deliveryResultAfterTransitionConflict(db, row);
+}
+
 async function markDeliveryDelivered(
   db: Db,
   row: CanonicalSlackDeliveryRow,
   permalink: string,
 ): Promise<CanonicalSlackDeliveryResult> {
-  await db
+  const [delivered] = await db
     .update(canonicalAssetDeliveries)
     .set({
       status: "delivered",
@@ -153,17 +212,40 @@ async function markDeliveryDelivered(
       lastError: null,
       updatedAt: sql`now()`,
     })
-    .where(
-      and(
-        eq(canonicalAssetDeliveries.assetId, row.assetId),
-        eq(canonicalAssetDeliveries.provider, "slack"),
-        eq(canonicalAssetDeliveries.operationId, row.operationId),
-      ),
-    );
+    .where(deliveryTransitionCondition(row))
+    .returning({ id: canonicalAssetDeliveries.id });
+  return delivered
+    ? {
+        status: "delivered",
+        fileId: row.externalId ?? "",
+        permalink,
+      }
+    : await deliveryResultAfterTransitionConflict(db, row);
+}
+
+async function reservePreparedSlackFile(
+  db: Db,
+  row: CanonicalSlackDeliveryRow,
+  prepared: { readonly uploadUrl: string; readonly fileId: string },
+): Promise<CanonicalSlackDeliveryResult> {
+  const [reserved] = await db
+    .update(canonicalAssetDeliveries)
+    .set({
+      status: "pending",
+      externalId: prepared.fileId,
+      url: null,
+      lastError: null,
+      updatedAt: sql`now()`,
+    })
+    .where(deliveryTransitionCondition(row))
+    .returning({ id: canonicalAssetDeliveries.id });
+  if (!reserved) {
+    return await deliveryResultAfterTransitionConflict(db, row);
+  }
   return {
-    status: "delivered",
-    fileId: row.externalId ?? "",
-    permalink,
+    status: "pending",
+    uploadUrl: prepared.uploadUrl,
+    fileId: prepared.fileId,
   };
 }
 
@@ -189,7 +271,7 @@ async function completeExistingSlackFile(
     ) {
       return null;
     }
-    return await markDeliveryFailed(db, row.assetId, {
+    return await markDeliveryFailed(db, row, {
       code: completed.error,
       message: `Slack delivery failed: ${completed.error}`,
       retryable: true,
@@ -229,7 +311,7 @@ export const prepareCanonicalSlackDelivery$ = command(
     );
     signal.throwIfAborted();
     if (!reconciliation.ok) {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: "slack-request-failed",
         message: providerFailureMessage(reconciliation.error),
         retryable: true,
@@ -240,7 +322,7 @@ export const prepareCanonicalSlackDelivery$ = command(
       return reconciled;
     }
     if (!row.filename || row.sizeBytes === null) {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: "asset-metadata-missing",
         message: "Canonical asset metadata is incomplete",
         retryable: false,
@@ -256,7 +338,7 @@ export const prepareCanonicalSlackDelivery$ = command(
     );
     signal.throwIfAborted();
     if (!preparation.ok) {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: "slack-request-failed",
         message: providerFailureMessage(preparation.error),
         retryable: true,
@@ -264,35 +346,19 @@ export const prepareCanonicalSlackDelivery$ = command(
     }
     const prepared = preparation.value;
     if (prepared.kind === "slack_error") {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: prepared.error,
         message: `Slack delivery failed: ${prepared.error}`,
         retryable: true,
       });
     }
 
-    await db
-      .update(canonicalAssetDeliveries)
-      .set({
-        status: "pending",
-        externalId: prepared.fileId,
-        url: null,
-        lastError: null,
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(canonicalAssetDeliveries.assetId, row.assetId),
-          eq(canonicalAssetDeliveries.provider, "slack"),
-          eq(canonicalAssetDeliveries.operationId, row.operationId),
-        ),
-      );
-    signal.throwIfAborted();
-    return {
-      status: "pending",
+    const result = await reservePreparedSlackFile(db, row, {
       uploadUrl: prepared.uploadUrl,
       fileId: prepared.fileId,
-    };
+    });
+    signal.throwIfAborted();
+    return result;
   },
 );
 
@@ -320,14 +386,10 @@ export const completeCanonicalSlackDelivery$ = command(
       return deliveredResult(row);
     }
     if (row.externalId !== args.fileId) {
-      return await markDeliveryFailed(db, row.assetId, {
-        code: "delivery-file-mismatch",
-        message: "Slack delivery file identity did not match",
-        retryable: false,
-      });
+      return await deliveryResultAfterTransitionConflict(db, row);
     }
     if (args.uploadError) {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: "slack-upload-failed",
         message: args.uploadError,
         retryable: true,
@@ -346,7 +408,7 @@ export const completeCanonicalSlackDelivery$ = command(
     );
     signal.throwIfAborted();
     if (!completion.ok) {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: "slack-request-failed",
         message: providerFailureMessage(completion.error),
         retryable: true,
@@ -354,7 +416,7 @@ export const completeCanonicalSlackDelivery$ = command(
     }
     const completed = completion.value;
     if (completed.kind === "slack_error") {
-      return await markDeliveryFailed(db, row.assetId, {
+      return await markDeliveryFailed(db, row, {
         code: completed.error,
         message: `Slack delivery failed: ${completed.error}`,
         retryable: true,
