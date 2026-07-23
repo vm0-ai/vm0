@@ -465,6 +465,11 @@ describe("zero people-search route", () => {
       providerResponse({
         results: [providerResult({ url: "javascript:alert(1)" })],
       }),
+      providerResponse({
+        results: [
+          providerResult({ url: "https://user:secret@example.com/profile" }),
+        ],
+      }),
       providerResponse({ invocation: 2 }),
       providerResponse({
         profiles: [
@@ -534,7 +539,7 @@ describe("zero people-search route", () => {
     expect(providerRequests).toBe(0);
   });
 
-  it("maps rate limits and oversized responses without billing", async () => {
+  it("maps provider failures without billing", async () => {
     const actor = staffActor();
     configureProvider();
     await seedPeopleSearchPricing();
@@ -554,6 +559,26 @@ describe("zero people-search route", () => {
     );
     expectApiError(rateLimited.body);
     expect(rateLimited.body.error.code).toBe("PERPLEXITY_RATE_LIMITED");
+
+    server.use(
+      http.post(PERPLEXITY_AGENT_URL, () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new DOMException("timed out", "TimeoutError"));
+          },
+        });
+        return new HttpResponse(stream);
+      }),
+    );
+    const timedOut = await accept(
+      client()(zeroPeopleSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [502],
+    );
+    expectApiError(timedOut.body);
+    expect(timedOut.body.error.code).toBe("PEOPLE_SEARCH_TIMEOUT");
 
     server.use(
       http.post(PERPLEXITY_AGENT_URL, () => {

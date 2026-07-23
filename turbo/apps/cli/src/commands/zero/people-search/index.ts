@@ -84,7 +84,10 @@ export const zeroPeopleSearchCommand = new Command()
   .description("Find professionals through managed zero people search")
   .argument("<query>", "Professional research query")
   .addOption(
-    new Option("--limit <count>", "Maximum profiles")
+    new Option(
+      "--limit <count>",
+      `Maximum profiles (1-${ZERO_PEOPLE_SEARCH_MAX_LIMIT})`,
+    )
       .default(ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT)
       .argParser(parseLimit),
   )

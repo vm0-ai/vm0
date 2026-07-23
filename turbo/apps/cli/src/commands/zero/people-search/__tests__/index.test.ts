@@ -108,6 +108,13 @@ describe("zero people-search command", () => {
       .join("\n");
   }
 
+  it("documents the default and maximum profile limits", () => {
+    const help = zeroPeopleSearchCommand.helpInformation();
+
+    expect(help).toContain("Maximum profiles (1-10)");
+    expect(help).toContain("(default: 5)");
+  });
+
   it("posts default requests and prints JSON", async () => {
     let requestBody: unknown;
     server.use(
