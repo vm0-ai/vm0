@@ -31,6 +31,11 @@ const artifactIdbMock = vi.hoisted(() => {
     readonly value: Record<string, unknown>;
   }
 
+  let artifactReplacementGate: {
+    readonly started: PromiseWithResolvers<void>;
+    readonly released: PromiseWithResolvers<void>;
+  } | null = null;
+
   class MemoryCursor {
     private position = 0;
 
@@ -149,11 +154,15 @@ const artifactIdbMock = vi.hoisted(() => {
       return Promise.resolve();
     }
 
-    clear(): Promise<void> {
+    async clear(): Promise<void> {
+      const gate = artifactReplacementGate;
+      if (this.store.keyPath === "artifactItemId" && gate) {
+        gate.started.resolve();
+        await gate.released.promise;
+      }
       for (const key of this.store.rows.keys()) {
         this.store.rows.delete(key);
       }
-      return Promise.resolve();
     }
 
     get(key: IDBValidKey): Promise<unknown> {
@@ -293,6 +302,25 @@ const artifactIdbMock = vi.hoisted(() => {
   const dbs = new Map<string, MemoryDb>();
 
   return {
+    blockArtifactReplacement(): {
+      readonly started: Promise<void>;
+      release(): void;
+    } {
+      const started = Promise.withResolvers<void>();
+      const released = Promise.withResolvers<void>();
+      const gate = { started, released };
+      artifactReplacementGate = gate;
+      return {
+        started: started.promise,
+        release: () => {
+          if (artifactReplacementGate === gate) {
+            artifactReplacementGate = null;
+          }
+          released.resolve();
+        },
+      };
+    },
+
     async openDB(
       name: string,
       _version?: number,
@@ -1543,6 +1571,32 @@ describe("artifacts page", () => {
     expect(cached[0]).not.toHaveProperty("isFavorited");
   });
 
+  it("renders remote artifacts before replacing the IndexedDB cache", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-cache-background-write");
+    const artifact = createArtifact({
+      artifactItemId: "background-write-run:file-1",
+      runId: "background-write-run",
+      filename: "background-write.html",
+    });
+    const replacement = artifactIdbMock.blockArtifactReplacement();
+    mockArtifacts([artifact]);
+
+    setupArtifactsPage({ scope });
+
+    await replacement.started;
+    try {
+      expect(screen.getByText("background-write.html")).toBeInTheDocument();
+    } finally {
+      replacement.release();
+    }
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        artifact.artifactItemId,
+      ]);
+    });
+  });
+
   it("renders the cache immediately when returning while the remote refresh is pending", async () => {
     setupTeam();
     const scope = testAuthScope("return-to-cache");
@@ -1783,6 +1837,33 @@ describe("artifacts page", () => {
     // instead of stopping at the first (capped) response.
     await screen.findByText("page-one.html");
     await screen.findByText("page-two.html");
+  });
+
+  it("renders the first remote page while the next cursor is pending", async () => {
+    setupTeam();
+    const scope = testAuthScope("paged-progressive");
+    context.mocks.api(artifactsContract.list, ({ query, respond, never }) => {
+      if (query.cursor) {
+        return never();
+      }
+      return respond(200, {
+        artifacts: [
+          createArtifact({
+            artifactItemId: "progressive-page-one:file-1",
+            runId: "progressive-page-one",
+            filename: "progressive-page-one.html",
+          }),
+        ],
+        truncated: false,
+        nextCursor: "cursor-page-2",
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await expect(
+      screen.findByText("progressive-page-one.html"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("virtualizes a large set and loads more near the scroll boundary", async () => {

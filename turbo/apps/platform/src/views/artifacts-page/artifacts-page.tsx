@@ -62,6 +62,7 @@ import {
   filterArtifacts,
   getArtifactFocusTarget,
   growArtifactsWindow$,
+  mergeArtifactSources,
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
@@ -77,6 +78,7 @@ import {
   setSelectedArtifactsAgentId$,
   setSelectedArtifactsCategory$,
   startArtifactChat$,
+  syncArtifacts$,
   syncArtifactsScrollMetrics$,
   toggleArtifactFavorite$,
   type ArtifactPageItem,
@@ -96,7 +98,7 @@ import {
   openVideoLightbox$,
   type AttachmentArtifactMetadata,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, tapError } from "../../signals/utils.ts";
 import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
 import {
   FilePreviewIcon,
@@ -248,13 +250,18 @@ function artifactLightboxMetadata(
 
 function useOpenArtifactPreview(): (item: ArtifactItem) => void {
   const reloadArtifacts = useSet(reloadArtifacts$);
+  const syncArtifacts = useSet(syncArtifacts$);
+  const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openImageLightbox$);
   const openDocumentLightbox = useSet(openDocumentLightbox$);
   const openVideoLightbox = useSet(openVideoLightbox$);
   const openAudioLightbox = useSet(openAudioLightbox$);
 
   return (item: ArtifactItem) => {
-    const artifact = artifactLightboxMetadata(item, reloadArtifacts);
+    const artifact = artifactLightboxMetadata(item, () => {
+      reloadArtifacts();
+      detach(tapError(syncArtifacts(pageSignal)), Reason.DomCallback);
+    });
     const base = {
       artifact,
       editAvailable: false,
@@ -1331,12 +1338,15 @@ export function ArtifactsPage() {
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
     cachedLoadable.state === "hasData" ? cachedLoadable.data : null;
-  // Cache-first paint, then let the successful remote bulk response become the
-  // authoritative set. Cached fallback is only used before remote data loads or
-  // when the refresh errors.
-  const sourceData = remoteData ?? cachedData;
+  // Keep the bounded cache visible while incremental pages arrive. A full
+  // remote snapshot replaces it; an incremental response merges into it until
+  // the background sync has rebuilt the complete local snapshot.
+  const sourceData = mergeArtifactSources(
+    cachedData?.artifacts ?? [],
+    remoteData,
+  );
   const sourceArtifacts = applyArtifactFavorites(
-    sourceData?.artifacts ?? [],
+    sourceData,
     favoriteUrls,
     favoriteOverrides,
   );
@@ -1349,9 +1359,14 @@ export function ArtifactsPage() {
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
   const nothingCached = sourceArtifacts.length === 0;
+  const cachePending = cachedLoadable.state === "loading";
+  const remotePending = remoteLoadable.state === "loading";
+  const remoteStillNeedsCache =
+    remotePending ||
+    remoteLoadable.state === "hasError" ||
+    remoteData?.mergeCachedArtifacts === true;
   const loading =
-    nothingCached &&
-    (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
+    nothingCached && (remotePending || (cachePending && remoteStillNeedsCache));
   const error = nothingCached && remoteLoadable.state === "hasError";
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;

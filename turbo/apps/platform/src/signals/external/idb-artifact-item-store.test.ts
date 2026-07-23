@@ -271,6 +271,20 @@ describe("artifact item IndexedDB cache reads", () => {
     ]);
   });
 
+  it("stops after the requested recent-item window", async () => {
+    const { stores } = setupStores();
+    const items = Array.from({ length: 61 }, (_, index) => {
+      return artifact(index + 1);
+    });
+
+    await stores.writeStore.upsertItems(items);
+
+    const recent = await stores.readStore.readRecent({ limit: 60 });
+    expect(recent).toHaveLength(60);
+    expect(recent[0]).toStrictEqual(items[60]);
+    expect(recent[59]).toStrictEqual(items[1]);
+  });
+
   it("upserts idempotently and replaces stale metadata", async () => {
     const { stores } = setupStores();
     const original = artifact(1, { filename: "old.html" });
@@ -409,12 +423,15 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([fresh]);
   });
 
-  it("falls back to cache miss values when IndexedDB reads fail", async () => {
+  it("distinguishes strict cache reads from best-effort misses", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
     });
 
-    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
+    await expect(stores.readStore.readRecent()).rejects.toThrow("open failed");
+    await expect(
+      stores.readStore.readRecentBestEffort(),
+    ).resolves.toStrictEqual([]);
     await expect(
       stores.readStore.readByRunFile("run-1", "file-1"),
     ).resolves.toBe(null);

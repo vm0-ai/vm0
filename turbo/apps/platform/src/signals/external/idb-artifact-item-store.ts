@@ -64,6 +64,10 @@ interface ArtifactItemReadStore {
     filter?: ArtifactItemCacheFilter,
     signal?: AbortSignal,
   ): Promise<ArtifactItem[]>;
+  readRecentBestEffort(
+    filter?: ArtifactItemCacheFilter,
+    signal?: AbortSignal,
+  ): Promise<ArtifactItem[]>;
   readByRunFile(
     runId: string,
     fileId: string,
@@ -168,42 +172,55 @@ function matchesFilter(
   });
 }
 
+async function readRecentItems(
+  storeName: string,
+  getDb: GetDb,
+  filter?: ArtifactItemCacheFilter,
+  signal?: AbortSignal,
+): Promise<ArtifactItem[]> {
+  const effectiveFilter = filter ?? {};
+  const limit = effectiveFilter.limit ?? DEFAULT_ARTIFACT_ITEM_LIMIT;
+  if (limit <= 0) {
+    return [];
+  }
+
+  const db = await getDb();
+  signal?.throwIfAborted();
+  const tx = db.transaction(storeName, "readonly");
+  const plan = indexedReadPlan(effectiveFilter);
+  const index = tx.store.index(plan.indexName);
+  const queryTokens = normalizedSearchTokens(effectiveFilter.query);
+  const items: ArtifactItem[] = [];
+  let cursor = await index.openCursor(plan.range, "prev");
+  while (cursor && items.length < limit) {
+    signal?.throwIfAborted();
+    const stored = validateStoredArtifactItem(cursor.value);
+    if (matchesFilter(stored, effectiveFilter, queryTokens)) {
+      items.push(stored.item);
+    }
+    cursor = await cursor.continue();
+  }
+  L.debug("artifacts:readRecent:done", {
+    count: items.length,
+    filter: effectiveFilter,
+  });
+  return items;
+}
+
 function createReadStore(
   storeName: string,
   getDb: GetDb,
 ): ArtifactItemReadStore {
   return {
     async readRecent(filter, signal) {
+      return await readRecentItems(storeName, getDb, filter, signal);
+    },
+
+    async readRecentBestEffort(filter, signal) {
       return await chatIdbReadOr(
         "artifacts:readRecent",
         async () => {
-          const effectiveFilter = filter ?? {};
-          const limit = effectiveFilter.limit ?? DEFAULT_ARTIFACT_ITEM_LIMIT;
-          if (limit <= 0) {
-            return [];
-          }
-
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(storeName, "readonly");
-          const plan = indexedReadPlan(effectiveFilter);
-          const index = tx.store.index(plan.indexName);
-          const queryTokens = normalizedSearchTokens(effectiveFilter.query);
-          const items: ArtifactItem[] = [];
-          let cursor = await index.openCursor(plan.range, "prev");
-          while (cursor && items.length < limit) {
-            signal?.throwIfAborted();
-            const stored = validateStoredArtifactItem(cursor.value);
-            if (matchesFilter(stored, effectiveFilter, queryTokens)) {
-              items.push(stored.item);
-            }
-            cursor = await cursor.continue();
-          }
-          L.debug("artifacts:readRecent:done", {
-            count: items.length,
-            filter: effectiveFilter,
-          });
-          return items;
+          return await readRecentItems(storeName, getDb, filter, signal);
         },
         [],
         signal,
