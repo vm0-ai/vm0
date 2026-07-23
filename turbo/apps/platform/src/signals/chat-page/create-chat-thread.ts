@@ -2219,6 +2219,21 @@ function createSyncRemoteMessagesCommand({
   });
 }
 
+function messageCreatedPayloadSyncThroughMessageId(
+  payload: unknown,
+): string | null {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("syncThroughMessageId" in payload) ||
+    typeof payload.syncThroughMessageId !== "string" ||
+    !uuidPattern.test(payload.syncThroughMessageId)
+  ) {
+    return null;
+  }
+  return payload.syncThroughMessageId;
+}
+
 function messageUpdatedPayloadMessageId(payload: unknown): string | null {
   if (
     typeof payload !== "object" ||
@@ -2490,6 +2505,14 @@ function createPagedMessages(
 
   const latestMessageSignals = createLatestMessageSignals(rawMessages$);
 
+  const persistentChatMessageIds$ = computed((get): Set<string> => {
+    return new Set(
+      get(persistentChatMessages$).map((entry) => {
+        return entry.message.id;
+      }),
+    );
+  });
+
   const runSyncRemoteMessages$ = createSyncRemoteMessagesCommand({
     threadId,
     persistentMessages$: persistentChatMessages$,
@@ -2519,6 +2542,7 @@ function createPagedMessages(
     messageRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
+    persistentChatMessageIds$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
   };
@@ -2664,6 +2688,7 @@ interface RunTrackingDeps {
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  persistentChatMessageIds$: Computed<Set<string>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   settleMessageSync$: Command<Promise<void>, []>;
@@ -2915,6 +2940,7 @@ function createRunTracking({
   remoteThreadDetail$,
   latestChatMessageId$,
   latestRunFinishCreatedAt$,
+  persistentChatMessageIds$,
   initializeIndexedDbMessages$,
   syncRemoteMessages$,
   settleMessageSync$,
@@ -2958,19 +2984,35 @@ function createRunTracking({
       return false;
     });
 
-    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
-      L.debug("onMessageCreated$ fired", { threadId });
-      await set(syncRemoteMessages$, sig);
-      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
-      await set(markThreadReadIfNeeded$, sig);
-      animationFrame(
-        () => {
-          set(autoScroll$);
-        },
-        { signal: sig },
-      );
-      return false;
-    });
+    const onMessageCreated$ = command(
+      async ({ get, set }, payload: unknown, sig: AbortSignal) => {
+        L.debug("onMessageCreated$ fired", { threadId });
+        const syncThroughMessageId =
+          messageCreatedPayloadSyncThroughMessageId(payload);
+        if (
+          syncThroughMessageId !== null &&
+          get(persistentChatMessageIds$).has(syncThroughMessageId)
+        ) {
+          // The event's watermark row is already local (background sync or an
+          // earlier fetch), so every row of this publish is present too.
+          L.debug("onMessageCreated$ skipped sync: watermark already local", {
+            threadId,
+            syncThroughMessageId,
+          });
+        } else {
+          await set(syncRemoteMessages$, sig);
+          L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
+        }
+        await set(markThreadReadIfNeeded$, sig);
+        animationFrame(
+          () => {
+            set(autoScroll$);
+          },
+          { signal: sig },
+        );
+        return false;
+      },
+    );
 
     const onMessageUpdated$ = command(
       async ({ set }, payload: unknown, sig: AbortSignal) => {
@@ -4330,6 +4372,7 @@ export function createChatThreadSignals(
     remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
+    persistentChatMessageIds$: messages.persistentChatMessageIds$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     settleMessageSync$: messages.settleMessageSync$,

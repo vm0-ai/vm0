@@ -6,6 +6,7 @@ import {
 } from "../external/feature-switch.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
+  hasIndexedDbChatMessage$,
   loadIndexedDbChatMessageBounds$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
@@ -31,6 +32,22 @@ function createdMessageThreadId(message: unknown): string | null {
     CHAT_THREAD_MESSAGE_CREATED_PREFIX.length,
   );
   return UUID_PATTERN.test(threadId) ? threadId : null;
+}
+
+function createdMessageSyncThroughMessageId(message: unknown): string | null {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("data" in message) ||
+    typeof message.data !== "object" ||
+    message.data === null ||
+    !("syncThroughMessageId" in message.data) ||
+    typeof message.data.syncThroughMessageId !== "string" ||
+    !UUID_PATTERN.test(message.data.syncThroughMessageId)
+  ) {
+    return null;
+  }
+  return message.data.syncThroughMessageId;
 }
 
 export const syncChatThreadMessagesToIndexedDb$ = command(
@@ -69,6 +86,26 @@ const handleUserChannelMessage$ = command(
     const threadId = createdMessageThreadId(message);
     if (!threadId) {
       return false;
+    }
+
+    const syncThroughMessageId = createdMessageSyncThroughMessageId(message);
+    if (syncThroughMessageId !== null) {
+      // Watermark row already cached means every row of this publish is —
+      // the forward sync cursor never leaves gaps below a cached row.
+      const cached = await set(
+        hasIndexedDbChatMessage$,
+        threadId,
+        syncThroughMessageId,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (cached) {
+        L.debug("skipped background sync: watermark already cached", {
+          threadId,
+          syncThroughMessageId,
+        });
+        return false;
+      }
     }
 
     await set(syncChatThreadMessagesToIndexedDb$, threadId, signal);
