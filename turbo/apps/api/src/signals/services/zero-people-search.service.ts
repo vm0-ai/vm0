@@ -694,7 +694,7 @@ export const zeroPeopleSearch$ = command(
     args: AuthedPeopleSearchArgs,
     signal: AbortSignal,
   ): Promise<ZeroPeopleSearchCommandResponse> => {
-    const apiKey = env("ZERO_PEOPLE_SEARCH_PERPLEXITY_TOKEN");
+    const apiKey = env("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero People Search Perplexity provider is not configured",
