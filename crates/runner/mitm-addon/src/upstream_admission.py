@@ -134,9 +134,14 @@ def _requires_platform_connector_auth_bypass(
     *,
     kind: upstream_destination_binding.BindingKind,
     normalized_host: str,
+    port: int,
     api_url: str,
 ) -> bool:
-    return kind == "connector_auth" and api_hostname_matches(api_url, normalized_host)
+    return kind == "connector_auth" and api_destination_matches(
+        api_url,
+        normalized_host,
+        port,
+    )
 
 
 def _flow_requires_platform_connector_auth_bypass(
@@ -157,16 +162,17 @@ def _flow_requires_platform_connector_auth_bypass(
     return _requires_platform_connector_auth_bypass(
         kind=kind,
         normalized_host=normalized_host,
+        port=flow.request.port,
         api_url=api_url,
     )
 
 
-def api_hostname_matches(api_url: str, hostname: str) -> bool:
+def api_destination_matches(api_url: str, hostname: str, port: int) -> bool:
     api_destination = _api_destination(api_url)
     if api_destination is None:
         return False
-    api_hostname, _api_port = api_destination
-    return hostname == api_hostname or hostname.endswith(f".{api_hostname}")
+    api_hostname, api_port = api_destination
+    return port == api_port and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
 
 
 def _api_destination(api_url: str) -> tuple[str, int] | None:
@@ -193,13 +199,13 @@ def _server_connect_binding_kinds(
     hostname: str,
     port: int,
     compiled_firewalls: matching.CompiledFirewallSet | None,
-    is_api_host: bool,
+    is_api_destination: bool,
 ) -> frozenset[upstream_destination_binding.BindingKind]:
     kinds: set[upstream_destination_binding.BindingKind] = set()
-    if is_api_host:
+    if is_api_destination:
         kinds.add("api_allow")
     if (
-        not is_api_host
+        not is_api_destination
         and compiled_firewalls is not None
         and compiled_firewalls.matches_ordinary_credential_authority(
             hostname,
@@ -242,9 +248,9 @@ def _bind_privileged_upstream_destination(
     if address is None:
         return
     _original_host, port = address
-    is_api_host = api_hostname_matches(api_url, hostname)
+    is_api_destination = api_destination_matches(api_url, hostname, port)
     reusable_kind: upstream_destination_binding.BindingKind = (
-        "api_allow" if is_api_host else "connector_auth"
+        "api_allow" if is_api_destination else "connector_auth"
     )
     if upstream_destination_binding.reuse_server_binding_kind_if_matching(
         server,
@@ -259,7 +265,7 @@ def _bind_privileged_upstream_destination(
         hostname=hostname,
         port=port,
         compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
-        is_api_host=is_api_host,
+        is_api_destination=is_api_destination,
     )
     if not kinds:
         return
@@ -429,6 +435,7 @@ def _bind_flow_upstream_destination(
     if _requires_platform_connector_auth_bypass(
         kind=kind,
         normalized_host=normalized_host,
+        port=flow.request.port,
         api_url=api_url,
     ) and not _request_allows_platform_connector_auth(flow):
         return False
