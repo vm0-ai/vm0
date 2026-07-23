@@ -21,8 +21,6 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
-  getVm0ModelCodexRuntimeConfig,
-  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -58,7 +56,6 @@ import {
 import {
   type CreateRunResponse,
   type RunStatus,
-  runStatusSchema,
   unifiedRunRequestSchema,
 } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -153,16 +150,17 @@ import {
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorageManifest,
+  projectLegacyCheckpointStorageInputs,
   type PreparedAgentRunStorageManifest,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
+import { projectLegacyWritebackArtifacts } from "./storage-legacy-projection.service";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
@@ -188,6 +186,11 @@ import {
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import {
+  claimQueueFirstRunAssociation,
+  type QueueFirstRunAssociation,
+  type QueueFirstRunClaimResult,
+} from "./zero-chat-queued-message.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -416,14 +419,6 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
-interface DerivedPersistenceResult {
-  readonly status: RunStatus;
-  readonly sandboxId?: string;
-  readonly runnerJobCreatedAt?: Date;
-  readonly runnerGroup?: string;
-  readonly profile?: string;
-}
-
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
@@ -447,6 +442,15 @@ interface PreparedRunnerLaunch {
 
 type AgentRunCallbackInsert = typeof agentRunCallbacks.$inferInsert;
 
+type QueueFirstRunClaimed = Extract<
+  QueueFirstRunClaimResult,
+  { readonly kind: "claimed" }
+>;
+
+export interface QueueFirstRunClaimLost {
+  readonly kind: "queue-first-claim-lost";
+}
+
 type AtomicLaunchCommitResult =
   | {
       readonly kind: "pending";
@@ -454,6 +458,7 @@ type AtomicLaunchCommitResult =
       readonly runnerJobPayload: RunnerJobPayload;
       readonly runnerJobCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
+      readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
     }
   | {
       readonly kind: "queued";
@@ -462,14 +467,63 @@ type AtomicLaunchCommitResult =
       readonly queueDepth: number;
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
+      readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
     }
   | {
       readonly kind: "queue-payload-required";
-    };
-type CommittedAtomicLaunchResult = Exclude<
+    }
+  | QueueFirstRunClaimLost;
+type QueuePayloadRequiredResult = Extract<
   AtomicLaunchCommitResult,
   { readonly kind: "queue-payload-required" }
 >;
+type AtomicLaunchCommitAttempt =
+  | AtomicLaunchCommitResult
+  | CreateRunErrorResult;
+type CommitAtomicLaunch = (
+  encryptedQueuedParams: string | undefined,
+) => Promise<AtomicLaunchCommitAttempt>;
+type CommittedAtomicLaunchResult = Exclude<
+  AtomicLaunchCommitResult,
+  { readonly kind: "queue-payload-required" } | QueueFirstRunClaimLost
+>;
+
+type FailedLaunchCommitResult =
+  | {
+      readonly kind: "failed";
+      readonly createdAt: Date;
+      readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+    }
+  | QueueFirstRunClaimLost;
+
+export interface ZeroRunModelPin {
+  readonly modelProvider: string | null;
+  readonly modelProviderId: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
+
+type CreateRunSuccessResult = {
+  readonly status: 201;
+  readonly body: CreateRunResponse;
+  readonly queueFirstClaim?: QueueFirstRunClaimed;
+};
+
+type QueueFirstAgentRunResult =
+  | CreateRunSuccessResult
+  | CreateRunErrorResult
+  | QueueFirstRunClaimLost;
+
+export function isQueueFirstRunClaimLost(
+  result: unknown,
+): result is QueueFirstRunClaimLost {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "kind" in result &&
+    result.kind === "queue-first-claim-lost"
+  );
+}
 
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
@@ -481,19 +535,6 @@ interface CommitPreparedLaunchArgs {
   readonly encryptedQueuedParams: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
 }
-
-type QueuedPersistenceResult =
-  | {
-      readonly status: "queued";
-      readonly queueDepth: number;
-      readonly telemetryTimestamp: string;
-      readonly runnerGroup: string;
-      readonly profile: string;
-    }
-  | {
-      readonly status: Exclude<RunStatus, "queued">;
-      readonly sandboxId?: string;
-    };
 
 interface HttpRunCallback {
   readonly url: string;
@@ -578,7 +619,7 @@ type ApiErrorResponse<Status extends number, Code extends string> = {
 };
 
 type CreateRunRouteResult =
-  | { readonly status: 201; readonly body: CreateRunResponse }
+  | CreateRunSuccessResult
   | ApiErrorResponse<400, "BAD_REQUEST">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
@@ -596,11 +637,6 @@ export type DispatchFailedRunCallbacks = (
   runId: string,
   error: string,
 ) => Promise<void>;
-
-export type BeforeRunDispatch = (args: {
-  readonly runId: string;
-  readonly status: "queued" | "pending";
-}) => Promise<boolean>;
 
 export interface CreateAgentRunArgs {
   readonly userId: string;
@@ -632,7 +668,8 @@ export interface CreateAgentRunArgs {
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-  readonly beforeDispatch?: BeforeRunDispatch;
+  readonly queueFirstAssociation?: QueueFirstRunAssociation;
+  readonly zeroRunModelPin?: ZeroRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -1806,33 +1843,6 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
-  }
-
-  if (selectedModel === "vm0-model") {
-    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
-    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
-    if (!proxyToken || !proxyHost) {
-      return null;
-    }
-    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
-    return {
-      id: null,
-      type: "vm0",
-      concreteType,
-      environment: {
-        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
-        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
-        OPENAI_MODEL: selectedModel,
-      },
-      secrets: {
-        OPENAI_API_KEY: proxyToken,
-        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
-      },
-      selectedModel,
-      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
-      firewall: vm0ModelConfig.firewall,
-      inlineFirewall: true,
-    };
   }
 
   return {
@@ -4246,26 +4256,6 @@ function resumeSessionFromSnapshot(
   return undefined;
 }
 
-function writebackArtifactsFromPersistedStorageMounts(
-  mounts: readonly PersistedStorageMount[],
-): readonly ContextArtifact[] {
-  return mounts.flatMap((mount) => {
-    if (!mount.writeback) {
-      return [];
-    }
-    return [
-      {
-        name: mount.name,
-        ...(mount.version === undefined ? {} : { version: mount.version }),
-        mountPath: mount.mountPath,
-        ...(mount.missingRootPolicy === undefined
-          ? {}
-          : { missingRootPolicy: mount.missingRootPolicy }),
-      },
-    ];
-  });
-}
-
 function resolvedSessionStorage(session: {
   readonly artifacts: readonly ContextArtifact[] | null;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
@@ -4274,9 +4264,7 @@ function resolvedSessionStorage(session: {
     return { artifacts: session.artifacts ?? [] };
   }
   return {
-    artifacts: writebackArtifactsFromPersistedStorageMounts(
-      session.storageMounts,
-    ),
+    artifacts: projectLegacyWritebackArtifacts(session.storageMounts),
     persistedStorageMounts: {
       mounts: session.storageMounts,
       mode: "writeback",
@@ -4460,13 +4448,22 @@ function resolveByCheckpointId(
       if (isRouteError(resolved)) {
         return resolved;
       }
+      const canonicalStorageInputs = row.storageMounts
+        ? projectLegacyCheckpointStorageInputs({
+            content: resolved.content,
+            vars: snapshot.vars,
+            mounts: row.storageMounts,
+          })
+        : null;
 
       return {
         ...resolved,
         // Keep the legacy projection available for requests that explicitly
         // override checkpoint Storage declarations. The canonical snapshot is
         // used when there are no overrides.
-        artifacts: row.artifacts ?? [],
+        artifacts: row.storageMounts
+          ? projectLegacyWritebackArtifacts(row.storageMounts)
+          : (row.artifacts ?? []),
         ...(row.storageMounts
           ? {
               persistedStorageMounts: {
@@ -4476,10 +4473,12 @@ function resolveByCheckpointId(
             }
           : {}),
         vars: snapshot.vars ?? {},
-        volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
-        additionalVolumes: parseAdditionalVolumesSnapshot(
-          row.volumeVersionsSnapshot,
-        ),
+        volumeVersions: row.storageMounts
+          ? canonicalStorageInputs?.volumeVersions
+          : parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
+        additionalVolumes: row.storageMounts
+          ? canonicalStorageInputs?.additionalVolumes
+          : parseAdditionalVolumesSnapshot(row.volumeVersionsSnapshot),
         resumedFromCheckpointId: checkpointId,
         resumeSession: await measureApiDispatchTiming(
           timing,
@@ -4783,6 +4782,7 @@ async function insertZeroRunRecord(
     readonly runId: string;
     readonly body: CreateRunBody;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   },
@@ -4796,7 +4796,7 @@ async function insertZeroRunRecord(
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
     triggerAgentId: metadata.triggerAgentId ?? null,
-    ...zeroRunModelProviderValues(args.modelProvider),
+    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
   });
 }
@@ -4810,11 +4810,10 @@ async function insertLaunchRunRows(
     readonly status: LaunchRunStatus;
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -4828,7 +4827,7 @@ async function insertLaunchRunRows(
       userId: args.userId,
       orgId: args.orgId,
       agentComposeId: args.resolved.composeId,
-      artifacts: [...args.artifacts],
+      artifacts: [],
       storageMounts: args.sessionStorageMounts
         ? [...args.sessionStorageMounts]
         : null,
@@ -4849,9 +4848,7 @@ async function insertLaunchRunRows(
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
     secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
-    additionalVolumes: args.additionalVolumes
-      ? [...args.additionalVolumes]
-      : null,
+    additionalVolumes: null,
     storageMounts: args.runStorageMounts ? [...args.runStorageMounts] : null,
     resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
@@ -4867,6 +4864,7 @@ async function insertLaunchRunRows(
     runId: args.identity.runId,
     body: args.body,
     modelProvider: args.modelProvider,
+    zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
   });
@@ -4876,112 +4874,6 @@ async function insertLaunchRunRows(
   }
 
   return { createdAt };
-}
-
-async function insertRunRecord(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly callbacks: readonly RunCallback[] | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly timing: ApiDispatchTimingCollector;
-  },
-): Promise<RunRecord> {
-  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
-  const callbackRows = await prepareRunCallbackRows({
-    runId: identity.runId,
-    callbacks: args.callbacks,
-    featureSwitchContext: args.featureSwitchContext,
-    timing: args.timing,
-  });
-  const { createdAt } = await insertLaunchRunRows(tx, {
-    userId: args.userId,
-    orgId: args.orgId,
-    identity,
-    status: "pending",
-    resolved: args.resolved,
-    body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
-    runStorageMounts: undefined,
-    sessionStorageMounts: undefined,
-    modelProvider: args.modelProvider,
-    callbackRows,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
-    runnerGroup: undefined,
-    error: undefined,
-  });
-  const run = runRecordFromLaunchIdentity(identity, "pending", createdAt);
-  if (args.modelProvider?.type === "vm0") {
-    await activateUsageAllowanceWindowsForRun(tx, {
-      orgId: args.orgId,
-      runId: run.id,
-      runCreatedAt: run.createdAt,
-    });
-  }
-  return run;
-}
-
-async function insertQueuedRunRecord(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly callbacks: readonly RunCallback[] | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly timing: ApiDispatchTimingCollector;
-  },
-): Promise<RunRecord> {
-  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
-  const callbackRows = await prepareRunCallbackRows({
-    runId: identity.runId,
-    callbacks: args.callbacks,
-    featureSwitchContext: args.featureSwitchContext,
-    timing: args.timing,
-  });
-  const { createdAt } = await insertLaunchRunRows(tx, {
-    userId: args.userId,
-    orgId: args.orgId,
-    identity,
-    status: "queued",
-    resolved: args.resolved,
-    body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
-    runStorageMounts: undefined,
-    sessionStorageMounts: undefined,
-    modelProvider: args.modelProvider,
-    callbackRows,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
-    runnerGroup: undefined,
-    error: undefined,
-  });
-  const run = runRecordFromLaunchIdentity(identity, "queued", createdAt);
-  if (args.modelProvider?.type === "vm0") {
-    await activateUsageAllowanceWindowsForRun(tx, {
-      orgId: args.orgId,
-      runId: run.id,
-      runCreatedAt: run.createdAt,
-    });
-  }
-  return run;
 }
 
 async function buildStoredExecutionContextDraft(args: {
@@ -5409,49 +5301,6 @@ function modelUsageProviderForContext(
   return isSupportedRunModel(canonicalModel) ? canonicalModel : undefined;
 }
 
-async function markRunFailed(
-  db: Db,
-  runId: string,
-  error: unknown,
-  dispatchFailedCallbacks: DispatchFailedRunCallbacks | undefined,
-): Promise<boolean> {
-  const message = error instanceof Error ? error.message : "Run failed";
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: "failed",
-      error: message,
-      completedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        or(
-          eq(agentRuns.status, "queued"),
-          eq(agentRuns.status, "pending"),
-          eq(agentRuns.status, "running"),
-        ),
-      ),
-    )
-    .returning({
-      userId: agentRuns.userId,
-    });
-
-  if (!updated) {
-    return false;
-  }
-
-  await publishRunChangedForUserSafely(updated.userId, runId, {
-    status: "failed",
-  });
-  if (dispatchFailedCallbacks) {
-    await tapError(dispatchFailedCallbacks(db, runId, message), (error) => {
-      L.error("Failed to dispatch failed-run callbacks", { runId, error });
-    });
-  }
-  return true;
-}
-
 function sessionStorageMountsForPersistence(args: {
   readonly resolvedMounts: readonly PersistedStorageMount[];
   readonly artifacts: readonly ContextArtifact[];
@@ -5515,7 +5364,6 @@ interface BuildRunnerJobPayloadInput {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing?: ApiDispatchTimingCollector;
 }
-
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
@@ -5626,31 +5474,6 @@ function buildRunnerJobPayload(
   });
 }
 
-type BuildRunnerJobPayloadArgs = BuildRunnerJobPayloadInput;
-type DispatchRunArgs = BuildRunnerJobPayloadArgs & {
-  readonly timing: ApiDispatchTimingCollector;
-  readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
-};
-
-async function lockRunForDerivedPersistence(
-  tx: DbTransaction,
-  runId: string,
-): Promise<DerivedPersistenceResult | null> {
-  const [row] = await tx
-    .select({
-      status: agentRuns.status,
-      sandboxId: agentRuns.sandboxId,
-    })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .for("update");
-  if (!row) {
-    return null;
-  }
-  const status = runStatusSchema.parse(row.status);
-  return row.sandboxId ? { status, sandboxId: row.sandboxId } : { status };
-}
-
 async function insertRunnerJobQueueRow(
   tx: DbTransaction,
   args: {
@@ -5707,297 +5530,6 @@ async function persistRunCustomConnectorAuthRefs(
   );
 }
 
-async function persistCanonicalStorageMounts(
-  tx: DbTransaction,
-  args: {
-    readonly runId: string;
-    readonly sessionId: string;
-    readonly shouldCreateSession: boolean;
-    readonly runStorageMounts: readonly PersistedStorageMount[];
-    readonly sessionStorageMounts: readonly PersistedStorageMount[];
-  },
-): Promise<void> {
-  await tx
-    .update(agentRuns)
-    .set({ storageMounts: [...args.runStorageMounts] })
-    .where(eq(agentRuns.id, args.runId));
-  if (!args.shouldCreateSession) {
-    return;
-  }
-  await tx
-    .update(agentSessions)
-    .set({ storageMounts: [...args.sessionStorageMounts] })
-    .where(eq(agentSessions.id, args.sessionId));
-}
-
-async function persistRunnerJobQueueForDispatch(
-  db: Db,
-  args: {
-    readonly runId: string;
-    readonly payload: RunnerJobPayload;
-    readonly sessionId: string;
-    readonly shouldCreateSession: boolean;
-    readonly runStorageMounts: readonly PersistedStorageMount[];
-    readonly sessionStorageMounts: readonly PersistedStorageMount[];
-    readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
-    readonly timing: ApiDispatchTimingCollector;
-  },
-): Promise<DerivedPersistenceResult> {
-  return await measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_persist_runner_job_queue",
-    "top_level",
-    async () => {
-      return await db.transaction(async (tx) => {
-        const currentRun = await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_lock_run_for_queue_persistence",
-          "nested",
-          async () => {
-            return await lockRunForDerivedPersistence(tx, args.runId);
-          },
-        );
-        if (!currentRun) {
-          throw new Error("Run disappeared before runner job persistence");
-        }
-        if (currentRun.status !== "pending") {
-          return currentRun;
-        }
-
-        await persistCanonicalStorageMounts(tx, {
-          runId: args.runId,
-          sessionId: args.sessionId,
-          shouldCreateSession: args.shouldCreateSession,
-          runStorageMounts: args.runStorageMounts,
-          sessionStorageMounts: args.sessionStorageMounts,
-        });
-
-        await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_persist_custom_connector_auth_refs",
-          "nested",
-          async () => {
-            await persistRunCustomConnectorAuthRefs(tx, {
-              runId: args.runId,
-              refs: args.customConnectorAuthRefs,
-            });
-          },
-        );
-
-        const runnerJobCreatedAt = await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_insert_runner_job_queue",
-          "nested",
-          async () => {
-            return await insertRunnerJobQueueRow(tx, {
-              runId: args.runId,
-              payload: args.payload,
-            });
-          },
-        );
-
-        await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_update_run_runner_group",
-          "nested",
-          async () => {
-            await tx
-              .update(agentRuns)
-              .set({ runnerGroup: args.payload.runnerGroup })
-              .where(
-                and(
-                  eq(agentRuns.id, args.runId),
-                  eq(agentRuns.status, "pending"),
-                ),
-              );
-          },
-        );
-
-        return {
-          status: "pending" as const,
-          runnerJobCreatedAt,
-        };
-      });
-    },
-  );
-}
-
-function dispatchRun(
-  db: Db,
-  args: DispatchRunArgs,
-): Computed<Promise<DerivedPersistenceResult>> {
-  return computed(async (get): Promise<DerivedPersistenceResult> => {
-    await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_mark_pending_heartbeat",
-      "top_level",
-      async () => {
-        await db
-          .update(agentRuns)
-          .set({ lastHeartbeatAt: nowDate() })
-          .where(
-            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
-          );
-      },
-    );
-
-    const launch = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_build_runner_job_payload",
-      "top_level",
-      async () => {
-        return await get(buildRunnerJobPayload(db, args));
-      },
-    );
-    const payload = launch.runnerJobPayload;
-
-    const persisted = await persistRunnerJobQueueForDispatch(db, {
-      runId: args.run.id,
-      payload,
-      sessionId: args.run.sessionId,
-      shouldCreateSession: args.run.shouldCreateSession,
-      runStorageMounts: launch.runStorageMounts,
-      sessionStorageMounts: launch.sessionStorageMounts,
-      customConnectorAuthRefs: launch.customConnectorAuthRefs,
-      timing: args.timing,
-    });
-
-    if (persisted.status === "pending") {
-      if (!persisted.runnerJobCreatedAt) {
-        throw new Error("Pending runner job persistence missing createdAt");
-      }
-      ingestRunContextSnapshot(launch.runContextSnapshot);
-      await notifyRunnerJob(db, {
-        runnerGroup: payload.runnerGroup,
-        runId: args.run.id,
-        profile: payload.profile,
-        cliAgentSessionId: payload.cliAgentSessionId,
-        historyGenerationRunId: payload.historyGenerationRunId,
-        createdAt: persisted.runnerJobCreatedAt,
-      });
-      args.timing.flush({
-        runId: args.run.id,
-        runnerGroup: payload.runnerGroup,
-        profile: payload.profile,
-        dispatchPath: "direct",
-        ...(args.timingDimensions ? { dimensions: args.timingDimensions } : {}),
-        ...(args.body.triggerSource
-          ? { triggerSource: args.body.triggerSource }
-          : {}),
-      });
-    }
-
-    return persisted;
-  });
-}
-
-function enqueueRunForConcurrency(
-  db: Db,
-  args: {
-    readonly run: RunRecord;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly framework: SupportedFramework;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly customConnectorContext: CustomConnectorRuntimeContext;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly billableFirewalls: readonly string[];
-    readonly modelUsageProvider: string | undefined;
-    readonly apiStartTime: number;
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly additionalVolumeSources: AdditionalVolumeSources;
-    readonly includeZeroTokenSecret: boolean | undefined;
-    readonly zeroTokenComputerUseHostId: string | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-    readonly userTimezone: string | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Computed<Promise<DerivedPersistenceResult>> {
-  return computed(async (get): Promise<DerivedPersistenceResult> => {
-    const launch = await get(buildRunnerJobPayload(db, args));
-    const payload = launch.runnerJobPayload;
-    const encryptedParams = await encryptQueuedRunnerJobPayload(
-      payload,
-      args.featureSwitchContext,
-    );
-
-    const queuedPersistence = await db.transaction(
-      async (tx): Promise<QueuedPersistenceResult> => {
-        const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-        if (!currentRun) {
-          throw new Error("Run disappeared before queue persistence");
-        }
-        if (currentRun.status !== "queued") {
-          return currentRun.sandboxId
-            ? { status: currentRun.status, sandboxId: currentRun.sandboxId }
-            : { status: currentRun.status };
-        }
-
-        await persistCanonicalStorageMounts(tx, {
-          runId: args.run.id,
-          sessionId: args.run.sessionId,
-          shouldCreateSession: args.run.shouldCreateSession,
-          runStorageMounts: launch.runStorageMounts,
-          sessionStorageMounts: launch.sessionStorageMounts,
-        });
-
-        await persistRunCustomConnectorAuthRefs(tx, {
-          runId: args.run.id,
-          refs: launch.customConnectorAuthRefs,
-        });
-        await tx.insert(agentRunQueue).values({
-          runId: args.run.id,
-          userId: args.userId,
-          orgId: args.orgId,
-          encryptedParams,
-          createdAt: args.run.createdAt,
-          expiresAt: sql`now() + interval '2 hours'`,
-        });
-        const [depthRow] = await tx
-          .select({ depth: count() })
-          .from(agentRunQueue)
-          .where(eq(agentRunQueue.orgId, args.orgId));
-        const queueDepth = Number(depthRow?.depth ?? 0);
-        const telemetryTimestamp = nowDate().toISOString();
-        await tx
-          .update(agentRuns)
-          .set({ runnerGroup: payload.runnerGroup })
-          .where(
-            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
-          );
-
-        return {
-          status: "queued" as const,
-          queueDepth,
-          telemetryTimestamp,
-          runnerGroup: payload.runnerGroup,
-          profile: payload.profile,
-        };
-      },
-    );
-
-    if (queuedPersistence.status === "queued") {
-      recordQueuedRunEnqueueTelemetry({
-        runId: args.run.id,
-        queueDepth: queuedPersistence.queueDepth,
-        timestamp: queuedPersistence.telemetryTimestamp,
-      });
-      ingestRunContextSnapshot(launch.runContextSnapshot);
-      await publishQueueChangedSafely({
-        orgId: args.orgId,
-        runId: args.run.id,
-      });
-    }
-
-    return queuedPersistence;
-  });
-}
-
 async function checkRunConcurrencyPreflight(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -6023,6 +5555,26 @@ async function checkRunConcurrencyPreflight(args: {
   });
 }
 
+async function claimQueueFirstAssociationForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<QueueFirstRunClaimResult | undefined> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (!association) {
+    return undefined;
+  }
+  if (association.threadId !== args.createArgs.chatThreadId) {
+    throw new Error("Queue-first association must match the run chat thread");
+  }
+  return await claimQueueFirstRunAssociation(args.tx, {
+    ...association,
+    runId: args.identity.runId,
+    timing: args.timing,
+  });
+}
+
 async function commitFailedLaunch(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
@@ -6030,28 +5582,48 @@ async function commitFailedLaunch(args: {
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly error: unknown;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<CreateRunSuccessResult | QueueFirstRunClaimLost> {
   const message = runFailureMessage(args.error);
-  const { createdAt } = await args.db.transaction(async (tx) => {
-    return await insertLaunchRunRows(tx, {
-      userId: args.createArgs.userId,
-      orgId: args.createArgs.orgId,
-      identity: args.identity,
-      status: "failed",
-      resolved: args.context.resolved,
-      body: args.context.body,
-      artifacts: args.context.artifacts,
-      additionalVolumes: args.context.additionalVolumes,
-      runStorageMounts: undefined,
-      sessionStorageMounts: undefined,
-      modelProvider: args.context.modelProvider,
-      callbackRows: args.callbackRows,
-      chatThreadId: args.createArgs.chatThreadId,
-      zeroRunMetadata: args.createArgs.zeroRunMetadata,
-      runnerGroup: undefined,
-      error: message,
-    });
-  });
+  const committed = await args.db.transaction(
+    async (tx): Promise<FailedLaunchCommitResult> => {
+      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+        tx,
+        createArgs: args.createArgs,
+        identity: args.identity,
+        timing: args.timing,
+      });
+      if (queueFirstClaim?.kind === "lost") {
+        return { kind: "queue-first-claim-lost" };
+      }
+      const { createdAt } = await insertLaunchRunRows(tx, {
+        userId: args.createArgs.userId,
+        orgId: args.createArgs.orgId,
+        identity: args.identity,
+        status: "failed",
+        resolved: args.context.resolved,
+        body: args.context.body,
+        runStorageMounts: undefined,
+        sessionStorageMounts: undefined,
+        modelProvider: args.context.modelProvider,
+        zeroRunModelPin: args.createArgs.zeroRunModelPin,
+        callbackRows: args.callbackRows,
+        chatThreadId: args.createArgs.chatThreadId,
+        zeroRunMetadata: args.createArgs.zeroRunMetadata,
+        runnerGroup: undefined,
+        error: message,
+      });
+      return {
+        kind: "failed",
+        createdAt,
+        queueFirstClaim,
+      };
+    },
+  );
+
+  if (committed.kind === "queue-first-claim-lost") {
+    return committed;
+  }
 
   await publishRunChangedForUserSafely(
     args.createArgs.userId,
@@ -6075,10 +5647,13 @@ async function commitFailedLaunch(args: {
       },
     );
   }
-  return failedRunResponse(
-    runRecordFromLaunchIdentity(args.identity, "pending", createdAt),
+  const response = failedRunResponse(
+    runRecordFromLaunchIdentity(args.identity, "pending", committed.createdAt),
     args.error,
   );
+  return committed.queueFirstClaim
+    ? { ...response, queueFirstClaim: committed.queueFirstClaim }
+    : response;
 }
 
 async function insertAtomicLaunchRunRecord(args: {
@@ -6098,11 +5673,10 @@ async function insertAtomicLaunchRunRecord(args: {
         status: args.status,
         resolved: args.commit.context.resolved,
         body: args.commit.context.body,
-        artifacts: args.commit.context.artifacts,
-        additionalVolumes: args.commit.context.additionalVolumes,
         runStorageMounts: args.commit.launch.runStorageMounts,
         sessionStorageMounts: args.commit.launch.sessionStorageMounts,
         modelProvider: args.commit.context.modelProvider,
+        zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -6130,6 +5704,7 @@ async function commitQueuedPreparedLaunch(
   tx: DbTransaction,
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
+  queueFirstClaim: QueueFirstRunClaimed | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>> {
   if (!args.encryptedQueuedParams) {
     throw new Error("Missing encrypted queued runner job payload");
@@ -6164,6 +5739,7 @@ async function commitQueuedPreparedLaunch(
     queueDepth: Number(depthRow?.depth ?? 0),
     telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
+    queueFirstClaim,
   };
 }
 
@@ -6171,6 +5747,7 @@ async function commitPendingPreparedLaunch(
   tx: DbTransaction,
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
+  queueFirstClaim: QueueFirstRunClaimed | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
   const run = await insertAtomicLaunchRunRecord({
     tx,
@@ -6210,6 +5787,7 @@ async function commitPendingPreparedLaunch(
     runnerJobPayload: payload,
     runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
+    queueFirstClaim,
   };
 }
 
@@ -6242,10 +5820,38 @@ async function commitPreparedLaunch(
       if (!args.encryptedQueuedParams) {
         return { kind: "queue-payload-required" };
       }
-      return await commitQueuedPreparedLaunch(tx, args, payload);
+      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+        tx,
+        createArgs: args.createArgs,
+        identity: args.identity,
+        timing: args.timing,
+      });
+      if (queueFirstClaim?.kind === "lost") {
+        return { kind: "queue-first-claim-lost" };
+      }
+      return await commitQueuedPreparedLaunch(
+        tx,
+        args,
+        payload,
+        queueFirstClaim,
+      );
     }
 
-    return await commitPendingPreparedLaunch(tx, args, payload);
+    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+    });
+    if (queueFirstClaim?.kind === "lost") {
+      return { kind: "queue-first-claim-lost" };
+    }
+    return await commitPendingPreparedLaunch(
+      tx,
+      args,
+      payload,
+      queueFirstClaim,
+    );
   });
 }
 
@@ -6317,61 +5923,9 @@ function failedRunResponse(
   };
 }
 
+// Compatibility sentinel for rows created by pre-#22608 server versions.
 export const BEFORE_DISPATCH_CANCELLED_ERROR =
   "Run dispatch cancelled before runner queue persistence";
-
-function cancelledBeforeDispatchRunResponse(
-  run: RunRecord,
-): Extract<CreateRunRouteResult, { readonly status: 201 }> {
-  return {
-    status: 201,
-    body: {
-      runId: run.id,
-      status: "cancelled",
-      sessionId: run.sessionId,
-      error: BEFORE_DISPATCH_CANCELLED_ERROR,
-      createdAt: run.createdAt.toISOString(),
-    },
-  };
-}
-
-async function cancelRunBeforeDispatch(
-  db: Db,
-  runId: string,
-): Promise<boolean> {
-  const updated = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(agentRuns)
-      .set({
-        status: "cancelled",
-        completedAt: nowDate(),
-        error: BEFORE_DISPATCH_CANCELLED_ERROR,
-      })
-      .where(
-        and(
-          eq(agentRuns.id, runId),
-          inArray(agentRuns.status, ["queued", "pending"]),
-        ),
-      )
-      .returning({ userId: agentRuns.userId });
-    if (!row) {
-      return undefined;
-    }
-
-    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
-    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
-    return row;
-  });
-
-  if (!updated) {
-    return false;
-  }
-
-  await publishRunChangedForUserSafely(updated.userId, runId, {
-    status: "cancelled",
-  });
-  return true;
-}
 
 interface PreparedRunContext {
   readonly body: CreateRunBody;
@@ -7131,10 +6685,9 @@ function resolvedForStorageCompatibility(args: {
     return args.resolved;
   }
 
-  // The legacy checkpoint projection records which read-only mounts came
-  // from compose volumes versus additional volumes. Persisted canonical
-  // mounts intentionally do not retain that source distinction, so explicit
-  // legacy overrides must stay on the compatibility reader during rollout.
+  // resolveByCheckpointId reconstructs alias-keyed compose versions and
+  // additional-volume declarations from the canonical checkpoint snapshot,
+  // so explicit legacy overrides can stay on the compatibility reader.
   const { persistedStorageMounts: _persistedStorageMounts, ...resolved } =
     args.resolved;
   return resolved;
@@ -7270,338 +6823,6 @@ function prepareRunContext(input: {
   );
 }
 
-async function insertRunWithConcurrency(
-  db: Db,
-  args: CreateAgentRunArgs,
-  context: PreparedRunContext,
-  timing: ApiDispatchTimingCollector,
-): Promise<RunRecord | CreateRunErrorResult> {
-  return await db.transaction(async (tx) => {
-    await timing.measure(
-      "api_dispatch_admission_lock_wait",
-      "nested",
-      async () => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-        );
-      },
-    );
-    const concurrency = await timing.measure(
-      "api_dispatch_check_concurrency_limit",
-      "nested",
-      async () => {
-        return await checkRunConcurrencyLimit(tx, args.orgId);
-      },
-    );
-    if (concurrency) {
-      if (args.queueOnConcurrencyLimit) {
-        return await insertQueuedRunRecord(tx, {
-          userId: args.userId,
-          orgId: args.orgId,
-          resolved: context.resolved,
-          body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
-          modelProvider: context.modelProvider,
-          callbacks: args.callbacks,
-          chatThreadId: args.chatThreadId,
-          zeroRunMetadata: args.zeroRunMetadata,
-          featureSwitchContext: context.featureSwitchContext,
-          timing,
-        });
-      }
-      return concurrency;
-    }
-    return await timing.measure(
-      "api_dispatch_insert_run_record",
-      "nested",
-      async () => {
-        return await insertRunRecord(tx, {
-          userId: args.userId,
-          orgId: args.orgId,
-          resolved: context.resolved,
-          body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
-          modelProvider: context.modelProvider,
-          callbacks: args.callbacks,
-          chatThreadId: args.chatThreadId,
-          zeroRunMetadata: args.zeroRunMetadata,
-          featureSwitchContext: context.featureSwitchContext,
-          timing,
-        });
-      },
-    );
-  });
-}
-
-function completeQueuedRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly run: RunRecord;
-  readonly signal: AbortSignal;
-  readonly timing: ApiDispatchTimingCollector;
-}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
-  return computed(
-    async (
-      get,
-    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
-      const enqueueResult = await settle(
-        get(
-          enqueueRunForConcurrency(input.db, {
-            run: input.run,
-            userId: input.args.userId,
-            orgId: input.args.orgId,
-            resolved: input.context.resolved,
-            body: input.context.body,
-            artifacts: input.context.artifacts,
-            framework: input.context.framework,
-            modelProvider: input.context.modelProvider,
-            connectorContext: input.context.connectorContext,
-            customConnectorContext: input.context.customConnectorContext,
-            permissionManifest: input.context.permissionManifest,
-            billableFirewalls: input.context.billableFirewalls,
-            modelUsageProvider: input.context.modelUsageProvider,
-            apiStartTime: input.args.apiStartTime,
-            additionalVolumes: input.context.additionalVolumes,
-            additionalVolumeSources: input.context.additionalVolumeSources,
-            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
-            chatThreadId: input.args.chatThreadId,
-            extraEnvironment: input.args.extraEnvironment,
-            userTimezone: input.context.userTimezone,
-            featureSwitchContext: input.context.featureSwitchContext,
-          }),
-        ),
-      );
-      input.signal.throwIfAborted();
-      if (!enqueueResult.ok) {
-        await markRunFailed(
-          input.db,
-          input.run.id,
-          enqueueResult.error,
-          input.args.dispatchFailedCallbacks,
-        );
-        input.signal.throwIfAborted();
-        return failedRunResponse(input.run, enqueueResult.error);
-      }
-      if (enqueueResult.value.status === "queued") {
-        if (!enqueueResult.value.runnerGroup || !enqueueResult.value.profile) {
-          throw new Error("Queued run persistence missing dispatch metadata");
-        }
-        input.timing.flush({
-          runId: input.run.id,
-          runnerGroup: enqueueResult.value.runnerGroup,
-          profile: enqueueResult.value.profile,
-          dispatchPath: "direct",
-          ...(input.args.timingDimensions
-            ? { dimensions: input.args.timingDimensions }
-            : {}),
-          ...(input.args.body.triggerSource
-            ? { triggerSource: input.args.body.triggerSource }
-            : {}),
-        });
-      }
-      return createdRunResponse(input.run, enqueueResult.value);
-    },
-  );
-}
-
-function completePendingRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly run: RunRecord;
-  readonly drainOrgQueue: () => Promise<void>;
-  readonly signal: AbortSignal;
-  readonly timing: ApiDispatchTimingCollector;
-}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
-  return computed(
-    async (
-      get,
-    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
-      const dispatchResult = await settle(
-        get(
-          dispatchRun(input.db, {
-            run: input.run,
-            userId: input.args.userId,
-            orgId: input.args.orgId,
-            resolved: input.context.resolved,
-            body: input.context.body,
-            artifacts: input.context.artifacts,
-            framework: input.context.framework,
-            modelProvider: input.context.modelProvider,
-            connectorContext: input.context.connectorContext,
-            customConnectorContext: input.context.customConnectorContext,
-            permissionManifest: input.context.permissionManifest,
-            billableFirewalls: input.context.billableFirewalls,
-            modelUsageProvider: input.context.modelUsageProvider,
-            apiStartTime: input.args.apiStartTime,
-            additionalVolumes: input.context.additionalVolumes,
-            additionalVolumeSources: input.context.additionalVolumeSources,
-            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
-            chatThreadId: input.args.chatThreadId,
-            extraEnvironment: input.args.extraEnvironment,
-            userTimezone: input.context.userTimezone,
-            featureSwitchContext: input.context.featureSwitchContext,
-            timing: input.timing,
-            timingDimensions: input.args.timingDimensions,
-          }),
-        ),
-      );
-      input.signal.throwIfAborted();
-
-      if (dispatchResult.ok) {
-        return createdRunResponse(input.run, dispatchResult.value);
-      }
-
-      const transitioned = await markRunFailed(
-        input.db,
-        input.run.id,
-        dispatchResult.error,
-        input.args.dispatchFailedCallbacks,
-      );
-      input.signal.throwIfAborted();
-      if (transitioned) {
-        await tapError(input.drainOrgQueue(), (error) => {
-          L.error("Failed to drain org queue after run dispatch failure", {
-            runId: input.run.id,
-            error,
-          });
-        });
-        input.signal.throwIfAborted();
-      }
-      return failedRunResponse(input.run, dispatchResult.error);
-    },
-  );
-}
-
-async function beforeDispatchResponse(args: {
-  readonly db: Db;
-  readonly run: RunRecord;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly signal: AbortSignal;
-  readonly drainOrgQueue: () => Promise<void>;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }> | null> {
-  const beforeDispatch = args.createArgs.beforeDispatch;
-  if (!beforeDispatch) {
-    return null;
-  }
-
-  // Do not bind the outer request signal here. A successful gate may have
-  // persisted pre-dispatch state that must be followed by queue/job persistence.
-  const beforeDispatchResult = await settle(
-    beforeDispatch({
-      runId: args.run.id,
-      status: args.run.status,
-    }),
-  );
-  if (!beforeDispatchResult.ok) {
-    const transitioned = await markRunFailed(
-      args.db,
-      args.run.id,
-      beforeDispatchResult.error,
-      args.createArgs.dispatchFailedCallbacks,
-    );
-    args.signal.throwIfAborted();
-    if (transitioned && args.run.status === "pending") {
-      await tapError(args.drainOrgQueue(), (error) => {
-        L.error("Failed to drain org queue after run pre-dispatch failure", {
-          runId: args.run.id,
-          error,
-        });
-      });
-      args.signal.throwIfAborted();
-    }
-    return failedRunResponse(args.run, beforeDispatchResult.error);
-  }
-  if (beforeDispatchResult.value) {
-    return null;
-  }
-
-  const cancelled = await cancelRunBeforeDispatch(args.db, args.run.id);
-  args.signal.throwIfAborted();
-  if (cancelled && args.run.status === "pending") {
-    await tapError(args.drainOrgQueue(), (error) => {
-      L.error("Failed to drain org queue after run dispatch cancellation", {
-        runId: args.run.id,
-        error,
-      });
-    });
-    args.signal.throwIfAborted();
-  }
-  return cancelledBeforeDispatchRunResponse(args.run);
-}
-
-function createLegacyBeforeDispatchRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly signal: AbortSignal;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly drainOrgQueue: () => Promise<void>;
-}): Computed<Promise<CreateRunRouteResult>> {
-  return computed(async (get): Promise<CreateRunRouteResult> => {
-    // The chat auto-send pre-dispatch gate is intentionally left on the
-    // legacy split persistence path until #19530 migrates message claims.
-    const transactionResult = await input.timing.measure(
-      "api_dispatch_insert_run_with_concurrency",
-      "top_level",
-      async () => {
-        return await insertRunWithConcurrency(
-          input.db,
-          input.args,
-          input.context,
-          input.timing,
-        );
-      },
-    );
-    input.signal.throwIfAborted();
-
-    if (isRouteError(transactionResult)) {
-      return transactionResult;
-    }
-
-    const beforeDispatch = await beforeDispatchResponse({
-      db: input.db,
-      run: transactionResult,
-      createArgs: input.args,
-      signal: input.signal,
-      drainOrgQueue: input.drainOrgQueue,
-    });
-    if (beforeDispatch) {
-      return beforeDispatch;
-    }
-
-    if (transactionResult.status === "queued") {
-      return await get(
-        completeQueuedRun({
-          db: input.db,
-          args: input.args,
-          context: input.context,
-          run: transactionResult,
-          signal: input.signal,
-          timing: input.timing,
-        }),
-      );
-    }
-
-    return await get(
-      completePendingRun({
-        db: input.db,
-        args: input.args,
-        context: input.context,
-        run: transactionResult,
-        drainOrgQueue: input.drainOrgQueue,
-        signal: input.signal,
-        timing: input.timing,
-      }),
-    );
-  });
-}
-
 async function committedAtomicLaunchResponse(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
@@ -7631,7 +6852,12 @@ async function committedAtomicLaunchResponse(args: {
         ? { triggerSource: args.createArgs.body.triggerSource }
         : {}),
     });
-    return createdRunResponse(args.committed.run, { status: "queued" });
+    const response = createdRunResponse(args.committed.run, {
+      status: "queued",
+    });
+    return args.committed.queueFirstClaim
+      ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
+      : response;
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
@@ -7656,10 +6882,36 @@ async function committedAtomicLaunchResponse(args: {
       ? { triggerSource: args.createArgs.body.triggerSource }
       : {}),
   });
-  return createdRunResponse(args.committed.run, { status: "pending" });
+  const response = createdRunResponse(args.committed.run, {
+    status: "pending",
+  });
+  return args.committed.queueFirstClaim
+    ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
+    : response;
 }
 
-interface CreateAtomicLaunchRunInput {
+function flushQueueFirstClaimLostTiming(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly launch: PreparedRunnerLaunch;
+  readonly timing: ApiDispatchTimingCollector;
+}): void {
+  args.timing.flush({
+    runId: args.identity.runId,
+    runnerGroup: args.launch.runnerJobPayload.runnerGroup,
+    profile: args.launch.runnerJobPayload.profile,
+    dispatchPath: "direct",
+    dimensions: {
+      ...args.createArgs.timingDimensions,
+      queue_first_launch_outcome: "claim_lost",
+    },
+    ...(args.createArgs.body.triggerSource
+      ? { triggerSource: args.createArgs.body.triggerSource }
+      : {}),
+  });
+}
+
+interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
@@ -7667,10 +6919,103 @@ interface CreateAtomicLaunchRunInput {
   readonly timing: ApiDispatchTimingCollector;
 }
 
+function isQueuePayloadRequiredResult(
+  result: unknown,
+): result is QueuePayloadRequiredResult {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "kind" in result &&
+    result.kind === "queue-payload-required"
+  );
+}
+
+async function finalizeAtomicLaunchCommit(args: {
+  readonly input: AtomicLaunchRunInput;
+  readonly identity: LaunchRunIdentity;
+  readonly launch: PreparedRunnerLaunch;
+  readonly committed: AtomicLaunchCommitAttempt;
+}): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
+  if (isReturnableRouteError(args.committed, args.input.signal)) {
+    return args.committed;
+  }
+  if (args.committed.kind === "queue-first-claim-lost") {
+    flushQueueFirstClaimLostTiming({
+      createArgs: args.input.args,
+      identity: args.identity,
+      launch: args.launch,
+      timing: args.input.timing,
+    });
+    return args.committed;
+  }
+  if (args.committed.kind === "queue-payload-required") {
+    return args.committed;
+  }
+  return await committedAtomicLaunchResponse({
+    db: args.input.db,
+    createArgs: args.input.args,
+    committed: args.committed,
+    timing: args.input.timing,
+  });
+}
+
+async function completeQueuePayloadLaunch(args: {
+  readonly input: AtomicLaunchRunInput;
+  readonly identity: LaunchRunIdentity;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly launch: PreparedRunnerLaunch;
+  readonly commitLaunch: CommitAtomicLaunch;
+}): Promise<QueueFirstAgentRunResult> {
+  args.input.signal.throwIfAborted();
+  const encryptedQueuedParams = await settle(
+    encryptQueuedRunnerJobPayload(
+      args.launch.runnerJobPayload,
+      args.input.context.featureSwitchContext,
+    ),
+  );
+  args.input.signal.throwIfAborted();
+
+  if (!encryptedQueuedParams.ok) {
+    const retried = await args.commitLaunch(undefined);
+    const finalizedRetry = await finalizeAtomicLaunchCommit({
+      input: args.input,
+      identity: args.identity,
+      launch: args.launch,
+      committed: retried,
+    });
+    if (!isQueuePayloadRequiredResult(finalizedRetry)) {
+      return finalizedRetry;
+    }
+    args.input.signal.throwIfAborted();
+    return await commitFailedLaunch({
+      db: args.input.db,
+      createArgs: args.input.args,
+      context: args.input.context,
+      identity: args.identity,
+      callbackRows: args.callbackRows,
+      error: encryptedQueuedParams.error,
+      timing: args.input.timing,
+    });
+  }
+
+  const committed = await args.commitLaunch(encryptedQueuedParams.value);
+  const finalized = await finalizeAtomicLaunchCommit({
+    input: args.input,
+    identity: args.identity,
+    launch: args.launch,
+    committed,
+  });
+  if (isQueuePayloadRequiredResult(finalized)) {
+    args.input.signal.throwIfAborted();
+    throw new Error("Queued launch still required encrypted payload");
+  }
+  return finalized;
+}
+
 function createAtomicLaunchRun(
-  input: CreateAtomicLaunchRunInput,
-): Computed<Promise<CreateRunRouteResult>> {
-  return computed(async (get): Promise<CreateRunRouteResult> => {
+  input: AtomicLaunchRunInput,
+): Computed<Promise<QueueFirstAgentRunResult>> {
+  return computed(async (get): Promise<QueueFirstAgentRunResult> => {
     const identity = prepareLaunchRunIdentity({
       resolved: input.context.resolved,
     });
@@ -7723,10 +7068,13 @@ function createAtomicLaunchRun(
         identity,
         callbackRows,
         error: launchResult.error,
+        timing: input.timing,
       });
     }
 
-    const commitLaunch = async (encryptedQueuedParams: string | undefined) => {
+    const commitLaunch: CommitAtomicLaunch = async (
+      encryptedQueuedParams: string | undefined,
+    ) => {
       return await input.timing.measure(
         "api_dispatch_insert_run_with_concurrency",
         "top_level",
@@ -7745,60 +7093,23 @@ function createAtomicLaunchRun(
       );
     };
 
-    let committed = await commitLaunch(undefined);
-    if (isReturnableRouteError(committed, input.signal)) {
-      return committed;
-    }
-
-    if (committed.kind === "queue-payload-required") {
-      input.signal.throwIfAborted();
-      const encryptedQueuedParamsResult = await settle(
-        encryptQueuedRunnerJobPayload(
-          launchResult.value.runnerJobPayload,
-          input.context.featureSwitchContext,
-        ),
-      );
-      input.signal.throwIfAborted();
-      if (!encryptedQueuedParamsResult.ok) {
-        const retryWithoutQueuedPayload = await commitLaunch(undefined);
-        if (isReturnableRouteError(retryWithoutQueuedPayload, input.signal)) {
-          return retryWithoutQueuedPayload;
-        }
-        if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
-          return await committedAtomicLaunchResponse({
-            db: input.db,
-            createArgs: input.args,
-            committed: retryWithoutQueuedPayload,
-            timing: input.timing,
-          });
-        }
-        input.signal.throwIfAborted();
-        return await commitFailedLaunch({
-          db: input.db,
-          createArgs: input.args,
-          context: input.context,
-          identity,
-          callbackRows,
-          error: encryptedQueuedParamsResult.error,
-        });
-      }
-
-      committed = await commitLaunch(encryptedQueuedParamsResult.value);
-      if (isReturnableRouteError(committed, input.signal)) {
-        return committed;
-      }
-      if (committed.kind === "queue-payload-required") {
-        input.signal.throwIfAborted();
-        throw new Error("Queued launch still required encrypted payload");
-      }
-    }
-
-    return await committedAtomicLaunchResponse({
-      db: input.db,
-      createArgs: input.args,
+    const committed = await commitLaunch(undefined);
+    const finalized = await finalizeAtomicLaunchCommit({
+      input,
+      identity,
+      launch: launchResult.value,
       committed,
-      timing: input.timing,
     });
+    if (isQueuePayloadRequiredResult(finalized)) {
+      return await completeQueuePayloadLaunch({
+        input,
+        identity,
+        callbackRows,
+        launch: launchResult.value,
+        commitLaunch,
+      });
+    }
+    return finalized;
   });
 }
 
@@ -7891,7 +7202,7 @@ export const completeAgentRun$ = command(
     { get, set },
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
-  ): Promise<CreateRunRouteResult> => {
+  ): Promise<QueueFirstAgentRunResult> => {
     const db = set(writeDb$);
     const { args, timing } = input.prepared;
     const context = finalizePreparedRunContext(
@@ -7923,21 +7234,6 @@ export const completeAgentRun$ = command(
     signal.throwIfAborted();
     if (admissionGate) {
       return admissionGate;
-    }
-
-    if (args.beforeDispatch) {
-      return await get(
-        createLegacyBeforeDispatchRun({
-          db,
-          args,
-          context,
-          signal,
-          timing,
-          drainOrgQueue: async () => {
-            await set(drainOrgQueue$, { orgId: args.orgId }, signal);
-          },
-        }),
-      );
     }
 
     return await get(
@@ -7972,7 +7268,7 @@ export const createAgentRun$ = command(
     if (isRouteError(prepared)) {
       return prepared;
     }
-    return await set(
+    const result = await set(
       completeAgentRun$,
       {
         prepared,
@@ -7980,5 +7276,9 @@ export const createAgentRun$ = command(
       },
       signal,
     );
+    if (isQueueFirstRunClaimLost(result)) {
+      throw new Error("Direct run unexpectedly lost a queue-first claim");
+    }
+    return result;
   },
 );

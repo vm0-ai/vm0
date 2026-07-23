@@ -54,13 +54,11 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   WorkdayConnector = "workdayConnector",
   CodexFastMode = "codexFastMode",
-  Vm0Model = "vm0Model",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPrompt = "structuredPrompt",
 
   ZapierConnector = "zapierConnector",
-  MemoryViewer = "memoryViewer",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",

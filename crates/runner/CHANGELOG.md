@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.147.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.4...runner-rs-v0.147.5) (2026-07-23)
+
+
+### Documentation
+
+* **runner:** document public destination classifier contract ([#22681](https://github.com/vm0-ai/vm0/issues/22681)) ([509e2ac](https://github.com/vm0-ai/vm0/commit/509e2ac7e46f374568e8dfa05a931c656ce9c832))
+
+## [0.147.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.3...runner-rs-v0.147.4) (2026-07-23)
+
+
+### Bug Fixes
+
+* **runner:** restore sandbox Codex CLI to 0.144.6 ([#22639](https://github.com/vm0-ai/vm0/issues/22639)) ([79ccf8d](https://github.com/vm0-ai/vm0/commit/79ccf8d5071cab30c7f72a45da0f3fc1b3c6c798))
+
+
+### Performance Improvements
+
+* **runner:** move reused mount validation to idle admission ([#22610](https://github.com/vm0-ai/vm0/issues/22610)) ([710f9da](https://github.com/vm0-ai/vm0/commit/710f9da64fbb6d86a1588df02da2077dfb7c938a))
+
 ## [0.147.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.2...runner-rs-v0.147.3) (2026-07-23)
 
 ## [0.147.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.147.1...runner-rs-v0.147.2) (2026-07-22)

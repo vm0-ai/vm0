@@ -1,15 +1,18 @@
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
 
 export function ZeroConnectorCallbackPage({
+  connectorIcon,
   connectorLabel,
   status,
   username,
   errorMessage,
 }: {
+  readonly connectorIcon: PublicConnectorCatalogIcon | undefined;
   readonly connectorLabel: string;
   readonly status: ConnectorCallbackPageStatus;
   readonly username: string | null;
@@ -41,7 +44,7 @@ export function ZeroConnectorCallbackPage({
 
   return (
     <ZeroConnectorFlowCard
-      connectorIcon={undefined}
+      connectorIcon={connectorIcon}
       title={title}
       description={description}
     >

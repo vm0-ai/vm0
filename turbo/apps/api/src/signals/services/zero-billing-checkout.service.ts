@@ -158,8 +158,8 @@ export function checkoutTierConflictMessage(args: {
   return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
 
-export function activeCustomCreditPriceId(): string | undefined {
-  return env("ZERO_PRICE_CUSTOM_CREDITS")?.[0];
+export function activeCustomCreditUnitPriceId(): string | undefined {
+  return env("ZERO_PRICE_CUSTOM_CREDIT_UNIT");
 }
 
 export { activeConcurrencyPriceId };
@@ -197,43 +197,6 @@ function stripeObjectId(
 
 function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
-}
-
-function customUnitAmountParams(
-  template: Stripe.Price.CustomUnitAmount | null,
-  preset: number,
-): Stripe.PriceCreateParams.CustomUnitAmount {
-  return {
-    enabled: true,
-    preset,
-    ...(template?.minimum === null || template?.minimum === undefined
-      ? {}
-      : { minimum: template.minimum }),
-    ...(template?.maximum === null || template?.maximum === undefined
-      ? {}
-      : { maximum: template.maximum }),
-  };
-}
-
-async function createPresetCustomCreditPrice(
-  stripe: ReturnType<typeof getStripeClient>,
-  templatePriceId: string,
-  presetAmountCents: number,
-): Promise<string> {
-  const templatePrice = await stripe.prices.retrieve(templatePriceId);
-  const productId =
-    typeof templatePrice.product === "string"
-      ? templatePrice.product
-      : templatePrice.product.id;
-  const customPrice = await stripe.prices.create({
-    currency: templatePrice.currency,
-    product: productId,
-    custom_unit_amount: customUnitAmountParams(
-      templatePrice.custom_unit_amount,
-      presetAmountCents,
-    ),
-  });
-  return customPrice.id;
 }
 
 /**
@@ -380,23 +343,22 @@ export const createCreditCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
+    const customer = await stripe.customers.retrieve(customerId);
+    signal.throwIfAborted();
+    const customerCoupon =
+      "discount" in customer ? customer.discount?.source.coupon : null;
+    const customerCouponId =
+      typeof customerCoupon === "string" ? customerCoupon : customerCoupon?.id;
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,
       ...stripePreviewMetadata(),
     };
-    const customCreditPriceId = activeCustomCreditPriceId();
-    if (!customCreditPriceId) {
+    const customCreditUnitPriceId = activeCustomCreditUnitPriceId();
+    if (!customCreditUnitPriceId) {
       throw new Error("Custom credit price not configured");
     }
-    const presetAmountCents =
-      Math.ceil(args.credits / CREDITS_PER_DOLLAR) * 100;
-    const presetPriceId = await createPresetCustomCreditPrice(
-      stripe,
-      customCreditPriceId,
-      presetAmountCents,
-    );
-    signal.throwIfAborted();
+    const unitQuantity = Math.ceil(args.credits / CREDITS_PER_DOLLAR);
     const metadata: Stripe.MetadataParam = {
       ...baseMetadata,
       creditsAmountMode: "amount_subtotal",
@@ -405,7 +367,10 @@ export const createCreditCheckoutSession$ = command(
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: customerId,
-      line_items: [{ price: presetPriceId, quantity: 1 }],
+      line_items: [{ price: customCreditUnitPriceId, quantity: unitQuantity }],
+      ...(customerCouponId
+        ? { discounts: [{ coupon: customerCouponId }] }
+        : { allow_promotion_codes: true }),
       invoice_creation: {
         enabled: true,
         invoice_data: {

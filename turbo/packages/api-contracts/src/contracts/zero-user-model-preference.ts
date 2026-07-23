@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
-import { supportedRunModelSchema } from "./model-providers";
+import {
+  requestedRunModelSchema,
+  supportedRunModelSchema,
+} from "./model-providers";
 
 const c = initContract();
 
@@ -15,7 +18,7 @@ export type UserModelPreferenceResponse = z.infer<
 >;
 
 export const updateUserModelPreferenceRequestSchema = z.object({
-  selectedModel: supportedRunModelSchema.nullable(),
+  selectedModel: requestedRunModelSchema.nullable(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

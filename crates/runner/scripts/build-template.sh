@@ -113,14 +113,14 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.5"
-CLAUDE_CODE_VERSION="2.1.217"
-CODEX_CLI_VERSION="0.145.0"
+CLAUDE_CODE_VERSION="2.1.218"
+CODEX_CLI_VERSION="0.144.6"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
-AGENT_BROWSER_VERSION="0.32.3"
-PNPM_VERSION="11.15.1"
-CHROMIUM_VERSION="150.0.7871.124-1~deb12u1"
-CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260716T075414Z"
+AGENT_BROWSER_VERSION="0.32.4"
+PNPM_VERSION="11.16.0"
+CHROMIUM_VERSION="150.0.7871.181-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260723T024428Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks

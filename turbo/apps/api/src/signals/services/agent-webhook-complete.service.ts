@@ -20,6 +20,7 @@ import {
   dispatchRunCallbacks$,
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
+import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
@@ -129,14 +130,20 @@ function buildRunResult(
   checkpoint: typeof checkpoints.$inferSelect,
   sessionId: string | undefined,
 ): RunResult {
-  const artifact = decodeArtifactSnapshotsToRecord(
-    checkpoint.artifactSnapshots,
-  );
-  const volumeVersions = isVolumeVersionsSnapshot(
-    checkpoint.volumeVersionsSnapshot,
-  )
-    ? checkpoint.volumeVersionsSnapshot.versions
-    : undefined;
+  const canonicalProjection =
+    checkpoint.storageMounts === null
+      ? null
+      : projectLegacyCheckpointStorage(checkpoint.storageMounts);
+  const artifact =
+    canonicalProjection === null
+      ? decodeArtifactSnapshotsToRecord(checkpoint.artifactSnapshots)
+      : (canonicalProjection.artifactVersions ?? undefined);
+  const volumeVersions =
+    canonicalProjection === null
+      ? isVolumeVersionsSnapshot(checkpoint.volumeVersionsSnapshot)
+        ? checkpoint.volumeVersionsSnapshot.versions
+        : undefined
+      : (canonicalProjection.volumeVersionsSnapshot?.versions ?? undefined);
 
   return {
     checkpointId: checkpoint.id,

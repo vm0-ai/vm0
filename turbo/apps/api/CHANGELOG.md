@@ -1,5 +1,68 @@
 # Changelog
 
+## [1.306.0](https://github.com/vm0-ai/vm0/compare/api-v1.305.1...api-v1.306.0) (2026-07-23)
+
+
+### Features
+
+* **billing:** use fixed unit price for credit purchases ([#22638](https://github.com/vm0-ai/vm0/issues/22638)) ([f3ebe4d](https://github.com/vm0-ai/vm0/commit/f3ebe4dca3319e0242b17edd673668f6dc6d33ca))
+
+
+### Bug Fixes
+
+* **chat:** use structured incomplete-round context ([#22654](https://github.com/vm0-ai/vm0/issues/22654)) ([881a680](https://github.com/vm0-ai/vm0/commit/881a680e3ede0fde2bcba0f20e5eff6044f0c813))
+* restore thinking status for canonical slack threads ([#22668](https://github.com/vm0-ai/vm0/issues/22668)) ([ce0a1b7](https://github.com/vm0-ai/vm0/commit/ce0a1b7124ac2de934e47e41e91ae2c44ca9f494))
+* stop usage settlement billing refreshes ([#22667](https://github.com/vm0-ai/vm0/issues/22667)) ([53ce6a5](https://github.com/vm0-ai/vm0/commit/53ce6a5ce479bd77d6d54e99272b7e53590ef3d2))
+
+
+### Refactoring
+
+* **api:** stop legacy storage state writes ([#22642](https://github.com/vm0-ai/vm0/issues/22642)) ([1a0b25b](https://github.com/vm0-ai/vm0/commit/1a0b25b9216785792135b2be17efe7e954bce182))
+* **memory:** retire viewer and activity runtime ([#22655](https://github.com/vm0-ai/vm0/issues/22655)) ([1f8a11f](https://github.com/vm0-ai/vm0/commit/1f8a11fadc8893e5e87a00c3d6cdf6e986afcf4f))
+
+
+### Performance Improvements
+
+* **api:** make queue-first chat launches atomic ([#22611](https://github.com/vm0-ai/vm0/issues/22611)) ([7b7d681](https://github.com/vm0-ai/vm0/commit/7b7d6819c0a0a4a974d5cc6111fc0342cfd83ef6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.2
+    * @vm0/connectors bumped to 1.182.0
+    * @vm0/core bumped to 8.453.3
+    * @vm0/db bumped to 1.129.2
+
+## [1.305.1](https://github.com/vm0-ai/vm0/compare/api-v1.305.0...api-v1.305.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.1
+    * @vm0/connectors bumped to 1.181.1
+    * @vm0/core bumped to 8.453.2
+    * @vm0/db bumped to 1.129.1
+
+## [1.305.0](https://github.com/vm0-ai/vm0/compare/api-v1.304.1...api-v1.305.0) (2026-07-23)
+
+
+### Features
+
+* link slack chat messages to their source ([#22633](https://github.com/vm0-ai/vm0/issues/22633)) ([83351c6](https://github.com/vm0-ai/vm0/commit/83351c64b87880a39ba90103754b350f491281d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+    * @vm0/db bumped to 1.129.0
+
 ## [1.304.1](https://github.com/vm0-ai/vm0/compare/api-v1.304.0...api-v1.304.1) (2026-07-23)
 
 

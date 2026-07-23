@@ -14,12 +14,6 @@ const memoryFileContentSchema = z.object({
   content: z.string(),
 });
 
-/**
- * Read-only view of the current user's "memory" artifact (latest version).
- *
- * `exists` is false when the user has never produced memory (no artifact yet);
- * in that case the lists are empty and `updatedAt` is null.
- */
 export const memoryDetailResponseSchema = z.object({
   exists: z.boolean(),
   name: z.string(),
@@ -33,9 +27,9 @@ export const memoryDetailResponseSchema = z.object({
 export type MemoryDetailResponse = z.infer<typeof memoryDetailResponseSchema>;
 
 /**
- * Zero memory contract for /api/zero/memory
- *
- * GET: Read the current user's memory artifact contents (latest version).
+ * Temporary response contract for browser clients that loaded the retired
+ * Memory page before its frontend deployment. Remove after those clients have
+ * drained.
  */
 export const zeroMemoryContract = c.router({
   get: {
@@ -47,7 +41,7 @@ export const zeroMemoryContract = c.router({
       401: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get the current user's memory artifact contents",
+    summary: "Return an empty response for retired memory viewer clients",
   },
 });
 

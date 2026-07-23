@@ -110,7 +110,7 @@ export const zeroConnectorOauthStartContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Create connector OAuth handoff and authorization URL",
+    summary: "Create connector OAuth authorization URL",
   },
 });
 

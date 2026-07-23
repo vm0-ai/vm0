@@ -83,10 +83,6 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
 OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 
-# Optional: Auto proxy authentication (required to run vm0-model)
-VM0_MODEL_PROXY_TOKEN=op://Development/vm0/VM0_MODEL_PROXY_TOKEN
-VM0_MODEL_PROXY_HOST=
-
 # Optional: OpenRouter lightweight model calls
 OPENROUTER_API_KEY=op://Development/openrouter/Section_ak7dvythmldarvk4dodjs4ecyq/OPENROUTER_API_KEY
 
@@ -241,6 +237,7 @@ ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
 ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
 ATOM_GRANT_PRICE=op://Development/stripe/ATOM_GRANT_PRICE
 ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
+ZERO_PRICE_CUSTOM_CREDIT_UNIT=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDIT_UNIT
 ZERO_PRICE_CONCURRENCY=op://Development/stripe/ZERO_PRICE_CONCURRENCY
 ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN
 

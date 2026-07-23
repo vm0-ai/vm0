@@ -1197,7 +1197,14 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endp
 @pytest.mark.parametrize(
     "client_sockname",
     [
-        pytest.param(cast(tuple[str, int], ("203.0.113.10",)), id="malformed"),
+        pytest.param(cast(tuple[str, int], ("203.0.113.10",)), id="short-tuple"),
+        pytest.param(
+            cast(
+                tuple[str, int],
+                (int(ipaddress.IPv4Address("203.0.113.10")), 443),
+            ),
+            id="integer-host",
+        ),
         pytest.param(("127.0.0.1", 443), id="loopback"),
         pytest.param((str(ipaddress.IPv4Address(0)), 443), id="unspecified-ipv4"),
         pytest.param(("::", 443), id="unspecified-ipv6"),

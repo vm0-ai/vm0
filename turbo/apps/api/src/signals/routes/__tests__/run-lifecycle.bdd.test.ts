@@ -10,7 +10,6 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
-  MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -87,6 +86,7 @@ import {
   replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
+  readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
@@ -1752,12 +1752,53 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
+    const readOnlyStorageName = `bdd-phase3-volume-${randomUUID().slice(0, 8)}`;
+    const readOnlyFile = storageTextFile(
+      "phase3.txt",
+      `canonical read-only Storage ${readOnlyStorageName}`,
+    );
+    const preparedReadOnlyStorage = await storages.prepareStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      files: [readOnlyFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      versionId: preparedReadOnlyStorage.versionId,
+      files: [readOnlyFile],
+    });
+    const additionalStorageName = `bdd-phase3-additional-${randomUUID().slice(0, 8)}`;
+    const additionalFile = storageTextFile(
+      "additional.txt",
+      `canonical additional Storage ${additionalStorageName}`,
+    );
+    const preparedAdditionalStorage = await storages.prepareStorage(actor, {
+      storageName: additionalStorageName,
+      storageType: "volume",
+      files: [additionalFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: additionalStorageName,
+      storageType: "volume",
+      versionId: preparedAdditionalStorage.versionId,
+      files: [additionalFile],
+    });
+    const customArtifactName = `bdd-phase3-artifact-${randomUUID().slice(0, 8)}`;
+    const customArtifactMountPath = "/phase3-writeback";
     const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
+      volumes: {
+        checkpoint: {
+          name: readOnlyStorageName,
+          version: preparedReadOnlyStorage.versionId,
+        },
+      },
       agents: {
         [composeName]: {
           framework: "claude-code",
+          volumes: ["checkpoint:/phase3-compose"],
           environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
         },
       },
@@ -1767,6 +1808,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: compose.versionId,
       prompt: "persist canonical storage mounts",
+      artifacts: [
+        {
+          name: customArtifactName,
+          mountPath: customArtifactMountPath,
+        },
+      ],
+      additionalVolumes: [
+        {
+          name: additionalStorageName,
+          version: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
+        },
+      ],
     });
     const initialClaim = await api.claimRunnerJob(initialRun.runId, {
       capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
@@ -1780,6 +1834,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     if (!initialMemory) {
       throw new Error("Expected the canonical memory mount");
+    }
+    expect(initialManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: readOnlyStorageName,
+        versionId: preparedReadOnlyStorage.versionId,
+        mountPath: "/phase3-compose",
+      }),
+    );
+    expect(initialManifest.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: additionalStorageName,
+        versionId: preparedAdditionalStorage.versionId,
+        mountPath: "/phase3-additional",
+      }),
+    );
+    const initialCustomArtifact = initialManifest.storageMounts.find(
+      (mount) => {
+        return mount.name === customArtifactName;
+      },
+    );
+    if (!initialCustomArtifact) {
+      throw new Error("Expected the custom canonical writeback mount");
     }
 
     const memoryFile = storageTextFile(
@@ -1796,6 +1872,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       storageType: "artifact",
       versionId: preparedMemory.versionId,
       files: [memoryFile],
+    });
+    const customArtifactFile = storageTextFile(
+      "checkpoint.txt",
+      `canonical custom writeback ${initialRun.runId}`,
+    );
+    const preparedCustomArtifact = await storages.prepareStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      files: [customArtifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      versionId: preparedCustomArtifact.versionId,
+      files: [customArtifactFile],
     });
 
     const historyHash = createHash("sha256")
@@ -1816,6 +1907,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
               ? {}
               : { missingRootPolicy: initialMemory.missingRootPolicy }),
           },
+          {
+            name: initialCustomArtifact.name,
+            version: preparedCustomArtifact.versionId,
+            mountPath: initialCustomArtifact.mountPath,
+            ...(initialCustomArtifact.missingRootPolicy === undefined
+              ? {}
+              : {
+                  missingRootPolicy: initialCustomArtifact.missingRootPolicy,
+                }),
+          },
         ],
       },
       { authorization: `Bearer ${initialClaim.sandboxToken}` },
@@ -1829,6 +1930,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${initialClaim.sandboxToken}` },
       [200],
     );
+    await expect(
+      readStoragePersistenceState(context, {
+        runId: initialRun.runId,
+        sessionId: initialRun.sessionId,
+        checkpointId: checkpoint.body.checkpointId,
+      }),
+    ).resolves.toStrictEqual({
+      run_canonical: true,
+      run_legacy: false,
+      session_canonical: true,
+      session_legacy: false,
+      checkpoint_canonical: true,
+      checkpoint_legacy_artifacts: false,
+      checkpoint_legacy_volumes: false,
+    });
 
     const sessionRun = await api.createDirectRun(actor, {
       sessionId: initialRun.sessionId,
@@ -1849,6 +1965,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           storageId: initialMemory.storageId,
           versionId: preparedMemory.versionId,
           mountPath: initialMemory.mountPath,
+          writeback: true,
+        }),
+        expect.objectContaining({
+          name: customArtifactName,
+          storageId: initialCustomArtifact.storageId,
+          versionId: preparedCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
           writeback: true,
         }),
       ]),
@@ -1875,11 +1998,106 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           mountPath: initialMemory.mountPath,
           writeback: true,
         }),
+        expect.objectContaining({
+          name: readOnlyStorageName,
+          versionId: preparedReadOnlyStorage.versionId,
+          mountPath: "/phase3-compose",
+        }),
+        expect.objectContaining({
+          name: additionalStorageName,
+          versionId: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
+        }),
+        expect.objectContaining({
+          name: customArtifactName,
+          storageId: initialCustomArtifact.storageId,
+          versionId: preparedCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+          writeback: true,
+        }),
+      ]),
+    );
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+
+    const overriddenReadOnlyFile = storageTextFile(
+      "phase3.txt",
+      `overridden canonical volume ${readOnlyStorageName}`,
+    );
+    const overriddenReadOnlyStorage = await storages.prepareStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      files: [overriddenReadOnlyFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: readOnlyStorageName,
+      storageType: "volume",
+      versionId: overriddenReadOnlyStorage.versionId,
+      files: [overriddenReadOnlyFile],
+    });
+    const overriddenArtifactFile = storageTextFile(
+      "checkpoint.txt",
+      `overridden canonical artifact ${customArtifactName}`,
+    );
+    const overriddenCustomArtifact = await storages.prepareStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      files: [overriddenArtifactFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: customArtifactName,
+      storageType: "artifact",
+      versionId: overriddenCustomArtifact.versionId,
+      files: [overriddenArtifactFile],
+    });
+    const overrideRun = await api.createDirectRun(actor, {
+      checkpointId: checkpoint.body.checkpointId,
+      prompt: "override canonical checkpoint Storage",
+      artifacts: [
+        {
+          name: customArtifactName,
+          version: overriddenCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+        },
+      ],
+      volumeVersions: {
+        checkpoint: overriddenReadOnlyStorage.versionId,
+      },
+    });
+    const overrideClaim = await api.claimRunnerJob(overrideRun.runId, {
+      capabilities: [RUNNER_STORAGE_MOUNTS_CAPABILITY],
+    });
+    const overrideManifest = overrideClaim.storageManifest;
+    if (!overrideManifest || !("storageMounts" in overrideManifest)) {
+      throw new Error("Expected canonical mounts after Storage overrides");
+    }
+    expect(overrideManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "memory",
+          versionId: preparedMemory.versionId,
+          writeback: true,
+        }),
+        expect.objectContaining({
+          name: customArtifactName,
+          versionId: overriddenCustomArtifact.versionId,
+          mountPath: customArtifactMountPath,
+          writeback: true,
+        }),
+        expect.objectContaining({
+          name: readOnlyStorageName,
+          versionId: overriddenReadOnlyStorage.versionId,
+          mountPath: "/phase3-compose",
+        }),
+        expect.objectContaining({
+          name: additionalStorageName,
+          versionId: preparedAdditionalStorage.versionId,
+          mountPath: "/phase3-additional",
+        }),
       ]),
     );
 
-    await api.requestCancelRun(actor, sessionRun.runId, [200]);
-    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+    await api.requestCancelRun(actor, overrideRun.runId, [200]);
   });
 
   it("skips a persisted optional Storage missing during checkpoint resume", async () => {
@@ -4754,7 +4972,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra and Auto, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -4825,51 +5043,29 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
 
-    const vm0Model = "vm0-model";
-    const proxyHost = "https://www.vm0.test";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(vm0Model);
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: vm0Model,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const vm0Sent = await chat.requestSendMessage(
+    const retiredAuto = await chat.requestSendMessage(
       actor,
       {
         agentId,
-        prompt: "limited-free Auto run",
-        model: vm0Model,
+        prompt: "legacy Auto request",
+        model: "vm0-model",
       },
       [201],
     );
-    if (vm0Sent.status !== 201 || vm0Sent.body.runId === null) {
-      throw new Error("Expected Auto to create a limited-free run");
+    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
+      throw new Error("Expected retired Auto to normalize to Luna");
     }
     await api.heartbeatRunner(runnerGroup);
-    const vm0Claim = await api.claimRunnerJob(vm0Sent.body.runId);
-    expect(vm0Claim.environment).toMatchObject({
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: vm0Model,
+    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
+    expect(retiredAutoClaim.environment).toMatchObject({
+      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
-    expect(vm0Claim.codexRuntimeConfig).toMatchObject({
-      providerId: vm0Model,
-      baseUrl: proxyBaseUrl,
-    });
-    expect(
-      vm0Claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("model-provider:vm0-model");
-    expect(vm0Claim.modelUsageProvider).toBe(vm0Model);
-    await api.requestCancelRun(actor, vm0Sent.body.runId, [200]);
+    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
+    expect(retiredAutoClaim.modelUsageProvider).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -4963,107 +5159,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).toContain("model-provider:openai-api-key");
     expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
     expect(claim.modelUsageProvider).toBe(selectedModel);
-
-    await api.requestCancelRun(actor, sent.body.runId, [200]);
-  });
-
-  it("routes vm0-model through the marketing tunnel and injects both managed credentials", async () => {
-    const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const fw = createFirewallApi(context);
-    const selectedModel = "vm0-model";
-    const proxyHost = "https://tunnel-yuma-vm0-marketing.vm7.ai:8443";
-    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
-    const firewallName = "model-provider:vm0-model";
-    const proxyAuthHeaders = {
-      Authorization: `Bearer \${{ secrets.OPENAI_API_KEY }}`,
-      "X-VM0-Upstream-Authorization": `Bearer \${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}`,
-    } as const;
-    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
-    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
-    await seedVm0ManagedModelKey(selectedModel);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "vm0 model proxy run",
-        model: selectedModel,
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected Auto chat send to create a run");
-    }
-
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(sent.body.runId);
-
-    expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-      OPENAI_BASE_URL: proxyBaseUrl,
-      OPENAI_MODEL: selectedModel,
-    });
-    expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-model-proxy-token");
-    expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "vm0-model",
-      name: "Auto",
-      baseUrl: proxyBaseUrl,
-      envKey: "OPENAI_API_KEY",
-      wireApi: "responses",
-      supportsWebsockets: false,
-      modelCatalog: {
-        models: [expect.objectContaining({ slug: selectedModel })],
-      },
-    });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain(firewallName);
-    expect(inlineFirewallApis(claim.firewalls, firewallName)).toStrictEqual([
-      {
-        base: `${proxyBaseUrl}/responses`,
-        auth: { headers: proxyAuthHeaders },
-        permissions: [],
-      },
-    ]);
-    expect(claim.billableFirewalls).toContain(firewallName);
-    expect(claim.modelUsageProvider).toBe(selectedModel);
-    expect(claim.encryptedSecrets).toBeTruthy();
-
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: claim.encryptedSecrets!,
-        authHeaders: proxyAuthHeaders,
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected Auto firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer vm0-model-proxy-token",
-      "X-VM0-Upstream-Authorization":
-        "Bearer vm0-key-run-lifecycle-bdd-default-model",
-    });
-    expect(resolved.body.resolvedSecrets).toStrictEqual([
-      "OPENAI_API_KEY",
-      "VM0_MODEL_UPSTREAM_API_KEY",
-    ]);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
@@ -8432,15 +8527,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.MemoryViewer]: true,
+      [FeatureSwitchKey.ManualMorningBrief]: true,
     });
-    // The memory summarize cron globally sweeps every MemoryViewer-enabled
-    // user in the shared database; leaving this actor opted in would hand
-    // that sweep this actor's storages in every later run. Opt back out
-    // through the same product API.
     onTestFinished(async () => {
       await connectors.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.MemoryViewer]: false,
+        [FeatureSwitchKey.ManualMorningBrief]: false,
       });
     });
 
@@ -8481,7 +8572,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.MemoryViewer]: true,
+      [FeatureSwitchKey.ManualMorningBrief]: true,
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 
@@ -10020,6 +10111,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         },
       ) ?? [];
     expect(mountPaths).toContain("/cache");
+    const memoryArtifact = expectLegacyStorageManifest(
+      claim.storageManifest,
+    )?.artifacts.find((artifact) => {
+      return artifact.vasStorageName === "memory";
+    });
+    if (!memoryArtifact) {
+      throw new Error("Expected the run to mount memory");
+    }
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
     await webhooks.requestAgentTelemetryUnchecked(
@@ -10147,15 +10246,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 
     const artifactSnapshots = [
       {
-        name: "workspace",
-        version: "a".repeat(64),
-        mountPath: "/workspace",
-      },
-      {
-        name: "site",
-        version: "b".repeat(64),
-        mountPath: "/site",
-        missingRootPolicy: "preserveParentVersion" as const,
+        name: memoryArtifact.vasStorageName,
+        version: memoryArtifact.vasVersionId,
+        mountPath: memoryArtifact.mountPath,
+        ...(memoryArtifact.missingRootPolicy === undefined
+          ? {}
+          : { missingRootPolicy: memoryArtifact.missingRootPolicy }),
       },
     ];
     const historyHash = createHash("sha256")
@@ -10192,8 +10288,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     const completed = await api.readRun(actor, created.runId);
     expect(completed.status).toBe("completed");
     expect(completed.result?.artifact).toStrictEqual({
-      workspace: "a".repeat(64),
-      site: "b".repeat(64),
+      memory: memoryArtifact.vasVersionId,
     });
     expect(completed.result?.volumes).toStrictEqual({
       [cacheVolume]: cachePrepared.versionId,

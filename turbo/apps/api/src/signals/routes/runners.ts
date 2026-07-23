@@ -28,6 +28,7 @@ import {
   gt,
   inArray,
   lt,
+  lte,
   notInArray,
   or,
   sql,
@@ -58,6 +59,7 @@ import { logger } from "../../lib/log";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import {
   nullableDriverValueDecoder,
+  pgBooleanDecoder,
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
@@ -827,11 +829,6 @@ function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
   return notFound("Run not found");
 }
 
-const lockedRunnerJobRowSchema = z.object({
-  runId: z.string(),
-  isExpired: z.boolean(),
-});
-
 const claimTransitionSqlRowSchema = z.object({
   status: z.enum([
     "claimed",
@@ -858,22 +855,22 @@ async function lockClaimRun(
 }
 
 async function lockRunnerJob(
-  db: Pick<Db, "execute">,
+  db: Pick<Db, "select">,
   runId: string,
-): Promise<z.output<typeof lockedRunnerJobRowSchema> | undefined> {
-  const rows = await executeRawRows(
-    db,
-    sql`
-      SELECT
-        ${runnerJobQueue.runId} AS "runId",
-        ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
-      FROM ${runnerJobQueue}
-      WHERE ${eq(runnerJobQueue.runId, runId)}
-      FOR UPDATE
-    `,
-    lockedRunnerJobRowSchema,
-  );
-  return rows[0];
+): Promise<
+  { readonly runId: string; readonly isExpired: boolean } | undefined
+> {
+  const [row] = await db
+    .select({
+      runId: runnerJobQueue.runId,
+      isExpired: lte(runnerJobQueue.expiresAt, sql`now()`).mapWith(
+        pgBooleanDecoder,
+      ),
+    })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .for("update");
+  return row;
 }
 
 async function transitionClaimedJobToRunning(

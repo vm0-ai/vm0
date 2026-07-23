@@ -64,7 +64,6 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -557,21 +556,18 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    const continuationUrl = new URL(
-      `/api/zero/connectors/${resolved.connectorRef}/oauth/continue`,
-      getOAuthApiOrigin(request),
-    );
-    continuationUrl.searchParams.set("state", prepared.state);
-
     return {
       status: 200 as const,
       body: {
-        authorizationUrl: continuationUrl.toString(),
+        authorizationUrl: authResult.url,
       },
     };
   },
 );
 
+// Compatibility for handoff URLs issued before direct provider redirects.
+// Remove after the previous API is no longer rollback-eligible and every state
+// issued with CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS has expired.
 const continueConnectorOauthInner$ = command(
   async ({ get }, signal: AbortSignal) => {
     const params = get(

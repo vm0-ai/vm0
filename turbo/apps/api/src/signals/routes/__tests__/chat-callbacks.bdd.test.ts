@@ -7,9 +7,14 @@ import type {
   AttachFile,
   GenerationTemplateRequest,
   PagedChatMessage,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "@vm0/core";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -161,6 +166,8 @@ async function startChatRun(
     readonly threadId?: string;
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
+    readonly generationTemplate?: GenerationTemplateRequest;
+    readonly structuredPrompt?: UserMessageDocument;
   },
 ): Promise<{
   readonly runId: string;
@@ -176,6 +183,12 @@ async function startChatRun(
     ...(body.attachFiles === undefined
       ? {}
       : { attachFiles: body.attachFiles }),
+    ...(body.generationTemplate === undefined
+      ? {}
+      : { generationTemplate: body.generationTemplate }),
+    ...(body.structuredPrompt === undefined
+      ? {}
+      : { structuredPrompt: body.structuredPrompt }),
     ...(body.selectedModel === undefined
       ? body.threadId === undefined
         ? { model: "claude-sonnet-4-6" }
@@ -1109,7 +1122,6 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     ]);
 
@@ -1620,7 +1632,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
       ],
     );
@@ -2286,6 +2297,125 @@ describe("CHAT-02: failed chat callbacks", () => {
 });
 
 describe("CHAT-02: auto-send after failures", () => {
+  it("uses structured failed messages for normal and queued incomplete-round context", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.StructuredPrompt]: true },
+    );
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "successful structured context anchor",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const structuredPrompt: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
+        },
+        { type: "text", text: "structured failed request" },
+      ],
+    };
+    const templatePrompt = `Select ${style.title} illustration template`;
+
+    const failedForNormal = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "stale failed legacy request",
+      generationTemplate,
+      structuredPrompt,
+    });
+    const failedForNormalHeaders = await claimChatRun(
+      runnerGroup,
+      failedForNormal.runId,
+    );
+    await failChatRun(
+      failedForNormal.runId,
+      failedForNormalHeaders,
+      "structured normal context failure",
+    );
+    await flushWaitUntilForTest();
+
+    const normal = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "normal incomplete context probe",
+    });
+    const normalContext = await waitForRunContext(actor, normal.runId);
+    expect(normalContext.body.appendSystemPrompt).toContain(templatePrompt);
+    await api.requestCancelRun(actor, normal.runId, [200]);
+    await waitForRunStatus(actor, normal.runId, "cancelled");
+    await flushWaitUntilForTest();
+
+    const failedForQueue = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "second stale failed legacy request",
+      generationTemplate,
+      structuredPrompt,
+    });
+    const failedForQueueHeaders = await claimChatRun(
+      runnerGroup,
+      failedForQueue.runId,
+    );
+    const queuedPrompt = "queued incomplete context probe";
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: queuedPrompt,
+    });
+    await failChatRun(
+      failedForQueue.runId,
+      failedForQueueHeaders,
+      "structured queued context failure",
+    );
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === queuedPrompt && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.content === queuedPrompt && message.runId !== undefined;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued probe to be promoted");
+    }
+    const queuedContext = await waitForRunContext(actor, promoted.runId);
+    expect(queuedContext.body.appendSystemPrompt).toContain(templatePrompt);
+
+    await api.requestCancelRun(actor, promoted.runId, [200]);
+    await waitForRunStatus(actor, promoted.runId, "cancelled");
+  }, 90_000);
+
   it("auto-sends the queued message after a failure, carrying attachments, incomplete-round context, and the continued session", async () => {
     const { actor, agentId, runnerGroup, storage } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2409,7 +2539,6 @@ describe("CHAT-02: auto-send after failures", () => {
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
       ],
     );

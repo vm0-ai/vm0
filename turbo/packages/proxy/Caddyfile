@@ -6,8 +6,8 @@
 	}
 }
 
-# Public dev tunnel ingress. Keep Auto on the same www authority as the
-# API while routing only its internal proxy path to vm0-marketing.
+# Public dev tunnel ingress. Retain the legacy Auto route temporarily for runs
+# claimed by pre-retirement API deployments.
 :3043 {
 	handle /api/internal/vm0-model/v1/* {
 		reverse_proxy localhost:3042

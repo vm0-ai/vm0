@@ -521,8 +521,8 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  // Rollback projection for old APIs/runners. New writers persist canonical
-  // mounts alongside it until the observation window closes.
+  // Claim-time compatibility projection for old runners. Queue rows have a
+  // short TTL; long-lived run/session/checkpoint writers are canonical-only.
   storageManifest: legacyStorageManifestSchema.nullable(),
   storageMounts: z
     .array(storedStorageMountEntrySchema)

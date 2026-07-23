@@ -55,6 +55,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconBrandSlack,
   IconWorld,
 } from "@tabler/icons-react";
 import {
@@ -92,7 +93,10 @@ import type {
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
+import {
+  messageDocumentToPrompt,
+  type EditorDocumentSnapshot,
+} from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -6053,6 +6057,24 @@ function clipboardAttachmentsFromMessage(
   });
 }
 
+function clipboardAttachmentsFromStructuredPrompt(
+  document: UserMessageDocument,
+  attachments: readonly ChatClipboardAttachment[],
+): ChatClipboardAttachment[] {
+  const attachmentById = new Map(
+    attachments.flatMap((attachment) => {
+      return attachment.id ? [[attachment.id, attachment] as const] : [];
+    }),
+  );
+  return document.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+    const attachment = attachmentById.get(part.fileId);
+    return attachment ? [attachment] : [];
+  });
+}
+
 function UserMessageAttachments({
   attachments,
   onImageClick,
@@ -6281,6 +6303,31 @@ function UserMessageGenerationTemplate({
     >
       {content}
     </div>
+  );
+}
+
+function SlackUserMessageOrigin({
+  permalink,
+}: {
+  permalink: string | undefined;
+}) {
+  if (!permalink) {
+    return null;
+  }
+  return (
+    <a
+      href={permalink}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original message in Slack"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open message</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
   );
 }
 
@@ -6626,12 +6673,15 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const copyText =
+  const legacyCopyText =
     message.attachFiles &&
     message.attachFiles.length > 0 &&
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
+  const copyText = structuredPrompt
+    ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+    : legacyCopyText;
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6642,8 +6692,20 @@ function PagedUserMessage({
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
   const allAttachments = resolveAttachments(message, parsed);
-  const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
-  const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
+  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
+    message,
+    parsed,
+  );
+  const clipboardAttachments = structuredPrompt
+    ? clipboardAttachmentsFromStructuredPrompt(
+        structuredPrompt,
+        legacyClipboardAttachments,
+      )
+    : legacyClipboardAttachments;
+  const canCopy =
+    structuredPrompt !== undefined ||
+    copyText.trim().length > 0 ||
+    clipboardAttachments.length > 0;
 
   const handleCopy = () => {
     if (!canCopy) {
@@ -6652,7 +6714,11 @@ function PagedUserMessage({
     detach(
       copyMessage(
         message.id,
-        { text: copyText, attachments: clipboardAttachments },
+        {
+          text: copyText,
+          attachments: clipboardAttachments,
+          ...(structuredPrompt ? { structuredPrompt } : {}),
+        },
         pageSignal,
       ),
       Reason.DomCallback,
@@ -6678,6 +6744,7 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           {structuredPrompt ? (
             <StructuredUserMessageContent
               document={structuredPrompt}

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -1227,6 +1228,95 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           size: 2048,
         },
       ],
+    });
+  });
+
+  it("copies the structured message snapshot instead of stale legacy fields", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const threadId = "structured-message-copy";
+    const referencedThreadId = "b0000000-0000-4000-a000-000000000799";
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const firstAttachment = {
+      id: "structured-copy-first",
+      filename: "first.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://cdn.vm7.io/artifacts/test/copy/first.txt",
+    };
+    const secondAttachment = {
+      id: "structured-copy-second",
+      filename: "second.txt",
+      contentType: "text/plain",
+      size: 6,
+      url: "https://cdn.vm7.io/artifacts/test/copy/second.txt",
+    };
+    const structuredPrompt = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "template" as const,
+          titleSnapshot: style.title,
+          template: {
+            type: "illustration" as const,
+            selection: {
+              illustrationStyleId: style.illustrationStyleId,
+            },
+          },
+        },
+        {
+          type: "file" as const,
+          fileId: secondAttachment.id,
+          filenameSnapshot: secondAttachment.filename,
+          contentType: secondAttachment.contentType,
+        },
+        { type: "text" as const, text: "Review " },
+        {
+          type: "chat_thread" as const,
+          threadId: referencedThreadId,
+          titleSnapshot: "Roadmap",
+        },
+        {
+          type: "file" as const,
+          fileId: firstAttachment.id,
+          filenameSnapshot: firstAttachment.filename,
+          contentType: firstAttachment.contentType,
+        },
+        { type: "text" as const, text: " now" },
+      ],
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-copy",
+          role: "user",
+          content: "stale legacy content",
+          structuredPrompt,
+          attachFiles: [firstAttachment, secondAttachment],
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review")).toBeInTheDocument();
+      expect(screen.getByText("Roadmap")).toBeInTheDocument();
+      expect(screen.queryByText("stale legacy content")).toBeNull();
+    });
+    click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    expect(parseChatClipboardPayload(html)).toStrictEqual({
+      text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
+      attachments: [secondAttachment, firstAttachment],
+      structuredPrompt,
     });
   });
 });

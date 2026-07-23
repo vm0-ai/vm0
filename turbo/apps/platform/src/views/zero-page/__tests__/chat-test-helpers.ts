@@ -461,6 +461,7 @@ export function mockChatLifecycle(
       prompt: string;
       threadId?: string;
       clientThreadId?: string;
+      structuredPrompt?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
     }) => void;
@@ -928,6 +929,7 @@ export function mockChatLifecycle(
       prompt: body.prompt,
       threadId: body.threadId,
       clientThreadId: body.clientThreadId,
+      structuredPrompt: body.structuredPrompt,
       model: body.model,
       modelSelection: modelSelectionFromBody(body),
     });

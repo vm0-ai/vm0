@@ -39,8 +39,8 @@ export const checkpoints = pgTable("checkpoints", {
   volumeVersionsSnapshot: jsonb(
     "volume_versions_snapshot",
   ).$type<CheckpointVolumeVersionsSnapshot>(),
-  // Canonical exact mount snapshot. The legacy artifact/volume snapshots stay
-  // populated during the rollback window.
+  // Canonical exact mount snapshot. Legacy artifact/volume snapshots contain
+  // only historical rollback data; new writers leave them null.
   storageMounts: jsonb("storage_mounts").$type<CheckpointStorageMounts>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

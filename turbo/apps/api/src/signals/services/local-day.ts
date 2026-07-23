@@ -74,57 +74,6 @@ function getLocalDayStartUtc(timezone: string, now: Date): Date {
 }
 
 /**
- * The calendar date (YYYY-MM-DD) of `instant` in `timezone`.
- */
-export function localDateLabel(timezone: string, instant: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(instant);
-}
-
-/**
- * The UTC instant of local midnight for `dateLabel` (YYYY-MM-DD) in `timezone`.
- *
- * Unlike `getLocalDayStartUtc`, this never re-parses a formatted string as a
- * machine-local date, so it is stable regardless of the host's `TZ` and safe to
- * call repeatedly while walking a range of calendar days.
- */
-export function localMidnightUtc(timezone: string, dateLabel: string): Date {
-  // Anchor: treat the label as a UTC wall-clock, then measure how far that
-  // instant's wall-clock in `timezone` differs from UTC and correct for it.
-  const anchor = new Date(`${dateLabel}T00:00:00Z`);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(anchor);
-  const get = (type: string): number => {
-    const value = parts.find((part) => {
-      return part.type === type;
-    })?.value;
-    return Number(value);
-  };
-  const asUtcOfLocalParts = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour"),
-    get("minute"),
-    get("second"),
-  );
-  const offsetMs = asUtcOfLocalParts - anchor.getTime();
-  return new Date(anchor.getTime() - offsetMs);
-}
-
-/**
  * Calendar date label (YYYY-MM-DD) and UTC window for the user's local "today
  * so far": from local midnight to `now`.
  */

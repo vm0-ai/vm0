@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.621.0](https://github.com/vm0-ai/vm0/compare/app-v0.620.1...app-v0.621.0) (2026-07-23)
+
+
+### Features
+
+* **connectors:** improve app oauth completion flow ([#22644](https://github.com/vm0-ai/vm0/issues/22644)) ([caa029a](https://github.com/vm0-ai/vm0/commit/caa029af701dc111ea5eb2d3df235d57cfd6547c))
+
+
+### Bug Fixes
+
+* **chat:** copy structured user messages ([#22656](https://github.com/vm0-ai/vm0/issues/22656)) ([ba044b7](https://github.com/vm0-ai/vm0/commit/ba044b7ba4758ef013b2f6b8c01091fd1ef94c76))
+* **chat:** structure automatic user message sends ([#22641](https://github.com/vm0-ai/vm0/issues/22641)) ([66af966](https://github.com/vm0-ai/vm0/commit/66af9666b5d18fcda0ff1f60a04205d7089391cd))
+* stop background chat sync from backfilling history ([#22664](https://github.com/vm0-ai/vm0/issues/22664)) ([6908f0a](https://github.com/vm0-ai/vm0/commit/6908f0af72675f5536aa2f3677f91dd476f9d804))
+
+
+### Refactoring
+
+* **memory:** retire viewer and activity runtime ([#22655](https://github.com/vm0-ai/vm0/issues/22655)) ([1f8a11f](https://github.com/vm0-ai/vm0/commit/1f8a11fadc8893e5e87a00c3d6cdf6e986afcf4f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.2
+    * @vm0/connectors bumped to 1.182.0
+    * @vm0/core bumped to 8.453.3
+
+## [0.620.1](https://github.com/vm0-ai/vm0/compare/app-v0.620.0...app-v0.620.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.1
+    * @vm0/connectors bumped to 1.181.1
+    * @vm0/core bumped to 8.453.2
+
+## [0.620.0](https://github.com/vm0-ai/vm0/compare/app-v0.619.0...app-v0.620.0) (2026-07-23)
+
+
+### Features
+
+* link slack chat messages to their source ([#22633](https://github.com/vm0-ai/vm0/issues/22633)) ([83351c6](https://github.com/vm0-ai/vm0/commit/83351c64b87880a39ba90103754b350f491281d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+
 ## [0.619.0](https://github.com/vm0-ai/vm0/compare/app-v0.618.1...app-v0.619.0) (2026-07-23)
 
 

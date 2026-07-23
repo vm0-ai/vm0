@@ -588,31 +588,6 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("opens memory from the account menu", async () => {
-    mockAdminAccountSidebar();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
-    });
-
-    const menu = await openAccountMenu();
-    click(within(menu).getByText("Memory"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Memory" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("No updates yet")).toBeInTheDocument();
-    });
-  });
-
   it("opens settings from the account menu and changes debug capture", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({

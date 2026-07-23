@@ -52,15 +52,6 @@ import {
   type UploadCompleteResponse,
   type UploadPrepareResponse,
 } from "@vm0/api-contracts/contracts/zero-uploads";
-import {
-  zeroMemoryActivityContract,
-  type MemoryActivityResponse,
-} from "@vm0/api-contracts/contracts/zero-memory-activity";
-import {
-  zeroMemoryContract,
-  type MemoryDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-memory";
-
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
@@ -83,8 +74,6 @@ import { zeroChatThreadRoutes } from "../../zero-chat-threads";
 import { zeroChatThreadUnpinRoutes } from "../../zero-chat-threads-unpin";
 import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-artifacts-sync";
 import { zeroHostRoutes } from "../../zero-host";
-import { zeroMemoryActivityRoutes } from "../../zero-memory-activity";
-import { zeroMemoryRoutes } from "../../zero-memory";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
@@ -243,8 +232,6 @@ const chatFilesRoutes = [
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroHostRoutes,
-  ...zeroMemoryRoutes,
-  ...zeroMemoryActivityRoutes,
   ...zeroModelPoliciesRoutes,
   ...storagesPrepareRoutes,
   ...storagesCommitRoutes,
@@ -376,14 +363,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function hostClient() {
     return chatFilesApp(context)(zeroHostContract);
-  }
-
-  function memoryClient() {
-    return chatFilesApp(context)(zeroMemoryContract);
-  }
-
-  function memoryActivityClient() {
-    return chatFilesApp(context)(zeroMemoryActivityContract);
   }
 
   function storagePrepareClient() {
@@ -1332,49 +1311,6 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async readMemory(actor: ApiTestUser): Promise<MemoryDetailResponse> {
-      const response = await accept(
-        memoryClient().get({ headers: authenticate(context, actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestReadMemory(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401)[],
-    ) {
-      return await accept(
-        memoryClient().get({ headers: authenticate(context, actor) }),
-        statuses,
-      );
-    },
-
-    async readMemoryWithBearer(
-      token: string,
-      statuses: readonly (200 | 401)[],
-    ) {
-      return await accept(
-        memoryClient().get({
-          headers: { authorization: `Bearer ${token}` },
-        }),
-        statuses,
-      );
-    },
-
-    async readMemoryActivity(
-      actor: ApiTestUser,
-    ): Promise<MemoryActivityResponse> {
-      const response = await accept(
-        memoryActivityClient().get({
-          headers: authenticate(context, actor),
-          query: {},
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     async prepareUpload(

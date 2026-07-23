@@ -72,6 +72,10 @@ interface SimpleSelectMatch {
   readonly sourceTableExpressionIndex: number;
 }
 
+interface SimpleLockingSelectMatch {
+  readonly sourceTableExpressionIndex: number | undefined;
+}
+
 const RESULT_FIELD_ARGUMENT = new Map<string, number>([
   ["returning", 0],
   ["select", 0],
@@ -98,6 +102,29 @@ const UNSUPPORTED_SCALAR_QUERY_KEYWORDS = new Set([
   ...UNSUPPORTED_TOP_LEVEL_WHERE_KEYWORDS,
   "INTO",
   "OVER",
+]);
+
+const UNSUPPORTED_LOCKING_SELECT_KEYWORDS = new Set([
+  "DISTINCT",
+  "EXCEPT",
+  "FETCH",
+  "FULL",
+  "GROUP",
+  "HAVING",
+  "INNER",
+  "INTERSECT",
+  "INTO",
+  "JOIN",
+  "LEFT",
+  "NOWAIT",
+  "OFFSET",
+  "OUTER",
+  "QUALIFY",
+  "RIGHT",
+  "UNION",
+  "USING",
+  "WINDOW",
+  "WITH",
 ]);
 
 function quasiText(node: TSESTree.TemplateElement): string {
@@ -233,6 +260,209 @@ function isWord(token: SqlToken | undefined, value: string): boolean {
 
 function expressionIndex(token: SqlToken | undefined): number | undefined {
   return token?.kind === "expression" ? token.expressionIndex : undefined;
+}
+
+function onlyWhitespaceBetween(
+  source: string,
+  left: SqlToken,
+  right: SqlToken,
+): boolean {
+  return source.slice(left.end, right.start).trim() === "";
+}
+
+function simpleLockingSelectMatch(
+  syntaxSource: string,
+): SimpleLockingSelectMatch | undefined {
+  const tokens = topLevelTokens(syntaxSource);
+  if (tokens === undefined || !isWord(tokens[0], "SELECT")) {
+    return undefined;
+  }
+  if ((syntaxSource.match(/\bSELECT\b/gi) ?? []).length !== 1) {
+    return undefined;
+  }
+
+  let end = tokens.length;
+  const trailingToken = tokens[end - 1];
+  if (trailingToken?.kind === "punctuation" && trailingToken.value === ";") {
+    if (syntaxSource.slice(trailingToken.end).trim() !== "") {
+      return undefined;
+    }
+    end -= 1;
+  } else if (
+    trailingToken === undefined ||
+    syntaxSource.slice(trailingToken.end).trim() !== ""
+  ) {
+    return undefined;
+  }
+  if (
+    tokens.slice(0, end).some((token) => {
+      return token.kind === "punctuation" && token.value === ";";
+    })
+  ) {
+    return undefined;
+  }
+
+  let lockStart = end - 2;
+  let lockTokens = tokens.slice(lockStart, end);
+  if (
+    lockTokens.length !== 2 ||
+    !isWord(lockTokens[0], "FOR") ||
+    !isWord(lockTokens[1], "UPDATE")
+  ) {
+    lockStart = end - 4;
+    lockTokens = tokens.slice(lockStart, end);
+    if (
+      lockTokens.length !== 4 ||
+      !isWord(lockTokens[0], "FOR") ||
+      !isWord(lockTokens[1], "UPDATE") ||
+      !isWord(lockTokens[2], "SKIP") ||
+      !isWord(lockTokens[3], "LOCKED")
+    ) {
+      return undefined;
+    }
+  }
+  if (
+    lockStart <= 0 ||
+    lockTokens.some((token, index) => {
+      const next = lockTokens[index + 1];
+      return (
+        next !== undefined && !onlyWhitespaceBetween(syntaxSource, token, next)
+      );
+    })
+  ) {
+    return undefined;
+  }
+  const lockKeyword = lockTokens[0];
+  if (lockKeyword === undefined) {
+    return undefined;
+  }
+
+  const statementTokens = tokens.slice(0, lockStart);
+  if (
+    statementTokens.some((token) => {
+      return (
+        token.kind === "word" &&
+        UNSUPPORTED_LOCKING_SELECT_KEYWORDS.has(token.value)
+      );
+    })
+  ) {
+    return undefined;
+  }
+
+  const fromIndexes = statementTokens.flatMap((token, index) => {
+    return isWord(token, "FROM") ? [index] : [];
+  });
+  const whereIndexes = statementTokens.flatMap((token, index) => {
+    return isWord(token, "WHERE") ? [index] : [];
+  });
+  const orderIndexes = statementTokens.flatMap((token, index) => {
+    return isWord(token, "ORDER") ? [index] : [];
+  });
+  const limitIndexes = statementTokens.flatMap((token, index) => {
+    return isWord(token, "LIMIT") ? [index] : [];
+  });
+  if (
+    fromIndexes.length !== 1 ||
+    whereIndexes.length !== 1 ||
+    orderIndexes.length > 1 ||
+    limitIndexes.length > 1
+  ) {
+    return undefined;
+  }
+
+  const fromIndex = fromIndexes[0];
+  const whereIndex = whereIndexes[0];
+  const selectKeyword = statementTokens[0];
+  const fromKeyword =
+    fromIndex === undefined ? undefined : statementTokens[fromIndex];
+  const whereKeyword =
+    whereIndex === undefined ? undefined : statementTokens[whereIndex];
+  if (
+    fromIndex === undefined ||
+    whereIndex === undefined ||
+    fromIndex <= 0 ||
+    whereIndex !== fromIndex + 2 ||
+    selectKeyword === undefined ||
+    fromKeyword === undefined ||
+    whereKeyword === undefined ||
+    syntaxSource.slice(selectKeyword.end, fromKeyword.start).trim() === "" ||
+    syntaxSource.slice(fromKeyword.end, whereKeyword.start).trim() === ""
+  ) {
+    return undefined;
+  }
+
+  const sourceTable = statementTokens[fromIndex + 1];
+  if (
+    sourceTable === undefined ||
+    (sourceTable.kind !== "word" && sourceTable.kind !== "expression")
+  ) {
+    return undefined;
+  }
+
+  const orderIndex = orderIndexes[0];
+  const limitIndex = limitIndexes[0];
+  if (
+    (orderIndex !== undefined && orderIndex <= whereIndex) ||
+    (limitIndex !== undefined &&
+      (limitIndex <= whereIndex ||
+        (orderIndex !== undefined && limitIndex <= orderIndex)))
+  ) {
+    return undefined;
+  }
+
+  const whereEndIndex = orderIndex ?? limitIndex ?? statementTokens.length;
+  const whereEndToken =
+    whereEndIndex === statementTokens.length
+      ? lockKeyword
+      : statementTokens[whereEndIndex];
+  if (
+    whereEndToken === undefined ||
+    syntaxSource.slice(whereKeyword.end, whereEndToken.start).trim() === ""
+  ) {
+    return undefined;
+  }
+
+  if (orderIndex !== undefined) {
+    const orderKeyword = statementTokens[orderIndex];
+    const byKeyword = statementTokens[orderIndex + 1];
+    const orderEndIndex = limitIndex ?? statementTokens.length;
+    const orderEndToken =
+      orderEndIndex === statementTokens.length
+        ? lockKeyword
+        : statementTokens[orderEndIndex];
+    if (
+      orderKeyword === undefined ||
+      byKeyword === undefined ||
+      orderEndToken === undefined ||
+      !isWord(byKeyword, "BY") ||
+      !onlyWhitespaceBetween(syntaxSource, orderKeyword, byKeyword) ||
+      syntaxSource.slice(byKeyword.end, orderEndToken.start).trim() === ""
+    ) {
+      return undefined;
+    }
+  }
+
+  if (limitIndex !== undefined) {
+    const limitKeyword = statementTokens[limitIndex];
+    const limitValue = statementTokens[limitIndex + 1];
+    if (
+      limitKeyword === undefined ||
+      limitValue?.kind !== "number" ||
+      limitValue.value !== "1" ||
+      limitIndex + 2 !== statementTokens.length ||
+      !onlyWhitespaceBetween(syntaxSource, limitKeyword, limitValue) ||
+      !onlyWhitespaceBetween(syntaxSource, limitValue, lockKeyword)
+    ) {
+      return undefined;
+    }
+  }
+
+  return {
+    sourceTableExpressionIndex:
+      sourceTable.kind === "expression"
+        ? sourceTable.expressionIndex
+        : undefined,
+  };
 }
 
 function simpleSelectMatch(
@@ -443,7 +673,7 @@ export const preferDrizzleQueryBuilder = createRule({
     type: "suggestion",
     docs: {
       description:
-        "Prefer Drizzle query builders for complete simple selects and scalar result queries",
+        "Prefer Drizzle query builders for complete simple selects, locking selects, and scalar result queries",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -451,6 +681,8 @@ export const preferDrizzleQueryBuilder = createRule({
     messages: {
       queryBuilder:
         "Use a Drizzle select builder for this complete schema-backed query.",
+      lockingQueryBuilder:
+        "Use a Drizzle select builder with .for(...) for this complete locking query.",
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
     },
@@ -975,7 +1207,33 @@ export const preferDrizzleQueryBuilder = createRule({
         const source = query.quasi.quasis
           .map(quasiText)
           .join(SQL_TEMPLATE_EXPRESSION_BOUNDARY);
-        const match = simpleSelectMatch(source, sqlCodeMask(source));
+        const syntaxSource = sqlCodeMask(source);
+        const lockingMatch = simpleLockingSelectMatch(syntaxSource);
+        if (lockingMatch !== undefined) {
+          const sourceTableExpressionIndex =
+            lockingMatch.sourceTableExpressionIndex;
+          if (sourceTableExpressionIndex !== undefined) {
+            const sourceTable =
+              query.quasi.expressions[sourceTableExpressionIndex];
+            if (sourceTable === undefined) {
+              return;
+            }
+            const sourceTableType = expressionType(sourceTable);
+            if (
+              !isDrizzleTableType(
+                checker,
+                sourceTableType.type,
+                sourceTableType.location,
+              )
+            ) {
+              return;
+            }
+          }
+          context.report({ node: query, messageId: "lockingQueryBuilder" });
+          return;
+        }
+
+        const match = simpleSelectMatch(source, syntaxSource);
         if (match === undefined) {
           return;
         }

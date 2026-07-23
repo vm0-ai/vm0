@@ -1,5 +1,37 @@
 # Changelog
 
+## [9.246.6](https://github.com/vm0-ai/vm0/compare/cli-v9.246.5...cli-v9.246.6) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.216.2
+    * @vm0/connectors bumped to 1.182.0
+    * @vm0/core bumped to 8.453.3
+
+## [9.246.5](https://github.com/vm0-ai/vm0/compare/cli-v9.246.4...cli-v9.246.5) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.216.1
+    * @vm0/connectors bumped to 1.181.1
+    * @vm0/core bumped to 8.453.2
+
+## [9.246.4](https://github.com/vm0-ai/vm0/compare/cli-v9.246.3...cli-v9.246.4) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+
 ## [9.246.3](https://github.com/vm0-ai/vm0/compare/cli-v9.246.2...cli-v9.246.3) (2026-07-23)
 
 

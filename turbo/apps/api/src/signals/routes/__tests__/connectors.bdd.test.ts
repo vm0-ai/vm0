@@ -333,10 +333,7 @@ describe("CONN-02: OAuth start and callback", () => {
     if (startResponse.status !== 200) {
       throw new Error(`Unexpected OAuth start status ${startResponse.status}`);
     }
-    const authorizationUrl = await connectorsApi.continueOauth(
-      "github",
-      startResponse.body.authorizationUrl,
-    );
+    const authorizationUrl = new URL(startResponse.body.authorizationUrl);
     expect(
       new URL(authorizationUrl.searchParams.get("redirect_uri") ?? "").pathname,
     ).toBe("/connectors/github/callback");
@@ -381,8 +378,7 @@ describe("CONN-02: OAuth start and callback", () => {
         `Unexpected OAuth start status ${failedStartResponse.status}`,
       );
     }
-    const failedAuthorizationUrl = await connectorsApi.continueOauth(
-      "github",
+    const failedAuthorizationUrl = new URL(
       failedStartResponse.body.authorizationUrl,
     );
     const failedState = stateFromAuthorizationUrl(
@@ -414,10 +410,7 @@ describe("CONN-02: OAuth start and callback", () => {
     const actor = bdd.user();
 
     const start = await connectorsApi.startOauth(actor, "github", "oauth");
-    const authorizationUrl = await connectorsApi.continueOauth(
-      "github",
-      start.authorizationUrl,
-    );
+    const authorizationUrl = new URL(start.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://github.com/login/oauth/authorize",
     );
@@ -494,10 +487,7 @@ describe("CONN-02: OAuth start and callback", () => {
     });
 
     const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
-    const authorizationUrl = await connectorsApi.continueOauth(
-      "datadog",
-      start.authorizationUrl,
-    );
+    const authorizationUrl = new URL(start.authorizationUrl);
     expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
       "S256",
     );
@@ -2609,10 +2599,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "oauth",
       agent.agentId,
     );
-    const authorizationUrl = await connectorsApi.continueOauth(
-      "test-oauth",
-      start.authorizationUrl,
-    );
+    const authorizationUrl = new URL(start.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "http://localhost:3000/api/test/oauth-provider/authorize",
     );

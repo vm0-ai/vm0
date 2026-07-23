@@ -1140,53 +1140,46 @@ function ModelPolicyRouteDialog({
             </Select>
           </div>
 
-          {selectedModel === "vm0-model" ? (
-            <p className="text-sm text-muted-foreground">
-              VM0 automatically selects the right model for each task, balancing
-              capability, speed, and cost.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                Provided by
-              </label>
-              <div
-                role="radiogroup"
-                aria-label="Provided by"
-                className="grid grid-cols-1 gap-3 md:grid-cols-3"
-              >
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-foreground">
+              Provided by
+            </label>
+            <div
+              role="radiogroup"
+              aria-label="Provided by"
+              className="grid grid-cols-1 gap-3 md:grid-cols-3"
+            >
+              <RouteChoiceButton
+                active={dialog.routeKind === "built-in"}
+                title="Built-in"
+                description="Workspace credits cover usage."
+                onClick={() => {
+                  chooseRoute("built-in");
+                }}
+              />
+              <RouteChoiceButton
+                active={dialog.routeKind === "api-key"}
+                disabled={apiTypes.length === 0}
+                pro={!modelCapabilities.supportByok}
+                title="API key"
+                description="A shared workspace key. Best when the team bills through one account."
+                onClick={() => {
+                  chooseRoute("api-key");
+                }}
+              />
+              {oauthTypes.length > 0 && (
                 <RouteChoiceButton
-                  active={dialog.routeKind === "built-in"}
-                  title="Built-in"
-                  description="Workspace credits cover usage."
-                  onClick={() => {
-                    chooseRoute("built-in");
-                  }}
-                />
-                <RouteChoiceButton
-                  active={dialog.routeKind === "api-key"}
-                  disabled={apiTypes.length === 0}
+                  active={dialog.routeKind === "oauth"}
                   pro={!modelCapabilities.supportByok}
-                  title="API key"
-                  description="A shared workspace key. Best when the team bills through one account."
+                  title={getOAuthRouteCopy(oauthTypes).title}
+                  description={getOAuthRouteCopy(oauthTypes).description}
                   onClick={() => {
-                    chooseRoute("api-key");
+                    chooseRoute("oauth");
                   }}
                 />
-                {oauthTypes.length > 0 && (
-                  <RouteChoiceButton
-                    active={dialog.routeKind === "oauth"}
-                    pro={!modelCapabilities.supportByok}
-                    title={getOAuthRouteCopy(oauthTypes).title}
-                    description={getOAuthRouteCopy(oauthTypes).description}
-                    onClick={() => {
-                      chooseRoute("oauth");
-                    }}
-                  />
-                )}
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           {dialog.routeKind === "api-key" && (
             <ApiKeyProviderSection

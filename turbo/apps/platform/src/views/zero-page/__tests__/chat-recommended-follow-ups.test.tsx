@@ -152,7 +152,10 @@ describe("chat lifecycle", () => {
     });
     expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
-    expect(sentMessages[0]?.structuredPrompt).toBeUndefined();
+    expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
+      version: 1,
+      parts: [{ type: "text", text: followupPrompt }],
+    });
   });
 
   it("shows recommended follow-ups after a completed marker update event", async () => {

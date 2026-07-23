@@ -542,6 +542,7 @@ export {
   orgModelPoliciesResponseSchema,
   updateOrgModelPoliciesRequestSchema,
   supportedRunModelSchema,
+  requestedRunModelSchema,
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
@@ -891,10 +892,6 @@ export {
   type UpdateFeatureSwitchesRequest,
 } from "./zero-feature-switches";
 export {
-  memoryDetailResponseSchema,
-  type MemoryDetailResponse,
-} from "./zero-memory";
-export {
   orgListItemSchema,
   orgListResponseSchema,
   type OrgListItem,
@@ -1175,12 +1172,6 @@ export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
-export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
-export {
-  zeroMemoryDevRefreshContract,
-  type MemoryDevRefreshResponse,
-  type ZeroMemoryDevRefreshContract,
-} from "./zero-memory-dev-refresh";
 export {
   zeroSecretsContract,
   zeroSecretsByNameContract,

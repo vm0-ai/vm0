@@ -102,6 +102,11 @@ interface AgentComposeContent {
   readonly volumes?: Record<string, VolumeConfig | undefined>;
 }
 
+interface LegacyCheckpointStorageInputs {
+  readonly volumeVersions: Record<string, string> | undefined;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+}
+
 interface PrepareAgentRunStorageManifestArgs {
   readonly db: Db;
   readonly content: AgentComposeContent;
@@ -1018,6 +1023,69 @@ function resolveComposeVolumes(args: {
   }
 
   return resolved;
+}
+
+export function projectLegacyCheckpointStorageInputs(args: {
+  readonly content: AgentComposeContent;
+  readonly vars: Record<string, string> | undefined;
+  readonly mounts: readonly PersistedStorageMount[];
+}): LegacyCheckpointStorageInputs {
+  const mountsByPath = new Map(
+    args.mounts.map((mount) => {
+      return [mount.mountPath, mount] as const;
+    }),
+  );
+  const composeMountPaths = new Set<string>();
+  const volumeVersions: Record<string, string> = {};
+  const entry = firstAgentEntry(args.content);
+
+  for (const declaration of entry?.agent.volumes ?? []) {
+    const parsed = parseVolumeDeclaration(declaration);
+    const config = args.content.volumes?.[parsed.name];
+    if (!config) {
+      throw new Error(
+        `Volume "${parsed.name}" is not defined in the volumes section`,
+      );
+    }
+    const storageName = expandTemplate(
+      config.name,
+      args.vars,
+      `Volume "${parsed.name}" name`,
+    );
+    const mount = mountsByPath.get(parsed.mountPath);
+    if (!mount || mount.writeback || mount.name !== storageName) {
+      continue;
+    }
+    composeMountPaths.add(mount.mountPath);
+    if (mount.version !== undefined) {
+      volumeVersions[parsed.name] = mount.version;
+    }
+  }
+
+  const additionalVolumes = args.mounts.flatMap((mount) => {
+    if (
+      mount.writeback ||
+      composeMountPaths.has(mount.mountPath) ||
+      mount.instructionsTargetFilename !== undefined ||
+      mount.orgId === SYSTEM_ORG_ID
+    ) {
+      return [];
+    }
+    return [
+      {
+        name: mount.name,
+        ...(mount.version === undefined ? {} : { version: mount.version }),
+        mountPath: mount.mountPath,
+      },
+    ];
+  });
+
+  return {
+    volumeVersions:
+      Object.keys(volumeVersions).length === 0 ? undefined : volumeVersions,
+    additionalVolumes:
+      additionalVolumes.length === 0 ? undefined : additionalVolumes,
+  };
 }
 
 function dedupArtifacts(

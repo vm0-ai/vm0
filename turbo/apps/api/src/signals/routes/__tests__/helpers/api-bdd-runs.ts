@@ -29,7 +29,6 @@ import {
   cronAggregateUsageContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
-  cronSummarizeMemoryContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
@@ -69,7 +68,6 @@ import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
-import { cronSummarizeMemoryRoutes } from "../../cron-summarize-memory";
 import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
 import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
@@ -149,7 +147,6 @@ const runRoutes = [
   ...cronAggregateUsageRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
-  ...cronSummarizeMemoryRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
   ...agentRunsCreateRoutes,
@@ -1118,12 +1115,6 @@ export function createRunsApi(context: TestContext) {
         }),
         [401],
       );
-      const summarizeMemory = await accept(
-        runApp(context)(cronSummarizeMemoryContract).summarize({
-          headers,
-        }),
-        [401],
-      );
       const telegramCleanup = await accept(
         runApp(context)(cronTelegramCleanupContract).cleanup({
           headers,
@@ -1135,7 +1126,6 @@ export function createRunsApi(context: TestContext) {
         aggregateUsage,
         aggregateInsights,
         processUsageEvents,
-        summarizeMemory,
         telegramCleanup,
       };
     },
